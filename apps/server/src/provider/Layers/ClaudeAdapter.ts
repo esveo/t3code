@@ -280,6 +280,58 @@ interface ClaudeTurnState {
   latestAssistantRateLimited: boolean;
   emittedThinkingText: boolean;
   readonly thinkingSnapshotIds: Set<string>;
+  /** Prompt delivery of a user-started turn; absent on synthetic turns. */
+  prompt?: ClaudeTurnPromptState;
+}
+
+type ClaudeUserMessageContent = SDKUserMessage["message"]["content"];
+
+/**
+ * The CLI dequeues a prompt well before it records it in the transcript.
+ * Closing the query in that gap (Stop pressed during resume or hook setup)
+ * discards the prompt: it never reaches the model and resuming the session
+ * has no trace of it. Every user message a turn carries stays here until the
+ * CLI replies to it, so an interrupted turn can hand them to the next one.
+ */
+interface ClaudeTurnPromptState {
+  /** Earlier undelivered messages first, then the turn's own message. */
+  contents: ReadonlyArray<ClaudeUserMessageContent>;
+  acknowledged: boolean;
+}
+
+const UNDELIVERED_PROMPT_PREAMBLE =
+  "[The user sent the following earlier message(s), but the turn was interrupted before you received them. Take them into account.]";
+const UNDELIVERED_PROMPT_CURRENT = "[Current message:]";
+
+function userMessageContentBlocks(
+  content: ClaudeUserMessageContent,
+): Array<Exclude<ClaudeUserMessageContent, string>[number]> {
+  return typeof content === "string" ? [{ type: "text", text: content }] : [...content];
+}
+
+/**
+ * A top-level reply frame proves the CLI consumed the prompt. Current CLIs
+ * stamp the first reply frame with the client uuids it answers; frames stamped
+ * for another send (a background notification turn) do not count.
+ */
+function isClaudePromptAcknowledgement(message: SDKMessage, promptUuid: string): boolean {
+  if (
+    message.type !== "stream_event" &&
+    message.type !== "assistant" &&
+    message.type !== "result"
+  ) {
+    return false;
+  }
+  if ("parent_tool_use_id" in message && message.parent_tool_use_id !== null) {
+    return false;
+  }
+  const stamp = message as { user_message_uuid?: unknown; user_message_uuids?: unknown };
+  const uuids = Array.isArray(stamp.user_message_uuids)
+    ? stamp.user_message_uuids
+    : typeof stamp.user_message_uuid === "string"
+      ? [stamp.user_message_uuid]
+      : undefined;
+  return uuids === undefined || uuids.includes(promptUuid);
 }
 
 interface AssistantTextBlockState {
@@ -2106,6 +2158,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       }) as ClaudeQueryRuntime);
 
   const sessions = new Map<ThreadId, ClaudeSessionContext>();
+  /** User messages of interrupted turns the CLI never consumed, per thread. */
+  const undeliveredPrompts = new Map<ThreadId, ReadonlyArray<ClaudeUserMessageContent>>();
   const runtimeEventQueue = yield* Queue.unbounded<ProviderRuntimeEvent>();
 
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
@@ -2839,6 +2893,14 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       },
       providerRefs: nativeProviderRefs(context),
     });
+
+    if (
+      turnState.prompt &&
+      !turnState.prompt.acknowledged &&
+      (status === "interrupted" || status === "failed")
+    ) {
+      undeliveredPrompts.set(context.session.threadId, turnState.prompt.contents);
+    }
 
     const updatedAt = yield* nowIso;
     context.turnState = undefined;
@@ -4149,6 +4211,15 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     yield* logNativeSdkMessage(context, message);
     yield* ensureThreadId(context, message);
 
+    const turnState = context.turnState;
+    if (
+      turnState?.prompt &&
+      !turnState.prompt.acknowledged &&
+      isClaudePromptAcknowledgement(message, turnState.turnId)
+    ) {
+      turnState.prompt.acknowledged = true;
+    }
+
     // Wire-only command bookkeeping has no user-facing T3 lifecycle.
     if (sdkMessageType(message) === "command_lifecycle") {
       return;
@@ -5267,15 +5338,40 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       ),
     });
 
+    // Steers stay untracked: the CLI reports folding them into the running
+    // turn only on its result, which an interrupt never delivers.
+    const undelivered =
+      steeringTurnState === null ? (undeliveredPrompts.get(input.threadId) ?? []) : [];
+    if (steeringTurnState === null && context.turnState) {
+      context.turnState.prompt = {
+        contents: [...undelivered, message.message.content],
+        acknowledged: false,
+      };
+    }
+    const content: ClaudeUserMessageContent =
+      undelivered.length === 0
+        ? message.message.content
+        : [
+            { type: "text", text: UNDELIVERED_PROMPT_PREAMBLE },
+            ...undelivered.flatMap(userMessageContentBlocks),
+            { type: "text", text: UNDELIVERED_PROMPT_CURRENT },
+            ...userMessageContentBlocks(message.message.content),
+          ];
+
     if (steeringTurnState === null) context.turnStartMessageIds.push(turnId);
     yield* updateResumeCursor(context);
     yield* Queue.offer(context.promptQueue, {
       type: "message",
       message:
         steeringTurnState === null
-          ? { ...message, uuid: turnId as NonNullable<SDKUserMessage["uuid"]> }
+          ? {
+              ...message,
+              message: { ...message.message, content },
+              uuid: turnId as NonNullable<SDKUserMessage["uuid"]>,
+            }
           : message,
     }).pipe(Effect.mapError((cause) => toRequestError(input.threadId, "turn/start", cause)));
+    if (undelivered.length > 0) undeliveredPrompts.delete(input.threadId);
 
     return {
       threadId: context.session.threadId,
@@ -5319,6 +5415,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         numTurns >= context.turnStartMessageIds.length
       ) {
         yield* stopSessionInternal(context, { emitExitEvent: false });
+        // Rolled-back turns take their undelivered messages with them.
+        undeliveredPrompts.delete(threadId);
         yield* startSession({
           ...context.startInput,
           runtimeMode: context.session.runtimeMode,
@@ -5468,6 +5566,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         retainedBoundaries.splice(0, retainedBoundaries.length, ...remappedBoundaries);
       }
       yield* stopSessionInternal(context, { emitExitEvent: false });
+      undeliveredPrompts.delete(threadId);
       yield* startSession({
         ...context.startInput,
         runtimeMode: context.session.runtimeMode,
