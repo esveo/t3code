@@ -3646,6 +3646,77 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("stamps usage snapshots with the main agent's prompt-cache refresh and TTL", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "turn.completed"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({
+        threadId: THREAD_ID,
+        input: "hello",
+        attachments: [],
+      });
+      harness.query.emit({
+        type: "assistant",
+        session_id: "sdk-session-prompt-cache",
+        uuid: "assistant-prompt-cache",
+        parent_tool_use_id: null,
+        message: {
+          id: "assistant-message-prompt-cache",
+          role: "assistant",
+          content: [],
+          usage: {
+            input_tokens: 5,
+            cache_read_input_tokens: 1000,
+            cache_creation_input_tokens: 200,
+            cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 200 },
+            output_tokens: 20,
+          },
+        },
+      } as unknown as SDKMessage);
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        duration_ms: 1234,
+        duration_api_ms: 1200,
+        num_turns: 1,
+        result: "done",
+        stop_reason: "end_turn",
+        session_id: "sdk-session-prompt-cache",
+        usage: {
+          input_tokens: 5,
+          cache_read_input_tokens: 1000,
+          cache_creation_input_tokens: 200,
+          output_tokens: 20,
+        },
+      } as unknown as SDKMessage);
+
+      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
+      const finalUsageEvent = runtimeEvents.findLast(
+        (event) => event.type === "thread.token-usage.updated",
+      );
+      assert.equal(finalUsageEvent?.type, "thread.token-usage.updated");
+      if (finalUsageEvent?.type === "thread.token-usage.updated") {
+        assert.equal(finalUsageEvent.payload.usage.promptCacheTtlSeconds, 3600);
+        assert.isString(finalUsageEvent.payload.usage.promptCacheRefreshedAt);
+      }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("preserves compacted usage when completion follows an older assistant frame", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
