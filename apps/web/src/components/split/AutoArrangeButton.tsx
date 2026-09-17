@@ -2,7 +2,7 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/model
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { LayoutGridIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
 import { cn } from "~/lib/utils";
 import { buildThreadRouteParams, resolveThreadRouteTarget } from "../../threadRoutes";
@@ -20,7 +20,6 @@ import {
 
 const PICKER_COLUMNS = 8;
 const PICKER_ROWS = 6;
-const PREVIEW_WIDTH = 256;
 
 let arrangeIdCounter = 0;
 const nextArrangeId = (prefix: string) =>
@@ -60,6 +59,9 @@ export function AutoArrangeButton({
   const [area, setArea] = useState({ width: 1, height: 1 });
   const [selected, setSelected] = useState<GridSize>({ columns: 1, rows: 1 });
   const [hovered, setHovered] = useState<GridSize | null>(null);
+  // Focus the confirm button, not the first grid cell, so opening the picker
+  // keeps the suggested grid shown.
+  const arrangeButtonRef = useRef<HTMLButtonElement>(null);
 
   const suggested = useMemo(
     () => recommendGrid(threads.length, area.width, area.height),
@@ -98,11 +100,6 @@ export function AutoArrangeButton({
     setOpen(false);
   };
 
-  const previewHeight = Math.round((PREVIEW_WIDTH * area.height) / Math.max(1, area.width));
-  const columnStarts = counts.map((_, index) =>
-    counts.slice(0, index).reduce((sum, count) => sum + count, 0),
-  );
-
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
       <PopoverTrigger
@@ -110,13 +107,13 @@ export function AutoArrangeButton({
       >
         <LayoutGridIcon />
       </PopoverTrigger>
-      <PopoverPopup align="start" side="bottom" className="w-80">
+      <PopoverPopup align="start" side="bottom" className="w-80" initialFocus={arrangeButtonRef}>
         <div className="flex flex-col gap-3">
           <div>
             <div className="font-medium text-sm">Auto arrange</div>
             <div className="text-muted-foreground text-xs">
               {threads.length} pinned and active {threads.length === 1 ? "session" : "sessions"}.
-              Pick a grid; the suggested one is preselected.
+              The suggested grid is preselected; click another to change it.
             </div>
           </div>
 
@@ -147,7 +144,6 @@ export function AutoArrangeButton({
                       isSuggested && "ring-1 ring-primary ring-offset-1 ring-offset-popover",
                     )}
                     onPointerEnter={() => setHovered(size)}
-                    onFocus={() => setHovered(size)}
                     onClick={() => setSelected(size)}
                   />
                 );
@@ -174,42 +170,11 @@ export function AutoArrangeButton({
             </span>
           </div>
 
-          <div
-            aria-hidden
-            className="relative overflow-hidden rounded-md border bg-background"
-            style={{ width: PREVIEW_WIDTH, height: previewHeight }}
-          >
-            {counts.map((count, columnIndex) => {
-              const left = (columnIndex / counts.length) * 100;
-              const width = 100 / counts.length;
-              const panes = Array.from({ length: count }, (_, rowIndex) => {
-                const thread = threads[(columnStarts[columnIndex] ?? 0) + rowIndex];
-                return (
-                  <div
-                    key={rowIndex}
-                    className="absolute overflow-hidden border-border border-r border-b p-1"
-                    style={{
-                      left: `${left}%`,
-                      width: `${width}%`,
-                      top: `${(rowIndex / count) * 100}%`,
-                      height: `${100 / count}%`,
-                    }}
-                  >
-                    <div className="line-clamp-2 break-words text-[10px] text-muted-foreground leading-tight">
-                      {thread?.title}
-                    </div>
-                  </div>
-                );
-              });
-              return panes;
-            })}
-          </div>
-
           <div className="flex justify-end gap-2">
             <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button size="sm" onClick={arrange} disabled={placedCount === 0}>
+            <Button ref={arrangeButtonRef} size="sm" onClick={arrange} disabled={placedCount === 0}>
               Arrange
             </Button>
           </div>

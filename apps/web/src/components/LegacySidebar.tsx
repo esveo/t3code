@@ -109,7 +109,7 @@ import {
 } from "../keybindings";
 import { isModelPickerOpen } from "../modelPickerVisibility";
 import { useShortcutModifierState } from "../shortcutModifierState";
-import { ensureLocalApi, readLocalApi } from "../localApi";
+import { readLocalApi } from "../localApi";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useDesktopUpdateState } from "../state/desktopUpdate";
@@ -129,7 +129,6 @@ import { Kbd } from "./ui/kbd";
 import {
   getArm64IntelBuildWarningDescription,
   getDesktopUpdateActionError,
-  getDesktopUpdateInstallConfirmationMessage,
   isDesktopUpdateButtonDisabled,
   resolveDesktopUpdateButtonAction,
   shouldShowArm64IntelBuildWarning,
@@ -3702,26 +3701,8 @@ export default function LegacySidebar() {
     }
 
     if (desktopUpdateButtonAction === "install") {
-      let confirmed = false;
-      try {
-        confirmed = await ensureLocalApi().dialogs.confirm(
-          getDesktopUpdateInstallConfirmationMessage(desktopUpdateState),
-        );
-      } catch (error) {
-        setDesktopUpdateActionPending(false);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Could not confirm update",
-            description: error instanceof Error ? error.message : "Update confirmation failed.",
-          }),
-        );
-        return;
-      }
-      if (!confirmed) {
-        setDesktopUpdateActionPending(false);
-        return;
-      }
+      // Fork: installing only swaps in a prepared build and relaunches the app;
+      // agents run in the background service, so there is nothing to confirm.
       void bridge
         .installUpdate()
         .then((result) => {
