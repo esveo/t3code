@@ -172,5 +172,5 @@ Full glossary with file links: `docs/internals/glossary.md`
 
 This checkout is Paul's private fork of `pingdotgg/t3code`, not upstream. Read
 `FORK.md` before working; its rules override this file. Never push, open PRs,
-or file issues on `upstream`. Never start, stop, restart, or rebuild the fork
-desktop app yourself; when a feature is done, tell the user and they restart it.
+or file issues on `upstream`. When a feature is done, run
+`scripts/fork-app.sh prepare` and tell the user; never restart the app yourself.

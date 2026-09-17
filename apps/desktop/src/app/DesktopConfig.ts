@@ -41,6 +41,9 @@ export const DesktopConfig = Config.all({
   // Lets a build started from the checkout keep its Chromium profile apart
   // from an installed app that is running at the same time.
   userDataDirNameOverride: trimmedString("T3CODE_DESKTOP_USER_DATA_DIR_NAME"),
+  // Private fork: prebuilt app slots and the script that swaps them in.
+  forkAppRoot: trimmedString("T3CODE_FORK_APP_ROOT"),
+  forkAppScript: trimmedString("T3CODE_FORK_APP_SCRIPT"),
   devServerUrl: Config.url("VITE_DEV_SERVER_URL").pipe(Config.option),
   appUserModelIdOverride: trimmedString("T3CODE_DESKTOP_APP_USER_MODEL_ID"),
   devRemoteT3ServerEntryPath: trimmedString("T3CODE_DEV_REMOTE_T3_SERVER_ENTRY_PATH"),

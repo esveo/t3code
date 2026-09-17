@@ -14,22 +14,29 @@ rules win wherever they differ.
 - Upstream's maintainer workflows do not apply: no releases, version bumps,
   changelogs, triage, PR evidence uploads, or CI babysitting. Commit on a
   feature branch; open a PR on the fork only when Paul asks.
-- The user runs the fork's desktop app from this checkout and restarts it
-  themselves.
+- The user runs the fork's desktop app from prebuilt slots in
+  `~/Documents/private/t3code-app` (see `scripts/fork-app.sh`) and switches
+  builds themselves.
 
 ## Finishing a feature
 
-- **Never start, stop, restart, or rebuild the fork app yourself.** Do not run
-  `scripts/fork-app.sh` (any command), `vp run build:desktop`,
-  `vp run start:desktop`, or anything that kills its Electron processes.
-  Rebuilding replaces the assets the running app loads and would break the
-  user's session.
-- When the feature is done, end with a short message: what changed, which
-  branch and commit, what you verified, and that it is ready to try. The user
-  then restarts the app with the "T3 Code Fork" launcher, which rebuilds first.
-- If the feature lives in a worktree, say so and whether it still needs
-  merging into the branch the main checkout has checked out; the launcher only
-  builds the main checkout.
+The user runs the fork's desktop app as a prebuilt build and switches to a new
+one with the app's update button. Your job ends with that build prepared.
+
+1. Commit your work (or leave it uncommitted if the user prefers; `prepare`
+   includes uncommitted changes of the checkout it runs in).
+2. Run `scripts/fork-app.sh prepare` from the checkout or worktree that holds
+   the feature. It builds into `~/Documents/private/t3code-app/next` without
+   touching the running app and takes one to two minutes. If it fails, fix the
+   cause and run it again.
+3. End with a short message: what changed, branch and commit, what you
+   verified, and that the build is prepared, so the update button offers it.
+
+- **Never run `scripts/fork-app.sh restart`, `start`, or `stop`**, never run
+  `vp run start:desktop`, and never kill the app's Electron processes. The user
+  decides when to switch.
+- Only one prepared build waits at a time; a later `prepare` from another agent
+  replaces it. Mention in your message if you know another agent is preparing.
 
 ## Other rules
 
