@@ -28,6 +28,13 @@ PNPM="pnpm@11.10.0"
 
 mkdir -p "$ROOT" "$HOME_DIR/userdata" "$LOG_DIR"
 
+# A restart without a terminal comes from the app's update button or the
+# Finder launcher; nobody sees its output, so keep a log.
+if [[ ! -t 1 && "${1:-}" == restart ]]; then
+  exec >>"$LOG_DIR/fork-app.log" 2>&1
+  echo "--- $(date '+%F %T') fork-app.sh ${1:-} (pid $$, parent $PPID)"
+fi
+
 use_node() {
   if [[ "$(node -v 2>/dev/null)" != v$NODE_MAJOR.* ]]; then
     export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
@@ -57,8 +64,10 @@ release_lock() {
 }
 
 app_pids() {
-  pgrep -f "apps/desktop/.electron-runtime/.*/MacOS/Electron dist-electron/main.cjs" || true
-  pgrep -f "vp run start:desktop" || true
+  # -a: when the app's update button runs this script, the app is our
+  # ancestor, which pgrep would otherwise leave out.
+  pgrep -af "apps/desktop/.electron-runtime/.*/MacOS/Electron dist-electron/main.cjs" || true
+  pgrep -af "vp run start:desktop" || true
 }
 
 stop() {
