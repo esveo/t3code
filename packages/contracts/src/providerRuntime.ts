@@ -329,10 +329,6 @@ export const ThreadTokenUsageSnapshot = Schema.Struct({
   durationMs: Schema.optional(NonNegativeInt),
   compactsAutomatically: Schema.optional(Schema.Boolean),
   autoCompactThreshold: Schema.optional(PositiveInt),
-  // When the main agent last read or wrote the provider's prompt cache, and
-  // how long that entry lives. Only providers that know this set it.
-  promptCacheRefreshedAt: Schema.optional(IsoDateTime),
-  promptCacheTtlSeconds: Schema.optional(PositiveInt),
 });
 export type ThreadTokenUsageSnapshot = typeof ThreadTokenUsageSnapshot.Type;
 

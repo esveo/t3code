@@ -28,7 +28,6 @@ import {
 import { parseCliArgs } from "@t3tools/shared/cliArgs";
 import { isWorkspaceImagePreviewPath } from "@t3tools/shared/filePreview";
 import { type ClaudeScopedLimitNames, claudeRateLimitEventToUpdate } from "./claudeUsageLimits.ts";
-import { type ClaudePromptCacheState, nextClaudePromptCacheState } from "./claudePromptCache.ts";
 import {
   ApprovalRequestId,
   classifyTaskAgentKind,
@@ -502,8 +501,6 @@ interface ClaudeSessionContext {
   lastKnownContextWindow: number | undefined;
   lastKnownTokenUsage: ThreadTokenUsageSnapshot | undefined;
   lastKnownTotalProcessedTokens: number | undefined;
-  /** Last main-agent prompt-cache read/write; see claudePromptCache.ts. */
-  promptCache: ClaudePromptCacheState | undefined;
   lastAssistantUuid: string | undefined;
   lastThreadStartedId: string | undefined;
   /** Limits already announced for the running turn, keyed `window:resetsAt`. */
@@ -2592,22 +2589,15 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
 
   const emitThreadTokenUsage = Effect.fn("emitThreadTokenUsage")(function* (
     context: ClaudeSessionContext,
-    reportedUsage: ThreadTokenUsageSnapshot | undefined,
+    usage: ThreadTokenUsageSnapshot | undefined,
     options?: {
       readonly rawMethod?: string;
       readonly rawPayload?: unknown;
     },
   ) {
-    if (!reportedUsage) {
+    if (!usage) {
       return;
     }
-    const usage: ThreadTokenUsageSnapshot = context.promptCache
-      ? {
-          ...reportedUsage,
-          promptCacheRefreshedAt: context.promptCache.refreshedAt,
-          promptCacheTtlSeconds: context.promptCache.ttlSeconds,
-        }
-      : reportedUsage;
 
     context.lastKnownTokenUsage = usage;
     context.lastKnownTotalProcessedTokens =
@@ -2968,11 +2958,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       if (message.parent_tool_use_id !== null && message.parent_tool_use_id !== undefined) {
         return;
       }
-      context.promptCache = nextClaudePromptCacheState({
-        previous: context.promptCache,
-        usage: event.usage,
-        observedAt: yield* nowIso,
-      });
 
       const snapshot = normalizeClaudeActiveTokenUsage(
         event.usage,
@@ -3525,14 +3510,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         });
       }
     }
-
-    // Main-agent snapshots carry the request's cache_creation breakdown, the
-    // only place the 5-minute vs 1-hour TTL is visible.
-    context.promptCache = nextClaudePromptCacheState({
-      previous: context.promptCache,
-      usage: message.message.usage,
-      observedAt: yield* nowIso,
-    });
 
     if (context.turnState) {
       // Limited retries may only carry an assistant error, without a new window
@@ -5148,7 +5125,6 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         lastKnownContextWindow: initialContextWindow,
         lastKnownTokenUsage: undefined,
         lastKnownTotalProcessedTokens: undefined,
-        promptCache: undefined,
         lastAssistantUuid: resumeState?.resumeSessionAt,
         lastThreadStartedId: undefined,
         announcedUsageLimits: undefined,

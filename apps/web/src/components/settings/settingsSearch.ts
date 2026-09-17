@@ -352,12 +352,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["composer rich text tiptap bold italic markdown styled wysiwyg"],
   },
   {
-    id: "prompt-cache-indicator",
-    title: "Prompt cache countdown",
-    to: "/settings/general",
-    searchTerms: ["composer cache expiry timer ttl claude tokens cost"],
-  },
-  {
     id: "composer-collapse",
     title: "Collapse composer on scroll",
     to: "/settings/general",

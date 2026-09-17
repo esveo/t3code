@@ -586,15 +586,6 @@ describe("ClientSettings context window meter", () => {
   });
 });
 
-describe("ClientSettings prompt cache indicator", () => {
-  it("defaults on and preserves an explicit opt-out", () => {
-    expect(decodeClientSettings({}).promptCacheIndicatorEnabled).toBe(true);
-    expect(
-      decodeClientSettingsPatch({ promptCacheIndicatorEnabled: false }).promptCacheIndicatorEnabled,
-    ).toBe(false);
-  });
-});
-
 describe("ClientSettings send shortcut", () => {
   it("defaults to Enter and validates the supported choices", () => {
     expect(decodeClientSettings({}).sendShortcut).toBe("enter");

@@ -277,7 +277,6 @@ import {
   renderProviderTraitsPicker,
 } from "./composerProviderState";
 import { ContextWindowMeter, ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
-import { PromptCacheIndicator } from "./PromptCacheIndicator";
 import {
   providerSupportsManualCompaction,
   resolveContextWindowModelDisplayName,
@@ -1157,7 +1156,6 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
   compact: boolean;
   activeContextWindow: ContextWindowSnapshot | null;
   reserveContextWindowMeter: boolean;
-  promptCache: { refreshedAt: string; ttlSeconds: number } | null;
   activeThreadModelDisplayName: string | null;
   isPreparingWorktree: boolean;
   pendingAction: {
@@ -1185,14 +1183,6 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
 }) {
   return (
     <>
-      {props.promptCache ? (
-        <PromptCacheIndicator
-          refreshedAt={props.promptCache.refreshedAt}
-          ttlSeconds={props.promptCache.ttlSeconds}
-          turnRunning={props.isRunning}
-          compact={props.compact}
-        />
-      ) : null}
       {props.activeContextWindow ? (
         <ContextWindowMeter
           usage={props.activeContextWindow}
@@ -2065,17 +2055,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ? selectedProviderStatus.reportsContextWindow === true
       : null,
   });
-  const promptCacheRefreshedAt = activeContextWindow?.promptCacheRefreshedAt ?? null;
-  const promptCacheTtlSeconds = activeContextWindow?.promptCacheTtlSeconds ?? null;
-  const promptCache = useMemo(
-    () =>
-      settings.promptCacheIndicatorEnabled &&
-      promptCacheRefreshedAt !== null &&
-      promptCacheTtlSeconds !== null
-        ? { refreshedAt: promptCacheRefreshedAt, ttlSeconds: promptCacheTtlSeconds }
-        : null,
-    [settings.promptCacheIndicatorEnabled, promptCacheRefreshedAt, promptCacheTtlSeconds],
-  );
 
   // ------------------------------------------------------------------
   // Composer-local state
@@ -6776,16 +6755,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   isComposerResting &&
                     ((settings.contextWindowMeterEnabled && activeContextWindow) ||
                     reserveContextWindowMeter
-                      ? promptCache
-                        ? "pr-44"
-                        : "pr-28"
+                      ? "pr-28"
                       : showComposerAttachAction
-                        ? promptCache
-                          ? "pr-36"
-                          : "pr-20"
-                        : promptCache
-                          ? "pr-28"
-                          : "pr-12"),
+                        ? "pr-20"
+                        : "pr-12"),
                 )}
               >
                 {previewFile ? (
@@ -7000,7 +6973,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       settings.contextWindowMeterEnabled ? activeContextWindow : null
                     }
                     reserveContextWindowMeter={reserveContextWindowMeter}
-                    promptCache={promptCache}
                     activeThreadModelDisplayName={activeThreadModelDisplayName}
                     pendingAction={pendingPrimaryAction}
                     isRunning={phase === "running"}

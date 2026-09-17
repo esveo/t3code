@@ -568,10 +568,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.contextWindowMeterEnabled !== DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled
         ? ["Context window indicator"]
         : []),
-      ...(settings.promptCacheIndicatorEnabled !==
-      DEFAULT_UNIFIED_SETTINGS.promptCacheIndicatorEnabled
-        ? ["Prompt cache countdown"]
-        : []),
       ...(settings.responseStreamingMode !== DEFAULT_UNIFIED_SETTINGS.responseStreamingMode
         ? ["Response streaming"]
         : []),
@@ -639,7 +635,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.proactivePanelsEnabled,
       settings.environmentIdentificationMode,
       settings.contextWindowMeterEnabled,
-      settings.promptCacheIndicatorEnabled,
       settings.fontFamilyCode,
       settings.fontFamilyComposer,
       settings.fontFamilySans,
@@ -747,7 +742,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       sendShortcut: DEFAULT_UNIFIED_SETTINGS.sendShortcut,
       followUpBehavior: DEFAULT_UNIFIED_SETTINGS.followUpBehavior,
       contextWindowMeterEnabled: DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled,
-      promptCacheIndicatorEnabled: DEFAULT_UNIFIED_SETTINGS.promptCacheIndicatorEnabled,
       environmentIdentificationMode: DEFAULT_UNIFIED_SETTINGS.environmentIdentificationMode,
       glassOpacity: DEFAULT_UNIFIED_SETTINGS.glassOpacity,
       panelAnimationDurationMs: DEFAULT_UNIFIED_SETTINGS.panelAnimationDurationMs,
@@ -2590,34 +2584,6 @@ export function GeneralSettingsPanel() {
                 updateSettings({ composerRichTextEnabled: Boolean(checked) })
               }
               aria-label="Rich text composer"
-            />
-          }
-        />
-
-        <SettingsRow
-          {...searchableSetting("prompt-cache-indicator")}
-          description="Show a countdown in the composer until the provider's prompt cache expires. After that, the next message re-reads the full context at full price. Claude only."
-          resetAction={
-            settings.promptCacheIndicatorEnabled !==
-            DEFAULT_UNIFIED_SETTINGS.promptCacheIndicatorEnabled ? (
-              <SettingResetButton
-                label="prompt cache countdown"
-                onClick={() =>
-                  updateSettings({
-                    promptCacheIndicatorEnabled:
-                      DEFAULT_UNIFIED_SETTINGS.promptCacheIndicatorEnabled,
-                  })
-                }
-              />
-            ) : null
-          }
-          control={
-            <Switch
-              checked={settings.promptCacheIndicatorEnabled}
-              onCheckedChange={(checked) =>
-                updateSettings({ promptCacheIndicatorEnabled: Boolean(checked) })
-              }
-              aria-label="Prompt cache countdown"
             />
           }
         />
