@@ -167,3 +167,8 @@ Full glossary with file links: `docs/internals/glossary.md`
 
 - Don't verify with browsers or computer use unless the user explicitly agrees or requests it.
 - Security is important, but should not be over-indexed on, especially for dev mode/maintainer-only features.
+
+## Private fork
+
+Read `FORK.md` before working. Never start, stop, restart, or rebuild the fork
+desktop app yourself; when a feature is done, tell the user and they restart it.

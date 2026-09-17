@@ -9,6 +9,9 @@
 #   scripts/fork-app.sh stop
 #   scripts/fork-app.sh build
 #   scripts/fork-app.sh status
+#
+# Only the user runs this, usually via the "T3 Code Fork" launcher. Agents must
+# not: rebuilding swaps the assets the running app loads (see FORK.md).
 set -euo pipefail
 
 REPO="${0:A:h:h}"
