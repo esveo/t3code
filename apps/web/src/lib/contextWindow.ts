@@ -67,6 +67,9 @@ export function deriveLatestContextWindowSnapshot(
       durationMs: asFiniteNumber(payload?.durationMs),
       compactsAutomatically: asBoolean(payload?.compactsAutomatically) ?? false,
       autoCompactThreshold: asFiniteNumber(payload?.autoCompactThreshold),
+      promptCacheRefreshedAt:
+        typeof payload?.promptCacheRefreshedAt === "string" ? payload.promptCacheRefreshedAt : null,
+      promptCacheTtlSeconds: asFiniteNumber(payload?.promptCacheTtlSeconds),
       updatedAt: activity.createdAt,
     };
   }
