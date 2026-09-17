@@ -147,6 +147,7 @@ import { cn } from "~/lib/utils";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
 import { buildThreadActionMenuItems } from "./threadActionMenu.logic";
+import { useSplitThreadStore } from "../splitThreadStore";
 import {
   animateSidebarLayoutChanges,
   applySidebarThreadDrop,
@@ -4045,6 +4046,7 @@ export default function Sidebar() {
         const clicked = await settlePromise(() =>
           api.contextMenu.show(
             buildThreadActionMenuItems({
+              canOpenBeside: true,
               branch: thread.branch ?? null,
               isPinned,
               isSettled,
@@ -4074,6 +4076,9 @@ export default function Sidebar() {
           return;
         }
         switch (clicked.value) {
+          case "open-beside":
+            useSplitThreadStore.getState().openBeside(threadRef);
+            return;
           case "project-settings": {
             const projectGroup = projectGroupsRef.current.find((group) =>
               group.memberProjectRefs.some(

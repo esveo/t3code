@@ -7,6 +7,7 @@ import ChatView from "./ChatView";
 import { resolveDraftPromotionNavigationTarget, threadHasStarted } from "./ChatView.logic";
 import { waitForDraftHeroTransition } from "./chat/draftHeroTransition";
 import { SidebarInset } from "./ui/sidebar";
+import { cn } from "~/lib/utils";
 import {
   finalizePromotedDraftThreadByRef,
   markPromotedDraftThreadByRef,
@@ -44,7 +45,13 @@ import { resolveThreadSyncPhase } from "../threadSync";
  * Rendered by the `_chat` layout rather than by the two leaf routes, since
  * an element only survives a route swap when the same parent renders it.
  */
-export function ThreadRouteView({ target }: { target: ThreadRouteTarget }) {
+export function ThreadRouteView({
+  target,
+  className,
+}: {
+  target: ThreadRouteTarget;
+  className?: string;
+}) {
   const navigate = useNavigate();
   const draftId = target.kind === "draft" ? target.draftId : null;
   const draftSession = useComposerDraftStore((store) =>
@@ -207,7 +214,13 @@ export function ThreadRouteView({ target }: { target: ThreadRouteTarget }) {
   }
 
   return (
-    <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
+    <SidebarInset
+      data-chat-pane="primary"
+      className={cn(
+        "h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh",
+        className,
+      )}
+    >
       {view}
     </SidebarInset>
   );

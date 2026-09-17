@@ -7,6 +7,7 @@ import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled"
  * remains data-driven.
  */
 export type ThreadActionMenuId =
+  | "open-beside"
   | "new-thread-on-branch"
   | "project-settings"
   | "pin"
@@ -27,6 +28,8 @@ export type ThreadActionMenuId =
   | "delete";
 
 export interface ThreadActionMenuState {
+  /** Offer "Open beside" (split view); the chat header menu leaves it out. */
+  readonly canOpenBeside?: boolean;
   readonly branch: string | null;
   readonly isPinned: boolean;
   readonly isSettled: boolean;
@@ -53,6 +56,9 @@ export function buildThreadActionMenuItems(
   state: ThreadActionMenuState,
 ): ReadonlyArray<ContextMenuItem<ThreadActionMenuId>> {
   return [
+    ...(state.canOpenBeside
+      ? [{ id: "open-beside" as const, label: "Open beside", icon: "columns-2" }]
+      : []),
     ...(state.branch
       ? [
           {

@@ -186,6 +186,7 @@ import {
   type RightPanelSurface,
   useRightPanelStore,
 } from "../rightPanelStore";
+import { useIsActiveChatPane } from "../splitThreadStore";
 import {
   isPreviewSupportedInRuntime,
   setActivePreviewTab,
@@ -1474,6 +1475,11 @@ export default function ChatView(props: ChatViewProps) {
   const threadDetailLoading = threadSyncPhase === "loading";
   const handleNewThread = useNewThreadHandler();
   const { settleThread, pinThread, confirmAndUnpinThread } = useThreadActions();
+  // With a split open, only the pane the user last engaged handles window-level
+  // shortcuts, paste, and type-to-focus; the other pane stays passive.
+  const isActivePane = useIsActiveChatPane();
+  const isActivePaneRef = useRef(isActivePane);
+  isActivePaneRef.current = isActivePane;
   const routeThreadRef = useMemo(
     () => scopeThreadRef(environmentId, threadId),
     [environmentId, threadId],
@@ -3989,7 +3995,13 @@ export default function ChatView(props: ChatViewProps) {
   const focusComposer = useCallback(() => {
     composerRef.current?.focusAtEnd();
   }, [composerRef]);
-  useEffect(() => subscribeSnapShotComposerFocus(focusComposer), [focusComposer]);
+  useEffect(
+    () =>
+      subscribeSnapShotComposerFocus(() => {
+        if (isActivePaneRef.current) focusComposer();
+      }),
+    [focusComposer],
+  );
   const scheduleComposerFocus = useCallback(() => {
     window.requestAnimationFrame(() => {
       focusComposer();
@@ -5197,7 +5209,7 @@ export default function ChatView(props: ChatViewProps) {
   useEffect(
     () =>
       subscribePreviewAction((action) => {
-        if (action === "toggle-panel") togglePreviewPanel();
+        if (action === "toggle-panel" && isActivePaneRef.current) togglePreviewPanel();
       }),
     [togglePreviewPanel],
   );
@@ -5550,12 +5562,15 @@ export default function ChatView(props: ChatViewProps) {
         scrollNode.addEventListener("pointerdown", handlePointerDown, {
           passive: true,
         });
-        document.addEventListener("keydown", handleKeyDown);
+        const handleActivePaneKeyDown = (event: KeyboardEvent) => {
+          if (isActivePaneRef.current) handleKeyDown(event);
+        };
+        document.addEventListener("keydown", handleActivePaneKeyDown);
         removeListeners = () => {
           scrollNode.removeEventListener("wheel", handleWheel);
           scrollNode.removeEventListener("touchmove", handleTouchMove);
           scrollNode.removeEventListener("pointerdown", handlePointerDown);
-          document.removeEventListener("keydown", handleKeyDown);
+          document.removeEventListener("keydown", handleActivePaneKeyDown);
         };
       });
     };
@@ -5748,6 +5763,7 @@ export default function ChatView(props: ChatViewProps) {
       frame = window.requestAnimationFrame(() => {
         frame = window.requestAnimationFrame(() => {
           frame = null;
+          if (!isActivePaneRef.current) return;
           if (shouldRefocusComposerOnWindowFocus(document.activeElement)) focusComposer();
         });
       });
@@ -6634,6 +6650,7 @@ export default function ChatView(props: ChatViewProps) {
 
   useEffect(() => {
     const handler = (event: globalThis.KeyboardEvent) => {
+      if (!isActivePaneRef.current) return;
       if (preventRepeatedTerminalCloseShortcut(event, keybindings)) {
         event.stopPropagation();
         return;
@@ -6922,6 +6939,7 @@ export default function ChatView(props: ChatViewProps) {
   // Route it to the composer like a typed key, which also expands it.
   useEffect(() => {
     const keyHandler = (event: KeyboardEvent) => {
+      if (!isActivePaneRef.current) return;
       if (
         shouldRedirectInputToComposer(event) &&
         isPasteAsTextShortcut(event, isMacPlatform(navigator.platform))
@@ -6930,6 +6948,7 @@ export default function ChatView(props: ChatViewProps) {
       }
     };
     const handler = (event: ClipboardEvent) => {
+      if (!isActivePaneRef.current) return;
       if (!activeThreadId || isCommandPaletteOpen()) return;
       if (getTerminalFocusOwner() !== null) return;
       if (composerRef.current?.isModelPickerOpen()) return;
