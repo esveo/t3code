@@ -193,6 +193,15 @@ export function resizeBranch(
   });
 }
 
+/** Gives every child of `branchId` the same share, like VS Code's divider double-click. */
+export function equalizeBranch(root: SplitNode, branchId: string): SplitNode {
+  return replaceNode(root, branchId, (node) =>
+    node.kind === "split"
+      ? { ...node, sizes: node.children.map(() => 1 / node.children.length) }
+      : node,
+  );
+}
+
 export interface LayoutPane {
   readonly leaf: SplitLeaf;
   readonly rect: Rect;

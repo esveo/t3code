@@ -36,6 +36,7 @@ import {
   dropExistingLeaf,
   dropNewThread,
   dropZoneRect,
+  equalizeBranch,
   findLeaf,
   findThreadLeaf,
   removeLeaf,
@@ -354,6 +355,9 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
                   }
             }
             onPointerDown={(event) => startResize(divider, event)}
+            onDoubleClick={() =>
+              setLayout(equalizeBranch(useSplitThreadStore.getState().layout, divider.branchId))
+            }
           />
         ))}
         {dropHighlight ? (

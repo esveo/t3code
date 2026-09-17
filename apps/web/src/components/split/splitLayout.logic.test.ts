@@ -6,6 +6,7 @@ import {
   computeLayout,
   dropExistingLeaf,
   dropNewThread,
+  equalizeBranch,
   listLeaves,
   resizeBranch,
   resolveDropZone,
@@ -155,6 +156,26 @@ describe("split layout", () => {
     expect(shape(resizeBranch(layout, branchId, 0, 0.98))).toEqual({
       column: ["route", "leaf-1"],
       sizes: [0.9, 0.1],
+    });
+  });
+
+  it("equalizes the children of a branch", () => {
+    counter = 0;
+    let layout = dropNewThread(SINGLE_PANE_LAYOUT, {
+      targetLeafId: "route",
+      zone: "right",
+      thread: thread("a"),
+      ...ids(),
+    });
+    layout = dropNewThread(layout, {
+      targetLeafId: "leaf-1",
+      zone: "right",
+      thread: thread("b"),
+      ...ids(),
+    });
+    expect(shape(equalizeBranch(layout, layout.id))).toEqual({
+      row: ["route", "leaf-1", "leaf-2"],
+      sizes: [0.333, 0.333, 0.333],
     });
   });
 
