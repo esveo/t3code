@@ -3280,6 +3280,145 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  const makeRestartingHarness = () => {
+    const queries: FakeClaudeQuery[] = [];
+    const inputs: Array<{ readonly prompt: AsyncIterable<SDKUserMessage> }> = [];
+    const layer = Layer.effect(
+      ClaudeAdapter,
+      Effect.gen(function* () {
+        return yield* makeClaudeAdapter(decodeClaudeSettings({}), {
+          modelCatalog: Effect.succeed(SYNTHETIC_CLAUDE_MODEL_CATALOG),
+          createQuery: (input) => {
+            const query = new FakeClaudeQuery();
+            queries.push(query);
+            inputs.push(input);
+            return query;
+          },
+        });
+      }),
+    ).pipe(
+      Layer.provideMerge(ServerConfig.layerTest("/tmp/claude-adapter-test", "/tmp")),
+      Layer.provideMerge(ServerSettingsService.layerTest()),
+      Layer.provideMerge(NodeServices.layer),
+    );
+    return { layer, queries, inputs };
+  };
+
+  const promptTexts = (message: SDKUserMessage | undefined): Array<string> =>
+    typeof message?.message.content === "string"
+      ? [message.message.content]
+      : (message?.message.content ?? []).flatMap((block) =>
+          block.type === "text" ? [block.text] : [],
+        );
+
+  it.effect("carries a prompt interrupted before Claude consumed it into the next turn", () => {
+    const harness = makeRestartingHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const startInput = {
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access" as const,
+      };
+      yield* adapter.startSession(startInput);
+      yield* adapter.sendTurn({ threadId: THREAD_ID, input: "1. to 9.", attachments: [] });
+      // Stop before any reply frame: the CLI dropped the queued prompt.
+      yield* adapter.interruptTurn(THREAD_ID);
+
+      yield* adapter.startSession(startInput);
+      const second = yield* adapter.sendTurn({
+        threadId: THREAD_ID,
+        input: "10. no deployment",
+        attachments: [],
+      });
+      const prompts = harness.inputs[1]!.prompt[Symbol.asyncIterator]();
+      const first = yield* Effect.promise(() => prompts.next());
+      const message = first.done ? undefined : first.value;
+
+      assert.equal(String(message?.uuid), second.turnId);
+      const texts = promptTexts(message);
+      assert.equal(texts.length, 4);
+      assert.include(texts[0], "interrupted before you received them");
+      assert.equal(texts[1], "1. to 9.");
+      assert.equal(texts[3], "10. no deployment");
+
+      // Delivered once: a later turn does not repeat it.
+      harness.queries[1]!.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        errors: [],
+        uuid: "result-2",
+        session_id: "sdk-session",
+      } as unknown as SDKMessage);
+      yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type === "turn.completed"),
+        Stream.take(1),
+        Stream.runDrain,
+      );
+      yield* adapter.sendTurn({ threadId: THREAD_ID, input: "11.", attachments: [] });
+      const next = yield* Effect.promise(() => prompts.next());
+      assert.deepEqual(promptTexts(next.done ? undefined : next.value), ["11."]);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect("does not repeat a prompt Claude already answered before the interrupt", () => {
+    const harness = makeRestartingHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const startInput = {
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access" as const,
+      };
+      yield* adapter.startSession(startInput);
+      const first = yield* adapter.sendTurn({
+        threadId: THREAD_ID,
+        input: "1. to 9.",
+        attachments: [],
+      });
+      const statusSeen = yield* adapter.streamEvents.pipe(
+        Stream.filter(
+          (event) =>
+            event.type === "session.state.changed" && event.payload.reason === "status:active",
+        ),
+        Stream.take(1),
+        Stream.runDrain,
+        Effect.forkChild,
+      );
+      harness.queries[0]!.emit({
+        type: "stream_event",
+        event: { type: "message_start", message: { id: "msg-1", content: [] } },
+        parent_tool_use_id: null,
+        uuid: "stream-1",
+        session_id: "sdk-session",
+        user_message_uuid: first.turnId,
+        user_message_uuids: [first.turnId],
+      } as unknown as SDKMessage);
+      harness.queries[0]!.emit({
+        type: "system",
+        subtype: "status",
+        status: null,
+        uuid: "status-1",
+        session_id: "sdk-session",
+      } as unknown as SDKMessage);
+      yield* Fiber.join(statusSeen);
+      yield* adapter.interruptTurn(THREAD_ID);
+
+      yield* adapter.startSession(startInput);
+      yield* adapter.sendTurn({ threadId: THREAD_ID, input: "10. no deployment", attachments: [] });
+      const message = yield* Effect.promise(() => readFirstPromptMessage(harness.inputs[1]));
+
+      assert.deepEqual(promptTexts(message), ["10. no deployment"]);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("stopAll attempts every session when one process close fails", () => {
     const queries: FakeClaudeQuery[] = [];
     const layer = Layer.effect(
