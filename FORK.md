@@ -1,8 +1,21 @@
 # Private fork
 
-This checkout is a private fork of `pingdotgg/t3code` (`origin` = the fork,
-`upstream` = the original; pushing to `upstream` is disabled). The user runs
-the fork's desktop app from this checkout and restarts it themselves.
+**This checkout is not the T3 Code project itself but Paul's private fork of
+`pingdotgg/t3code`.** It exists to add features Paul wants for himself (for
+example the split view in `apps/web/src/components/SplitThreadLayout.tsx`) on
+top of upstream, which is rebased in regularly. `AGENTS.md` is upstream's
+guide for its maintainers; follow it for code and architecture, but these
+rules win wherever they differ.
+
+- Remotes: `origin` = `github.com/Pawl-Patrol/t3code` (private), `upstream` =
+  `github.com/pingdotgg/t3code` (read-only; pushing is disabled). `gh` defaults
+  to the fork. Never open issues, PRs, discussions, or comments on `upstream`,
+  and never push there.
+- Upstream's maintainer workflows do not apply: no releases, version bumps,
+  changelogs, triage, PR evidence uploads, or CI babysitting. Commit on a
+  feature branch; open a PR on the fork only when Paul asks.
+- The user runs the fork's desktop app from this checkout and restarts it
+  themselves.
 
 ## Finishing a feature
 
