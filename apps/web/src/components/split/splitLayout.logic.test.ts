@@ -2,12 +2,15 @@ import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contract
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  buildGridLayout,
   closeLeaf,
   computeLayout,
   dropExistingLeaf,
   dropNewThread,
   equalizeBranch,
+  gridColumnCounts,
   listLeaves,
+  recommendGrid,
   resizeBranch,
   resolveDropZone,
   sanitizeLayout,
@@ -216,5 +219,61 @@ describe("split layout", () => {
         sizes: [0.5, 0.5],
       }),
     ).toBe(SINGLE_PANE_LAYOUT);
+  });
+});
+
+describe("auto arrange", () => {
+  const area = { width: 1450, height: 950 };
+
+  it("suggests grids that give every session the most room", () => {
+    expect(recommendGrid(4, area.width, area.height)).toEqual({ columns: 2, rows: 2 });
+    expect(recommendGrid(4, 1700, area.height)).toEqual({ columns: 4, rows: 1 });
+    expect(recommendGrid(5, area.width, area.height)).toEqual({ columns: 3, rows: 2 });
+    expect(recommendGrid(12, 1700, area.height)).toEqual({ columns: 4, rows: 3 });
+    expect(recommendGrid(1, area.width, area.height)).toEqual({ columns: 1, rows: 1 });
+  });
+
+  it("caps the grid at the minimum pane size when sessions do not fit", () => {
+    expect(recommendGrid(30, area.width, area.height)).toEqual({ columns: 3, rows: 3 });
+  });
+
+  it("puts the shorter columns first", () => {
+    expect(gridColumnCounts(5, { columns: 3, rows: 2 })).toEqual([1, 2, 2]);
+    expect(gridColumnCounts(12, { columns: 4, rows: 3 })).toEqual([3, 3, 3, 3]);
+    expect(gridColumnCounts(3, { columns: 5, rows: 2 })).toEqual([1, 1, 1]);
+    expect(gridColumnCounts(9, { columns: 2, rows: 2 })).toEqual([2, 2]);
+  });
+
+  it("builds columns of panes and keeps the routed thread in the route pane", () => {
+    let id = 0;
+    const threads = ["a", "b", "c", "d", "e"].map(thread);
+    const { layout, navigateTo } = buildGridLayout({
+      threads,
+      routeThread: thread("c"),
+      grid: { columns: 3, rows: 2 },
+      makeId: (prefix) => `${prefix}-${++id}`,
+    });
+    expect(navigateTo).toBeNull();
+    const leaves = listLeaves(layout);
+    expect(
+      leaves.map((leaf) => (leaf.thread === "route" ? "route" : leaf.thread.threadId)),
+    ).toEqual(["a", "b", "route", "d", "e"]);
+    expect(layout.kind === "split" && layout.direction).toBe("row");
+    expect(layout.kind === "split" && layout.children.map((child) => child.kind)).toEqual([
+      "leaf",
+      "split",
+      "split",
+    ]);
+  });
+
+  it("routes to the first session when the open thread is not arranged", () => {
+    const { layout, navigateTo } = buildGridLayout({
+      threads: [thread("a"), thread("b")],
+      routeThread: thread("z"),
+      grid: { columns: 2, rows: 1 },
+      makeId: (prefix) => prefix,
+    });
+    expect(navigateTo).toEqual(thread("a"));
+    expect(listLeaves(layout)[0]!.thread).toBe("route");
   });
 });

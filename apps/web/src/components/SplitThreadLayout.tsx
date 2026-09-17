@@ -286,7 +286,7 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
 
   return (
     <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
-      <div ref={gridRef} className="relative min-h-0 min-w-0 flex-1">
+      <div ref={gridRef} data-chat-grid className="relative min-h-0 min-w-0 flex-1">
         {orderedPanes.map(({ leaf, rect }) => (
           <div
             key={leaf.id}

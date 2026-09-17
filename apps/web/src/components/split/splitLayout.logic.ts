@@ -386,3 +386,111 @@ export function closeLeaf(
   }));
   return { layout: promoted, navigateTo: neighbour.thread };
 }
+
+export interface GridSize {
+  readonly columns: number;
+  readonly rows: number;
+}
+
+export const AUTO_ARRANGE_MIN_PANE = { width: 420, height: 280 } as const;
+
+/**
+ * How many panes each column of a `columns × rows` grid holds for `count`
+ * threads: spread as evenly as possible, never more than `rows` per column,
+ * with the shorter columns first so the leading threads get the taller panes.
+ * Threads beyond the grid's capacity are left out.
+ */
+export function gridColumnCounts(count: number, grid: GridSize): number[] {
+  const placed = Math.min(count, grid.columns * grid.rows);
+  if (placed <= 0) return [];
+  const columns = Math.min(grid.columns, placed);
+  const base = Math.floor(placed / columns);
+  const remainder = placed % columns;
+  return Array.from({ length: columns }, (_, index) =>
+    index < columns - remainder ? base : base + 1,
+  );
+}
+
+/**
+ * The grid Auto Arrange suggests for `count` threads in an area of
+ * `width × height` pixels: every pane must keep a usable minimum size; among
+ * the grids that allow that, the one whose smallest pane is largest wins, and
+ * ties go to more columns because chats read better tall than wide. When no
+ * grid fits every thread, the largest grid that keeps the minimum is used.
+ */
+export function recommendGrid(
+  count: number,
+  width: number,
+  height: number,
+  minimum: { readonly width: number; readonly height: number } = AUTO_ARRANGE_MIN_PANE,
+): GridSize {
+  if (count <= 0) return { columns: 1, rows: 1 };
+  let best: { grid: GridSize; area: number } | null = null;
+  for (let columns = 1; columns <= count; columns++) {
+    const rows = Math.ceil(count / columns);
+    const paneWidth = width / columns;
+    const paneHeight = height / rows;
+    if (paneWidth < minimum.width || paneHeight < minimum.height) continue;
+    const area = paneWidth * paneHeight;
+    if (!best || area >= best.area - 1e-6) best = { grid: { columns, rows }, area };
+  }
+  if (best) return best.grid;
+  return {
+    columns: Math.max(1, Math.floor(width / minimum.width)),
+    rows: Math.max(1, Math.floor(height / minimum.height)),
+  };
+}
+
+/**
+ * Builds the layout for Auto Arrange: columns of equal width, each split into
+ * equal panes. The routed thread keeps the route pane; when it is not among
+ * the arranged threads, the first thread takes the route pane and the caller
+ * navigates to it.
+ */
+export function buildGridLayout(input: {
+  readonly threads: readonly ScopedThreadRef[];
+  readonly routeThread: ScopedThreadRef | null;
+  readonly grid: GridSize;
+  readonly makeId: (prefix: string) => string;
+}): { readonly layout: SplitNode; readonly navigateTo: ScopedThreadRef | null } {
+  const counts = gridColumnCounts(input.threads.length, input.grid);
+  const placed = input.threads.slice(
+    0,
+    counts.reduce((sum, value) => sum + value, 0),
+  );
+  if (placed.length === 0) return { layout: SINGLE_PANE_LAYOUT, navigateTo: null };
+  const routeIndex = input.routeThread
+    ? placed.findIndex((thread) => sameThread(thread, input.routeThread!))
+    : -1;
+  const routeSlot = routeIndex === -1 ? 0 : routeIndex;
+  const leaves: SplitLeaf[] = placed.map((thread, index) =>
+    index === routeSlot
+      ? { kind: "leaf", id: ROUTE_LEAF_ID, thread: "route" }
+      : { kind: "leaf", id: input.makeId("pane"), thread },
+  );
+  let offset = 0;
+  const columns: SplitNode[] = counts.map((columnCount) => {
+    const panes = leaves.slice(offset, offset + columnCount);
+    offset += columnCount;
+    return panes.length === 1
+      ? panes[0]!
+      : {
+          kind: "split",
+          id: input.makeId("split"),
+          direction: "column",
+          children: panes,
+          sizes: panes.map(() => 1 / panes.length),
+        };
+  });
+  const layout: SplitNode =
+    columns.length === 1
+      ? columns[0]!
+      : {
+          kind: "split",
+          id: input.makeId("split"),
+          direction: "row",
+          children: columns,
+          sizes: columns.map(() => 1 / columns.length),
+        };
+  return { layout, navigateTo: routeIndex === -1 ? placed[0]! : null };
+}
