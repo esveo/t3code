@@ -7,7 +7,6 @@ import ChatView from "./ChatView";
 import { resolveDraftPromotionNavigationTarget, threadHasStarted } from "./ChatView.logic";
 import { waitForDraftHeroTransition } from "./chat/draftHeroTransition";
 import { SidebarInset } from "./ui/sidebar";
-import { cn } from "~/lib/utils";
 import {
   finalizePromotedDraftThreadByRef,
   markPromotedDraftThreadByRef,
@@ -47,10 +46,13 @@ import { resolveThreadSyncPhase } from "../threadSync";
  */
 export function ThreadRouteView({
   target,
-  className,
+  bare = false,
+  reserveTitleBarControlInset,
 }: {
   target: ThreadRouteTarget;
-  className?: string;
+  /** Render only the chat, for a pane of the split grid that owns the container. */
+  bare?: boolean;
+  reserveTitleBarControlInset?: boolean;
 }) {
   const navigate = useNavigate();
   const draftId = target.kind === "draft" ? target.draftId : null;
@@ -198,6 +200,7 @@ export function ThreadRouteView({
           threadId={draftSession.threadId}
           routeKind="draft"
           forceExpandedMobileComposer
+          {...(reserveTitleBarControlInset === undefined ? {} : { reserveTitleBarControlInset })}
         />
       );
     }
@@ -209,18 +212,15 @@ export function ThreadRouteView({
         threadId={target.threadRef.threadId}
         routeKind="server"
         threadSyncPhase={threadSyncPhase}
+        {...(reserveTitleBarControlInset === undefined ? {} : { reserveTitleBarControlInset })}
       />
     );
   }
 
+  if (bare) return view;
+
   return (
-    <SidebarInset
-      data-chat-pane="primary"
-      className={cn(
-        "h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh",
-        className,
-      )}
-    >
+    <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
       {view}
     </SidebarInset>
   );

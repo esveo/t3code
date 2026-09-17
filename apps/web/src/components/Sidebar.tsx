@@ -147,7 +147,11 @@ import { cn } from "~/lib/utils";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
 import { buildThreadActionMenuItems } from "./threadActionMenu.logic";
-import { useSplitThreadStore } from "../splitThreadStore";
+import {
+  consumeSidebarThreadDrop,
+  endSidebarThreadDrag,
+  startSidebarThreadDrag,
+} from "../splitThreadStore";
 import {
   animateSidebarLayoutChanges,
   applySidebarThreadDrop,
@@ -3142,6 +3146,7 @@ export default function Sidebar() {
     if (started) {
       listMotionRef.current?.release();
       setDragState(null);
+      endSidebarThreadDrag();
     }
   }, []);
   const attachDragSensor = useCallback((sensor: SidebarPointerSensor) => {
@@ -3311,6 +3316,14 @@ export default function Sidebar() {
       } else {
         dragLabelOffsetRef.current = 0;
       }
+      const draggedThread = threadByKey.get(activeKey);
+      if (draggedThread) {
+        // The thread can also be dropped onto the chat panes to split them.
+        startSidebarThreadDrag(
+          scopeThreadRef(draggedThread.environmentId, draggedThread.id),
+          draggedThread.title,
+        );
+      }
       setDragState({
         activeKey,
         activeSection,
@@ -3320,7 +3333,7 @@ export default function Sidebar() {
           event.activatorEvent instanceof PointerEvent ? event.activatorEvent.clientY : null,
       });
     },
-    [sectionByThreadKey],
+    [sectionByThreadKey, threadByKey],
   );
   // Include every visible row in the measured order. Older servers disable
   // pickup on their rows without changing where those rows render.
@@ -3516,6 +3529,8 @@ export default function Sidebar() {
   ]);
   const handleThreadDragEnd = useCallback(
     (event: DragEndEvent) => {
+      // Released over a chat pane: the split already consumed the drop.
+      if (consumeSidebarThreadDrop()) return;
       const activeKey = String(event.active.id);
       const activeSection = sectionByThreadKey.get(activeKey);
       const target =
@@ -4046,7 +4061,6 @@ export default function Sidebar() {
         const clicked = await settlePromise(() =>
           api.contextMenu.show(
             buildThreadActionMenuItems({
-              canOpenBeside: true,
               branch: thread.branch ?? null,
               isPinned,
               isSettled,
@@ -4076,9 +4090,6 @@ export default function Sidebar() {
           return;
         }
         switch (clicked.value) {
-          case "open-beside":
-            useSplitThreadStore.getState().openBeside(threadRef);
-            return;
           case "project-settings": {
             const projectGroup = projectGroupsRef.current.find((group) =>
               group.memberProjectRefs.some(

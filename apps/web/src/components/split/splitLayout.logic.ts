@@ -1,0 +1,379 @@
+/**
+ * Editor-group style layout for chat panes, modelled on VS Code: a tree of
+ * row/column splits whose leaves each show one thread. Exactly one leaf is the
+ * routed pane (`thread: "route"`); it renders whatever the URL selects, so
+ * normal navigation keeps working inside the grid.
+ *
+ * Everything here is pure so the drop, close, and resize rules can be tested
+ * without rendering.
+ */
+import type { ScopedThreadRef } from "@t3tools/contracts";
+
+export type SplitDirection = "row" | "column";
+export type DropZone = "left" | "right" | "top" | "bottom" | "center";
+
+export interface SplitLeaf {
+  readonly kind: "leaf";
+  readonly id: string;
+  readonly thread: "route" | ScopedThreadRef;
+}
+
+export interface SplitBranch {
+  readonly kind: "split";
+  readonly id: string;
+  readonly direction: SplitDirection;
+  readonly children: readonly SplitNode[];
+  /** Fractions of the branch, one per child, summing to 1. */
+  readonly sizes: readonly number[];
+}
+
+export type SplitNode = SplitLeaf | SplitBranch;
+
+export interface Rect {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+export const ROUTE_LEAF_ID = "route";
+export const MIN_PANE_FRACTION = 0.1;
+
+export const SINGLE_PANE_LAYOUT: SplitNode = { kind: "leaf", id: ROUTE_LEAF_ID, thread: "route" };
+
+export function sameThread(left: ScopedThreadRef, right: ScopedThreadRef): boolean {
+  return left.environmentId === right.environmentId && left.threadId === right.threadId;
+}
+
+export function listLeaves(node: SplitNode): SplitLeaf[] {
+  return node.kind === "leaf" ? [node] : node.children.flatMap(listLeaves);
+}
+
+export function findLeaf(node: SplitNode, leafId: string): SplitLeaf | null {
+  return listLeaves(node).find((leaf) => leaf.id === leafId) ?? null;
+}
+
+/** The leaf showing `thread` outside the route pane, if any. */
+export function findThreadLeaf(node: SplitNode, thread: ScopedThreadRef): SplitLeaf | null {
+  return (
+    listLeaves(node).find((leaf) => leaf.thread !== "route" && sameThread(leaf.thread, thread)) ??
+    null
+  );
+}
+
+function normalizeSizes(sizes: readonly number[]): number[] {
+  const total = sizes.reduce((sum, size) => sum + size, 0);
+  return total > 0 ? sizes.map((size) => size / total) : sizes.map(() => 1 / sizes.length);
+}
+
+/** Collapses single-child branches and merges a child branch into a parent with the same direction. */
+function simplify(node: SplitNode): SplitNode {
+  if (node.kind === "leaf") return node;
+  const children: SplitNode[] = [];
+  const sizes: number[] = [];
+  node.children.forEach((child, index) => {
+    const simplified = simplify(child);
+    const size = node.sizes[index] ?? 0;
+    if (simplified.kind === "split" && simplified.direction === node.direction) {
+      simplified.children.forEach((grandchild, grandIndex) => {
+        children.push(grandchild);
+        sizes.push(size * (simplified.sizes[grandIndex] ?? 0));
+      });
+    } else {
+      children.push(simplified);
+      sizes.push(size);
+    }
+  });
+  if (children.length === 1) return children[0]!;
+  return { ...node, children, sizes: normalizeSizes(sizes) };
+}
+
+/** Removes a leaf; the space it held goes to its neighbours. Removing the last leaf is a no-op. */
+export function removeLeaf(root: SplitNode, leafId: string): SplitNode {
+  if (root.kind === "leaf") return root;
+  const remove = (node: SplitNode): SplitNode | null => {
+    if (node.kind === "leaf") return node.id === leafId ? null : node;
+    const children: SplitNode[] = [];
+    const sizes: number[] = [];
+    node.children.forEach((child, index) => {
+      const next = remove(child);
+      if (next) {
+        children.push(next);
+        sizes.push(node.sizes[index] ?? 0);
+      }
+    });
+    if (children.length === 0) return null;
+    return { ...node, children, sizes: normalizeSizes(sizes) };
+  };
+  return simplify(remove(root) ?? root);
+}
+
+function replaceNode(root: SplitNode, targetId: string, replace: (node: SplitNode) => SplitNode) {
+  const visit = (node: SplitNode): SplitNode => {
+    if (node.id === targetId) return replace(node);
+    if (node.kind === "leaf") return node;
+    return { ...node, children: node.children.map(visit) };
+  };
+  return visit(root);
+}
+
+/**
+ * Places `leaf` next to the leaf `targetId` on the given edge, halving the
+ * target's space. An existing leaf with the same id is moved rather than
+ * duplicated.
+ */
+export function insertBeside(
+  root: SplitNode,
+  targetId: string,
+  zone: Exclude<DropZone, "center">,
+  leaf: SplitLeaf,
+  newBranchId: string,
+): SplitNode {
+  if (targetId === leaf.id) return root;
+  const withoutLeaf = findLeaf(root, leaf.id) ? removeLeaf(root, leaf.id) : root;
+  if (!findLeaf(withoutLeaf, targetId)) return root;
+  const direction: SplitDirection = zone === "left" || zone === "right" ? "row" : "column";
+  const before = zone === "left" || zone === "top";
+  return simplify(
+    replaceNode(withoutLeaf, targetId, (target) => ({
+      kind: "split",
+      id: newBranchId,
+      direction,
+      children: before ? [leaf, target] : [target, leaf],
+      sizes: [0.5, 0.5],
+    })),
+  );
+}
+
+/** Shows `thread` in the leaf `targetId` instead of what it showed before. */
+export function setLeafThread(
+  root: SplitNode,
+  targetId: string,
+  thread: SplitLeaf["thread"],
+): SplitNode {
+  return replaceNode(root, targetId, (node) => (node.kind === "leaf" ? { ...node, thread } : node));
+}
+
+/** Swaps the positions of two leaves, keeping their ids and threads together. */
+export function swapLeaves(root: SplitNode, firstId: string, secondId: string): SplitNode {
+  const first = findLeaf(root, firstId);
+  const second = findLeaf(root, secondId);
+  if (!first || !second || firstId === secondId) return root;
+  const visit = (node: SplitNode): SplitNode => {
+    if (node.kind === "leaf") {
+      if (node.id === firstId) return second;
+      if (node.id === secondId) return first;
+      return node;
+    }
+    return { ...node, children: node.children.map(visit) };
+  };
+  return visit(root);
+}
+
+/** Moves the divider after child `index` of `branchId` to `fraction` of that branch. */
+export function resizeBranch(
+  root: SplitNode,
+  branchId: string,
+  index: number,
+  fraction: number,
+): SplitNode {
+  return replaceNode(root, branchId, (node) => {
+    if (node.kind !== "split" || index < 0 || index >= node.children.length - 1) return node;
+    const start = node.sizes.slice(0, index).reduce((sum, size) => sum + size, 0);
+    const pairTotal = (node.sizes[index] ?? 0) + (node.sizes[index + 1] ?? 0);
+    const first = Math.min(
+      pairTotal - MIN_PANE_FRACTION,
+      Math.max(MIN_PANE_FRACTION, fraction - start),
+    );
+    if (pairTotal <= MIN_PANE_FRACTION * 2) return node;
+    const sizes = [...node.sizes];
+    sizes[index] = first;
+    sizes[index + 1] = pairTotal - first;
+    return { ...node, sizes };
+  });
+}
+
+export interface LayoutPane {
+  readonly leaf: SplitLeaf;
+  readonly rect: Rect;
+}
+
+export interface LayoutDivider {
+  readonly branchId: string;
+  readonly index: number;
+  readonly direction: SplitDirection;
+  /** Where the divider sits, in fractions of the whole grid. */
+  readonly rect: Rect;
+  /** The branch the divider resizes, in fractions of the whole grid. */
+  readonly branchRect: Rect;
+}
+
+/** Lays the tree out in unit coordinates (0..1 on both axes). */
+export function computeLayout(root: SplitNode): {
+  panes: LayoutPane[];
+  dividers: LayoutDivider[];
+} {
+  const panes: LayoutPane[] = [];
+  const dividers: LayoutDivider[] = [];
+  const visit = (node: SplitNode, rect: Rect) => {
+    if (node.kind === "leaf") {
+      panes.push({ leaf: node, rect });
+      return;
+    }
+    let offset = 0;
+    node.children.forEach((child, index) => {
+      const size = node.sizes[index] ?? 0;
+      const childRect: Rect =
+        node.direction === "row"
+          ? {
+              left: rect.left + offset * rect.width,
+              top: rect.top,
+              width: size * rect.width,
+              height: rect.height,
+            }
+          : {
+              left: rect.left,
+              top: rect.top + offset * rect.height,
+              width: rect.width,
+              height: size * rect.height,
+            };
+      visit(child, childRect);
+      offset += size;
+      if (index < node.children.length - 1) {
+        dividers.push({
+          branchId: node.id,
+          index,
+          direction: node.direction,
+          branchRect: rect,
+          rect:
+            node.direction === "row"
+              ? {
+                  left: rect.left + offset * rect.width,
+                  top: rect.top,
+                  width: 0,
+                  height: rect.height,
+                }
+              : {
+                  left: rect.left,
+                  top: rect.top + offset * rect.height,
+                  width: rect.width,
+                  height: 0,
+                },
+        });
+      }
+    });
+  };
+  visit(root, { left: 0, top: 0, width: 1, height: 1 });
+  return { panes, dividers };
+}
+
+/**
+ * Which part of a pane a pointer at (x, y) — relative to the pane, 0..1 —
+ * targets. The outer third of each edge splits, the middle replaces.
+ */
+export function resolveDropZone(x: number, y: number): DropZone {
+  const edge = 1 / 3;
+  const distances: Array<[Exclude<DropZone, "center">, number]> = [
+    ["left", x],
+    ["right", 1 - x],
+    ["top", y],
+    ["bottom", 1 - y],
+  ];
+  const [zone, distance] = distances.reduce((best, entry) => (entry[1] < best[1] ? entry : best));
+  return distance < edge ? zone : "center";
+}
+
+/** The part of a pane highlighted for a drop zone, relative to the pane. */
+export function dropZoneRect(zone: DropZone): Rect {
+  switch (zone) {
+    case "left":
+      return { left: 0, top: 0, width: 0.5, height: 1 };
+    case "right":
+      return { left: 0.5, top: 0, width: 0.5, height: 1 };
+    case "top":
+      return { left: 0, top: 0, width: 1, height: 0.5 };
+    case "bottom":
+      return { left: 0, top: 0.5, width: 1, height: 0.5 };
+    case "center":
+      return { left: 0, top: 0, width: 1, height: 1 };
+  }
+}
+
+/** Drops a thread that is not yet shown beside the route pane. */
+export function dropNewThread(
+  root: SplitNode,
+  input: {
+    readonly targetLeafId: string;
+    readonly zone: DropZone;
+    readonly thread: ScopedThreadRef;
+    readonly newLeafId: string;
+    readonly newBranchId: string;
+  },
+): SplitNode {
+  if (input.zone === "center") {
+    return input.targetLeafId === ROUTE_LEAF_ID
+      ? root
+      : setLeafThread(root, input.targetLeafId, input.thread);
+  }
+  return insertBeside(
+    root,
+    input.targetLeafId,
+    input.zone,
+    { kind: "leaf", id: input.newLeafId, thread: input.thread },
+    input.newBranchId,
+  );
+}
+
+/** Drops an existing pane: edges move it, the centre swaps the two panes. */
+export function dropExistingLeaf(
+  root: SplitNode,
+  input: {
+    readonly sourceLeafId: string;
+    readonly targetLeafId: string;
+    readonly zone: DropZone;
+    readonly newBranchId: string;
+  },
+): SplitNode {
+  if (input.sourceLeafId === input.targetLeafId) return root;
+  const source = findLeaf(root, input.sourceLeafId);
+  if (!source) return root;
+  if (input.zone === "center") return swapLeaves(root, input.sourceLeafId, input.targetLeafId);
+  return insertBeside(root, input.targetLeafId, input.zone, source, input.newBranchId);
+}
+
+/** Drops invalid leaves (for example threads that no longer exist) and repairs a missing route pane. */
+export function sanitizeLayout(root: SplitNode | null | undefined): SplitNode {
+  if (!root || typeof root !== "object") return SINGLE_PANE_LAYOUT;
+  const leaves = listLeaves(root);
+  const routeLeaves = leaves.filter((leaf) => leaf.thread === "route");
+  if (routeLeaves.length !== 1 || routeLeaves[0]!.id !== ROUTE_LEAF_ID) return SINGLE_PANE_LAYOUT;
+  const ids = new Set(leaves.map((leaf) => leaf.id));
+  return ids.size === leaves.length ? simplify(root) : SINGLE_PANE_LAYOUT;
+}
+
+/** The leaf closest to `leafId` in tree order, preferring its own branch. */
+function nearestOtherLeaf(root: SplitNode, leafId: string): SplitLeaf | null {
+  const leaves = listLeaves(root);
+  const index = leaves.findIndex((leaf) => leaf.id === leafId);
+  if (index === -1) return null;
+  return leaves[index + 1] ?? leaves[index - 1] ?? null;
+}
+
+/**
+ * Closes a pane. Closing the route pane promotes its nearest neighbour: that
+ * pane becomes the route pane and the caller navigates to its thread.
+ */
+export function closeLeaf(
+  root: SplitNode,
+  leafId: string,
+): { readonly layout: SplitNode; readonly navigateTo: ScopedThreadRef | null } {
+  if (leafId !== ROUTE_LEAF_ID) return { layout: removeLeaf(root, leafId), navigateTo: null };
+  const neighbour = nearestOtherLeaf(root, leafId);
+  if (!neighbour || neighbour.thread === "route") return { layout: root, navigateTo: null };
+  const promoted = replaceNode(removeLeaf(root, ROUTE_LEAF_ID), neighbour.id, () => ({
+    kind: "leaf",
+    id: ROUTE_LEAF_ID,
+    thread: "route",
+  }));
+  return { layout: promoted, navigateTo: neighbour.thread };
+}
