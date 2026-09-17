@@ -110,7 +110,11 @@ import {
   isUnsupportedWindowsProjectPath,
   resolveProjectPathForDispatch,
 } from "../lib/projectPaths";
-import { onOpenCommandPalette } from "../commandPaletteBus";
+import {
+  clearPendingProjectPick,
+  onOpenCommandPalette,
+  takePendingProjectPick,
+} from "../commandPaletteBus";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import {
@@ -613,6 +617,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
             toggleMode("command");
             return;
           }
+          if (!open) clearPendingProjectPick();
           setOpen(open);
         }}
       >
@@ -1296,6 +1301,11 @@ function OpenCommandPaletteDialog(props: {
           },
           icon: projectFavicon,
           runProject: async (project) => {
+            const pick = takePendingProjectPick();
+            if (pick) {
+              pick(scopeProjectRef(project.environmentId, project.id));
+              return;
+            }
             const group = projectGroupByTargetKey.get(`${project.environmentId}:${project.id}`);
             const contextualRefBelongsToGroup =
               contextualProjectRef !== null &&

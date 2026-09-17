@@ -1,22 +1,29 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  DEFAULT_SERVER_SETTINGS,
+  type ScopedProjectRef,
+  type ScopedThreadRef,
+} from "@t3tools/contracts";
+import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
+import { useAtomValue } from "@effect/atom-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { LayoutGridIcon } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 
-import { cn } from "~/lib/utils";
+import { cn, newThreadId } from "~/lib/utils";
+import { openCommandPalette } from "../../commandPaletteBus";
+import { readProjects, readThreadShell } from "../../state/entities";
+import { environmentServerConfigsAtom } from "../../state/server";
+import { threadEnvironment } from "../../state/threads";
+import { useAtomCommand } from "../../state/use-atom-command";
+import { stackedThreadToast, toastManager } from "../ui/toast";
 import { buildThreadRouteParams, resolveThreadRouteTarget } from "../../threadRoutes";
 import { useSplitThreadStore } from "../../splitThreadStore";
 import { SidebarHeaderIconButton } from "../sidebar/SidebarThreadHeader";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
-import {
-  buildGridLayout,
-  gridColumnCounts,
-  recommendGrid,
-  ROUTE_LEAF_ID,
-  type GridSize,
-} from "./splitLayout.logic";
+import { buildGridLayout, recommendGrid, ROUTE_LEAF_ID, type GridSize } from "./splitLayout.logic";
 
 const PICKER_COLUMNS = 8;
 const PICKER_ROWS = 6;
@@ -40,7 +47,9 @@ function measureChatArea(): { width: number; height: number } {
 /**
  * Sidebar header button that arranges the pinned and active threads in a
  * grid. A table-style picker preselects the suggested grid; any other
- * columns × rows can be chosen before confirming.
+ * columns × rows can be chosen before confirming. Cells beyond the existing
+ * threads are filled with new empty threads in a project picked from the
+ * command palette (threads always belong to a project).
  */
 export function AutoArrangeButton({
   threads,
@@ -55,6 +64,8 @@ export function AutoArrangeButton({
   });
   const setLayout = useSplitThreadStore((state) => state.setLayout);
   const setActiveLeaf = useSplitThreadStore((state) => state.setActiveLeaf);
+  const environmentServerConfigs = useAtomValue(environmentServerConfigsAtom);
+  const createThread = useAtomCommand(threadEnvironment.create, { reportFailure: false });
   const [open, setOpen] = useState(false);
   const [area, setArea] = useState({ width: 1, height: 1 });
   const [selected, setSelected] = useState<GridSize>({ columns: 1, rows: 1 });
@@ -68,8 +79,9 @@ export function AutoArrangeButton({
     [area, threads.length],
   );
   const shown = hovered ?? selected;
-  const counts = gridColumnCounts(threads.length, shown);
-  const placedCount = counts.reduce((sum, count) => sum + count, 0);
+  const capacity = shown.columns * shown.rows;
+  const placedCount = Math.min(threads.length, capacity);
+  const newCount = capacity - placedCount;
 
   const onOpenChange = (nextOpen: boolean) => {
     if (nextOpen) {
@@ -81,12 +93,12 @@ export function AutoArrangeButton({
     setOpen(nextOpen);
   };
 
-  const arrange = () => {
+  const applyLayout = (arranged: readonly ScopedThreadRef[], grid: GridSize) => {
     const routeThread = routeTarget?.kind === "server" ? routeTarget.threadRef : null;
     const { layout, navigateTo } = buildGridLayout({
-      threads: threads.map((thread) => scopeThreadRef(thread.environmentId, thread.id)),
+      threads: arranged,
       routeThread,
-      grid: selected,
+      grid,
       makeId: nextArrangeId,
     });
     setLayout(layout);
@@ -97,14 +109,102 @@ export function AutoArrangeButton({
         params: buildThreadRouteParams(navigateTo),
       });
     }
+  };
+
+  /** Creates `count` empty threads in a project and resolves once the client knows them. */
+  const createEmptyThreads = async (
+    projectRef: ScopedProjectRef,
+    count: number,
+  ): Promise<ScopedThreadRef[] | null> => {
+    const project = readProjects().find(
+      (candidate) =>
+        candidate.environmentId === projectRef.environmentId &&
+        candidate.id === projectRef.projectId,
+    );
+    const serverSettings =
+      environmentServerConfigs.get(projectRef.environmentId)?.settings ?? DEFAULT_SERVER_SETTINGS;
+    const projectSettings = resolveProjectSettings(
+      serverSettings,
+      projectRef.projectId,
+      project,
+    ).settings;
+    // New threads start like the sessions being arranged, unless the project
+    // pins its own model.
+    const template = threads[0] ?? null;
+    const modelSelection = projectSettings.defaultModelSelection ?? template?.modelSelection;
+    if (!modelSelection) {
+      toastManager.add(
+        stackedThreadToast({
+          type: "error",
+          title: "Could not create threads",
+          description: "Pick a default model for this project first.",
+        }),
+      );
+      return null;
+    }
+    const refs: ScopedThreadRef[] = [];
+    for (let index = 0; index < count; index++) {
+      const threadId = newThreadId();
+      const result = await createThread({
+        environmentId: projectRef.environmentId,
+        input: {
+          threadId,
+          projectId: projectRef.projectId,
+          title: "New thread",
+          modelSelection,
+          runtimeMode: projectSettings.defaultRuntimeMode,
+          interactionMode: template?.interactionMode ?? "default",
+          branch: null,
+          worktreePath: null,
+          createdAt: new Date().toISOString(),
+        },
+      });
+      if (result._tag === "Failure") {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Could not create threads",
+            description: `Created ${refs.length} of ${count}.`,
+          }),
+        );
+        break;
+      }
+      refs.push(scopeThreadRef(projectRef.environmentId, threadId));
+    }
+    // Panes close threads the client does not know, so wait for them to arrive.
+    for (let attempt = 0; attempt < 50; attempt++) {
+      if (refs.every((ref) => readThreadShell(ref) !== null)) break;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return refs;
+  };
+
+  const arrange = () => {
+    const grid = selected;
+    const capacity = grid.columns * grid.rows;
+    const existing = threads
+      .slice(0, capacity)
+      .map((thread) => scopeThreadRef(thread.environmentId, thread.id));
     setOpen(false);
+    const missing = capacity - existing.length;
+    if (missing <= 0) {
+      applyLayout(existing, grid);
+      return;
+    }
+    // Fill the remaining cells with new threads in a project the user picks.
+    openCommandPalette({
+      open: "new-thread-in",
+      onProjectPicked: (projectRef) => {
+        void createEmptyThreads(projectRef, missing).then((created) => {
+          if (created) applyLayout([...existing, ...created], grid);
+        });
+      },
+    });
   };
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger
-        render={<SidebarHeaderIconButton label="Auto arrange" disabled={threads.length === 0} />}
-      >
+      <PopoverTrigger render={<SidebarHeaderIconButton label="Auto arrange" />}>
         <LayoutGridIcon />
       </PopoverTrigger>
       <PopoverPopup align="start" side="bottom" className="w-80" initialFocus={arrangeButtonRef}>
@@ -166,7 +266,9 @@ export function AutoArrangeButton({
             >
               {placedCount < threads.length
                 ? `Arranges ${placedCount} of ${threads.length}`
-                : `${placedCount} ${placedCount === 1 ? "pane" : "panes"}`}
+                : newCount > 0
+                  ? `${placedCount} + ${newCount} new ${newCount === 1 ? "thread" : "threads"}`
+                  : `${placedCount} ${placedCount === 1 ? "pane" : "panes"}`}
             </span>
           </div>
 
@@ -174,7 +276,7 @@ export function AutoArrangeButton({
             <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button ref={arrangeButtonRef} size="sm" onClick={arrange} disabled={placedCount === 0}>
+            <Button ref={arrangeButtonRef} size="sm" onClick={arrange}>
               Arrange
             </Button>
           </div>
