@@ -735,7 +735,8 @@ function OpenCommandPaletteDialog(props: {
         ? scopeThreadRef(activeThread.environmentId, activeThread.id)
         : null;
   const openPanelPullRequestUrl = useOpenPanelPullRequestUrl(referenceThreadRef);
-  const activeThreadServerConfig = useServerConfigs().get(
+  const serverConfigs = useServerConfigs();
+  const activeThreadServerConfig = serverConfigs.get(
     activeThread?.environmentId ?? ("" as EnvironmentId),
   );
   const activeThreadReferenceCopyTarget =
@@ -1789,7 +1790,15 @@ function OpenCommandPaletteDialog(props: {
 
   // The graph reads the thread's worktree when it has one, the project root otherwise.
   const gitGraphCwd = activeThread?.worktreePath ?? currentProjectCwd;
-  if (currentProjectEnvironmentId !== null && gitGraphCwd !== null) {
+  const gitGraphServerConfig =
+    currentProjectEnvironmentId === null
+      ? undefined
+      : serverConfigs.get(currentProjectEnvironmentId);
+  if (
+    currentProjectEnvironmentId !== null &&
+    gitGraphCwd !== null &&
+    gitGraphServerConfig?.environment.capabilities.commitGraph === true
+  ) {
     actionItems.push({
       kind: "action",
       value: "action:open-git-graph",

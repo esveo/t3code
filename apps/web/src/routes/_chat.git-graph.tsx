@@ -2,6 +2,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
 import { useEffect, useEffectEvent } from "react";
 
+import { useServerConfigs } from "../state/entities";
 import { GitGraphView } from "../gitGraph/GitGraphView";
 
 export interface GitGraphSearch {
@@ -26,6 +27,7 @@ function GitGraphRouteView() {
   const { environmentId, cwd, title } = Route.useSearch();
   const navigate = useNavigate();
   const router = useRouter();
+  const serverConfig = useServerConfigs().get(environmentId ?? ("" as EnvironmentId));
 
   // Escape leaves the view the same way the close button does: back to
   // wherever it was opened from, or to the thread list when opened by URL.
@@ -49,6 +51,17 @@ function GitGraphRouteView() {
     return (
       <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
         Open the Git graph from a thread so it knows which repository to read.
+      </div>
+    );
+  }
+
+  // Reachable by URL or a stale link even though the entry points hide
+  // themselves; saying so beats a failing request the user cannot place.
+  if (serverConfig && serverConfig.environment.capabilities.commitGraph !== true) {
+    return (
+      <div className="flex h-full items-center justify-center p-6 text-center text-sm text-muted-foreground">
+        This server is too old for the Git graph. Update the server that hosts this project, then
+        reopen the view.
       </div>
     );
   }

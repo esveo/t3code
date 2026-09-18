@@ -24,7 +24,12 @@ import {
 
 import { useComposerDraftStore, type DraftId } from "../composerDraftStore";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
-import { useProject, useThreadShell, useThreadShellsForProjectRefs } from "../state/entities";
+import {
+  useProject,
+  useServerConfigs,
+  useThreadShell,
+  useThreadShellsForProjectRefs,
+} from "../state/entities";
 import {
   type EnvMode,
   type EnvironmentOption,
@@ -574,8 +579,12 @@ export const BranchToolbar = memo(function BranchToolbar({
   // The graph reads the repository the thread actually runs in: its worktree
   // when it has one, the project's workspace root otherwise.
   const gitGraphCwd = activeWorktreePath ?? activeProject?.workspaceRoot ?? null;
+  // Older servers reject `vcs.listCommitGraph` as unknown, so the entry point
+  // stays hidden rather than opening a view that can only fail.
+  const supportsCommitGraph =
+    useServerConfigs().get(environmentId)?.environment.capabilities.commitGraph === true;
   const openGitGraph = useCallback(() => {
-    if (gitGraphCwd === null) return;
+    if (gitGraphCwd === null || !supportsCommitGraph) return;
     void navigate({
       to: "/git-graph",
       search: {
@@ -584,7 +593,7 @@ export const BranchToolbar = memo(function BranchToolbar({
         ...(activeProject ? { title: activeProject.title } : {}),
       },
     });
-  }, [activeProject, environmentId, gitGraphCwd, navigate]);
+  }, [activeProject, environmentId, gitGraphCwd, navigate, supportsCommitGraph]);
 
   useImperativeHandle(
     ref,
@@ -707,7 +716,7 @@ export const BranchToolbar = memo(function BranchToolbar({
         />
       ) : null}
 
-      {showGitControls && gitGraphCwd !== null ? (
+      {showGitControls && gitGraphCwd !== null && supportsCommitGraph ? (
         <Tooltip>
           <TooltipTrigger
             data-composer-context-control
@@ -732,7 +741,7 @@ export const BranchToolbar = memo(function BranchToolbar({
           ref={branchSelectorRef}
           className={cn(
             "min-w-0 flex-initial justify-end",
-            gitGraphCwd === null && "@3xl/composer-surface:ml-auto",
+            (gitGraphCwd === null || !supportsCommitGraph) && "@3xl/composer-surface:ml-auto",
           )}
           environmentId={environmentId}
           threadId={threadId}
