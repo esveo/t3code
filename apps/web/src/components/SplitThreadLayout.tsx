@@ -46,7 +46,7 @@ import {
   type SplitLeaf,
 } from "./split/splitLayout.logic";
 import { ChatPaneContext } from "./split/chatPane";
-import { openThreadPopout } from "./split/threadPopout";
+import { isPopoutWindow, openThreadPopout } from "./split/threadPopout";
 import { ThreadRouteView } from "./ThreadRouteView";
 
 const DRAG_START_DISTANCE = 4;
@@ -299,6 +299,16 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
       height: zone.height * pane.rect.height,
     };
   }, [dropTarget, panes]);
+
+  // A popout window is one thread's window: it never grows a grid, whatever
+  // the shared layout says, and whatever it navigates to.
+  if (isPopoutWindow()) {
+    return (
+      <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
+        <ThreadRouteView target={target} bare />
+      </SidebarInset>
+    );
+  }
 
   return (
     <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">

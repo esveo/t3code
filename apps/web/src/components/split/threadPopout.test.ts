@@ -2,6 +2,7 @@ import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contract
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  isPopoutPathname,
   openThreadPopout,
   popoutPathForThread,
   popoutWindowFeatures,
@@ -86,5 +87,14 @@ describe("openThreadPopout", () => {
     };
 
     expect(openThreadPopout(thread("d"), blocked)).toBe(false);
+  });
+});
+
+describe("popout locations", () => {
+  it("recognizes a popout path and nothing else", () => {
+    expect(isPopoutPathname(popoutPathForThread(thread("a")))).toBe(true);
+    expect(isPopoutPathname("/")).toBe(false);
+    expect(isPopoutPathname("/settings/snap-shot")).toBe(false);
+    expect(isPopoutPathname("/env-1/a")).toBe(false);
   });
 });

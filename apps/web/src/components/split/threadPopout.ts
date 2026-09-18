@@ -16,12 +16,28 @@ const POPOUT_HEIGHT = 760;
 /** Offset from the opener, so a popout never lands exactly on it. */
 const POPOUT_OFFSET = 48;
 
+/** Whether a location belongs to a popped-out thread window. */
+export function isPopoutPathname(pathname: string): boolean {
+  return pathname.startsWith("/popout/");
+}
+
 export function popoutPathForThread(thread: ScopedThreadRef): string {
   return `/popout/${encodeURIComponent(thread.environmentId)}/${encodeURIComponent(thread.threadId)}`;
 }
 
+const POPOUT_WINDOW_NAME_PREFIX = "t3code-popout:";
+
 export function popoutWindowName(thread: ScopedThreadRef): string {
-  return `t3code-popout:${scopedThreadKey(thread)}`;
+  return `${POPOUT_WINDOW_NAME_PREFIX}${scopedThreadKey(thread)}`;
+}
+
+/**
+ * Whether this document runs in a popout window. The window keeps the name it
+ * was opened under, so a popout stays recognizable after it navigates — it
+ * shows a thread, never the app shell.
+ */
+export function isPopoutWindow(): boolean {
+  return typeof window !== "undefined" && window.name.startsWith(POPOUT_WINDOW_NAME_PREFIX);
 }
 
 export function popoutWindowFeatures(opener: {

@@ -74,6 +74,7 @@ import {
 
 import { getDesktopSnapShotBridge } from "../lib/desktopSnapShot";
 import { installDesktopPasteAsText } from "../lib/desktopPasteAsText";
+import { isPopoutPathname, isPopoutWindow } from "../components/split/threadPopout";
 import { shouldResumeSnapShotSetupOnStartup } from "../lib/snapShotSetupResume";
 
 export const Route = createRootRoute({
@@ -95,11 +96,16 @@ export const Route = createRootRoute({
     }
 
     const authGateState = await resolveInitialServerAuthGateState();
+    // A popout window shows one thread and nothing else. Startup redirects
+    // belong to the main window: taking one here would leave the popout on a
+    // settings page, and its snapshot IPC is rejected from a second window.
     if (
       authGateState.status === "authenticated" &&
       getDesktopSnapShotBridge() &&
       shouldResumeSnapShotSetupOnStartup() &&
-      location.pathname !== "/settings/snap-shot"
+      location.pathname !== "/settings/snap-shot" &&
+      !isPopoutPathname(location.pathname) &&
+      !isPopoutWindow()
     ) {
       throw redirect({ to: "/settings/snap-shot", replace: true });
     }
@@ -195,7 +201,7 @@ function RootRouteView() {
   // A popped-out thread owns its window: no sidebar, no command palette, and
   // no EventRouter, whose bootstrap navigation would pull the window off the
   // thread it was opened for. Everything the chat itself needs stays.
-  if (pathname.startsWith("/popout/")) {
+  if (isPopoutPathname(pathname) || isPopoutWindow()) {
     return (
       <ToastProvider>
         <AnchoredToastProvider>
