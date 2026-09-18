@@ -70,7 +70,6 @@ export function AutoArrangeButton({
   const [open, setOpen] = useState(false);
   const [area, setArea] = useState({ width: 1, height: 1 });
   const [selected, setSelected] = useState<GridSize>({ columns: 1, rows: 1 });
-  const [hovered, setHovered] = useState<GridSize | null>(null);
   // Focus the confirm button, not the first grid cell, so opening the picker
   // keeps the suggested grid shown.
   const arrangeButtonRef = useRef<HTMLButtonElement>(null);
@@ -79,8 +78,7 @@ export function AutoArrangeButton({
     () => recommendGrid(threads.length, area.width, area.height),
     [area, threads.length],
   );
-  const shown = hovered ?? selected;
-  const capacity = shown.columns * shown.rows;
+  const capacity = selected.columns * selected.rows;
   const placedCount = Math.min(threads.length, capacity);
   const newCount = capacity - placedCount;
 
@@ -89,7 +87,6 @@ export function AutoArrangeButton({
       const measured = measureChatArea();
       setArea(measured);
       setSelected(recommendGrid(threads.length, measured.width, measured.height));
-      setHovered(null);
     }
     setOpen(nextOpen);
   };
@@ -214,26 +211,18 @@ export function AutoArrangeButton({
       </PopoverTrigger>
       <PopoverPopup align="start" side="bottom" className="w-80" initialFocus={arrangeButtonRef}>
         <div className="flex flex-col gap-3">
-          <div>
-            <div className="font-medium text-sm">Auto arrange</div>
-            <div className="text-muted-foreground text-xs">
-              {threads.length} pinned and active {threads.length === 1 ? "session" : "sessions"}.
-              The suggested grid is preselected; click another to change it. “Arrange new” fills the
-              cells they leave free with new threads.
-            </div>
-          </div>
+          <div className="font-medium text-sm">Auto arrange</div>
 
           <div
             className="grid w-fit gap-1"
             style={{ gridTemplateColumns: `repeat(${PICKER_COLUMNS}, 1.25rem)` }}
-            onPointerLeave={() => setHovered(null)}
             role="grid"
             aria-label="Grid size"
           >
             {Array.from({ length: PICKER_ROWS }, (_, row) =>
               Array.from({ length: PICKER_COLUMNS }, (_, column) => {
                 const size = { columns: column + 1, rows: row + 1 };
-                const inShown = column < shown.columns && row < shown.rows;
+                const inGrid = column < selected.columns && row < selected.rows;
                 const isSuggested = column + 1 === suggested.columns && row + 1 === suggested.rows;
                 return (
                   <button
@@ -244,12 +233,11 @@ export function AutoArrangeButton({
                     aria-selected={selected.columns === size.columns && selected.rows === size.rows}
                     className={cn(
                       "size-5 rounded-[3px] border transition-colors",
-                      inShown
+                      inGrid
                         ? "border-primary/70 bg-primary/25"
                         : "border-border bg-muted/40 hover:border-primary/40",
                       isSuggested && "ring-1 ring-primary ring-offset-1 ring-offset-popover",
                     )}
-                    onPointerEnter={() => setHovered(size)}
                     onClick={() => setSelected(size)}
                   />
                 );
@@ -259,8 +247,8 @@ export function AutoArrangeButton({
 
           <div className="flex items-baseline justify-between text-xs">
             <span className="font-medium">
-              {shown.columns} × {shown.rows}
-              {shown.columns === suggested.columns && shown.rows === suggested.rows
+              {selected.columns} × {selected.rows}
+              {selected.columns === suggested.columns && selected.rows === suggested.rows
                 ? " (suggested)"
                 : ""}
             </span>
@@ -279,19 +267,11 @@ export function AutoArrangeButton({
           </div>
 
           <div className="flex justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button
-              ref={arrangeButtonRef}
-              size="sm"
-              variant="outline"
-              onClick={() => arrange(false)}
-            >
-              Arrange existing
+            <Button ref={arrangeButtonRef} size="sm" onClick={() => arrange(false)}>
+              Arrange Active
             </Button>
             <Button size="sm" disabled={newCount === 0} onClick={() => arrange(true)}>
-              Arrange new
+              Arrange New
             </Button>
           </div>
         </div>
