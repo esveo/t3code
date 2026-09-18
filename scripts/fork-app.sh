@@ -345,7 +345,9 @@ watch_once() {
   # gives way to the commit being built.
   git -C "$WATCH_SOURCE" checkout --detach --force "$remote" >/dev/null 2>&1
   echo "$(date '+%F %T') origin/$WATCH_BRANCH moved to ${remote[1,7]}; building …"
-  "$WATCH_SOURCE/scripts/fork-app.sh" prepare
+  # Without -u the loop's own repo override would reach the build and make it
+  # use the working checkout — the one thing this worktree exists to avoid.
+  env -u T3CODE_FORK_REPO "$WATCH_SOURCE/scripts/fork-app.sh" prepare
 }
 
 # Prints the running watcher's pid, or nothing. Always succeeds: `set -e`
