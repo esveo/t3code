@@ -58,11 +58,14 @@ one with the app's update button. Your job ends with that build prepared.
 
 ### Staying current with `fork`
 
-`scripts/fork-app.sh watch-install` runs a check every minute: it fetches
-`origin/fork` and, when that branch moved, builds the new commit into the
-waiting slot, so the app's update button offers it shortly after someone
+`scripts/fork-app.sh watch-install` starts a check that runs every minute: it
+fetches `origin/fork` and, when that branch moved, builds the new commit into
+the waiting slot, so the app's update button offers it shortly after someone
 pushes. `watch-uninstall` stops it, `status` shows whether it runs, and the log
-is `~/Documents/private/t3code-app/logs/fork-watch.log`.
+is `~/Documents/private/t3code-app/logs/fork-watch.log`. It is a detached
+process, not a launchd agent — launchd jobs are denied the Documents folder
+this fork lives in — so it survives closing the terminal but not logging out;
+run `watch-install` again after a reboot.
 
 It builds from its own detached worktree in
 `~/Documents/private/t3code-app/source`, never from a working checkout, so
