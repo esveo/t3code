@@ -56,6 +56,21 @@ one with the app's update button. Your job ends with that build prepared.
 4. End with a short message: what changed, branch and commit, what you
    verified, and that the build is prepared, so the update button offers it.
 
+### Staying current with `fork`
+
+`scripts/fork-app.sh watch-install` runs a check every minute: it fetches
+`origin/fork` and, when that branch moved, builds the new commit into the
+waiting slot, so the app's update button offers it shortly after someone
+pushes. `watch-uninstall` stops it, `status` shows whether it runs, and the log
+is `~/Documents/private/t3code-app/logs/fork-watch.log`.
+
+It builds from its own detached worktree in
+`~/Documents/private/t3code-app/source`, never from a working checkout, so
+uncommitted work is neither built nor disturbed. It prepares only — switching
+stays the user's click. Note that it competes for the one waiting slot: a build
+an agent prepared from a feature branch is replaced by the next commit on
+`fork`, so let the user try such a build before pushing to `fork`.
+
 - **Never run `scripts/fork-app.sh restart`, `start`, or `stop`**, never run
   `vp run start:desktop`, and never kill the app's Electron processes. The user
   decides when to switch.

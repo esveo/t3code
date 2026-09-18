@@ -18,6 +18,17 @@
 #                                 app's update button
 #   scripts/fork-app.sh start | stop | status
 #
+# Staying current with the fork branch, without touching the working checkout:
+#
+#   scripts/fork-app.sh watch             build origin/fork into next/ when it
+#                                         moved; one pass, for launchd or cron
+#   scripts/fork-app.sh watch-install     run that pass every minute
+#   scripts/fork-app.sh watch-uninstall   stop it
+#
+# `watch` fetches into this repo and builds from its own detached worktree in
+# source/, so an agent's uncommitted work is never built or disturbed. It only
+# prepares; switching stays the update button's job.
+#
 # Features with a server side need the fork's server too, because the app only
 # ever talks to the machine's t3 service:
 #
@@ -139,6 +150,22 @@ start() {
   return 1
 }
 
+# The name a build carries. `watch` builds from a detached worktree, where
+# HEAD has no branch of its own; the ref it was checked out from names it.
+branch_of() {
+  local repo="$1" branch
+  branch="$(git -C "$repo" rev-parse --abbrev-ref HEAD)"
+  if [[ "$branch" == HEAD ]]; then
+    branch="$(git -C "$repo" for-each-ref --points-at HEAD --count 1 \
+      --format='%(refname:short)' refs/remotes/origin refs/heads)"
+  fi
+  echo "${branch:-detached}"
+}
+
+commit_of() {
+  sed -n 's/.*"commit": *"\([^"]*\)".*/\1/p' "$1/.fork-build.json" 2>/dev/null
+}
+
 prepare() {
   local source_repo="$SCRIPT_REPO"
   acquire_lock prepare
@@ -155,7 +182,7 @@ prepare() {
     --filter=':- .gitignore' "$source_repo/" "$staging/"
 
   local branch commit sha dirty=""
-  branch="$(git -C "$source_repo" rev-parse --abbrev-ref HEAD)"
+  branch="$(branch_of "$source_repo")"
   sha="$(git -C "$source_repo" rev-parse HEAD)"
   commit="${sha[1,7]}"
   [[ -n "$(git -C "$source_repo" status --porcelain)" ]] && dirty="+changes"
@@ -196,7 +223,7 @@ prepare_server() {
   [[ -f "$state" ]] || { echo "No t3 service state at $state." >&2; return 1; }
 
   local branch sha commit slug version
-  branch="$(git -C "$source_repo" rev-parse --abbrev-ref HEAD)"
+  branch="$(branch_of "$source_repo")"
   sha="$(git -C "$source_repo" rev-parse HEAD)"
   commit="${sha[1,7]}"
   # Semver prerelease identifiers allow [0-9A-Za-z-] only.
@@ -288,6 +315,69 @@ prepare_server() {
   echo "To go back: put \"activeVersion\": \"$previous\" into $state."
 }
 
+WATCH_BRANCH="${T3CODE_FORK_WATCH_BRANCH:-fork}"
+WATCH_SOURCE="$ROOT/source"
+WATCH_LABEL="com.t3tools.t3code.fork-watch"
+WATCH_PLIST="$HOME/Library/LaunchAgents/$WATCH_LABEL.plist"
+
+# One pass: pick up what was pushed to the fork branch and build it, unless
+# that commit is already built. Never touches the working checkout beyond the
+# fetch — it builds from its own detached worktree.
+watch_once() {
+  git -C "$SCRIPT_REPO" fetch --quiet origin "$WATCH_BRANCH" || {
+    echo "$(date '+%F %T') fetch failed; will try again" >&2
+    return 0
+  }
+  local remote
+  remote="$(git -C "$SCRIPT_REPO" rev-parse "origin/$WATCH_BRANCH")"
+  if [[ "$remote" == "$(commit_of "$ROOT/next")" || "$remote" == "$(commit_of "$ROOT/current")" ]]
+  then
+    return 0
+  fi
+  if [[ ! -e "$WATCH_SOURCE/.git" ]]; then
+    rm -rf "$WATCH_SOURCE"
+    git -C "$SCRIPT_REPO" worktree add --detach "$WATCH_SOURCE" "$remote" >/dev/null
+  fi
+  # --force: the worktree is ours alone, so whatever a failed build left in it
+  # gives way to the commit being built.
+  git -C "$WATCH_SOURCE" checkout --detach --force "$remote" >/dev/null 2>&1
+  echo "$(date '+%F %T') origin/$WATCH_BRANCH moved to ${remote[1,7]}; building …"
+  "$WATCH_SOURCE/scripts/fork-app.sh" prepare
+}
+
+watch_install() {
+  mkdir -p "$HOME/Library/LaunchAgents"
+  cat > "$WATCH_PLIST" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$WATCH_LABEL</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>exec "$SCRIPT_REPO/scripts/fork-app.sh" watch</string>
+  </array>
+  <key>StartInterval</key><integer>60</integer>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>$LOG_DIR/fork-watch.log</string>
+  <key>StandardErrorPath</key><string>$LOG_DIR/fork-watch.log</string>
+</dict>
+</plist>
+PLIST
+  launchctl bootout "gui/$UID/$WATCH_LABEL" 2>/dev/null || true
+  launchctl bootstrap "gui/$UID" "$WATCH_PLIST"
+  echo "Watching origin/$WATCH_BRANCH every minute (log: $LOG_DIR/fork-watch.log)."
+  echo "New commits are built into next/; the app's update button offers them."
+}
+
+watch_uninstall() {
+  launchctl bootout "gui/$UID/$WATCH_LABEL" 2>/dev/null || true
+  rm -f "$WATCH_PLIST"
+  echo "Stopped watching origin/$WATCH_BRANCH."
+}
+
 restart() {
   acquire_lock swap
   trap 'release_lock swap' EXIT
@@ -311,6 +401,9 @@ restart() {
 case "${1:-}" in
   prepare) prepare ;;
   prepare-server) prepare_server ;;
+  watch) watch_once ;;
+  watch-install) watch_install ;;
+  watch-uninstall) watch_uninstall ;;
   restart) restart ;;
   start) stop && start ;;
   stop) stop ;;
@@ -318,6 +411,11 @@ case "${1:-}" in
     echo "app:     $([[ -n "$(app_pids)" ]] && echo running || echo stopped)"
     echo "current: $([[ -d "$ROOT/current" ]] && label_of "$ROOT/current" || echo none)"
     echo "next:    $([[ -d "$ROOT/next" ]] && label_of "$ROOT/next" || echo none)"
+    echo "watch:   $([[ -f "$WATCH_PLIST" ]] && echo "origin/$WATCH_BRANCH every 60 s" || echo off)"
     ;;
-  *) echo "usage: $0 prepare|prepare-server|restart|start|stop|status" >&2; exit 2 ;;
+  *)
+    echo "usage: $0 prepare|prepare-server|restart|start|stop|status" >&2
+    echo "       $0 watch|watch-install|watch-uninstall" >&2
+    exit 2
+    ;;
 esac
