@@ -14,9 +14,36 @@ describe("isThreadPopoutUrl", () => {
     ).toBe(true);
   });
 
+  it("accepts the popout route in the hash, which is how the desktop routes", () => {
+    expect(
+      isThreadPopoutUrl({
+        applicationUrl: APPLICATION_URL,
+        targetUrl: "t3code://app/#/popout/env-1/thread-1",
+      }),
+    ).toBe(true);
+  });
+
+  it("rejects another scheme or host with the same opaque origin", () => {
+    expect(
+      isThreadPopoutUrl({
+        applicationUrl: APPLICATION_URL,
+        targetUrl: "t3code-dev://app/#/popout/env-1/thread-1",
+      }),
+    ).toBe(false);
+    expect(
+      isThreadPopoutUrl({
+        applicationUrl: APPLICATION_URL,
+        targetUrl: "t3code://elsewhere/#/popout/env-1/thread-1",
+      }),
+    ).toBe(false);
+  });
+
   it("rejects other paths and other origins", () => {
     expect(
       isThreadPopoutUrl({ applicationUrl: APPLICATION_URL, targetUrl: "t3code://app/settings" }),
+    ).toBe(false);
+    expect(
+      isThreadPopoutUrl({ applicationUrl: APPLICATION_URL, targetUrl: "t3code://app/#/settings" }),
     ).toBe(false);
     expect(
       isThreadPopoutUrl({

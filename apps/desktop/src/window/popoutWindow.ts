@@ -16,6 +16,14 @@ const DEFAULT_POPOUT_HEIGHT = 760;
 const MINIMUM_POPOUT_WIDTH = 520;
 const MINIMUM_POPOUT_HEIGHT = 480;
 
+/**
+ * The app's route inside a URL. The desktop renderer routes through the hash
+ * (`t3code://app/#/popout/...`); a browser build uses the path.
+ */
+function routeOf(url: URL): string {
+  return url.hash.startsWith("#/") ? url.hash.slice(1) : url.pathname;
+}
+
 export function isThreadPopoutUrl(input: {
   readonly applicationUrl: string;
   readonly targetUrl: string;
@@ -23,7 +31,17 @@ export function isThreadPopoutUrl(input: {
   try {
     const application = new URL(input.applicationUrl);
     const target = new URL(input.targetUrl);
-    return application.origin === target.origin && target.pathname.startsWith(POPOUT_PATH_PREFIX);
+    // Custom schemes have an opaque origin ("null" for every one of them), so
+    // scheme and host are compared as well: without that, t3code-dev:// or
+    // another host would read as the application itself.
+    if (
+      application.origin !== target.origin ||
+      application.protocol !== target.protocol ||
+      application.host !== target.host
+    ) {
+      return false;
+    }
+    return routeOf(target).startsWith(POPOUT_PATH_PREFIX);
   } catch {
     return false;
   }
