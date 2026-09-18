@@ -20,10 +20,10 @@
 #
 # Staying current with the fork branch, without touching the working checkout:
 #
-#   scripts/fork-app.sh watch             build origin/fork into next/ when it
-#                                         moved; one pass, for launchd or cron
-#   scripts/fork-app.sh watch-install     run that pass every minute
+#   scripts/fork-app.sh watch-install     check every minute and build what
+#                                         lands on origin/fork
 #   scripts/fork-app.sh watch-uninstall   stop it
+#   scripts/fork-app.sh watch             one such check, by hand
 #
 # `watch` fetches into this repo and builds from its own detached worktree in
 # source/, so an agent's uncommitted work is never built or disturbed. It only
@@ -43,7 +43,9 @@
 # installed.
 set -euo pipefail
 
-SCRIPT_REPO="${0:A:h:h}"
+# The watcher loop runs from a copy of this script (see watch_install), so the
+# repo it works on is handed over rather than derived from the copy's path.
+SCRIPT_REPO="${T3CODE_FORK_REPO:-${0:A:h:h}}"
 ROOT="${T3CODE_FORK_APP_ROOT:-$HOME/Documents/private/t3code-app}"
 HOME_DIR="$ROOT/home"
 LOG_DIR="$ROOT/logs"
@@ -316,16 +318,17 @@ prepare_server() {
 }
 
 WATCH_BRANCH="${T3CODE_FORK_WATCH_BRANCH:-fork}"
+WATCH_INTERVAL="${T3CODE_FORK_WATCH_INTERVAL:-60}"
 WATCH_SOURCE="$ROOT/source"
-WATCH_LABEL="com.t3tools.t3code.fork-watch"
-WATCH_PLIST="$HOME/Library/LaunchAgents/$WATCH_LABEL.plist"
+WATCH_PID="$ROOT/.watch.pid"
+WATCH_LOG="$LOG_DIR/fork-watch.log"
 
 # One pass: pick up what was pushed to the fork branch and build it, unless
 # that commit is already built. Never touches the working checkout beyond the
 # fetch — it builds from its own detached worktree.
 watch_once() {
   git -C "$SCRIPT_REPO" fetch --quiet origin "$WATCH_BRANCH" || {
-    echo "$(date '+%F %T') fetch failed; will try again" >&2
+    echo "$(date '+%F %T') fetch failed; trying again next pass" >&2
     return 0
   }
   local remote
@@ -345,36 +348,62 @@ watch_once() {
   "$WATCH_SOURCE/scripts/fork-app.sh" prepare
 }
 
+# Prints the running watcher's pid, or nothing. Always succeeds: `set -e`
+# would end the script on a plain "not running".
+watch_pid() {
+  local pid
+  pid="$(cat "$WATCH_PID" 2>/dev/null || true)"
+  if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+    echo "$pid"
+  fi
+  return 0
+}
+
+watch_loop() {
+  echo $$ > "$WATCH_PID"
+  trap 'rm -f "$WATCH_PID"' EXIT
+  echo "$(date '+%F %T') watching origin/$WATCH_BRANCH every ${WATCH_INTERVAL}s (pid $$)"
+  while true; do
+    watch_once || true
+    sleep "$WATCH_INTERVAL"
+  done
+}
+
+# A launchd agent would be the obvious home for this, but launchd jobs are
+# denied the Documents folder this fork lives in, so the loop runs as a plain
+# detached process started from the user's session instead. It survives closing
+# the terminal, not logging out.
 watch_install() {
-  mkdir -p "$HOME/Library/LaunchAgents"
-  cat > "$WATCH_PLIST" <<PLIST
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>$WATCH_LABEL</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/bin/zsh</string>
-    <string>-lc</string>
-    <string>exec "$SCRIPT_REPO/scripts/fork-app.sh" watch</string>
-  </array>
-  <key>StartInterval</key><integer>60</integer>
-  <key>RunAtLoad</key><true/>
-  <key>StandardOutPath</key><string>$LOG_DIR/fork-watch.log</string>
-  <key>StandardErrorPath</key><string>$LOG_DIR/fork-watch.log</string>
-</dict>
-</plist>
-PLIST
-  launchctl bootout "gui/$UID/$WATCH_LABEL" 2>/dev/null || true
-  launchctl bootstrap "gui/$UID" "$WATCH_PLIST"
-  echo "Watching origin/$WATCH_BRANCH every minute (log: $LOG_DIR/fork-watch.log)."
+  local pid
+  pid="$(watch_pid)"
+  if [[ -n "$pid" ]]; then
+    echo "Already watching origin/$WATCH_BRANCH (pid $pid, log: $WATCH_LOG)."
+    return
+  fi
+  rm -f "$WATCH_PID"
+  # From a copy: the loop lives for days, and zsh reads a script as it runs, so
+  # editing the checkout's copy underneath it would corrupt the running loop.
+  cp "$SCRIPT_REPO/scripts/fork-app.sh" "$ROOT/.watch-loop.zsh"
+  T3CODE_FORK_REPO="$SCRIPT_REPO" nohup /bin/zsh "$ROOT/.watch-loop.zsh" watch-loop \
+    >>"$WATCH_LOG" 2>&1 &!
+  for _ in {1..20}; do
+    pid="$(watch_pid)"
+    [[ -n "$pid" ]] && break
+    sleep 0.2
+  done
+  if [[ -z "$pid" ]]; then
+    echo "The watcher did not start; see $WATCH_LOG" >&2
+    return 1
+  fi
+  echo "Watching origin/$WATCH_BRANCH every ${WATCH_INTERVAL}s (pid $pid, log: $WATCH_LOG)."
   echo "New commits are built into next/; the app's update button offers them."
 }
 
 watch_uninstall() {
-  launchctl bootout "gui/$UID/$WATCH_LABEL" 2>/dev/null || true
-  rm -f "$WATCH_PLIST"
+  local pid
+  pid="$(watch_pid)"
+  [[ -n "$pid" ]] && kill "$pid" 2>/dev/null
+  rm -f "$WATCH_PID"
   echo "Stopped watching origin/$WATCH_BRANCH."
 }
 
@@ -402,6 +431,7 @@ case "${1:-}" in
   prepare) prepare ;;
   prepare-server) prepare_server ;;
   watch) watch_once ;;
+  watch-loop) watch_loop ;;
   watch-install) watch_install ;;
   watch-uninstall) watch_uninstall ;;
   restart) restart ;;
@@ -411,7 +441,7 @@ case "${1:-}" in
     echo "app:     $([[ -n "$(app_pids)" ]] && echo running || echo stopped)"
     echo "current: $([[ -d "$ROOT/current" ]] && label_of "$ROOT/current" || echo none)"
     echo "next:    $([[ -d "$ROOT/next" ]] && label_of "$ROOT/next" || echo none)"
-    echo "watch:   $([[ -f "$WATCH_PLIST" ]] && echo "origin/$WATCH_BRANCH every 60 s" || echo off)"
+    echo "watch:   $([[ -n "$(watch_pid)" ]] && echo "origin/$WATCH_BRANCH every ${WATCH_INTERVAL}s" || echo off)"
     ;;
   *)
     echo "usage: $0 prepare|prepare-server|restart|start|stop|status" >&2
