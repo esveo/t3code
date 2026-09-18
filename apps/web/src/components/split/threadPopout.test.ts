@@ -30,6 +30,7 @@ function makeHost(openedWindows: Array<{ url: string; name: string; closed: bool
     screenX: 100,
     screenY: 50,
     origin: "https://app.example",
+    hashRouting: false,
   };
   return { host, focused };
 }
@@ -54,6 +55,14 @@ describe("openThreadPopout", () => {
 
     expect(openThreadPopout(thread("a"), host)).toBe(true);
     expect(opened[0]?.url).toBe("https://app.example/popout/env-1/a");
+  });
+
+  it("puts the route in the hash where the router reads it there", () => {
+    const opened: Array<{ url: string; name: string; closed: boolean }> = [];
+    const { host } = makeHost(opened);
+
+    expect(openThreadPopout(thread("e"), { ...host, hashRouting: true })).toBe(true);
+    expect(opened[0]?.url).toBe("https://app.example/#/popout/env-1/e");
   });
 
   it("focuses the window a thread already has instead of opening a second", () => {
@@ -84,6 +93,7 @@ describe("openThreadPopout", () => {
       screenX: 0,
       screenY: 0,
       origin: "https://app.example",
+      hashRouting: false,
     };
 
     expect(openThreadPopout(thread("d"), blocked)).toBe(false);

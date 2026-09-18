@@ -1,14 +1,18 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
+import { isElectron } from "../../env";
+
 /**
  * Thread popouts: a pane can leave the split grid for a window of its own,
  * which renders the bare chat under `/popout/...`. One window per thread — a
  * second popout of the same thread focuses the window that is already open.
  *
  * The same `window.open` call serves both surfaces: a browser opens a popup,
- * and the desktop shell allows same-origin popups on this path (see
- * `apps/desktop/src/window/popoutWindow.ts`).
+ * and the desktop shell allows same-origin popups on this route (see
+ * `apps/desktop/src/window/popoutWindow.ts`). The desktop app routes through
+ * the URL hash, so the route has to go there too — as a path it would open the
+ * app at "/" instead, which lands on a new thread.
  */
 
 const POPOUT_WIDTH = 900;
@@ -61,6 +65,8 @@ export interface ThreadPopoutHost {
   readonly screenX: number;
   readonly screenY: number;
   readonly origin: string;
+  /** Whether the app's router reads its route from the URL hash. */
+  readonly hashRouting: boolean;
 }
 
 function browserHost(): ThreadPopoutHost {
@@ -69,7 +75,14 @@ function browserHost(): ThreadPopoutHost {
     screenX: window.screenX,
     screenY: window.screenY,
     origin: window.location.origin,
+    hashRouting: isElectron,
   };
+}
+
+/** The address of a thread's popout, in the form this app's router reads. */
+export function popoutUrl(thread: ScopedThreadRef, host: ThreadPopoutHost): string {
+  const route = popoutPathForThread(thread);
+  return host.hashRouting ? `${host.origin}/#${route}` : `${host.origin}${route}`;
 }
 
 /**
@@ -88,11 +101,7 @@ export function openThreadPopout(
   }
   openPopouts.delete(name);
 
-  const opened = host.open(
-    `${host.origin}${popoutPathForThread(thread)}`,
-    name,
-    popoutWindowFeatures(host),
-  );
+  const opened = host.open(popoutUrl(thread, host), name, popoutWindowFeatures(host));
   if (!opened) return false;
   openPopouts.set(name, opened);
   opened.focus();
