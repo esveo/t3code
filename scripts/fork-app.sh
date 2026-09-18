@@ -17,6 +17,19 @@
 #                                 relaunch — the user runs this, or clicks the
 #                                 app's update button
 #   scripts/fork-app.sh start | stop | status
+#
+# Features with a server side need the fork's server too, because the app only
+# ever talks to the machine's t3 service:
+#
+#   scripts/fork-app.sh prepare-server   build this checkout into a t3 runtime,
+#                                        install it beside the release one and
+#                                        point the service at it
+#
+# `prepare-server` never stops the running service: the child that serves the
+# agents keeps running the version it started with, and the new one takes over
+# at the next restart that happens anyway. Undo by putting the previous version
+# back into ~/.t3/runtime/service-state.json; the release runtime stays
+# installed.
 set -euo pipefail
 
 SCRIPT_REPO="${0:A:h:h}"
@@ -168,6 +181,113 @@ prepare() {
   echo "Prepared $label. The app's update button now offers it."
 }
 
+# Builds a t3 runtime from this checkout and makes it the service's active
+# version. Mirrors the release pipeline (single-executable, web client,
+# resource monitor, runtime externals) so the result is layout-identical to an
+# installed release.
+prepare_server() {
+  local source_repo="$SCRIPT_REPO"
+  acquire_lock prepare
+  trap 'release_lock prepare' EXIT
+  use_node
+
+  local runtime_dir="$HOME/.t3/runtime"
+  local state="$runtime_dir/service-state.json"
+  [[ -f "$state" ]] || { echo "No t3 service state at $state." >&2; return 1; }
+
+  local branch sha commit slug version
+  branch="$(git -C "$source_repo" rev-parse --abbrev-ref HEAD)"
+  sha="$(git -C "$source_repo" rev-parse HEAD)"
+  commit="${sha[1,7]}"
+  # Semver prerelease identifiers allow [0-9A-Za-z-] only.
+  slug="$(echo "$branch" | tr -c '[:alnum:]-' '-' | sed 's/-\{2,\}/-/g; s/^-//; s/-$//')"
+  # The base is one patch above the checkout's server version, so the fork
+  # outranks the release it came from and a later official release outranks
+  # the fork. The service refuses to start a child whose own version differs
+  # from the directory it was started from, so this string has to be baked
+  # into the build.
+  local base
+  base="$(node -e "const v=require('$source_repo/apps/server/package.json').version.split('.');console.log([v[0],v[1],Number(v[2])+1].join('.'))")"
+  version="$base-fork.$slug.$commit"
+
+  local staging="$ROOT/staging"
+  mkdir -p "$staging"
+  rm -f "$staging/.fork-build.json"
+  echo "Syncing $source_repo → $staging …"
+  rsync -a --delete --exclude=.git --exclude=.fork-build.json \
+    --filter=':- .gitignore' "$source_repo/" "$staging/"
+
+  node -e "const fs=require('fs');const p='$staging/apps/server/package.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.version='$version';fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n')"
+
+  echo "Installing dependencies …"
+  (cd "$staging" && npx -y "$PNPM" install --frozen-lockfile --prefer-offline)
+  # Both the packer and the archive builder spawn a bare `vp`, which lives only
+  # in the workspace bin dir.
+  export PATH="$staging/node_modules/.bin:$PATH"
+
+  local target_key rust_target
+  case "$(uname -m)" in
+    arm64|aarch64) target_key=darwin-arm64; rust_target=aarch64-apple-darwin ;;
+    *) target_key=darwin-x64; rust_target=x86_64-apple-darwin ;;
+  esac
+
+  echo "Building web client …"
+  (cd "$staging" && T3CODE_COMMIT_HASH="$sha" npx vp run --filter t3 build)
+  echo "Building single-executable ($target_key) …"
+  (cd "$staging" && T3CODE_COMMIT_HASH="$sha" \
+    node apps/server/scripts/cli.ts build-exe --target "$target_key")
+
+  # The release job hands the archive a directory keyed by platform-arch; the
+  # checked-out Rust build is the same binary, so reuse it when it is there.
+  local monitor_root="$staging/.fork-resource-monitor"
+  rm -rf "$monitor_root"
+  mkdir -p "$monitor_root/$target_key"
+  # `target/` is gitignored, so it never reaches staging; the checkout's own
+  # build is the same source at the same commit. Cargo is only the fallback,
+  # and it is not installed on every machine that runs this.
+  local monitor="$source_repo/native/resource-monitor/target/$rust_target/release/t3-resource-monitor"
+  if [[ ! -x "$monitor" ]]; then
+    if ! command -v cargo >/dev/null; then
+      echo "No resource monitor at $monitor and no cargo to build one." >&2
+      echo "Run 'npx vp run build:resource-monitor' in the checkout, then retry." >&2
+      return 1
+    fi
+    echo "Building resource monitor …"
+    (cd "$source_repo" && cargo build --locked --release \
+      --manifest-path native/resource-monitor/Cargo.toml)
+  fi
+  cp "$monitor" "$monitor_root/$target_key/t3-resource-monitor"
+
+  echo "Packaging runtime $version …"
+  rm -rf "$staging/release-cli"
+  (cd "$staging" && node scripts/build-cli-archive.ts \
+    --platform mac --arch "${target_key##*-}" --version "$version" \
+    --resource-monitor-dir "$monitor_root" --output-dir release-cli)
+
+  local archive
+  archive="$(echo "$staging"/release-cli/*.tar.gz)"
+  [[ -f "$archive" ]] || { echo "No archive was produced." >&2; return 1; }
+
+  local target="$runtime_dir/versions/$version"
+  echo "Installing into $target …"
+  rm -rf "$target"
+  mkdir -p "$target"
+  tar -xzf "$archive" -C "$target" --strip-components 1
+  [[ -x "$target/t3" ]] || { echo "Extracted runtime has no t3 executable." >&2; rm -rf "$target"; return 1; }
+  printf '%s\n' "$version" > "$target/.install-complete"
+
+  local previous
+  previous="$(node -e "console.log(JSON.parse(require('fs').readFileSync('$state','utf8')).activeVersion)")"
+  node -e "const fs=require('fs');const s='$state';const j=JSON.parse(fs.readFileSync(s,'utf8'));j.activeVersion='$version';fs.writeFileSync(s+'.fork-tmp',JSON.stringify(j,null,2)+'\n');fs.renameSync(s+'.fork-tmp',s)"
+  printf '%s\n' "$previous" > "$runtime_dir/.fork-previous-version"
+
+  echo
+  echo "Installed $version ($branch@$commit) and set it active."
+  echo "The running service keeps serving agents on $previous; the fork server"
+  echo "takes over at the next service restart, which nothing here triggers."
+  echo "To go back: put \"activeVersion\": \"$previous\" into $state."
+}
+
 restart() {
   acquire_lock swap
   trap 'release_lock swap' EXIT
@@ -190,6 +310,7 @@ restart() {
 
 case "${1:-}" in
   prepare) prepare ;;
+  prepare-server) prepare_server ;;
   restart) restart ;;
   start) stop && start ;;
   stop) stop ;;
@@ -198,5 +319,5 @@ case "${1:-}" in
     echo "current: $([[ -d "$ROOT/current" ]] && label_of "$ROOT/current" || echo none)"
     echo "next:    $([[ -d "$ROOT/next" ]] && label_of "$ROOT/next" || echo none)"
     ;;
-  *) echo "usage: $0 prepare|restart|start|stop|status" >&2; exit 2 ;;
+  *) echo "usage: $0 prepare|prepare-server|restart|start|stop|status" >&2; exit 2 ;;
 esac
