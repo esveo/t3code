@@ -128,19 +128,25 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
   }, [layout, rememberedRouteThread, routeThreadRef, setLayout]);
 
   // The route pane follows the URL, so its thread is the one a restart cannot
-  // recover on its own: when the app came up on a thread the grid does not
-  // hold, the remembered one gets a pane of its own instead of being lost.
+  // recover on its own. Runs once, on the first grid of a session, with the
+  // thread that pane was showing when the app was last closed.
   const restoredRef = useRef(false);
   useEffect(() => {
-    if (restoredRef.current || !routeThreadRef || !rememberedRouteThread) return;
+    if (restoredRef.current || !rememberedRouteThread || layout.kind === "leaf") return;
     restoredRef.current = true;
-    if (sameThread(rememberedRouteThread, routeThreadRef)) return;
     if (findThreadLeaf(layout, rememberedRouteThread)) return;
+    // Starting the app lands on a fresh draft, which would sit in the route
+    // pane in place of the thread that was there: go back to that thread.
+    if (!routeThreadRef) {
+      navigateToThread(rememberedRouteThread);
+      return;
+    }
+    if (sameThread(rememberedRouteThread, routeThreadRef)) return;
     // The route thread has a pane: the swap above hands it the remembered one.
     if (findThreadLeaf(layout, routeThreadRef)) return;
     const appended = appendThreadPane(layout, rememberedRouteThread, nextPaneId);
     if (appended) setLayout(appended.layout);
-  }, [layout, rememberedRouteThread, routeThreadRef, setLayout]);
+  }, [layout, navigateToThread, rememberedRouteThread, routeThreadRef, setLayout]);
 
   useEffect(() => {
     setRouteThread(routeThreadRef);
