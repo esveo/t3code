@@ -187,6 +187,7 @@ import {
   useRightPanelStore,
 } from "../rightPanelStore";
 import { useIsActiveChatPane } from "./split/chatPane";
+import { installDesktopClipboardPasteFallback } from "../lib/desktopClipboardPaste";
 import {
   isPreviewSupportedInRuntime,
   setActivePreviewTab,
@@ -669,23 +670,32 @@ function eventPathContainsSelector(event: Event, selector: string): boolean {
 }
 
 /**
- * Whether input that landed outside any editable or interactive element
- * should be redirected into the composer. Shared by type-to-focus and
- * paste-to-focus so both honour the same surfaces.
+ * Whether input that landed outside any editable element should be redirected
+ * into the composer. Shared by type-to-focus and paste-to-focus, which differ
+ * only in how they treat a focused control.
  */
 function shouldRedirectInputToComposer(event: Event): boolean {
   if (event.defaultPrevented) return false;
   if (eventPathContainsSelector(event, TYPE_TO_FOCUS_EDITABLE_SELECTOR)) return false;
-  if (eventPathContainsSelector(event, TYPE_TO_FOCUS_INTERACTIVE_SELECTOR)) return false;
   if (document.querySelector(TYPE_TO_FOCUS_FLOATING_LAYER_SELECTOR)) return false;
   return true;
+}
+
+/**
+ * Typed keys stay with a focused control, which may act on them: Space and
+ * Enter activate a button, arrows move a radio group. A paste is different,
+ * since nothing outside an editable can receive one, so paste-to-focus does
+ * not consult this.
+ */
+function isInteractiveElementFocused(event: Event): boolean {
+  return eventPathContainsSelector(event, TYPE_TO_FOCUS_INTERACTIVE_SELECTOR);
 }
 
 function shouldTypeToFocusComposer(event: KeyboardEvent): boolean {
   if (event.isComposing) return false;
   if (event.metaKey || event.ctrlKey || event.altKey) return false;
   if (event.key.length !== 1) return false;
-  if (!shouldRedirectInputToComposer(event)) return false;
+  if (!shouldRedirectInputToComposer(event) || isInteractiveElementFocused(event)) return false;
 
   // The right-panel surface launcher claims its shortcut letters while it is
   // visible (data attribute set in RightPanelTabs); those keys open surfaces
@@ -700,7 +710,8 @@ function shouldTypeToFocusComposer(event: KeyboardEvent): boolean {
 
 /**
  * Plain text pasted with nothing editable focused, such as after the resting
- * composer blurred. Files are left to the composer's own paste handler.
+ * composer blurred or after a click on a copy button, which keeps the focus it
+ * took. Files are left to the composer's own paste handler.
  */
 function pasteTextToFocusComposer(event: ClipboardEvent): string | null {
   if (!event.clipboardData || event.clipboardData.files.length > 0) return null;
@@ -6984,6 +6995,30 @@ export default function ChatView(props: ChatViewProps) {
       window.removeEventListener("paste", handler, true);
     };
   }, [activeThreadId, composerRef]);
+
+  // The desktop shell drops a paste that lands on no editable element, so the
+  // handler above never runs there. Read the clipboard ourselves in that case.
+  useEffect(
+    () =>
+      installDesktopClipboardPasteFallback({
+        bridge: window.desktopBridge,
+        target: window,
+        macPlatform: isMacPlatform(navigator.platform),
+        shouldHandle: (event) =>
+          isActivePaneRef.current &&
+          Boolean(activeThreadId) &&
+          !isCommandPaletteOpen() &&
+          getTerminalFocusOwner() === null &&
+          composerRef.current?.isModelPickerOpen() !== true &&
+          shouldRedirectInputToComposer(event),
+        insertText: (text, { bypassAutoAttachment }) => {
+          if (!composerRef.current?.pasteTextAtEnd(text, { bypassAutoAttachment })) {
+            composerRef.current?.insertTextAtEnd(text);
+          }
+        },
+      }),
+    [activeThreadId, composerRef],
+  );
 
   const [pendingRevert, setPendingRevert] = useState<{
     turnCount: number;
