@@ -720,7 +720,7 @@ export const BranchToolbar = memo(function BranchToolbar({
         <Tooltip>
           <TooltipTrigger
             data-composer-context-control
-            className="ml-auto hidden @3xl/composer-surface:inline-flex"
+            className="ml-auto inline-flex shrink-0"
             render={
               <Button
                 variant="ghost"
