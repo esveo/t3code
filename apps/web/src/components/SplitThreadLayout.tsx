@@ -31,6 +31,7 @@ import {
   computeLayout,
   dropExistingLeaf,
   dropNewThread,
+  appendThreadPane,
   dropZoneRect,
   equalizeBranch,
   findLeaf,
@@ -40,6 +41,7 @@ import {
   resolveDropZone,
   ROUTE_LEAF_ID,
   sameThread,
+  setLeafThread,
   type DropZone,
   type LayoutDivider,
   type Rect,
@@ -83,8 +85,11 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
   const setLayout = useSplitThreadStore((state) => state.setLayout);
   const setActiveLeaf = useSplitThreadStore((state) => state.setActiveLeaf);
   const setDrag = useSplitThreadStore((state) => state.setDrag);
+  const rememberedRouteThread = useSplitThreadStore((state) => state.routeThread);
+  const setRouteThread = useSplitThreadStore((state) => state.setRouteThread);
   const gridRef = useRef<HTMLDivElement>(null);
   const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
+  const dropTargetRef = useRef<DropTarget | null>(null);
   const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
 
   const routeThreadRef = target.kind === "server" ? target.threadRef : null;
@@ -103,11 +108,43 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
   );
 
   // A thread opened in the route pane is not shown a second time elsewhere.
+  // The pane that showed it takes over the thread the route pane is leaving, so
+  // the two swap places rather than the grid losing a running thread. This is
+  // also what restores the split after a restart, when the app lands on a
+  // thread one of the panes was already showing.
   useEffect(() => {
     if (!routeThreadRef) return;
     const duplicate = findThreadLeaf(layout, routeThreadRef);
-    if (duplicate) setLayout(removeLeaf(layout, duplicate.id));
-  }, [layout, routeThreadRef, setLayout]);
+    if (!duplicate) return;
+    const displaced =
+      rememberedRouteThread &&
+      !sameThread(rememberedRouteThread, routeThreadRef) &&
+      !findThreadLeaf(layout, rememberedRouteThread)
+        ? rememberedRouteThread
+        : null;
+    setLayout(
+      displaced ? setLeafThread(layout, duplicate.id, displaced) : removeLeaf(layout, duplicate.id),
+    );
+  }, [layout, rememberedRouteThread, routeThreadRef, setLayout]);
+
+  // The route pane follows the URL, so its thread is the one a restart cannot
+  // recover on its own: when the app came up on a thread the grid does not
+  // hold, the remembered one gets a pane of its own instead of being lost.
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (restoredRef.current || !routeThreadRef || !rememberedRouteThread) return;
+    restoredRef.current = true;
+    if (sameThread(rememberedRouteThread, routeThreadRef)) return;
+    if (findThreadLeaf(layout, rememberedRouteThread)) return;
+    // The route thread has a pane: the swap above hands it the remembered one.
+    if (findThreadLeaf(layout, routeThreadRef)) return;
+    const appended = appendThreadPane(layout, rememberedRouteThread, nextPaneId);
+    if (appended) setLayout(appended.layout);
+  }, [layout, rememberedRouteThread, routeThreadRef, setLayout]);
+
+  useEffect(() => {
+    setRouteThread(routeThreadRef);
+  }, [routeThreadRef, setRouteThread]);
 
   useEffect(() => {
     if (!findLeaf(layout, activeLeafId)) setActiveLeaf(ROUTE_LEAF_ID);
@@ -205,10 +242,14 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
     [navigateToThread, routeThreadRef, setActiveLeaf, setLayout],
   );
 
-  // While something is dragged, track the pane and zone under the pointer.
+  // While something is dragged, track the pane and zone under the pointer. The
+  // target lives in a ref: a re-render mid-drag resubscribes these listeners,
+  // and a local would reset to null while the preview still showed the pane.
   useEffect(() => {
-    if (!drag) return;
-    let currentTarget: DropTarget | null = null;
+    if (!drag) {
+      dropTargetRef.current = null;
+      return;
+    }
     const resolveTarget = (x: number, y: number): DropTarget | null => {
       const grid = gridRef.current;
       if (!grid) return null;
@@ -224,7 +265,7 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
     };
     const onMove = (event: PointerEvent) => {
       const target = resolveTarget(event.clientX, event.clientY);
-      currentTarget = target;
+      dropTargetRef.current = target;
       setDropTarget(target);
       setPointer({ x: event.clientX, y: event.clientY });
       // A sidebar drag ends inside dnd-kit, whose release handler may run before
@@ -232,14 +273,14 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
       if (drag.kind === "thread") setPendingPaneDrop(target ? () => drop(drag, target) : null);
     };
     const onUp = () => {
-      if (drag.kind === "leaf") {
-        if (currentTarget) drop(drag, currentTarget);
-        setDrag(null);
-      }
+      if (drag.kind !== "leaf") return;
+      const target = dropTargetRef.current;
+      if (target) drop(drag, target);
+      setDrag(null);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      currentTarget = null;
+      dropTargetRef.current = null;
       setDropTarget(null);
       setPendingPaneDrop(null);
       if (drag.kind === "leaf") setDrag(null);
@@ -251,8 +292,6 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
       window.removeEventListener("pointermove", onMove, true);
       window.removeEventListener("pointerup", onUp, true);
       window.removeEventListener("keydown", onKeyDown, true);
-      setDropTarget(null);
-      setPointer(null);
     };
   }, [drag, drop, setDrag]);
 
@@ -287,8 +326,10 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
     [setLayout],
   );
 
+  // Only while a drag is running: the last target and pointer stay in state
+  // after it ends, which keeps them out of a drag-ending render.
   const dropHighlight = useMemo(() => {
-    if (!dropTarget) return null;
+    if (!drag || !dropTarget) return null;
     const pane = panes.find((candidate) => candidate.leaf.id === dropTarget.leafId);
     if (!pane) return null;
     const zone = dropZoneRect(dropTarget.zone);
@@ -298,7 +339,7 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
       width: zone.width * pane.rect.width,
       height: zone.height * pane.rect.height,
     };
-  }, [dropTarget, panes]);
+  }, [drag, dropTarget, panes]);
 
   // A popout window is one thread's window: it never grows a grid, whatever
   // the shared layout says, and whatever it navigates to.

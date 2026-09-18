@@ -25,9 +25,16 @@ interface SplitThreadStoreState {
   layout: SplitNode;
   /** The pane that owns window-level shortcuts, paste and type-to-focus. */
   activeLeafId: string;
+  /**
+   * The thread the route pane shows. Persisted with the layout because the
+   * route pane follows the URL: after a restart the app decides where to land,
+   * and without this the thread that pane was showing would be gone.
+   */
+  routeThread: ScopedThreadRef | null;
   drag: SplitDragSource | null;
   setLayout: (layout: SplitNode) => void;
   setActiveLeaf: (leafId: string) => void;
+  setRouteThread: (thread: ScopedThreadRef | null) => void;
   setDrag: (drag: SplitDragSource | null) => void;
 }
 
@@ -36,10 +43,18 @@ export const useSplitThreadStore = create<SplitThreadStoreState>()(
     (set) => ({
       layout: SINGLE_PANE_LAYOUT,
       activeLeafId: ROUTE_LEAF_ID,
+      routeThread: null,
       drag: null,
       setLayout: (layout) => set({ layout }),
       setActiveLeaf: (leafId) =>
         set((state) => (state.activeLeafId === leafId ? state : { activeLeafId: leafId })),
+      setRouteThread: (thread) =>
+        set((state) =>
+          state.routeThread?.environmentId === thread?.environmentId &&
+          state.routeThread?.threadId === thread?.threadId
+            ? state
+            : { routeThread: thread },
+        ),
       setDrag: (drag) => set({ drag }),
     }),
     {
@@ -48,11 +63,19 @@ export const useSplitThreadStore = create<SplitThreadStoreState>()(
       storage: createJSONStorage(() =>
         resolveStorage(typeof window !== "undefined" ? window.localStorage : undefined),
       ),
-      partialize: (state) => ({ layout: state.layout }),
-      merge: (persisted, current) => ({
-        ...current,
-        layout: sanitizeLayout((persisted as { layout?: SplitNode } | undefined)?.layout),
-      }),
+      partialize: (state) => ({ layout: state.layout, routeThread: state.routeThread }),
+      merge: (persisted, current) => {
+        const stored = persisted as
+          | { layout?: SplitNode; routeThread?: ScopedThreadRef | null }
+          | undefined;
+        const routeThread = stored?.routeThread;
+        return {
+          ...current,
+          layout: sanitizeLayout(stored?.layout),
+          routeThread:
+            routeThread && routeThread.environmentId && routeThread.threadId ? routeThread : null,
+        };
+      },
     },
   ),
 );
@@ -71,18 +94,20 @@ export function startSidebarThreadDrag(thread: ScopedThreadRef, title: string): 
   useSplitThreadStore.getState().setDrag({ kind: "thread", thread, title });
 }
 
-function clearSidebarThreadDrag(): void {
-  pendingPaneDrop = null;
+function clearThreadDragOverlay(): void {
   const { drag, setDrag } = useSplitThreadStore.getState();
   if (drag?.kind === "thread") setDrag(null);
 }
 
 /**
- * Sidebar hook: dnd-kit finished or cancelled the drag. Deferred, because the
- * sensor can report the finish before `onDragEnd` consumes the drop.
+ * Sidebar hook: dnd-kit finished or cancelled the drag. Only the overlay goes,
+ * and deferred at that, because the sensor reports the finish before
+ * `onDragEnd` runs. The pending drop outlives it on purpose: dropping it here
+ * raced `onDragEnd`, and a release over a pane sometimes did nothing. It is
+ * replaced when the next drag starts and dropped when Escape cancels one.
  */
 export function endSidebarThreadDrag(): void {
-  setTimeout(clearSidebarThreadDrag, 0);
+  setTimeout(clearThreadDragOverlay, 0);
 }
 
 /**
@@ -91,7 +116,8 @@ export function endSidebarThreadDrag(): void {
  */
 export function consumeSidebarThreadDrop(): boolean {
   const drop = pendingPaneDrop;
-  clearSidebarThreadDrag();
+  pendingPaneDrop = null;
+  clearThreadDragOverlay();
   if (!drop) return false;
   drop();
   return true;
