@@ -1,0 +1,84 @@
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import type { ScopedThreadRef } from "@t3tools/contracts";
+
+/**
+ * Thread popouts: a pane can leave the split grid for a window of its own,
+ * which renders the bare chat under `/popout/...`. One window per thread — a
+ * second popout of the same thread focuses the window that is already open.
+ *
+ * The same `window.open` call serves both surfaces: a browser opens a popup,
+ * and the desktop shell allows same-origin popups on this path (see
+ * `apps/desktop/src/window/popoutWindow.ts`).
+ */
+
+const POPOUT_WIDTH = 900;
+const POPOUT_HEIGHT = 760;
+/** Offset from the opener, so a popout never lands exactly on it. */
+const POPOUT_OFFSET = 48;
+
+export function popoutPathForThread(thread: ScopedThreadRef): string {
+  return `/popout/${encodeURIComponent(thread.environmentId)}/${encodeURIComponent(thread.threadId)}`;
+}
+
+export function popoutWindowName(thread: ScopedThreadRef): string {
+  return `t3code-popout:${scopedThreadKey(thread)}`;
+}
+
+export function popoutWindowFeatures(opener: {
+  readonly screenX: number;
+  readonly screenY: number;
+}): string {
+  return [
+    "popup=yes",
+    `width=${POPOUT_WIDTH}`,
+    `height=${POPOUT_HEIGHT}`,
+    `left=${Math.round(opener.screenX) + POPOUT_OFFSET}`,
+    `top=${Math.round(opener.screenY) + POPOUT_OFFSET}`,
+  ].join(",");
+}
+
+/** Windows this document opened, so a repeat popout can focus instead of duplicate. */
+const openPopouts = new Map<string, Window>();
+
+export interface ThreadPopoutHost {
+  readonly open: (url: string, target: string, features: string) => Window | null;
+  readonly screenX: number;
+  readonly screenY: number;
+  readonly origin: string;
+}
+
+function browserHost(): ThreadPopoutHost {
+  return {
+    open: (url, target, features) => window.open(url, target, features),
+    screenX: window.screenX,
+    screenY: window.screenY,
+    origin: window.location.origin,
+  };
+}
+
+/**
+ * Opens (or re-focuses) the window showing this thread. Returns false when the
+ * browser refused to open one, so the caller can keep the pane where it is.
+ */
+export function openThreadPopout(
+  thread: ScopedThreadRef,
+  host: ThreadPopoutHost = browserHost(),
+): boolean {
+  const name = popoutWindowName(thread);
+  const existing = openPopouts.get(name);
+  if (existing && !existing.closed) {
+    existing.focus();
+    return true;
+  }
+  openPopouts.delete(name);
+
+  const opened = host.open(
+    `${host.origin}${popoutPathForThread(thread)}`,
+    name,
+    popoutWindowFeatures(host),
+  );
+  if (!opened) return false;
+  openPopouts.set(name, opened);
+  opened.focus();
+  return true;
+}

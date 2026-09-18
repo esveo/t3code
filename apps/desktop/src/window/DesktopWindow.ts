@@ -29,6 +29,7 @@ import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
 import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import { makeQuitShortcutHandler } from "./QuitHold.ts";
+import { isThreadPopoutUrl, resolvePopoutWindowOptions } from "./popoutWindow.ts";
 
 const TITLEBAR_HEIGHT = 40;
 // Matches --workspace-topbar-height in apps/web/src/index.css. Native macOS
@@ -349,17 +350,28 @@ export const make = Effect.gen(function* () {
   // open (or retry) the real main. That is the failure the pool's swallowed
   // post-readiness window-open error would otherwise strand the user in:
   // splash up, backend ready, no main, and activation only re-reveals splash.
-  const withoutSplash = (window: Option.Option<Electron.BrowserWindow>) =>
+  // Thread popout windows need the same treatment: they are real windows the
+  // fallback would otherwise hand out as the main window once the main one
+  // is gone.
+  const popoutWindows = new Set<Electron.BrowserWindow>();
+
+  const withoutSecondaryWindow = (window: Option.Option<Electron.BrowserWindow>) =>
     Ref.get(splashWindowRef).pipe(
       Effect.map((splash) =>
-        Option.isSome(splash) && Option.isSome(window) && window.value === splash.value
+        Option.isSome(window) &&
+        ((Option.isSome(splash) && window.value === splash.value) ||
+          popoutWindows.has(window.value))
           ? Option.none<Electron.BrowserWindow>()
           : window,
       ),
     );
 
-  const currentMainWindow = electronWindow.currentMainOrFirst.pipe(Effect.flatMap(withoutSplash));
-  const focusedMainWindow = electronWindow.focusedMainOrFirst.pipe(Effect.flatMap(withoutSplash));
+  const currentMainWindow = electronWindow.currentMainOrFirst.pipe(
+    Effect.flatMap(withoutSecondaryWindow),
+  );
+  const focusedMainWindow = electronWindow.focusedMainOrFirst.pipe(
+    Effect.flatMap(withoutSecondaryWindow),
+  );
 
   const createWindow = Effect.fn("desktop.window.createWindow")(function* (): Effect.fn.Return<
     Electron.BrowserWindow,
@@ -592,8 +604,11 @@ export const make = Effect.gen(function* () {
           }),
         );
       });
-      contents.on("did-create-window", (popup) => {
+      contents.on("did-create-window", (popup, details) => {
         installContextMenu(popup, popup.webContents);
+        if (!isThreadPopoutUrl({ applicationUrl, targetUrl: details.url })) return;
+        popoutWindows.add(popup);
+        popup.on("closed", () => popoutWindows.delete(popup));
       });
     };
     installContextMenu(window, window.webContents);
@@ -601,7 +616,18 @@ export const make = Effect.gen(function* () {
       installContextMenu(window, contents);
     });
 
-    window.webContents.setWindowOpenHandler(({ url }) => {
+    window.webContents.setWindowOpenHandler(({ url, features }) => {
+      if (isThreadPopoutUrl({ applicationUrl, targetUrl: url })) {
+        return {
+          action: "allow",
+          overrideBrowserWindowOptions: resolvePopoutWindowOptions({
+            features,
+            backgroundColor: getInitialWindowBackgroundColor(shouldUseDarkColors),
+            preloadPath: environment.preloadPath,
+            title: environment.displayName,
+          }),
+        };
+      }
       if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
         void runPromise(electronShell.openExternal(url));
       }

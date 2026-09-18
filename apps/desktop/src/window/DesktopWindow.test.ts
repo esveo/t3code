@@ -469,8 +469,8 @@ describe("DesktopWindow", () => {
         assert.isDefined(attach);
         attach({}, guest);
         attach({}, guest);
-        guest.emit("did-create-window", popupWindow);
-        guest.emit("did-create-window", popupWindow);
+        guest.emit("did-create-window", popupWindow, { url: "https://accounts.example/sign-in" });
+        guest.emit("did-create-window", popupWindow, { url: "https://accounts.example/sign-in" });
 
         for (const [contents, owner] of [
           [guest, host.window],
