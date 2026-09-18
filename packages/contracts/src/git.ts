@@ -6,6 +6,9 @@ import { VcsDriverKind } from "./vcs.ts";
 
 const TrimmedNonEmptyStringSchema = TrimmedNonEmptyString;
 const GIT_LIST_BRANCHES_MAX_LIMIT = 200;
+/** "Load more" grows the window; the cap keeps a single response small enough to send at once. */
+const VCS_COMMIT_GRAPH_MAX_LIMIT = 1000;
+export const VCS_COMMIT_GRAPH_DEFAULT_LIMIT = 200;
 
 // Domain Types
 
@@ -136,6 +139,13 @@ export const VcsListRefsInput = Schema.Struct({
   ),
 });
 export type VcsListRefsInput = typeof VcsListRefsInput.Type;
+
+export const VcsListCommitGraphInput = Schema.Struct({
+  cwd: TrimmedNonEmptyStringSchema,
+  /** How many commits to read, newest first. "Load more" re-reads with a larger window. */
+  limit: Schema.optional(PositiveInt.check(Schema.isLessThanOrEqualTo(VCS_COMMIT_GRAPH_MAX_LIMIT))),
+});
+export type VcsListCommitGraphInput = typeof VcsListCommitGraphInput.Type;
 
 export const VcsCreateWorktreeInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
@@ -272,6 +282,40 @@ export const VcsListRefsResult = Schema.Struct({
   totalCount: NonNegativeInt,
 });
 export type VcsListRefsResult = typeof VcsListRefsResult.Type;
+
+/**
+ * A ref pointing at a commit. The kind comes from Git's full ref path rather
+ * than from the short name, which cannot tell a local `feature/x` apart from a
+ * remote `origin/x`.
+ */
+export const VcsCommitGraphRef = Schema.Struct({
+  kind: Schema.Literals(["head", "branch", "remote", "tag", "other"]),
+  name: TrimmedNonEmptyStringSchema,
+});
+export type VcsCommitGraphRef = typeof VcsCommitGraphRef.Type;
+
+/** One commit as the graph view needs it: enough to draw a row and its edges. */
+export const VcsCommitGraphEntry = Schema.Struct({
+  sha: TrimmedNonEmptyStringSchema,
+  /** Full parent shas in Git's order, so the first entry is the first parent. */
+  parents: Schema.Array(TrimmedNonEmptyStringSchema),
+  /** Refs pointing at this commit, already classified from Git's full decoration. */
+  refs: Schema.Array(VcsCommitGraphRef),
+  author: Schema.String,
+  authoredAt: TrimmedNonEmptyStringSchema,
+  subject: Schema.String,
+});
+export type VcsCommitGraphEntry = typeof VcsCommitGraphEntry.Type;
+
+export const VcsListCommitGraphResult = Schema.Struct({
+  commits: Schema.Array(VcsCommitGraphEntry),
+  /** True when more commits exist behind the window, so the view can offer to load them. */
+  hasMore: Schema.Boolean,
+  isRepo: Schema.Boolean,
+  headSha: Schema.NullOr(TrimmedNonEmptyStringSchema),
+  currentRefName: Schema.NullOr(TrimmedNonEmptyStringSchema),
+});
+export type VcsListCommitGraphResult = typeof VcsListCommitGraphResult.Type;
 
 export const VcsCreateWorktreeResult = Schema.Struct({
   worktree: VcsWorktree,

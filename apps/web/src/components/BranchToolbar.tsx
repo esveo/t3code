@@ -5,9 +5,11 @@ import {
   FolderGit2Icon,
   FolderGitIcon,
   FolderIcon,
+  GitCommitHorizontalIcon,
   HistoryIcon,
   ScaleIcon,
 } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
 import {
   type Ref,
   memo,
@@ -63,6 +65,7 @@ import { cn } from "~/lib/utils";
 export interface BranchToolbarHandle {
   openBranchPicker: () => void;
   usePreviousWorktree: () => void;
+  openGitGraph: () => void;
 }
 
 interface BranchToolbarProps {
@@ -520,6 +523,7 @@ export const BranchToolbar = memo(function BranchToolbar({
       : null;
   const activeProject = useProject(activeProjectRef);
   const hasActiveThread = serverThread !== null || draftThread !== null;
+  const navigate = useNavigate();
   const activeWorktreePath = forceNewWorktree
     ? null
     : (serverThread?.worktreePath ?? draftThread?.worktreePath ?? null);
@@ -567,6 +571,21 @@ export const BranchToolbar = memo(function BranchToolbar({
     });
   }, [activeProjectRef, draftId, previousWorktreeSeed, setDraftThreadContext, threadRef]);
 
+  // The graph reads the repository the thread actually runs in: its worktree
+  // when it has one, the project's workspace root otherwise.
+  const gitGraphCwd = activeWorktreePath ?? activeProject?.workspaceRoot ?? null;
+  const openGitGraph = useCallback(() => {
+    if (gitGraphCwd === null) return;
+    void navigate({
+      to: "/git-graph",
+      search: {
+        environmentId,
+        cwd: gitGraphCwd,
+        ...(activeProject ? { title: activeProject.title } : {}),
+      },
+    });
+  }, [activeProject, environmentId, gitGraphCwd, navigate]);
+
   useImperativeHandle(
     ref,
     () => ({
@@ -576,11 +595,13 @@ export const BranchToolbar = memo(function BranchToolbar({
         onUsePreviousWorktree();
         onComposerFocusRequest?.();
       },
+      openGitGraph,
     }),
     [
       canUsePreviousWorktree,
       onComposerFocusRequest,
       onUsePreviousWorktree,
+      openGitGraph,
       previousWorktreeSeed,
       showGitControls,
     ],
@@ -686,11 +707,33 @@ export const BranchToolbar = memo(function BranchToolbar({
         />
       ) : null}
 
+      {showGitControls && gitGraphCwd !== null ? (
+        <Tooltip>
+          <TooltipTrigger
+            data-composer-context-control
+            className="ml-auto hidden @3xl/composer-surface:inline-flex"
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Open Git graph"
+                onClick={openGitGraph}
+              >
+                <GitCommitHorizontalIcon className="size-3.5 opacity-70" />
+              </Button>
+            }
+          />
+          <TooltipPopup>Git graph</TooltipPopup>
+        </Tooltip>
+      ) : null}
       {showGitControls ? (
         <BranchToolbarBranchSelector
           forceNewWorktree={forceNewWorktree}
           ref={branchSelectorRef}
-          className="min-w-0 flex-initial justify-end @3xl/composer-surface:ml-auto"
+          className={cn(
+            "min-w-0 flex-initial justify-end",
+            gitGraphCwd === null && "@3xl/composer-surface:ml-auto",
+          )}
           environmentId={environmentId}
           threadId={threadId}
           {...(draftId ? { draftId } : {})}

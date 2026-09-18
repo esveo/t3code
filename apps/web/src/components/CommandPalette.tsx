@@ -47,6 +47,7 @@ import {
   FileSearchIcon,
   FolderIcon,
   FolderPlusIcon,
+  GitCommitHorizontalIcon,
   LinkIcon,
   MessageSquareIcon,
   MonitorIcon,
@@ -1783,6 +1784,30 @@ function OpenCommandPaletteDialog(props: {
       icon: <SquarePenIcon className={ITEM_ICON_CLASS} />,
       addonIcon: <SquarePenIcon className={ADDON_ICON_CLASS} />,
       groups: [{ value: "projects", label: "Projects", items: projectThreadItems }],
+    });
+  }
+
+  // The graph reads the thread's worktree when it has one, the project root otherwise.
+  const gitGraphCwd = activeThread?.worktreePath ?? currentProjectCwd;
+  if (currentProjectEnvironmentId !== null && gitGraphCwd !== null) {
+    actionItems.push({
+      kind: "action",
+      value: "action:open-git-graph",
+      searchTerms: ["git", "graph", "commits", "history", "branches", "log"],
+      title: "Open Git graph",
+      icon: <GitCommitHorizontalIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "gitGraph.open",
+      run: async () => {
+        const title = currentProjectId ? projectTitleById.get(currentProjectId) : undefined;
+        await navigate({
+          to: "/git-graph",
+          search: {
+            environmentId: currentProjectEnvironmentId,
+            cwd: gitGraphCwd,
+            ...(title ? { title } : {}),
+          },
+        });
+      },
     });
   }
 

@@ -66,6 +66,7 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "rightPanel.close",
   "pullRequest.copyNumber",
   "diff.toggle",
+  "gitGraph.open",
   "preview.toggle",
   "preview.refresh",
   "preview.focusUrl",

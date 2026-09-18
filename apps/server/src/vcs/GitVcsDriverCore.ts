@@ -20,6 +20,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
 
 import {
   GitCommandError,
+  VCS_COMMIT_GRAPH_DEFAULT_LIMIT,
   type ReviewDiffFileContentsInput,
   type ReviewDiffPreviewInput,
   type ReviewDiffFileStat,
@@ -31,6 +32,7 @@ import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { compactTraceAttributes } from "@t3tools/shared/observability";
 import { decodeJsonResult } from "@t3tools/shared/schemaJson";
 import { gitCommandDuration, gitCommandsTotal, withMetrics } from "../observability/Metrics.ts";
+import { commitGraphLogArgs, parseCommitGraphLog } from "./commitGraphLog.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
 import {
   parseRemoteNames,
@@ -3002,6 +3004,43 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     },
   );
 
+  const listCommitGraph: GitVcsDriver.GitVcsDriver["Service"]["listCommitGraph"] = Effect.fn(
+    "listCommitGraph",
+  )(function* (input) {
+    const repositoryPaths = yield* resolveRepositoryPaths(input.cwd).pipe(
+      Effect.catchTags({
+        GitCommandError: (error) =>
+          isMissingGitCwdError(error) ? Effect.succeed(null) : Effect.fail(error),
+      }),
+    );
+    if (repositoryPaths === null) {
+      return { commits: [], hasMore: false, isRepo: false, headSha: null, currentRefName: null };
+    }
+
+    const limit = input.limit ?? VCS_COMMIT_GRAPH_DEFAULT_LIMIT;
+    const [logStdout, headResult] = yield* Effect.all(
+      [
+        runGitStdout("GitVcsDriver.listCommitGraph", input.cwd, commitGraphLogArgs({ limit })),
+        executeGit("GitVcsDriver.listCommitGraph.head", input.cwd, ["rev-parse", "HEAD"], {
+          timeoutMs: 5_000,
+          allowNonZeroExit: true,
+        }),
+      ],
+      { concurrency: 2 },
+    );
+
+    // One commit past the window only answers whether more exist; it is not returned.
+    const parsed = parseCommitGraphLog(logStdout);
+    const headSha = headResult.exitCode === 0 ? headResult.stdout.trim() : "";
+    return {
+      commits: parsed.slice(0, limit),
+      hasMore: parsed.length > limit,
+      isRepo: true,
+      headSha: headSha.length > 0 ? headSha : null,
+      currentRefName: repositoryPaths.currentBranch,
+    };
+  });
+
   const createWorktree: GitVcsDriver.GitVcsDriver["Service"]["createWorktree"] = Effect.fn(
     "createWorktree",
   )(function* (input, options) {
@@ -3567,6 +3606,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     getReviewDiffFileContents,
     readConfigValue,
     listRefs,
+    listCommitGraph,
     createWorktree: (input, options) =>
       withListRefsInvalidation(input.cwd, createWorktree(input, options)),
     fetchPullRequestBranch: (input) =>

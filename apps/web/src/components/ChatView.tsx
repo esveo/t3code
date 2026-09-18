@@ -6857,6 +6857,13 @@ export default function ChatView(props: ChatViewProps) {
         return;
       }
 
+      if (command === "gitGraph.open") {
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat) branchToolbarRef.current?.openGitGraph();
+        return;
+      }
+
       if (command === "composer.previousWorktree") {
         event.preventDefault();
         event.stopPropagation();
