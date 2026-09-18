@@ -17,6 +17,10 @@ rules win wherever they differ.
 - The user runs the fork's desktop app from prebuilt slots in
   `~/Documents/private/t3code-app` (see `scripts/fork-app.sh`) and switches
   builds themselves.
+- Setting all of this up from a fresh checkout — app, server, service launcher,
+  cloud config, client pairing — is written down in
+  [docs/fork/setup.md](docs/fork/setup.md). Keep it accurate when the setup
+  changes; it is the only place that records the traps.
 
 ## Finishing a feature
 
