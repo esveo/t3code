@@ -22,18 +22,38 @@ rules win wherever they differ.
   [docs/fork/setup.md](docs/fork/setup.md). Keep it accurate when the setup
   changes; it is the only place that records the traps.
 
+## The `fork` branch
+
+`fork` is what the user runs. Everything that should go live is merged into it,
+and nothing else: feature work happens on its own branch, so several features
+can be in flight without disturbing the build the user works in all day.
+
+- Build features on a branch of their own, off `fork`. Never commit to `fork`
+  directly, and never to `main`.
+- A feature is live when it is merged into `fork` and a build prepared from
+  `fork` (see below). Merge, do not rebase `fork` onto anything: its history is
+  the record of what the user has been running.
+- Only merge a feature the user asked to go live. Ask when in doubt — an
+  unfinished branch in `fork` is a broken app for the rest of the day.
+- Upstream is rebased into the feature branches, not into `fork`; `fork` takes
+  it through the merges like anything else.
+
 ## Finishing a feature
 
 The user runs the fork's desktop app as a prebuilt build and switches to a new
 one with the app's update button. Your job ends with that build prepared.
 
-1. Commit your work (or leave it uncommitted if the user prefers; `prepare`
-   includes uncommitted changes of the checkout it runs in).
-2. Run `scripts/fork-app.sh prepare` from the checkout or worktree that holds
-   the feature. It builds into `~/Documents/private/t3code-app/next` without
-   touching the running app and takes one to two minutes. If it fails, fix the
-   cause and run it again.
-3. End with a short message: what changed, branch and commit, what you
+1. Commit your work on its feature branch (or leave it uncommitted if the user
+   prefers; `prepare` includes uncommitted changes of the checkout it runs in).
+2. When the feature should go live, merge it into `fork` and prepare from
+   there. Work the user has not asked to ship stays on its branch, and
+   `prepare` from that branch is fine for trying it out — just say which branch
+   the prepared build came from.
+3. Run `scripts/fork-app.sh prepare` from the checkout or worktree that holds
+   what should be built. It builds into `~/Documents/private/t3code-app/next`
+   without touching the running app and takes one to two minutes. If it fails,
+   fix the cause and run it again.
+4. End with a short message: what changed, branch and commit, what you
    verified, and that the build is prepared, so the update button offers it.
 
 - **Never run `scripts/fork-app.sh restart`, `start`, or `stop`**, never run
@@ -58,5 +78,5 @@ one with the app's update button. Your job ends with that build prepared.
   rewrites `pnpm-lock.yaml`; restore it with `git checkout pnpm-lock.yaml`
   unless dependencies really changed.
 - Keep fork-only changes in new files where possible, so rebasing onto
-  `upstream/main` stays conflict-free. Commit on a branch, never on `main`.
-  A worktree needs its own `npx pnpm@11.10.0 install` first.
+  `upstream/main` stays conflict-free. Commit on a feature branch, never on
+  `fork` or `main`. A worktree needs its own `npx pnpm@11.10.0 install` first.
