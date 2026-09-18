@@ -192,6 +192,25 @@ function RootRouteView() {
     );
   }
 
+  // A popped-out thread owns its window: no sidebar, no command palette, and
+  // no EventRouter, whose bootstrap navigation would pull the window off the
+  // thread it was opened for. Everything the chat itself needs stays.
+  if (pathname.startsWith("/popout/")) {
+    return (
+      <ToastProvider>
+        <AnchoredToastProvider>
+          <ContrastAppearanceSync />
+          <EnvironmentThemeSync />
+          <GlassAppearanceSync />
+          <FontAppearanceSync />
+          <ConfirmDialogHost />
+          <CustomSnoozeDialogHost />
+          <Outlet />
+        </AnchoredToastProvider>
+      </ToastProvider>
+    );
+  }
+
   const appShell = (
     <CommandPalette>
       <AppSidebarLayout>

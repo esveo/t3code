@@ -1,7 +1,7 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { GripVerticalIcon, XIcon } from "lucide-react";
+import { GripVerticalIcon, SquareArrowOutUpRightIcon, XIcon } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -46,6 +46,7 @@ import {
   type SplitLeaf,
 } from "./split/splitLayout.logic";
 import { ChatPaneContext } from "./split/chatPane";
+import { openThreadPopout } from "./split/threadPopout";
 import { ThreadRouteView } from "./ThreadRouteView";
 
 const DRAG_START_DISTANCE = 4;
@@ -148,6 +149,16 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
       if (result.navigateTo) navigateToThread(result.navigateTo);
     },
     [navigateToThread, setLayout],
+  );
+
+  // A pane leaves the grid for a window of its own. The pane only closes once
+  // the window is really open, so a blocked popup leaves the layout untouched.
+  const popOutPane = useCallback(
+    (leafId: string, threadRef: ScopedThreadRef) => {
+      if (!openThreadPopout(threadRef)) return;
+      closePane(leafId);
+    },
+    [closePane],
   );
 
   const drop = useCallback(
@@ -307,6 +318,7 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
                 leaf={leaf}
                 routeThreadRef={routeThreadRef}
                 onClose={() => closePane(leaf.id)}
+                onPopOut={(threadRef) => popOutPane(leaf.id, threadRef)}
                 onDragStart={(title) => setDrag({ kind: "leaf", leafId: leaf.id, title })}
               />
             ) : null}
@@ -390,11 +402,13 @@ function PaneHeader({
   leaf,
   routeThreadRef,
   onClose,
+  onPopOut,
   onDragStart,
 }: {
   leaf: SplitLeaf;
   routeThreadRef: ScopedThreadRef | null;
   onClose: () => void;
+  onPopOut: (threadRef: ScopedThreadRef) => void;
   onDragStart: (title: string) => void;
 }) {
   const threadRef = leaf.thread === "route" ? routeThreadRef : leaf.thread;
@@ -430,6 +444,17 @@ function PaneHeader({
     >
       <GripVerticalIcon className="size-3.5 shrink-0 opacity-60" />
       <span className="min-w-0 flex-1 truncate">{title}</span>
+      {threadRef ? (
+        <Button
+          aria-label="Open pane in a new window"
+          size="icon-xs"
+          variant="ghost"
+          className="shrink-0"
+          onClick={() => onPopOut(threadRef)}
+        >
+          <SquareArrowOutUpRightIcon />
+        </Button>
+      ) : null}
       <Button
         aria-label="Close pane"
         size="icon-xs"
