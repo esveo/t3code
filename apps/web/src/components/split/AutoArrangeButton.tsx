@@ -47,9 +47,10 @@ function measureChatArea(): { width: number; height: number } {
 /**
  * Sidebar header button that arranges the pinned and active threads in a
  * grid. A table-style picker preselects the suggested grid; any other
- * columns × rows can be chosen before confirming. Cells beyond the existing
- * threads are filled with new empty threads in a project picked from the
- * command palette (threads always belong to a project).
+ * columns × rows can be chosen before confirming. Confirming arranges the
+ * open sessions alone, or fills the cells they leave free with new empty
+ * threads in a project picked from the command palette (threads always belong
+ * to a project).
  */
 export function AutoArrangeButton({
   threads,
@@ -179,7 +180,12 @@ export function AutoArrangeButton({
     return refs;
   };
 
-  const arrange = () => {
+  /**
+   * Arranges the sessions that are already open. `fillWithNew` decides what
+   * happens to cells they do not fill: leave them out of the grid, or create
+   * that many threads in a project the user picks.
+   */
+  const arrange = (fillWithNew: boolean) => {
     const grid = selected;
     const capacity = grid.columns * grid.rows;
     const existing = threads
@@ -187,11 +193,10 @@ export function AutoArrangeButton({
       .map((thread) => scopeThreadRef(thread.environmentId, thread.id));
     setOpen(false);
     const missing = capacity - existing.length;
-    if (missing <= 0) {
+    if (!fillWithNew || missing <= 0) {
       applyLayout(existing, grid);
       return;
     }
-    // Fill the remaining cells with new threads in a project the user picks.
     openCommandPalette({
       open: "new-thread-in",
       onProjectPicked: (projectRef) => {
@@ -213,7 +218,8 @@ export function AutoArrangeButton({
             <div className="font-medium text-sm">Auto arrange</div>
             <div className="text-muted-foreground text-xs">
               {threads.length} pinned and active {threads.length === 1 ? "session" : "sessions"}.
-              The suggested grid is preselected; click another to change it.
+              The suggested grid is preselected; click another to change it. “Arrange new” fills the
+              cells they leave free with new threads.
             </div>
           </div>
 
@@ -267,7 +273,7 @@ export function AutoArrangeButton({
               {placedCount < threads.length
                 ? `Arranges ${placedCount} of ${threads.length}`
                 : newCount > 0
-                  ? `${placedCount} + ${newCount} new ${newCount === 1 ? "thread" : "threads"}`
+                  ? `${placedCount} open, ${newCount} free ${newCount === 1 ? "cell" : "cells"}`
                   : `${placedCount} ${placedCount === 1 ? "pane" : "panes"}`}
             </span>
           </div>
@@ -276,8 +282,16 @@ export function AutoArrangeButton({
             <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button ref={arrangeButtonRef} size="sm" onClick={arrange}>
-              Arrange
+            <Button
+              ref={arrangeButtonRef}
+              size="sm"
+              variant="outline"
+              onClick={() => arrange(false)}
+            >
+              Arrange existing
+            </Button>
+            <Button size="sm" disabled={newCount === 0} onClick={() => arrange(true)}>
+              Arrange new
             </Button>
           </div>
         </div>
