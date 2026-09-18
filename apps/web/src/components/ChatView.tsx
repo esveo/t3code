@@ -187,6 +187,7 @@ import {
   useRightPanelStore,
 } from "../rightPanelStore";
 import { useIsActiveChatPane } from "./split/chatPane";
+import { installDesktopClipboardPasteFallback } from "../lib/desktopClipboardPaste";
 import {
   isPreviewSupportedInRuntime,
   setActivePreviewTab,
@@ -6994,6 +6995,30 @@ export default function ChatView(props: ChatViewProps) {
       window.removeEventListener("paste", handler, true);
     };
   }, [activeThreadId, composerRef]);
+
+  // The desktop shell drops a paste that lands on no editable element, so the
+  // handler above never runs there. Read the clipboard ourselves in that case.
+  useEffect(
+    () =>
+      installDesktopClipboardPasteFallback({
+        bridge: window.desktopBridge,
+        target: window,
+        macPlatform: isMacPlatform(navigator.platform),
+        shouldHandle: (event) =>
+          isActivePaneRef.current &&
+          Boolean(activeThreadId) &&
+          !isCommandPaletteOpen() &&
+          getTerminalFocusOwner() === null &&
+          composerRef.current?.isModelPickerOpen() !== true &&
+          shouldRedirectInputToComposer(event),
+        insertText: (text, { bypassAutoAttachment }) => {
+          if (!composerRef.current?.pasteTextAtEnd(text, { bypassAutoAttachment })) {
+            composerRef.current?.insertTextAtEnd(text);
+          }
+        },
+      }),
+    [activeThreadId, composerRef],
+  );
 
   const [pendingRevert, setPendingRevert] = useState<{
     turnCount: number;

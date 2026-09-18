@@ -379,6 +379,28 @@ export const pasteAsText = DesktopIpc.makeIpcMethod({
   }),
 });
 
+/**
+ * Clipboard text for a paste the page never receives. Chromium runs Cmd+V as
+ * an editing command, so with no editable element focused it pastes nowhere
+ * and dispatches no paste event at all: the composer would silently swallow
+ * the keystroke. The renderer asks for the text and inserts it itself.
+ */
+export const readClipboardText = DesktopIpc.makeIpcMethod({
+  channel: IpcChannels.READ_CLIPBOARD_TEXT_CHANNEL,
+  payload: Schema.Undefined,
+  result: Schema.String,
+  handler: Effect.fn("desktop.ipc.window.readClipboardText")(function* (_input, event) {
+    // Every app window may ask, popouts included, but only app windows: they
+    // are the ones carrying the bridge preload.
+    const senderId = event?.sender.id;
+    const fromAppWindow = Electron.BrowserWindow.getAllWindows().some(
+      (window) => !window.isDestroyed() && window.webContents.id === senderId,
+    );
+    if (!fromAppWindow) return "";
+    return yield* Effect.promise(async () => await Electron.clipboard.readText());
+  }),
+});
+
 /** Theme files are a few KB; anything larger returns empty text and lets the
  *  renderer reject it by size without the contents ever crossing the bridge. */
 const PICKED_THEME_FILE_MAX_BYTES = 256 * 1024;
