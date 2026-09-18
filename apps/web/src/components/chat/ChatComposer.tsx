@@ -277,6 +277,7 @@ import {
   renderProviderTraitsPicker,
 } from "./composerProviderState";
 import { ContextWindowMeter, ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
+import { ContextWindowControl } from "./ContextWindowControl";
 import {
   providerSupportsManualCompaction,
   resolveContextWindowModelDisplayName,
@@ -4896,10 +4897,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   const restingHiddenBlockCount = composerControlsInStrip ? restingControlsHiddenBlockCount : 0;
   const composerControlsCompact = !composerControlsInStrip && isComposerFooterCompact;
+  // Blocks leave the strip from the trailing end, so how many follow a block
+  // decides when it goes. Derived rather than hardcoded: the cluster's length
+  // depends on which controls the thread's provider offers.
+  const restingBlockIds = [
+    ...(providerTraitsPicker ? ["traits"] : []),
+    "mode",
+    ...(activeContextWindow ? ["context"] : []),
+  ];
+  const isRestingBlockHidden = (id: string) =>
+    composerControlsHidden ||
+    restingHiddenBlockCount > restingBlockIds.length - 1 - restingBlockIds.indexOf(id);
   const restingProviderTraitsPicker = renderProviderTraitsPicker({
     ...providerTraitsPickerInput,
     size: "xs",
-    hidden: composerControlsHidden || restingHiddenBlockCount > 1,
+    hidden: isRestingBlockHidden("traits"),
   });
   const restingBlockDefs = [
     ...(providerTraitsPicker
@@ -4923,12 +4935,35 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           interactionMode={interactionMode}
           runtimeMode={runtimeMode}
           size={composerControlsInStrip ? "xs" : "sm"}
-          hidden={composerControlsHidden || restingHiddenBlockCount > 0}
+          hidden={isRestingBlockHidden("mode")}
           onToggleInteractionMode={toggleInteractionMode}
           onRuntimeModeChange={handleRuntimeModeChange}
         />
       ),
     },
+    // Trailing, so the reading the user can recover from a hover is the first
+    // thing to leave a narrow footer.
+    ...(activeContextWindow
+      ? [
+          {
+            id: "context",
+            content: (
+              <>
+                <ComposerControlSeparator size={composerControlsInStrip ? "xs" : "sm"} />
+                <ContextWindowControl
+                  usage={activeContextWindow}
+                  modelDisplayName={activeThreadModelDisplayName}
+                  size={composerControlsInStrip ? "xs" : "sm"}
+                  hidden={isRestingBlockHidden("context")}
+                  compactDisabled={compactDisabled}
+                  compactDisabledReason={resolvedCompactDisabledReason}
+                  {...(compactCommandAvailable ? { onCompact: compactThreadContext } : {})}
+                />
+              </>
+            ),
+          },
+        ]
+      : []),
   ];
   const hiddenRestingBlockIds = restingBlockDefs
     .slice(restingBlockDefs.length - restingHiddenBlockCount)
@@ -5044,14 +5079,29 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       />
 
       {composerControlsCompact ? (
-        <CompactComposerControlsMenu
-          interactionMode={interactionMode}
-          runtimeMode={runtimeMode}
-          showInteractionModeToggle={planModeUiEnabled}
-          traitsMenuContent={providerTraitsMenuContent}
-          onToggleInteractionMode={toggleInteractionMode}
-          onRuntimeModeChange={handleRuntimeModeChange}
-        />
+        <>
+          <CompactComposerControlsMenu
+            interactionMode={interactionMode}
+            runtimeMode={runtimeMode}
+            showInteractionModeToggle={planModeUiEnabled}
+            traitsMenuContent={providerTraitsMenuContent}
+            onToggleInteractionMode={toggleInteractionMode}
+            onRuntimeModeChange={handleRuntimeModeChange}
+          />
+          {activeContextWindow ? (
+            // A compact footer keeps the fill and drops the number; the
+            // popover still carries the tokens.
+            <ContextWindowControl
+              usage={activeContextWindow}
+              modelDisplayName={activeThreadModelDisplayName}
+              showPercentage={false}
+              hidden={composerControlsHidden}
+              compactDisabled={compactDisabled}
+              compactDisabledReason={resolvedCompactDisabledReason}
+              {...(compactCommandAvailable ? { onCompact: compactThreadContext } : {})}
+            />
+          ) : null}
+        </>
       ) : (
         <>
           {restingBlockDefs.map((def, index) => {
