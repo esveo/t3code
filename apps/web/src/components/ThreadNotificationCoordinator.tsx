@@ -15,6 +15,7 @@ import {
   unlockNotificationAudio,
 } from "../threadNotifications";
 import { resolveSidebarThreadStatus } from "./Sidebar.logic";
+import { revealThreadInSplit } from "./split/splitPanes";
 import { toastManager } from "./ui/toast";
 
 export function ThreadNotificationCoordinator() {
@@ -101,6 +102,26 @@ function EnvironmentNotifications({
     new Map<ThreadId, { attention: string | null; completion: number | null }>(),
   );
 
+  // In a split the thread belongs next to the others, not in place of one: the
+  // grid focuses its pane or appends one, and only outside a split does opening
+  // a thread mean navigating.
+  const openThread = useCallback(
+    (threadId: ThreadId) => {
+      const handled = revealThreadInSplit(
+        { environmentId, threadId },
+        activeEnvironmentId && activeThreadId
+          ? {
+              environmentId: activeEnvironmentId as EnvironmentId,
+              threadId: activeThreadId as ThreadId,
+            }
+          : null,
+      );
+      if (handled) return;
+      void navigate({ to: "/$environmentId/$threadId", params: { environmentId, threadId } });
+    },
+    [activeEnvironmentId, activeThreadId, environmentId, navigate],
+  );
+
   useEffect(() => {
     if (shell.status !== "live" || Option.isNone(shell.snapshot)) {
       previous.current.clear();
@@ -159,10 +180,7 @@ function EnvironmentNotifications({
             children: "Open thread",
             onClick: () => {
               toastManager.close(toastId);
-              void navigate({
-                to: "/$environmentId/$threadId",
-                params: { environmentId, threadId: thread.id },
-              });
+              openThread(thread.id);
             },
           },
         });
@@ -185,10 +203,7 @@ function EnvironmentNotifications({
         notification.addEventListener("click", () => {
           notification.close();
           window.focus();
-          void navigate({
-            to: "/$environmentId/$threadId",
-            params: { environmentId, threadId: thread.id },
-          });
+          openThread(thread.id);
         });
       } catch {
         // Some browsers expose Notification but reject desktop presentation.
@@ -201,8 +216,8 @@ function EnvironmentNotifications({
     environmentId,
     inAppNotificationsEnabled,
     mode,
-    navigate,
     onNotification,
+    openThread,
     shell,
   ]);
 

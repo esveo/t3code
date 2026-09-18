@@ -2,12 +2,15 @@ import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contract
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  appendRoutePane,
+  appendThreadPane,
   buildGridLayout,
   closeLeaf,
   computeLayout,
   dropExistingLeaf,
   dropNewThread,
   equalizeBranch,
+  findLeaf,
   gridColumnCounts,
   listLeaves,
   recommendGrid,
@@ -275,5 +278,70 @@ describe("auto arrange", () => {
     });
     expect(navigateTo).toEqual(thread("a"));
     expect(listLeaves(layout)[0]!.thread).toBe("route");
+  });
+});
+
+describe("appending a pane for a new thread", () => {
+  it("keeps the routed thread in its own pane and appends the route pane", () => {
+    const grid = buildGridLayout({
+      threads: [thread("a"), thread("b")],
+      routeThread: thread("a"),
+      grid: { columns: 2, rows: 1 },
+      makeId: (prefix) => `${prefix}-0`,
+    }).layout;
+    let id = 0;
+    const layout = appendRoutePane(grid, thread("a"), (prefix) => `${prefix}-${++id}`);
+    expect(
+      listLeaves(layout).map((leaf) => (leaf.thread === "route" ? "route" : leaf.thread.threadId)),
+    ).toEqual(["a", "b", "route"]);
+    expect(layout.kind === "split" && layout.sizes.map((size) => +size.toFixed(3))).toEqual([
+      0.333, 0.333, 0.333,
+    ]);
+  });
+
+  it("leaves a single pane alone", () => {
+    expect(appendRoutePane(SINGLE_PANE_LAYOUT, thread("a"), (prefix) => prefix)).toBe(
+      SINGLE_PANE_LAYOUT,
+    );
+  });
+
+  it("leaves the layout alone when the thread already has a pane", () => {
+    const layout = dropNewThread(SINGLE_PANE_LAYOUT, {
+      targetLeafId: "route",
+      zone: "right",
+      thread: thread("a"),
+      ...ids(),
+    });
+    expect(appendRoutePane(layout, thread("a"), (prefix) => prefix)).toBe(layout);
+  });
+});
+
+describe("revealing a thread in the split", () => {
+  it("appends a pane and leaves the route pane alone", () => {
+    const grid = buildGridLayout({
+      threads: [thread("a"), thread("b")],
+      routeThread: thread("a"),
+      grid: { columns: 2, rows: 1 },
+      makeId: (prefix) => `${prefix}-0`,
+    }).layout;
+    const appended = appendThreadPane(grid, thread("c"), (prefix) => `${prefix}-1`);
+    expect(appended).not.toBeNull();
+    expect(
+      listLeaves(appended!.layout).map((leaf) =>
+        leaf.thread === "route" ? "route" : leaf.thread.threadId,
+      ),
+    ).toEqual(["route", "b", "c"]);
+    expect(findLeaf(appended!.layout, appended!.leafId)?.thread).toEqual(thread("c"));
+  });
+
+  it("reports nothing to do without a split or for a thread already shown", () => {
+    expect(appendThreadPane(SINGLE_PANE_LAYOUT, thread("a"), (prefix) => prefix)).toBeNull();
+    const layout = dropNewThread(SINGLE_PANE_LAYOUT, {
+      targetLeafId: "route",
+      zone: "right",
+      thread: thread("a"),
+      ...ids(),
+    });
+    expect(appendThreadPane(layout, thread("a"), (prefix) => prefix)).toBeNull();
   });
 });

@@ -154,6 +154,63 @@ export function setLeafThread(
   return replaceNode(root, targetId, (node) => (node.kind === "leaf" ? { ...node, thread } : node));
 }
 
+/** Adds `leaf` as a new column on the right, shrinking the existing ones evenly. */
+function appendColumn(root: SplitNode, leaf: SplitLeaf, makeId: (prefix: string) => string) {
+  if (root.kind === "split" && root.direction === "row") {
+    const share = 1 / (root.children.length + 1);
+    return {
+      ...root,
+      children: [...root.children, leaf],
+      sizes: [...root.sizes.map((size) => size * (1 - share)), share],
+    };
+  }
+  return {
+    kind: "split",
+    id: makeId("split"),
+    direction: "row",
+    children: [root, leaf],
+    sizes: [0.5, 0.5],
+  } satisfies SplitBranch;
+}
+
+/**
+ * Keeps the routed thread on screen and hands the route pane to whatever the
+ * URL points at next: the thread moves into a pane of its own and a fresh
+ * route pane is appended. Used when a new thread starts while the split is
+ * open, so it joins the grid instead of taking over the pane the user was
+ * reading. Without a split, or when the thread already has a pane of its own,
+ * the layout is unchanged.
+ */
+export function appendRoutePane(
+  root: SplitNode,
+  routeThread: ScopedThreadRef,
+  makeId: (prefix: string) => string,
+): SplitNode {
+  if (root.kind === "leaf") return root;
+  if (!findLeaf(root, ROUTE_LEAF_ID) || findThreadLeaf(root, routeThread)) return root;
+  const pinned = replaceNode(root, ROUTE_LEAF_ID, () => ({
+    kind: "leaf",
+    id: makeId("pane"),
+    thread: routeThread,
+  }));
+  return appendColumn(pinned, { kind: "leaf", id: ROUTE_LEAF_ID, thread: "route" }, makeId);
+}
+
+/**
+ * Appends a pane showing `thread` without touching the route pane, for opening
+ * a thread from outside the grid. Returns null when there is no split to append
+ * to, or when the thread already has a pane.
+ */
+export function appendThreadPane(
+  root: SplitNode,
+  thread: ScopedThreadRef,
+  makeId: (prefix: string) => string,
+): { readonly layout: SplitNode; readonly leafId: string } | null {
+  if (root.kind === "leaf" || findThreadLeaf(root, thread)) return null;
+  const leaf: SplitLeaf = { kind: "leaf", id: makeId("pane"), thread };
+  return { layout: appendColumn(root, leaf, makeId), leafId: leaf.id };
+}
+
 /** Swaps the positions of two leaves, keeping their ids and threads together. */
 export function swapLeaves(root: SplitNode, firstId: string, secondId: string): SplitNode {
   const first = findLeaf(root, firstId);

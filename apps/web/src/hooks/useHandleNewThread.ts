@@ -34,6 +34,7 @@ import { readT3ProjectFileDefaultThreadEnvMode } from "../lib/t3ProjectFileDefau
 import { environmentServerConfigsAtom } from "../state/server";
 import { resolveThreadRouteTarget } from "../threadRoutes";
 import { legacyProjectCwdPreferenceKey, useUiStateStore } from "../uiStateStore";
+import { keepRouteThreadInSplit } from "../components/split/splitPanes";
 import { useClientSettings } from "./useSettings";
 
 interface NewThreadWorkspaceOptions {
@@ -94,6 +95,19 @@ export function useNewThreadHandler() {
       const requestingRouteHref = router.state.location.href;
       const routeChangedSinceRequest = () => router.state.location.href !== requestingRouteHref;
       const currentRouteTarget = getCurrentRouteTarget();
+      // Opening the draft hands the route pane to it. In a split view that
+      // would drop the thread the user was reading, so it keeps a pane of its
+      // own and the new thread gets an appended one.
+      const openDraft = async (draftId: DraftId) => {
+        const previousRouteThread =
+          currentRouteTarget?.kind === "server" ? currentRouteTarget.threadRef : null;
+        await router.navigate({
+          to: "/draft/$draftId",
+          params: { draftId },
+          replace: options?.replace ?? false,
+        });
+        keepRouteThreadInSplit(previousRouteThread);
+      };
       // A new thread carries the user's working mode from the thread being
       // viewed. The target project's configured model still wins; interaction
       // mode carries independently. Permissions, branch, worktree, and env mode
@@ -322,11 +336,7 @@ export function useNewThreadHandler() {
           ) {
             return opened;
           }
-          await router.navigate({
-            to: "/draft/$draftId",
-            params: { draftId: emptyStoredDraftThread.draftId },
-            replace: options?.replace ?? false,
-          });
+          await openDraft(emptyStoredDraftThread.draftId);
           return opened;
         })();
       }
@@ -398,11 +408,7 @@ export function useNewThreadHandler() {
             interactionMode: racedDraft.interactionMode,
             ...pickExplicitWorkspaceOptions(options),
           });
-          await router.navigate({
-            to: "/draft/$draftId",
-            params: { draftId: racedDraft.draftId },
-            replace: options?.replace ?? false,
-          });
+          await openDraft(racedDraft.draftId);
           return { draftId: racedDraft.draftId, threadId: racedDraft.threadId };
         }
         setLogicalProjectDraftThreadId(logicalProjectKey, projectRef, draftId, {
@@ -427,11 +433,7 @@ export function useNewThreadHandler() {
           // state. The project default wins when both are present.
           setModelSelection(draftId, modelSelectionOverride, { replaceOptions: true });
         }
-        await router.navigate({
-          to: "/draft/$draftId",
-          params: { draftId },
-          replace: options?.replace ?? false,
-        });
+        await openDraft(draftId);
         return { draftId, threadId };
       })();
     },

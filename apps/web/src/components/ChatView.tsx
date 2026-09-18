@@ -186,7 +186,7 @@ import {
   type RightPanelSurface,
   useRightPanelStore,
 } from "../rightPanelStore";
-import { useIsActiveChatPane } from "../splitThreadStore";
+import { useIsActiveChatPane } from "./split/chatPane";
 import {
   isPreviewSupportedInRuntime,
   setActivePreviewTab,
@@ -3992,7 +3992,11 @@ export default function ChatView(props: ChatViewProps) {
   const canInterruptRunningThread =
     buildRunningThreadTurnInterruptInput(activeThread, phase) !== null;
 
+  // Only the pane the user is working in may pull the caret. A background pane
+  // that remounts, finishes a turn, or closes its terminal would otherwise take
+  // the keyboard mid-sentence and the next keystrokes land in the wrong thread.
   const focusComposer = useCallback(() => {
+    if (!isActivePaneRef.current) return;
     composerRef.current?.focusAtEnd();
   }, [composerRef]);
   useEffect(
@@ -7085,8 +7089,7 @@ export default function ChatView(props: ChatViewProps) {
           promptRef.current = nextPrompt;
           composerRef.current?.resetCursorState({ prompt: nextPrompt, cursor: nextPrompt.length });
           requestAnimationFrame(() => {
-            if (currentRouteThreadKeyRef.current === routeThreadKey)
-              composerRef.current?.focusAtEnd();
+            if (currentRouteThreadKeyRef.current === routeThreadKey) focusComposer();
           });
         }
       } catch (error) {

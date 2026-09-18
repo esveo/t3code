@@ -1,5 +1,4 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { createContext, useContext } from "react";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
@@ -57,20 +56,6 @@ export const useSplitThreadStore = create<SplitThreadStoreState>()(
     },
   ),
 );
-
-/** The id of the pane a ChatView renders in. */
-export const ChatPaneContext = createContext<string>(ROUTE_LEAF_ID);
-
-/**
- * Whether the ChatView rendering this hook owns window-level input. Without a
- * split only the route pane exists, so it always does.
- */
-export function useIsActiveChatPane(): boolean {
-  const pane = useContext(ChatPaneContext);
-  return useSplitThreadStore((state) =>
-    state.layout.kind === "leaf" ? pane === ROUTE_LEAF_ID : state.activeLeafId === pane,
-  );
-}
 
 // The drop a sidebar thread drag would perform if released now: set while the
 // pointer is over a chat pane. The sidebar runs it when dnd-kit ends the drag.

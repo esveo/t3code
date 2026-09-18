@@ -32,6 +32,7 @@ import {
   type EnvironmentMachineKind,
   type FilesystemBrowseResult,
   type ProjectId,
+  type ScopedThreadRef,
   type SourceControlDiscoveryResult,
   type SourceControlProviderKind,
   type SourceControlRepositoryInfo,
@@ -185,6 +186,7 @@ import { primaryServerKeybindingsAtom, primaryServerProvidersAtom } from "../sta
 import { deriveProviderInstanceEntries, type ProviderInstanceEntry } from "../providerInstances";
 import { resolveShortcutCommand, threadJumpIndexFromCommand } from "../keybindings";
 import { CommandDialog, CommandDialogPopup, CommandFooterAction } from "./ui/command";
+import { revealThreadInSplit } from "./split/splitPanes";
 import { Button } from "./ui/button";
 import { Kbd, KbdGroup } from "./ui/kbd";
 import { stackedThreadToast, toastManager } from "./ui/toast";
@@ -1092,6 +1094,23 @@ function OpenCommandPaletteDialog(props: {
   );
 
   const activeThreadId = activeThread?.id;
+
+  // Opening a thread leaves the split as it is: the thread takes focus in the
+  // pane it already has, or gets one appended. Only without a split does it
+  // mean navigating.
+  const openThread = useCallback(
+    async (threadRef: ScopedThreadRef) => {
+      const routeThread = activeThread
+        ? scopeThreadRef(activeThread.environmentId, activeThread.id)
+        : null;
+      if (revealThreadInSplit(threadRef, routeThread)) return;
+      await navigate({
+        to: "/$environmentId/$threadId",
+        params: buildThreadRouteParams(threadRef),
+      });
+    },
+    [activeThread, navigate],
+  );
   const currentProjectEnvironmentId =
     activeThread?.environmentId ?? activeDraftThread?.environmentId ?? null;
   const currentProjectId = activeThread?.projectId ?? activeDraftThread?.projectId ?? null;
@@ -1198,12 +1217,7 @@ function OpenCommandPaletteDialog(props: {
             clientSettings.sidebarThreadSortOrder,
           );
       if (latestThread) {
-        await navigate({
-          to: "/$environmentId/$threadId",
-          params: buildThreadRouteParams(
-            scopeThreadRef(latestThread.environmentId, latestThread.id),
-          ),
-        });
+        await openThread(scopeThreadRef(latestThread.environmentId, latestThread.id));
         return;
       }
 
@@ -1383,10 +1397,7 @@ function OpenCommandPaletteDialog(props: {
             : undefined;
         },
         runThread: async (thread) => {
-          await navigate({
-            to: "/$environmentId/$threadId",
-            params: buildThreadRouteParams(scopeThreadRef(thread.environmentId, thread.id)),
-          });
+          await openThread(scopeThreadRef(thread.environmentId, thread.id));
         },
       }),
     [
@@ -2172,10 +2183,7 @@ function OpenCommandPaletteDialog(props: {
             query: linkedThreadSearch.query,
             icon: <MessageSquareIcon className={ITEM_ICON_CLASS} />,
             runThread: async (thread) => {
-              await navigate({
-                to: "/$environmentId/$threadId",
-                params: buildThreadRouteParams(scopeThreadRef(thread.environmentId, thread.id)),
-              });
+              await openThread(scopeThreadRef(thread.environmentId, thread.id));
             },
           })
         : allThreadItems,
@@ -2239,12 +2247,7 @@ function OpenCommandPaletteDialog(props: {
           clientSettings.sidebarThreadSortOrder,
         );
         if (latestThread) {
-          await navigate({
-            to: "/$environmentId/$threadId",
-            params: buildThreadRouteParams(
-              scopeThreadRef(latestThread.environmentId, latestThread.id),
-            ),
-          });
+          await openThread(scopeThreadRef(latestThread.environmentId, latestThread.id));
         } else {
           const navigationResult = await settlePromise(() =>
             handleNewThread(scopeProjectRef(existing.environmentId, existing.id)),

@@ -148,6 +148,7 @@ import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
 import { ProjectEnvironmentBadge } from "./ProjectEnvironmentBadge";
 import { buildThreadActionMenuItems } from "./threadActionMenu.logic";
 import { AutoArrangeButton } from "./split/AutoArrangeButton";
+import { hasThreadPane, revealThreadInSplit } from "./split/splitPanes";
 import {
   consumeSidebarThreadDrop,
   endSidebarThreadDrag,
@@ -2829,12 +2830,16 @@ export default function Sidebar() {
       if (isMobile) {
         setOpenMobile(false);
       }
+      // A split stays as it is: the thread takes focus in the pane it already
+      // has, or gets one appended. Navigating instead would hand the route
+      // pane to it and drop the thread that pane was running.
+      if (revealThreadInSplit(threadRef, routeThreadRef)) return Promise.resolve();
       return router.navigate({
         to: "/$environmentId/$threadId",
         params: buildThreadRouteParams(threadRef),
       });
     },
-    [clearSelection, isMobile, router, setOpenMobile, setSelectionAnchor],
+    [clearSelection, isMobile, routeThreadRef, router, setOpenMobile, setSelectionAnchor],
   );
 
   // Dropping files on a row opens that thread and attaches the files there.
@@ -2853,6 +2858,7 @@ export default function Sidebar() {
       // resolved route key is the server thread while the URL is still the
       // draft route, and its composer would swallow the drop then discard it.
       const landedBefore =
+        hasThreadPane(threadRef) ||
         router.buildLocation({
           to: "/$environmentId/$threadId",
           params: buildThreadRouteParams(threadRef),
@@ -2863,6 +2869,7 @@ export default function Sidebar() {
         // A newer drop may have arrived while the navigation was in flight;
         // clearing by id leaves those files untouched.
         const landed =
+          hasThreadPane(threadRef) ||
           router.buildLocation({
             to: "/$environmentId/$threadId",
             params: buildThreadRouteParams(threadRef),

@@ -1,3 +1,4 @@
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { GripVerticalIcon, XIcon } from "lucide-react";
@@ -24,12 +25,7 @@ import {
   type ThreadRouteTarget,
 } from "../threadRoutes";
 import { resolveThreadSyncPhase } from "../threadSync";
-import {
-  ChatPaneContext,
-  setPendingPaneDrop,
-  useSplitThreadStore,
-  type SplitDragSource,
-} from "../splitThreadStore";
+import { setPendingPaneDrop, useSplitThreadStore, type SplitDragSource } from "../splitThreadStore";
 import {
   closeLeaf,
   computeLayout,
@@ -49,6 +45,7 @@ import {
   type Rect,
   type SplitLeaf,
 } from "./split/splitLayout.logic";
+import { ChatPaneContext } from "./split/chatPane";
 import { ThreadRouteView } from "./ThreadRouteView";
 
 const DRAG_START_DISTANCE = 4;
@@ -114,6 +111,14 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
   useEffect(() => {
     if (!findLeaf(layout, activeLeafId)) setActiveLeaf(ROUTE_LEAF_ID);
   }, [activeLeafId, layout, setActiveLeaf]);
+
+  // Navigating is a deliberate move to the route pane, so it takes over input.
+  // Nothing else may claim it: a pane the user is not in must never pull focus
+  // out of the one they are typing in.
+  const routeKey = target.kind === "server" ? scopedThreadKey(target.threadRef) : target.draftId;
+  useEffect(() => {
+    if (routeKey) setActiveLeaf(ROUTE_LEAF_ID);
+  }, [routeKey, setActiveLeaf]);
 
   // Whichever pane the user last pointed at or focused owns window-level input.
   useEffect(() => {
