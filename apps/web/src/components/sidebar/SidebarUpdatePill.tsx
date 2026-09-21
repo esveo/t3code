@@ -150,7 +150,7 @@ function SidebarUpdateControl() {
   const tooltip = showUpdateDetails
     ? state
       ? isForkAppInstall
-        ? getForkAppUpdateTooltip(state)
+        ? getForkAppUpdateTooltip()
         : getDesktopUpdateButtonTooltip(state)
       : "Update available"
     : showCheckIcon

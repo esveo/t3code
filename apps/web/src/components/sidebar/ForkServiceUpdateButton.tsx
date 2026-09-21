@@ -18,9 +18,8 @@ export function isForkUpdateState(state: DesktopUpdateState | null): boolean {
   return state?.forkService !== undefined;
 }
 
-export function getForkAppUpdateTooltip(state: DesktopUpdateState): string {
-  const version = state.downloadedVersion ?? state.availableVersion ?? "update";
-  return `App ${version} is ready. Click to restart the app; agents keep running.`;
+export function getForkAppUpdateTooltip(): string {
+  return "Restart app to update";
 }
 
 /** The app's update glyph, distinct from the service's. */
@@ -36,13 +35,10 @@ export function ForkAppUpdateIcon() {
 }
 
 export function getForkServiceTooltip(service: DesktopForkServiceState): string {
-  if (service.restarting) return `Restarting the service on ${service.pendingVersion}…`;
-  if (service.error) return `Service restart failed: ${service.error} Click to retry.`;
-  if (service.pendingVersion) {
-    const running = service.runningVersion ? ` (running ${service.runningVersion})` : "";
-    return `Service ${service.pendingVersion} is ready${running}. Click to restart the service; this ends all running agent sessions.`;
-  }
-  return `Service update needs manual setup: ${service.blockedReason}`;
+  if (service.restarting) return "Restarting service…";
+  if (service.error) return "Service restart failed. Click to retry.";
+  if (service.pendingVersion) return "Restart service to update (ends running sessions)";
+  return "Service update needs manual setup";
 }
 
 export function ForkServiceUpdateButton() {
@@ -135,10 +131,12 @@ function ForkServiceUpdateControl() {
 export function ForkServiceSettingsRow() {
   const { service, canRestart, restart } = useForkServiceRestart();
   if (!service) return null;
-  const description =
-    service.pendingVersion || service.blockedReason
-      ? getForkServiceTooltip(service)
-      : `Running ${service.runningVersion ?? "an unknown version"}.`;
+  const running = `Running ${service.runningVersion ?? "an unknown version"}.`;
+  const description = service.error
+    ? `Restart failed: ${service.error}`
+    : service.pendingVersion
+      ? `${service.pendingVersion} is ready. Restarting ends running agent sessions.`
+      : (service.blockedReason ?? running);
   return (
     <SettingsRow
       title="Background service"
