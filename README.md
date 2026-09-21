@@ -1,125 +1,19 @@
-# T3 Code
+Fork of [T3 Code](https://github.com/pingdotgg/t3code) with features and fixes:
 
-T3 Code is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).
-
-Works with your subscriptions on Claude Code, Codex, Cursor, Grok Build, OpenCode, and Google Antigravity. If they're set up on your computer, T3 Code can control them.
-
-## "Wait, what are you selling me?"
-
-Nothing. We built T3 Code because we wanted the best possible development experience with agents. We were inspired by existing solutions like the Codex desktop app, Conductor, Claude Desktop and Cursor Glass, but none met our bar.
-
-We wanted something performant, remote-ready, and truly open. If we ever go the wrong direction, we want you to have everything you need to fork and build the editor that you want.
-
-## Installation
-
-> [!WARNING]
-> T3 Code currently supports Codex, Claude, Cursor, Grok Build, OpenCode, and Antigravity. Install and authenticate at least one provider before use:
->
-> - Codex: install [Codex CLI](https://developers.openai.com/codex/cli) and run `codex login`
-> - Claude: install [Claude Code](https://claude.com/product/claude-code) and run `claude auth login`
-> - Cursor: install [Cursor CLI](https://cursor.com/cli) and run `agent login`
-> - Grok Build: install [Grok Build CLI](https://x.ai/cli) and run `grok login`
-> - OpenCode: install [OpenCode](https://opencode.ai) and run `opencode auth login`
-> - Antigravity: enable it in Settings, then use **Install Antigravity** and **Sign in with Google**. No CLI is required.
-
-### Command line
-
-```bash
-curl -fsSL https://t3.codes/install.sh | sh
-```
-
-On Windows, in PowerShell:
-
-```powershell
-irm https://t3.codes/install.ps1 | iex
-```
-
-Then run `t3` to start the server and open the local web app. `t3 service install` keeps it running in the background, `t3 update` moves to a newer release, and `t3 --help` has the full reference.
-
-To try it once without installing, run `npx t3@latest` instead.
-
-### Desktop app
-
-Install the latest version of the desktop app from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), or from your favorite package registry:
-
-#### Windows (`winget`)
-
-```bash
-winget install T3Tools.T3Code
-```
-
-#### macOS (Homebrew)
-
-```bash
-brew install --cask t3-code
-```
-
-#### Arch Linux (AUR)
-
-Stable:
-
-```bash
-yay -S t3code-bin
-```
-
-Nightly:
-
-```bash
-yay -S t3code-nightly-bin
-```
-
-The AUR packaging is maintained in this repository under [`packaging/aur`](./packaging/aur).
-
-## Some notes
-
-We are very very early in this project. Expect bugs.
-
-We are (mostly) not accepting contributions yet. Small fixes may be considered. Big features will not be.
-
-## Documentation
-
-Full docs live in [docs/](./docs). There's no docs site yet.
-
-- [Install and first run](./docs/user/install.md)
-- [Permission modes](./docs/user/permission-modes.md)
-- [Keyboard shortcuts](./docs/user/keybindings.md)
-- [Project settings](./docs/user/project-settings.md)
-- [Remote access from a phone or another machine](./docs/user/remote-access.md)
-- [Keeping app and server in sync](./docs/user/updating.md)
-- [Source control integrations](./docs/user/source-control.md)
-- Multiple accounts: [Codex](./docs/user/providers-codex.md) · [Claude](./docs/user/providers-claude.md)
-- [Run T3 Code as a background service](./docs/user/background-service.md)
-
-Building from source? Start at [docs/internals/overview.md](./docs/internals/overview.md).
-
-## If you REALLY want to contribute still.... read this first
-
-### Install `vp`
-
-T3 Code uses Vite+ so you'll need to install the global `vp` command-line tool.
-
-#### macOS / Linux
-
-```bash
-curl -fsSL https://vite.plus | bash
-```
-
-#### Windows
-
-```bash
-irm https://vite.plus/ps1 | iex
-```
-
-Checkout their getting started guide for more information: https://viteplus.dev/guide/
-
-### Install dependencies
-
-```bash
-vp i
-```
-
-Read [CONTRIBUTING.md](./CONTRIBUTING.md) before reporting a bug or opening a PR.
-
-Have a feature request? Start an [Ideas discussion](https://github.com/pingdotgg/t3code/discussions/categories/ideas).
-
-Need support? Join the [Discord](https://discord.gg/jn4EGJjrvv).
+- Split view: threads side by side, arranged by drag and drop ([2187e3f](https://github.com/Pawl-Patrol/t3code/commit/2187e3f3806fbcde1ff88f46996463c5b75fe0c6), [5cb5bdb](https://github.com/Pawl-Patrol/t3code/commit/5cb5bdb6624ab3914b0d208c78fce88f97fec1ce), [7cdf86e](https://github.com/Pawl-Patrol/t3code/commit/7cdf86eabd53d9957a465091d845d19ce120c5fa), [263c6b2](https://github.com/Pawl-Patrol/t3code/commit/263c6b2a7abe3af8962a6096358e0d58193244cb), [4429f8a](https://github.com/Pawl-Patrol/t3code/commit/4429f8abc4cf1b99b8d3e1fdf16f471ea90a25b5))
+- Double-clicking a split divider evens out its panes ([b139481](https://github.com/Pawl-Patrol/t3code/commit/b1394819061fca9f0f15d83bd50ae314e08f26d2))
+- Dragging a split divider pushes its neighbours aside ([97140f8](https://github.com/Pawl-Patrol/t3code/commit/97140f8dad997841f79504d4263f21f699ae0dff))
+- Split panes pop out into their own window ([505658f](https://github.com/Pawl-Patrol/t3code/commit/505658fa5fbf08c1d85dcfc7bee9c79d4bdb3233), [4d6816d](https://github.com/Pawl-Patrol/t3code/commit/4d6816d69b619a9feafe112deba25c6b3f621398), [06aba2e](https://github.com/Pawl-Patrol/t3code/commit/06aba2e053f4a63ae596ea1d8fca0e6b27e2f2b2))
+- Auto arrange lays out pinned and active threads in a grid ([5f262e2](https://github.com/Pawl-Patrol/t3code/commit/5f262e2e87c593665bda44180928867f9dc37e42), [fd33715](https://github.com/Pawl-Patrol/t3code/commit/fd3371511d99b57efe08ec54b02f4815e287babe), [884db0d](https://github.com/Pawl-Patrol/t3code/commit/884db0dc214be1e10fe0d2420fc05ad6d8397bc7), [3f89773](https://github.com/Pawl-Patrol/t3code/commit/3f897730dd9b3510823612d068c5df5f10badca5), [c6f1f7d](https://github.com/Pawl-Patrol/t3code/commit/c6f1f7d3207f4503a1a62feaf6e3290c86667e50), [6b497f3](https://github.com/Pawl-Patrol/t3code/commit/6b497f35956f1b58df6a95ae85e7e6c0e8ed6d6e), [b25144a](https://github.com/Pawl-Patrol/t3code/commit/b25144a94b05f2ef40e10207996ff66e227ea415))
+- The current turn's prompt stays pinned above the timeline ([701656b](https://github.com/Pawl-Patrol/t3code/commit/701656bc2b9e52855f3669d7000801ea685ef44d))
+- The composer shows the minutes left before the prompt cache expires ([a854e37](https://github.com/Pawl-Patrol/t3code/commit/a854e37245c778af12bf1a1dec5a2a111acf4ba7))
+- Context usage sits with the composer controls ([ae7cbda](https://github.com/Pawl-Patrol/t3code/commit/ae7cbdaab001bd0ca5882ab2047b1df6bc4580fd), [712a93d](https://github.com/Pawl-Patrol/t3code/commit/712a93d4e683d771bbd94806b60059b3d9dc5809))
+- Git graph of the current repository in the right panel ([e07fc06](https://github.com/Pawl-Patrol/t3code/commit/e07fc068c1ef7d22ed30e5afabd0809a4d8066cc), [2763366](https://github.com/Pawl-Patrol/t3code/commit/2763366ca96635f7a9eb87b04d7de23abc5ece93), [f4b9ee5](https://github.com/Pawl-Patrol/t3code/commit/f4b9ee5b498b3329e689a4e1217816dd7ceb944e), [d0a34e5](https://github.com/Pawl-Patrol/t3code/commit/d0a34e5424002086c29d9925c9df9fb208ef8ad7))
+- Diff commits, ranges and uncommitted changes from the git graph ([7b8f7a5](https://github.com/Pawl-Patrol/t3code/commit/7b8f7a5ada90b4d59a4a790790ba451b6713352c))
+- Fix: prompts lost to an early Claude interrupt carry into the next turn ([acfe170](https://github.com/Pawl-Patrol/t3code/commit/acfe170c157f0127a44a9ece44860a2d077ed846))
+- Fix: paste reaches the composer in the desktop app with nothing focused ([17e8cc6](https://github.com/Pawl-Patrol/t3code/commit/17e8cc6f3ba6640ad1f2c141fea808957005e23c))
+- Fix: paste works after clicking a copy button ([4ff61ba](https://github.com/Pawl-Patrol/t3code/commit/4ff61bae5136bc12500c868f090ebf6050fdb7f1))
+- Fork app: prebuilt slots, switched with an update button ([a6263b1](https://github.com/Pawl-Patrol/t3code/commit/a6263b17ce999ad54e265fc9af72bf69fe054924), [c4bf257](https://github.com/Pawl-Patrol/t3code/commit/c4bf257446c02952869882c4b565818f7eecce6c), [ed5a25c](https://github.com/Pawl-Patrol/t3code/commit/ed5a25c50a6769fea435998789b5d9a9345d14fc), [00b6967](https://github.com/Pawl-Patrol/t3code/commit/00b6967c5687349f425e02c224b0cfd3abb022f8), [5bdf346](https://github.com/Pawl-Patrol/t3code/commit/5bdf34663fa1cd35a6f54bec90faef5bebe4ac8c))
+- Fork server: built as a t3 runtime, restarted with its own button ([2731460](https://github.com/Pawl-Patrol/t3code/commit/27314606a31f076b97330287821901da3c46774d), [c8cacc2](https://github.com/Pawl-Patrol/t3code/commit/c8cacc24aa66dea691dc041b7fe5b6220a08bcce))
+- Fork watcher: prepares a build whenever `fork` moves ([244f216](https://github.com/Pawl-Patrol/t3code/commit/244f2162c324398161dcb598ec1cd5ffbc5c76f1), [b726f39](https://github.com/Pawl-Patrol/t3code/commit/b726f398a51d6b001013425a3e6bf3f58951e9c6), [c6a2768](https://github.com/Pawl-Patrol/t3code/commit/c6a2768feb5c257dfb9ce3a2c10d971a72c0347e), [365ab45](https://github.com/Pawl-Patrol/t3code/commit/365ab45eeca1607c13e55e9cb9d395d0df263df3))
+- Setup guide in [docs/fork/setup.md](docs/fork/setup.md) ([a98e8f6](https://github.com/Pawl-Patrol/t3code/commit/a98e8f684047a0ae20aa139adf0e138d8565c83f))

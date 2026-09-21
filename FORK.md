@@ -45,15 +45,20 @@ one with the app's update button. Your job ends with that build prepared.
 
 1. Commit your work on its feature branch (or leave it uncommitted if the user
    prefers; `prepare` includes uncommitted changes of the checkout it runs in).
-2. When the feature should go live, merge it into `fork` and prepare from
-   there. Work the user has not asked to ship stays on its branch, and
-   `prepare` from that branch is fine for trying it out — just say which branch
-   the prepared build came from.
-3. Run `scripts/fork-app.sh prepare` from the checkout or worktree that holds
+2. When the feature should go live, list it in `README.md` first: a separate
+   last commit on the feature branch (after any rebase, so the hashes stay)
+   that adds one bullet of a single short sentence, followed by the feature's
+   commits as links (`[abc1234](https://github.com/Pawl-Patrol/t3code/commit/<full sha>)`).
+   Prefix bug fixes with `Fix:`. A fix to a feature already listed adds its
+   commit to that feature's bullet instead of a new one.
+3. Merge the feature into `fork` and prepare from there. Work the user has not
+   asked to ship stays on its branch, and `prepare` from that branch is fine
+   for trying it out — just say which branch the prepared build came from.
+4. Run `scripts/fork-app.sh prepare` from the checkout or worktree that holds
    what should be built. It builds into `~/Documents/private/t3code-app/next`
    without touching the running app and takes one to two minutes. If it fails,
    fix the cause and run it again.
-4. End with a short message: what changed, branch and commit, what you
+5. End with a short message: what changed, branch and commit, what you
    verified, and that the build is prepared, so the update button offers it.
 
 ### Staying current with `fork`
