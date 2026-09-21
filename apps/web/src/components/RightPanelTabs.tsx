@@ -15,6 +15,7 @@ import type {
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import {
   Bot,
+  OrbitIcon,
   Smartphone,
   ChevronDown,
   ChevronLeft,
@@ -123,6 +124,7 @@ interface RightPanelTabsProps {
   onAddPullRequest: () => void;
   onAddPullRequests: () => void;
   onAddAgents: () => void;
+  onAddAgentStage: () => void;
   onAddDevice: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
@@ -132,6 +134,7 @@ interface RightPanelTabsProps {
   pullRequestAvailable: boolean;
   pullRequestsAvailable: boolean;
   agentsAvailable: boolean;
+  agentStageAvailable: boolean;
   deviceAvailable: boolean;
   pullRequestStatusSeeds?: Readonly<Record<string, PullRequestTabStatusSeed>>;
   /** Running + waiting subagents; badges the Agents card in the empty state. */
@@ -164,6 +167,7 @@ const SURFACE_DISABLED_REASONS = {
   pullRequest: "This thread's branch has no pull request yet.",
   pullRequests: "No linked pull requests are available for this thread.",
   agents: "Agents are only available from a thread.",
+  agentStage: "Enable the agent stage in Settings > General.",
   device: "Devices are only available from a thread.",
 } as const;
 
@@ -189,6 +193,7 @@ const SURFACE_UNAVAILABLE_HINTS = {
   pullRequest: "No pull request on this branch yet.",
   pullRequests: "No linked pull requests available.",
   agents: "Available from a thread.",
+  agentStage: "Enable it in Settings > General.",
   device: "Available from a thread.",
 } as const;
 
@@ -330,6 +335,7 @@ function RightPanelEmptyState(props: {
   onAddPullRequest: () => void;
   onAddPullRequests: () => void;
   onAddAgents: () => void;
+  onAddAgentStage: () => void;
   onAddDevice: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
@@ -339,6 +345,7 @@ function RightPanelEmptyState(props: {
   pullRequestAvailable: boolean;
   pullRequestsAvailable: boolean;
   agentsAvailable: boolean;
+  agentStageAvailable: boolean;
   deviceAvailable: boolean;
   liveAgentCount: number;
 }) {
@@ -417,6 +424,15 @@ function RightPanelEmptyState(props: {
       disabledReason: SURFACE_UNAVAILABLE_HINTS.agents,
       onClick: props.onAddAgents,
       badgeCount: props.liveAgentCount,
+    },
+    {
+      label: "Stage",
+      icon: OrbitIcon,
+      shortcut: "S",
+      available: props.agentStageAvailable,
+      disabledReason: SURFACE_UNAVAILABLE_HINTS.agentStage,
+      onClick: props.onAddAgentStage,
+      badgeCount: 0,
     },
     {
       label: "Device",
@@ -652,6 +668,8 @@ function surfaceTitle(
       return "Pull requests";
     case "agents":
       return "Agents";
+    case "agent-stage":
+      return "Stage";
     case "device":
       return surface.title ?? surface.target?.name ?? "Device";
     case "preview": {
@@ -739,6 +757,8 @@ function SurfaceIcon({
       return <PullRequestGlyph.link className="size-3 shrink-0" />;
     case "agents":
       return <Bot className="size-3 shrink-0" />;
+    case "agent-stage":
+      return <OrbitIcon className="size-3 shrink-0" />;
     case "device":
       return surface.target?.platform === "ios" ? (
         <AppleIcon className="size-3 shrink-0" />
@@ -956,6 +976,14 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       available: props.agentsAvailable,
       disabledReason: SURFACE_DISABLED_REASONS.agents,
       onClick: props.onAddAgents,
+    },
+    {
+      label: "Stage",
+      icon: OrbitIcon,
+      shortcut: "S",
+      available: props.agentStageAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.agentStage,
+      onClick: props.onAddAgentStage,
     },
     {
       label: "Device",
@@ -1437,6 +1465,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddPullRequest={props.onAddPullRequest}
             onAddPullRequests={props.onAddPullRequests}
             onAddAgents={props.onAddAgents}
+            onAddAgentStage={props.onAddAgentStage}
             onAddDevice={props.onAddDevice}
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}
@@ -1446,6 +1475,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             pullRequestAvailable={props.pullRequestAvailable}
             pullRequestsAvailable={props.pullRequestsAvailable}
             agentsAvailable={props.agentsAvailable}
+            agentStageAvailable={props.agentStageAvailable}
             deviceAvailable={props.deviceAvailable}
             liveAgentCount={props.liveAgentCount}
           />
