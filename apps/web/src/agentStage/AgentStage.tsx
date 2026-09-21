@@ -49,8 +49,9 @@ const STATION_ICONS: Record<StageStation, LucideIcon> = {
   waiting: Hand,
 };
 
-/** Room outside the ring for the station labels, in px. */
-const LABEL_MARGIN = 56;
+/** Room outside the ring for the orbiting sprites and the station labels, in px. */
+const LABEL_MARGIN = 72;
+const LABEL_WIDTH = 72;
 /** Sprites circle their station on this radius, in px. */
 const ORBIT = 28;
 const SPRITE = 30;
@@ -249,11 +250,13 @@ export const AgentStage = memo(function AgentStage({
   const placed = new Map<StageStation, number>();
   const motion =
     "transition-transform duration-700 ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none";
+  // A point, not a box: rotations must pivot exactly on the station.
+  const pivot = "absolute top-0 left-0 size-0 [transform-origin:0_0]";
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-foreground" data-agent-stage>
       <style>{ORBIT_STYLE}</style>
-      <div className="flex shrink-0 items-center gap-2 px-3 pt-2">
+      <div className="flex h-10 shrink-0 items-center gap-2 px-3">
         <span className="text-xs text-muted-foreground">
           {model.running ? "Working" : "Resting"}
         </span>
@@ -280,6 +283,8 @@ export const AgentStage = memo(function AgentStage({
           <div className="relative" style={{ width: side, height: side }}>
             <svg
               className="absolute inset-0 text-border"
+              width={side}
+              height={side}
               viewBox={`0 0 ${side} ${side}`}
               aria-hidden
             >
@@ -297,7 +302,12 @@ export const AgentStage = memo(function AgentStage({
             {STAGE_STATIONS.map((station) => {
               const angle = stationAngle(station.id);
               const point = ringPoint(angle, half, ring);
-              const label = ringPoint(angle, half, ring + ORBIT + SPRITE / 2 + 12);
+              const labelPoint = ringPoint(angle, half, ring + ORBIT + SPRITE / 2 + 14);
+              // Keep the label inside the scene: the panel clips anything beyond it.
+              const label = {
+                x: Math.min(Math.max(labelPoint.x, LABEL_WIDTH / 2), side - LABEL_WIDTH / 2),
+                y: Math.min(Math.max(labelPoint.y, 6), side - 6),
+              };
               const Icon = STATION_ICONS[station.id];
               const active = occupied.has(station.id);
               return (
@@ -315,10 +325,10 @@ export const AgentStage = memo(function AgentStage({
                   </div>
                   <span
                     className={cn(
-                      "absolute -translate-x-1/2 -translate-y-1/2 text-[10px] leading-none whitespace-nowrap",
+                      "absolute -translate-x-1/2 -translate-y-1/2 truncate text-center text-[10px] leading-none whitespace-nowrap",
                       active ? "text-foreground" : "text-muted-foreground",
                     )}
-                    style={{ left: label.x, top: label.y }}
+                    style={{ left: label.x, top: label.y, width: LABEL_WIDTH }}
                   >
                     {station.label}
                   </span>
@@ -348,12 +358,17 @@ export const AgentStage = memo(function AgentStage({
                     zIndex: isSelected ? 3 : 2,
                   }}
                 >
-                  <div data-agent-stage-spin data-paused={agent.live ? "false" : "true"}>
+                  <div
+                    className={pivot}
+                    data-agent-stage-spin
+                    data-paused={agent.live ? "false" : "true"}
+                  >
                     <div
-                      className={motion}
+                      className={cn(pivot, motion)}
                       style={{ transform: `rotate(${slotDeg}deg) translate(${ORBIT}px)` }}
                     >
                       <div
+                        className={pivot}
                         data-agent-stage-spin="reverse"
                         data-paused={agent.live ? "false" : "true"}
                       >
@@ -363,7 +378,7 @@ export const AgentStage = memo(function AgentStage({
                           aria-pressed={isSelected}
                           onClick={() => onSelect(agent.id)}
                           className={cn(
-                            "flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-xs font-semibold text-white shadow-md transition-[scale,opacity] duration-300",
+                            "absolute top-0 left-0 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-xs font-semibold text-white shadow-md transition-[scale,opacity] duration-300",
                             "ring-offset-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                             isSelected && "ring-2 ring-foreground",
                             !agent.live && "opacity-50",
@@ -408,7 +423,7 @@ export const AgentStage = memo(function AgentStage({
         ) : null}
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center justify-center gap-1.5 px-3 pb-2">
+      <div className="flex h-9 shrink-0 items-center gap-1.5 overflow-x-auto px-3 pb-2 [scrollbar-width:none]">
         {model.agents.map((agent, index) => (
           <button
             key={agent.id}
@@ -416,7 +431,7 @@ export const AgentStage = memo(function AgentStage({
             onClick={() => onSelect(agent.id)}
             aria-pressed={agent.id === selected.id}
             className={cn(
-              "flex max-w-48 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] transition-colors",
+              "flex max-w-48 shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] transition-colors",
               agent.id === selected.id
                 ? "border-foreground/40 bg-accent text-foreground"
                 : "border-border text-muted-foreground hover:text-foreground",
