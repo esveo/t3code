@@ -17,7 +17,6 @@ import {
   buildPrContentPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
-import { buildThoughtTrailPrompt, sanitizeThoughtTrail } from "./ThoughtTrailPrompt.ts";
 import {
   sanitizeCommitSubject,
   sanitizePrTitle,
@@ -55,8 +54,7 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle"
-      | "summarizeThoughts";
+      | "generateThreadTitle";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -263,26 +261,10 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
-  const summarizeThoughts: TextGeneration.TextGeneration["Service"]["summarizeThoughts"] =
-    Effect.fn("CursorTextGeneration.summarizeThoughts")(function* (input) {
-      const { prompt, outputSchema } = buildThoughtTrailPrompt({ trace: input.trace });
-
-      const generated = yield* runCursorJson({
-        operation: "summarizeThoughts",
-        cwd: input.cwd,
-        prompt,
-        outputSchemaJson: outputSchema,
-        modelSelection: input.modelSelection,
-      });
-
-      return sanitizeThoughtTrail(generated);
-    });
-
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
-    summarizeThoughts,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

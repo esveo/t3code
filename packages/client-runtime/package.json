@@ -179,10 +179,6 @@
       "types": "./src/state/relayDiscovery.ts",
       "default": "./src/state/relayDiscovery.ts"
     },
-    "./state/thought-trail": {
-      "types": "./src/state/thoughtTrail.ts",
-      "default": "./src/state/thoughtTrail.ts"
-    },
     "./state/review": {
       "types": "./src/state/review.ts",
       "default": "./src/state/review.ts"
