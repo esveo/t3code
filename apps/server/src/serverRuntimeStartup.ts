@@ -47,6 +47,11 @@ import * as ProviderService from "./provider/Services/ProviderService.ts";
 import * as ProviderSessionDirectory from "./provider/Services/ProviderSessionDirectory.ts";
 import * as ProviderSessionReaper from "./provider/Services/ProviderSessionReaper.ts";
 import { forkParked } from "./serverActivation.ts";
+import {
+  BACKGROUND_TASKS_KEY,
+  buildBackgroundWorkContinuationPrompt,
+  readBackgroundTasks,
+} from "./orchestration/BackgroundWorkLedger.ts";
 import * as ServiceLauncherClient from "./cloud/serviceLauncherClient.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import {
@@ -506,25 +511,26 @@ export const reconcileProviderSessions = Effect.gen(function* () {
   const { threads } = yield* query.getCommandReadModel();
   // Provider startup can report ready before the continuation is submitted.
   // Find those markers in one read rather than querying every idle thread.
-  const preparedThreadIds = new Set(
-    (yield* directory.listBindings().pipe(
-      Effect.catch((cause) =>
-        Effect.logWarning("failed to read prepared provider continuations", { cause }).pipe(
-          Effect.andThen(
-            Effect.forEach(
-              threads.filter(
-                (thread) => thread.session?.status === "ready" && !liveThreadIds.has(thread.id),
-              ),
-              (thread) =>
-                directory.getBinding(thread.id).pipe(Effect.orElseSucceed(() => Option.none())),
+  const listedBindings = yield* directory.listBindings().pipe(
+    Effect.catch((cause) =>
+      Effect.logWarning("failed to read prepared provider continuations", { cause }).pipe(
+        Effect.andThen(
+          Effect.forEach(
+            threads.filter(
+              (thread) => thread.session?.status === "ready" && !liveThreadIds.has(thread.id),
             ),
-          ),
-          Effect.map((bindings) =>
-            bindings.flatMap((binding) => (Option.isSome(binding) ? [binding.value] : [])),
+            (thread) =>
+              directory.getBinding(thread.id).pipe(Effect.orElseSucceed(() => Option.none())),
           ),
         ),
+        Effect.map((bindings) =>
+          bindings.flatMap((binding) => (Option.isSome(binding) ? [binding.value] : [])),
+        ),
       ),
-    ))
+    ),
+  );
+  const preparedThreadIds = new Set(
+    listedBindings
       .filter(
         (binding) =>
           readServerUpdateContinuationTurnId(binding.runtimePayload) !== null &&
@@ -533,13 +539,24 @@ export const reconcileProviderSessions = Effect.gen(function* () {
       )
       .map((binding) => binding.threadId),
   );
+  // A settled turn can leave subagents, workflows and watch loops running.
+  const backgroundThreadIds = new Set(
+    listedBindings
+      .filter((binding) => readBackgroundTasks(binding.runtimePayload).length > 0)
+      .map((binding) => binding.threadId),
+  );
+  const hasOrphanedTurn = (
+    session: NonNullable<(typeof threads)[number]["session"]>,
+    threadId: ThreadId,
+  ) =>
+    session.status === "starting" ||
+    session.status === "running" ||
+    session.activeTurnId !== null ||
+    (session.status === "ready" && preparedThreadIds.has(threadId));
   const orphanedThreads = threads.filter(
     (thread) =>
       thread.session !== null &&
-      (thread.session.status === "starting" ||
-        thread.session.status === "running" ||
-        thread.session.activeTurnId !== null ||
-        (thread.session.status === "ready" && preparedThreadIds.has(thread.id))) &&
+      (hasOrphanedTurn(thread.session, thread.id) || backgroundThreadIds.has(thread.id)) &&
       !liveThreadIds.has(thread.id),
   );
 
@@ -586,6 +603,11 @@ export const reconcileProviderSessions = Effect.gen(function* () {
       Option.isSome(binding) &&
       binding.value.status === "running" &&
       binding.value.resumeCursor != null;
+    const backgroundTasks = Option.isSome(binding)
+      ? readBackgroundTasks(binding.value.runtimePayload)
+      : [];
+    const interruptedBackground =
+      continueAfterRestartFor(thread.projectId) && backgroundTasks.length > 0;
     const settleAsError = (lastError: string) =>
       Effect.gen(function* () {
         yield* Effect.gen(function* () {
@@ -596,6 +618,7 @@ export const reconcileProviderSessions = Effect.gen(function* () {
               runtimePayload: {
                 ...readRuntimePayload(binding.value.runtimePayload),
                 activeTurnId: null,
+                ...(backgroundTasks.length > 0 ? { [BACKGROUND_TASKS_KEY]: null } : {}),
                 ...(continuationMarkerPresent || interruptedByRestart
                   ? {
                       [SERVER_UPDATE_CONTINUATION_KEY]: null,
@@ -646,8 +669,11 @@ export const reconcileProviderSessions = Effect.gen(function* () {
 
     if (
       Option.isSome(binding) &&
-      (continuationMarked || interruptedByRestart) &&
-      (session.status === "running" || session.status === "starting" || preparedWhileReady) &&
+      (continuationMarked || interruptedByRestart || interruptedBackground) &&
+      (session.status === "running" ||
+        session.status === "starting" ||
+        preparedWhileReady ||
+        interruptedBackground) &&
       binding.value.resumeCursor != null &&
       thread.archivedAt === null &&
       thread.deletedAt === null
@@ -662,6 +688,9 @@ export const reconcileProviderSessions = Effect.gen(function* () {
             [SERVER_UPDATE_CONTINUATION_KEY]: session.activeTurnId ?? continuationTurnId,
             continueAfterServerUpdatePrepared: true,
             activeTurnId: null,
+            // The prompt carries the list from here; the resumed session
+            // records its own background work again.
+            ...(backgroundTasks.length > 0 ? { [BACKGROUND_TASKS_KEY]: null } : {}),
           },
         });
         const resumedAt = DateTime.formatIso(yield* DateTime.now);
@@ -703,9 +732,11 @@ export const reconcileProviderSessions = Effect.gen(function* () {
             const capabilities = yield* providerService.getCapabilities(providerInstanceId);
             yield* providerService.sendTurn({
               threadId: thread.id,
-              ...(capabilities.promptlessTurnContinuation === true
-                ? { continuation: true }
-                : { input: SERVER_UPDATE_CONTINUATION_PROMPT }),
+              ...(backgroundTasks.length > 0
+                ? { input: buildBackgroundWorkContinuationPrompt(backgroundTasks) }
+                : capabilities.promptlessTurnContinuation === true
+                  ? { continuation: true }
+                  : { input: SERVER_UPDATE_CONTINUATION_PROMPT }),
               interactionMode: thread.interactionMode,
             });
           });
@@ -736,6 +767,29 @@ export const reconcileProviderSessions = Effect.gen(function* () {
       continue;
     }
 
+    if (!hasOrphanedTurn(session, thread.id)) {
+      // Only background work was running and it cannot be resumed: the thread
+      // itself is fine, so drop the stale list instead of reporting an error.
+      if (Option.isSome(binding)) {
+        yield* directory
+          .upsert({
+            threadId: thread.id,
+            provider: binding.value.provider,
+            runtimePayload: { [BACKGROUND_TASKS_KEY]: null },
+          })
+          .pipe(
+            Effect.catchCause((cause) =>
+              Cause.hasInterrupts(cause)
+                ? Effect.failCause(cause)
+                : Effect.logWarning("failed to clear interrupted background work", {
+                    threadId: thread.id,
+                    cause,
+                  }),
+            ),
+          );
+      }
+      continue;
+    }
     yield* settleAsError(ORPHANED_PROVIDER_SESSION_ERROR);
   }
 }).pipe(

@@ -6,10 +6,10 @@
  * background service when the server changed. Every minute this runs
  * `fork-app.sh watch`, which does both for new commits on `origin/fork`.
  *
- * The two halves update separately, because only the service restart ends
- * agent sessions: the prepared app is reported as a downloaded update, whose
- * "install" hands off to `fork-app.sh restart`, and a pending server rides
- * along as `forkService`, switched to by `ForkServiceUpdates.restart`.
+ * A prepared app or a pending server is reported as one downloaded update,
+ * whose "install" hands off to `fork-app.sh update`: it restarts the service on
+ * the new server and the app side by side. Threads, subagents and workflows
+ * continue after the service restart, so there is nothing to confirm.
  *
  * Active only when `T3CODE_FORK_APP_ROOT` and `T3CODE_FORK_APP_SCRIPT` are set;
  * otherwise the regular updater is used.
@@ -20,7 +20,6 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import type { DesktopForkServiceState, DesktopUpdateState } from "@t3tools/contracts";
-import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -43,6 +42,9 @@ const POLL_INTERVAL = Duration.seconds(5);
 const WATCH_INTERVAL = Duration.minutes(1);
 const WATCH_LOG_MAX_BYTES = 5 * 1024 * 1024;
 const RUNTIME_DIR = NodePath.join(NodeOS.homedir(), ".t3", "runtime");
+// `update` restarts the service beside the app, so the relaunched app finds
+// the restart still pending for a few seconds; that is not an update to offer.
+const SERVICE_RESTART_GRACE_MS = 2 * 60 * 1000;
 
 interface ForkBuildInfo {
   readonly label: string;
@@ -91,7 +93,30 @@ export function resolveForkServiceVersions(input: {
   };
 }
 
-function readServiceVersions(root: string) {
+/** A restart the launcher has not completed after its grace period. */
+function restartPendingSince(now: number): boolean {
+  try {
+    const { mtimeMs } = NodeFS.statSync(NodePath.join(RUNTIME_DIR, ".restart-pending"));
+    return now - mtimeMs > SERVICE_RESTART_GRACE_MS;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The one update the app offers: the prepared app build, else the server the
+ * service is waiting to switch to. Null when neither is pending.
+ */
+export function resolveForkUpdateLabel(input: {
+  readonly preparedApp: string | null;
+  readonly service: Pick<DesktopForkServiceState, "pendingVersion" | "blockedReason">;
+}): string | null {
+  if (input.preparedApp !== null) return input.preparedApp;
+  const { pendingVersion, blockedReason } = input.service;
+  return pendingVersion !== null && blockedReason === null ? pendingVersion : null;
+}
+
+function readServiceVersions(root: string, now: number) {
   const serverInfo = NodePath.join(root, "server.json");
   let previousVersion: string | null = null;
   try {
@@ -108,7 +133,7 @@ function readServiceVersions(root: string) {
         "activeVersion",
       ),
       previousVersion,
-      restartPending: NodeFS.existsSync(NodePath.join(RUNTIME_DIR, ".restart-pending")),
+      restartPending: restartPendingSince(now),
       builtVersion: readJsonField(serverInfo, "version"),
     }),
     blockedReason: readJsonField(serverInfo, "blocked"),
@@ -141,20 +166,6 @@ function runScript(script: string, args: readonly string[], logPath: string) {
   });
 }
 
-function lastLines(path: string, count: number): string {
-  try {
-    return NodeFS.readFileSync(path, "utf8").trimEnd().split("\n").slice(-count).join("\n");
-  } catch {
-    return "";
-  }
-}
-
-/** Present in fork builds only: restarts the t3 service on the pending server. */
-export class ForkServiceUpdates extends Context.Service<
-  ForkServiceUpdates,
-  { readonly restart: Effect.Effect<DesktopUpdateState> }
->()("@t3tools/desktop/updates/ForkAppUpdates/ForkServiceUpdates") {}
-
 const makeForkUpdates = (input: { readonly root: string; readonly script: string }) =>
   Effect.gen(function* () {
     const electronWindow = yield* ElectronWindow.ElectronWindow;
@@ -173,10 +184,6 @@ const makeForkUpdates = (input: { readonly root: string; readonly script: string
     };
 
     const stateRef = yield* Ref.make(baseState);
-    const serviceRestartRef = yield* Ref.make<{ restarting: boolean; error: string | null }>({
-      restarting: false,
-      error: null,
-    });
     const stateChanges = yield* PubSub.sliding<DesktopUpdateState>(16);
     const stateMutex = yield* Semaphore.make(1);
     const installingRef = yield* Ref.make(false);
@@ -205,19 +212,23 @@ const makeForkUpdates = (input: { readonly root: string; readonly script: string
     const refresh = (checked: boolean) =>
       Effect.gen(function* () {
         const state = yield* Ref.get(stateRef);
-        const prepared = readBuildInfo(NodePath.join(input.root, "next"));
-        const checkedAt = checked ? DateTime.formatIso(yield* DateTime.now) : state.checkedAt;
-        const forkService: DesktopForkServiceState = {
-          ...readServiceVersions(input.root),
-          ...(yield* Ref.get(serviceRestartRef)),
-        };
+        const now = yield* DateTime.now;
+        const checkedAt = checked ? DateTime.formatIso(now) : state.checkedAt;
+        const forkService: DesktopForkServiceState = readServiceVersions(
+          input.root,
+          DateTime.toEpochMillis(now),
+        );
+        const label = resolveForkUpdateLabel({
+          preparedApp: readBuildInfo(NodePath.join(input.root, "next"))?.label ?? null,
+          service: forkService,
+        });
         return yield* setState(
-          prepared
+          label !== null
             ? {
                 ...state,
                 status: "downloaded",
-                availableVersion: prepared.label,
-                downloadedVersion: prepared.label,
+                availableVersion: label,
+                downloadedVersion: label,
                 checkedAt,
                 message: null,
                 errorContext: null,
@@ -242,7 +253,6 @@ const makeForkUpdates = (input: { readonly root: string; readonly script: string
 
     const logDir = NodePath.join(input.root, "logs");
     const watchLog = NodePath.join(logDir, "fork-watch.log");
-    const serviceLog = NodePath.join(logDir, "fork-app.log");
 
     // One pass at a time; a build takes minutes, so passes queue up otherwise.
     const watchMutex = yield* Semaphore.make(1);
@@ -263,28 +273,12 @@ const makeForkUpdates = (input: { readonly root: string; readonly script: string
       }),
     );
 
-    const restartService = Effect.gen(function* () {
-      const current = yield* Ref.get(serviceRestartRef);
-      if (current.restarting) return yield* Ref.get(stateRef);
-      yield* Ref.set(serviceRestartRef, { restarting: true, error: null });
-      yield* refresh(false);
-      const code = yield* runScript(input.script, ["restart-service"], serviceLog);
-      yield* Ref.set(serviceRestartRef, {
-        restarting: false,
-        error:
-          code === 0
-            ? null
-            : lastLines(serviceLog, 3) || `fork-app.sh restart-service exited with ${code}`,
-      });
-      return yield* refresh(false);
-    });
-
     const install = Effect.gen(function* () {
       yield* Ref.set(installingRef, true);
       const failed = yield* Effect.sync(() => {
         try {
           // Detached so the script outlives this process when it stops the app.
-          const child = NodeChildProcess.spawn(input.script, ["restart"], {
+          const child = NodeChildProcess.spawn(input.script, ["update"], {
             detached: true,
             stdio: "ignore",
             env: {
@@ -345,7 +339,7 @@ const makeForkUpdates = (input: { readonly root: string; readonly script: string
       installPrepared: () =>
         install.pipe(Effect.map((result) => ({ ...result, failed: !result.completed }))),
     });
-    return { updates, service: ForkServiceUpdates.of({ restart: restartService }) };
+    return updates;
   });
 
 /** Uses the fork updater when the fork launcher configured it, else the real one. */
@@ -353,17 +347,12 @@ export const layer = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* DesktopConfig.DesktopConfig;
     if (Option.isSome(config.forkAppRoot) && Option.isSome(config.forkAppScript)) {
-      return Layer.effectContext(
+      return Layer.effect(
+        DesktopUpdates.DesktopUpdates,
         makeForkUpdates({
           root: config.forkAppRoot.value,
           script: config.forkAppScript.value,
-        }).pipe(
-          Effect.map(({ updates, service }) =>
-            Context.make(DesktopUpdates.DesktopUpdates, updates).pipe(
-              Context.add(ForkServiceUpdates, service),
-            ),
-          ),
-        ),
+        }),
       );
     }
     return DesktopUpdates.layer;
