@@ -1818,6 +1818,14 @@ function OpenCommandPaletteDialog(props: {
       icon: <GitCommitHorizontalIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "gitGraph.open",
       run: async () => {
+        // Beside the thread where there is one, so the graph joins that
+        // thread's tabs. The route is for the cases with no panel to open in.
+        if (activeThread) {
+          useRightPanelStore
+            .getState()
+            .open(scopeThreadRef(activeThread.environmentId, activeThread.id), "git-graph");
+          return;
+        }
         const title = currentProjectId ? projectTitleById.get(currentProjectId) : undefined;
         await navigate({
           to: "/git-graph",

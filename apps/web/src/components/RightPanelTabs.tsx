@@ -21,6 +21,7 @@ import {
   ChevronRight,
   FileDiff,
   Files,
+  GitCommitHorizontalIcon,
   Globe2,
   Plus,
   TerminalSquare,
@@ -112,6 +113,7 @@ interface RightPanelTabsProps {
   onAddBrowserInProfile: (profileId: string) => void;
   onAddTerminal: () => void;
   onAddDiff: () => void;
+  onAddGitGraph: () => void;
   onAddFiles: () => void;
   onAddPullRequest: () => void;
   onAddPullRequests: () => void;
@@ -120,6 +122,7 @@ interface RightPanelTabsProps {
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
+  gitGraphAvailable: boolean;
   filesAvailable: boolean;
   pullRequestAvailable: boolean;
   pullRequestsAvailable: boolean;
@@ -152,6 +155,7 @@ const SURFACE_DISABLED_REASONS = {
   terminal: "Terminal surfaces are only available from a project thread.",
   files: "Files are only available when a project is open.",
   diff: "Diff is only available for server threads in Git repositories.",
+  gitGraph: "The Git graph needs a Git repository on an up-to-date server.",
   pullRequest: "This thread's branch has no pull request yet.",
   pullRequests: "No linked pull requests are available for this thread.",
   agents: "Agents are only available from a thread.",
@@ -176,6 +180,7 @@ const SURFACE_UNAVAILABLE_HINTS = {
   terminal: "Available when a project is open.",
   files: "Available when a project is open.",
   diff: "Available for Git repositories.",
+  gitGraph: "Available for Git repositories.",
   pullRequest: "No pull request on this branch yet.",
   pullRequests: "No linked pull requests available.",
   agents: "Available from a thread.",
@@ -315,6 +320,7 @@ function RightPanelEmptyState(props: {
   browserProfiles: ReadonlyArray<{ readonly id: string; readonly name: string }>;
   onAddTerminal: () => void;
   onAddDiff: () => void;
+  onAddGitGraph: () => void;
   onAddFiles: () => void;
   onAddPullRequest: () => void;
   onAddPullRequests: () => void;
@@ -323,6 +329,7 @@ function RightPanelEmptyState(props: {
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
+  gitGraphAvailable: boolean;
   filesAvailable: boolean;
   pullRequestAvailable: boolean;
   pullRequestsAvailable: boolean;
@@ -368,6 +375,15 @@ function RightPanelEmptyState(props: {
       available: props.diffAvailable,
       disabledReason: SURFACE_UNAVAILABLE_HINTS.diff,
       onClick: props.onAddDiff,
+      badgeCount: 0,
+    },
+    {
+      label: "Git graph",
+      icon: GitCommitHorizontalIcon,
+      shortcut: "G",
+      available: props.gitGraphAvailable,
+      disabledReason: SURFACE_UNAVAILABLE_HINTS.gitGraph,
+      onClick: props.onAddGitGraph,
       badgeCount: 0,
     },
     {
@@ -612,6 +628,8 @@ function surfaceTitle(
   switch (surface.kind) {
     case "diff":
       return "Diff";
+    case "git-graph":
+      return "Git graph";
     case "files":
       return "Files";
     case "file":
@@ -689,6 +707,8 @@ function SurfaceIcon({
     }
     case "diff":
       return <FileDiff className="size-3 shrink-0" />;
+    case "git-graph":
+      return <GitCommitHorizontalIcon className="size-3 shrink-0" />;
     case "files":
       return <Files className="size-3 shrink-0" />;
     case "file":
@@ -892,6 +912,14 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       available: props.diffAvailable,
       disabledReason: SURFACE_DISABLED_REASONS.diff,
       onClick: props.onAddDiff,
+    },
+    {
+      label: "Git graph",
+      icon: GitCommitHorizontalIcon,
+      shortcut: "G",
+      available: props.gitGraphAvailable,
+      disabledReason: SURFACE_DISABLED_REASONS.gitGraph,
+      onClick: props.onAddGitGraph,
     },
     {
       label: "Pull request",
@@ -1392,6 +1420,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             browserProfiles={browserProfiles}
             onAddTerminal={props.onAddTerminal}
             onAddDiff={props.onAddDiff}
+            onAddGitGraph={props.onAddGitGraph}
             onAddFiles={props.onAddFiles}
             onAddPullRequest={props.onAddPullRequest}
             onAddPullRequests={props.onAddPullRequests}
@@ -1400,6 +1429,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}
             diffAvailable={props.diffAvailable}
+            gitGraphAvailable={props.gitGraphAvailable}
             filesAvailable={props.filesAvailable}
             pullRequestAvailable={props.pullRequestAvailable}
             pullRequestsAvailable={props.pullRequestsAvailable}

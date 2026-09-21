@@ -21,6 +21,7 @@ import { resolveStorage } from "./lib/storage";
 
 const RIGHT_PANEL_KINDS = [
   "diff",
+  "git-graph",
   "files",
   "file",
   "preview",
@@ -52,6 +53,8 @@ export type RightPanelSurface =
       splitDirection?: "horizontal" | "vertical";
     }
   | { id: "diff"; kind: "diff" }
+  /** The thread's repository history. Its cwd follows the thread, so it needs no payload. */
+  | { id: "git-graph"; kind: "git-graph" }
   | { id: "files"; kind: "files" }
   | {
       id: `file:${string}` | `attachment:${string}`;
@@ -185,6 +188,8 @@ const singletonSurface = (
   switch (kind) {
     case "diff":
       return { id: "diff", kind };
+    case "git-graph":
+      return { id: "git-graph", kind };
     case "files":
       return { id: "files", kind };
     case "pull-requests":

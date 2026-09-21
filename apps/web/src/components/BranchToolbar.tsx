@@ -9,7 +9,6 @@ import {
   HistoryIcon,
   ScaleIcon,
 } from "lucide-react";
-import { useNavigate } from "@tanstack/react-router";
 import {
   type Ref,
   memo,
@@ -24,12 +23,7 @@ import {
 
 import { useComposerDraftStore, type DraftId } from "../composerDraftStore";
 import { EnvironmentMachineIcon } from "./EnvironmentMachineIcon";
-import {
-  useProject,
-  useServerConfigs,
-  useThreadShell,
-  useThreadShellsForProjectRefs,
-} from "../state/entities";
+import { useProject, useThreadShell, useThreadShellsForProjectRefs } from "../state/entities";
 import {
   type EnvMode,
   type EnvironmentOption,
@@ -70,7 +64,6 @@ import { cn } from "~/lib/utils";
 export interface BranchToolbarHandle {
   openBranchPicker: () => void;
   usePreviousWorktree: () => void;
-  openGitGraph: () => void;
 }
 
 interface BranchToolbarProps {
@@ -91,6 +84,8 @@ interface BranchToolbarProps {
   envLocked: boolean;
   onCheckoutPullRequestRequest?: (reference: string) => void;
   onComposerFocusRequest?: () => void;
+  /** Absent when the graph has nowhere to read from, which also hides the button. */
+  onOpenGitGraph?: (() => void) | undefined;
   availableEnvironments?: readonly EnvironmentOption[];
   onEnvironmentChange?: (environmentId: EnvironmentId) => void;
   composerControlsHostRef?: (element: HTMLDivElement | null) => void;
@@ -506,6 +501,7 @@ export const BranchToolbar = memo(function BranchToolbar({
   envLocked,
   onCheckoutPullRequestRequest,
   onComposerFocusRequest,
+  onOpenGitGraph,
   availableEnvironments,
   onEnvironmentChange,
   composerControlsHostRef,
@@ -528,7 +524,6 @@ export const BranchToolbar = memo(function BranchToolbar({
       : null;
   const activeProject = useProject(activeProjectRef);
   const hasActiveThread = serverThread !== null || draftThread !== null;
-  const navigate = useNavigate();
   const activeWorktreePath = forceNewWorktree
     ? null
     : (serverThread?.worktreePath ?? draftThread?.worktreePath ?? null);
@@ -576,25 +571,6 @@ export const BranchToolbar = memo(function BranchToolbar({
     });
   }, [activeProjectRef, draftId, previousWorktreeSeed, setDraftThreadContext, threadRef]);
 
-  // The graph reads the repository the thread actually runs in: its worktree
-  // when it has one, the project's workspace root otherwise.
-  const gitGraphCwd = activeWorktreePath ?? activeProject?.workspaceRoot ?? null;
-  // Older servers reject `vcs.listCommitGraph` as unknown, so the entry point
-  // stays hidden rather than opening a view that can only fail.
-  const supportsCommitGraph =
-    useServerConfigs().get(environmentId)?.environment.capabilities.commitGraph === true;
-  const openGitGraph = useCallback(() => {
-    if (gitGraphCwd === null || !supportsCommitGraph) return;
-    void navigate({
-      to: "/git-graph",
-      search: {
-        environmentId,
-        cwd: gitGraphCwd,
-        ...(activeProject ? { title: activeProject.title } : {}),
-      },
-    });
-  }, [activeProject, environmentId, gitGraphCwd, navigate, supportsCommitGraph]);
-
   useImperativeHandle(
     ref,
     () => ({
@@ -604,13 +580,11 @@ export const BranchToolbar = memo(function BranchToolbar({
         onUsePreviousWorktree();
         onComposerFocusRequest?.();
       },
-      openGitGraph,
     }),
     [
       canUsePreviousWorktree,
       onComposerFocusRequest,
       onUsePreviousWorktree,
-      openGitGraph,
       previousWorktreeSeed,
       showGitControls,
     ],
@@ -716,7 +690,7 @@ export const BranchToolbar = memo(function BranchToolbar({
         />
       ) : null}
 
-      {showGitControls && gitGraphCwd !== null && supportsCommitGraph ? (
+      {showGitControls && onOpenGitGraph ? (
         <Tooltip>
           <TooltipTrigger
             data-composer-context-control
@@ -726,7 +700,7 @@ export const BranchToolbar = memo(function BranchToolbar({
                 variant="ghost"
                 size="icon-sm"
                 aria-label="Open Git graph"
-                onClick={openGitGraph}
+                onClick={onOpenGitGraph}
               >
                 <GitCommitHorizontalIcon className="size-3.5 opacity-70" />
               </Button>
@@ -741,7 +715,7 @@ export const BranchToolbar = memo(function BranchToolbar({
           ref={branchSelectorRef}
           className={cn(
             "min-w-0 flex-initial justify-end",
-            (gitGraphCwd === null || !supportsCommitGraph) && "@3xl/composer-surface:ml-auto",
+            !onOpenGitGraph && "@3xl/composer-surface:ml-auto",
           )}
           environmentId={environmentId}
           threadId={threadId}

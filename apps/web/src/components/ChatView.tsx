@@ -228,6 +228,7 @@ import {
   foldSubagentActivities,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import { BranchToolbar, type BranchToolbarHandle } from "./BranchToolbar";
+import { nextGitGraphPanelStep } from "../gitGraph/gitGraphPanelLadder";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import ThreadTerminalDrawer from "./ThreadTerminalDrawer";
 import {
@@ -614,6 +615,9 @@ const PreviewPanel = lazy(() =>
   import("./preview/PreviewPanel").then((module) => ({ default: module.PreviewPanel })),
 );
 const DiffPanel = lazy(() => import("./DiffPanel"));
+const GitGraphView = lazy(() =>
+  import("../gitGraph/GitGraphView").then((module) => ({ default: module.GitGraphView })),
+);
 const selectAutoShowFloatingPreview = (settings: { browserAutoShowFloatingPreview: boolean }) =>
   settings.browserAutoShowFloatingPreview;
 const DevicePanel = lazy(() =>
@@ -4574,6 +4578,19 @@ export default function ChatView(props: ChatViewProps) {
     useRightPanelStore.getState().open(activeThreadRef, "diff");
     onDiffPanelOpen?.();
   }, [activeThreadRef, isGitRepo, isServerThread, onDiffPanelOpen]);
+  // The graph reads the repository the thread runs in: its worktree when it has
+  // one, the project's workspace root otherwise. Older servers reject
+  // `vcs.listCommitGraph` as unknown, so the surface stays unavailable rather
+  // than opening a pane that can only fail.
+  const gitGraphCwd = activeWorkspaceRoot ?? null;
+  const gitGraphSurfaceAvailable =
+    isGitRepo &&
+    gitGraphCwd !== null &&
+    serverConfig?.environment.capabilities.commitGraph === true;
+  const addGitGraphSurface = useCallback(() => {
+    if (!activeThreadRef || !gitGraphSurfaceAvailable) return;
+    useRightPanelStore.getState().open(activeThreadRef, "git-graph");
+  }, [activeThreadRef, gitGraphSurfaceAvailable]);
   const addFilesSurface = useCallback(() => {
     if (!activeThreadRef || !activeProject) return;
     useRightPanelStore.getState().open(activeThreadRef, "files");
@@ -5150,6 +5167,34 @@ export default function ChatView(props: ChatViewProps) {
       finishRightPanelSurfaceClose,
     ],
   );
+  const cycleGitGraphSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    const showing = rightPanelOpen && activeRightPanelSurface?.kind === "git-graph";
+    const step = nextGitGraphPanelStep({
+      showing,
+      canMaximize: canMaximizeRightPanel,
+      maximized: rightPanelMaximized,
+    });
+    if (step === "open") {
+      addGitGraphSurface();
+      return;
+    }
+    if (step === "maximize") {
+      toggleRightPanelMaximized();
+      return;
+    }
+    if (rightPanelMaximized) toggleRightPanelMaximized();
+    if (activeRightPanelSurface) closeRightPanelSurface(activeRightPanelSurface);
+  }, [
+    activeRightPanelSurface,
+    activeThreadRef,
+    addGitGraphSurface,
+    canMaximizeRightPanel,
+    closeRightPanelSurface,
+    rightPanelMaximized,
+    rightPanelOpen,
+    toggleRightPanelMaximized,
+  ]);
   const closeOtherRightPanelSurfaces = useCallback(
     (surface: RightPanelSurface) => {
       if (!activeThreadRef) return;
@@ -6873,9 +6918,10 @@ export default function ChatView(props: ChatViewProps) {
       }
 
       if (command === "gitGraph.open") {
+        if (!gitGraphSurfaceAvailable) return;
         event.preventDefault();
         event.stopPropagation();
-        if (!event.repeat) branchToolbarRef.current?.openGitGraph();
+        if (!event.repeat) cycleGitGraphSurface();
         return;
       }
 
@@ -6934,6 +6980,8 @@ export default function ChatView(props: ChatViewProps) {
     requestCloseTerminal,
     requestClosePanelTerminal,
     createNewTerminal,
+    cycleGitGraphSurface,
+    gitGraphSurfaceAvailable,
     setTerminalOpen,
     runProjectScript,
     splitTerminal,
@@ -9650,6 +9698,17 @@ export default function ChatView(props: ChatViewProps) {
           workspaceMutationId={workspaceMutationId}
         />
       </Suspense>
+    ) : renderedRightPanelSurface?.kind === "git-graph" && gitGraphCwd !== null ? (
+      <Suspense fallback={null}>
+        {/* No onClose: the surface tab's own X owns closing here. */}
+        <GitGraphView
+          key={`${activeThread.environmentId}:${gitGraphCwd}`}
+          mode="embedded"
+          environmentId={activeThread.environmentId}
+          cwd={gitGraphCwd}
+          title={activeProject?.title ?? gitGraphCwd}
+        />
+      </Suspense>
     ) : renderedRightPanelSurface?.kind === "pull-request" && !pullRequestsCapabilityKnown ? (
       <PullRequestDetailGhost />
     ) : renderedRightPanelSurface?.kind === "pull-request" && !supportsPullRequests ? (
@@ -10230,6 +10289,9 @@ export default function ChatView(props: ChatViewProps) {
                                   : {})}
                                 envLocked={envLocked}
                                 onComposerFocusRequest={scheduleComposerFocus}
+                                onOpenGitGraph={
+                                  gitGraphSurfaceAvailable ? addGitGraphSurface : undefined
+                                }
                                 {...(canCheckoutPullRequestIntoThread
                                   ? { onCheckoutPullRequestRequest: openPullRequestDialog }
                                   : {})}
@@ -10369,6 +10431,7 @@ export default function ChatView(props: ChatViewProps) {
           onAddBrowserInProfile={createBrowserSurface}
           onAddTerminal={addTerminalSurface}
           onAddDiff={addDiffSurface}
+          onAddGitGraph={addGitGraphSurface}
           onAddFiles={addFilesSurface}
           onAddPullRequest={addPullRequestSurface}
           onAddPullRequests={addPullRequestsSurface}
@@ -10377,6 +10440,7 @@ export default function ChatView(props: ChatViewProps) {
           browserAvailable={isPreviewSupportedInRuntime()}
           terminalAvailable={activeProject !== null}
           diffAvailable={isServerThread && isGitRepo}
+          gitGraphAvailable={gitGraphSurfaceAvailable}
           filesAvailable={activeProject !== null}
           pullRequestAvailable={pullRequestSurfaceAvailable}
           pullRequestsAvailable={pullRequestsSurfaceAvailable}
@@ -10427,6 +10491,7 @@ export default function ChatView(props: ChatViewProps) {
             onAddBrowserInProfile={createBrowserSurface}
             onAddTerminal={addTerminalSurface}
             onAddDiff={addDiffSurface}
+            onAddGitGraph={addGitGraphSurface}
             onAddFiles={addFilesSurface}
             onAddPullRequest={addPullRequestSurface}
             onAddPullRequests={addPullRequestsSurface}
@@ -10435,6 +10500,7 @@ export default function ChatView(props: ChatViewProps) {
             browserAvailable={isPreviewSupportedInRuntime()}
             terminalAvailable={activeProject !== null}
             diffAvailable={isServerThread && isGitRepo}
+            gitGraphAvailable={gitGraphSurfaceAvailable}
             filesAvailable={activeProject !== null}
             pullRequestAvailable={pullRequestSurfaceAvailable}
             pullRequestsAvailable={pullRequestsSurfaceAvailable}

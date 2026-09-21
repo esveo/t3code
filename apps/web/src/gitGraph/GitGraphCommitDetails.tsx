@@ -3,7 +3,11 @@ import { XIcon } from "lucide-react";
 
 import { Button } from "~/components/ui/button";
 
-/** Details of the commit selected in the graph, shown beside the list. */
+/**
+ * Details of the commit selected in the graph. Beside the list where there is
+ * room for both, under it otherwise: a fixed side column would leave a
+ * panel-width graph with nothing to draw in.
+ */
 export function GitGraphCommitDetails({
   commit,
   onClose,
@@ -13,7 +17,7 @@ export function GitGraphCommitDetails({
 }) {
   const authored = new Date(commit.authoredAt);
   return (
-    <aside className="flex w-80 shrink-0 flex-col gap-3 overflow-auto border-l p-4">
+    <aside className="flex max-h-[45%] w-full shrink-0 flex-col gap-3 overflow-auto border-t p-4 @2xl/gitgraph:max-h-none @2xl/gitgraph:w-80 @2xl/gitgraph:border-t-0 @2xl/gitgraph:border-l">
       <div className="flex items-start gap-2">
         <h2 className="min-w-0 flex-1 text-sm font-semibold break-words">{commit.subject}</h2>
         <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close commit details">
