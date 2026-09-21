@@ -2390,6 +2390,16 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     return env;
   });
 
+  // Hashed rather than hardcoded so SHA-256 repositories get their own empty tree.
+  const readEmptyTreeHash = Effect.fn("readEmptyTreeHash")(function* (cwd: string) {
+    return (yield* runGitStdout("GitVcsDriver.getReviewDiffPreview.emptyTree", cwd, [
+      "hash-object",
+      "-t",
+      "tree",
+      (yield* HostProcessPlatform) === "win32" ? "NUL" : "/dev/null",
+    ])).trim();
+  });
+
   const getReviewDiffPreview = Effect.fn("getReviewDiffPreview")(function* (
     input: ReviewDiffPreviewInput,
   ) {
@@ -2419,7 +2429,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const branch = repository.currentBranch;
     const baseRef =
       input.baseRef ??
-      (branch
+      (branch && !input.range
         ? yield* resolveBaseBranchForNoUpstream(cwd, branch).pipe(Effect.orElseSucceed(() => null))
         : null);
 
@@ -2446,12 +2456,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       );
       if (result.exitCode === 0) return { ref, files: parseReviewNumstat(result.stdout) };
       if (ref === "HEAD" && isUnbornHeadStderr(result.stderr)) {
-        const emptyTree = (yield* runGitStdout("GitVcsDriver.getReviewDiffPreview.emptyTree", cwd, [
-          "hash-object",
-          "-t",
-          "tree",
-          (yield* HostProcessPlatform) === "win32" ? "NUL" : "/dev/null",
-        ])).trim();
+        const emptyTree = yield* readEmptyTreeHash(cwd);
         const stdout = yield* runGitStdoutWithOptions(
           "GitVcsDriver.getReviewDiffPreview.unbornStat",
           cwd,
@@ -2483,43 +2488,82 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       );
       return { ...patch, files: stat.files };
     });
-    const readDirty = Effect.gen(function* () {
-      if (input.file?.sourceKind === "branch-range") return yield* readTrackedDiff(null);
-      const untracked = yield* executeGit(
-        "GitVcsDriver.review.listUntracked",
-        cwd,
-        ["ls-files", "--others", "--exclude-standard", "-z", "--", ...pathArgs],
-        { maxOutputBytes: REVIEW_METADATA_MAX_OUTPUT_BYTES },
-      ).pipe(
-        Effect.catchIf(
-          (error) => error.outputLength === undefined,
-          () => Effect.succeed(null),
+    // The working tree against `ref`, with untracked files added to a temporary index.
+    const readDirtyAgainst = (ref: string) =>
+      Effect.gen(function* () {
+        const untracked = yield* executeGit(
+          "GitVcsDriver.review.listUntracked",
+          cwd,
+          ["ls-files", "--others", "--exclude-standard", "-z", "--", ...pathArgs],
+          { maxOutputBytes: REVIEW_METADATA_MAX_OUTPUT_BYTES },
+        ).pipe(
+          Effect.catchIf(
+            (error) => error.outputLength === undefined,
+            () => Effect.succeed(null),
+          ),
+        );
+        if (untracked === null) {
+          const tracked = yield* readTrackedDiff(ref);
+          return { ...tracked, files: undefined, stdoutTruncated: true };
+        }
+        const paths = splitNullSeparatedGitStdoutPaths(untracked).filter(
+          (candidate) => !input.file || candidate === input.file.path,
+        );
+        if (paths.length === 0) return yield* readTrackedDiff(ref);
+        const env = yield* prepareReviewIndex(cwd, paths).pipe(
+          Effect.catchTags({
+            PlatformError: (cause) =>
+              Effect.fail(
+                new GitCommandError({
+                  operation: "GitVcsDriver.prepareReviewIndex",
+                  cwd,
+                  command: "git diff",
+                  detail: "Could not prepare the review index.",
+                  cause,
+                }),
+              ),
+          }),
+        );
+        return yield* readTrackedDiff(ref, env);
+      }).pipe(Effect.scoped);
+    const hashDiff = (diff: string, files: ReadonlyArray<ReviewDiffFileStat>) =>
+      crypto.digest("SHA-256", new TextEncoder().encode(JSON.stringify([diff, files]))).pipe(
+        Effect.map(Encoding.encodeHex),
+        Effect.mapError(
+          (cause) =>
+            new GitCommandError({
+              operation: "GitVcsDriver.getReviewDiffPreview.hash",
+              command: "crypto.digest SHA-256",
+              cwd,
+              detail: "Failed to hash review diff.",
+              cause,
+            }),
         ),
       );
-      if (untracked === null) {
-        const tracked = yield* readTrackedDiff("HEAD");
-        return { ...tracked, files: undefined, stdoutTruncated: true };
-      }
-      const paths = splitNullSeparatedGitStdoutPaths(untracked).filter(
-        (candidate) => !input.file || candidate === input.file.path,
-      );
-      if (paths.length === 0) return yield* readTrackedDiff("HEAD");
-      const env = yield* prepareReviewIndex(cwd, paths).pipe(
-        Effect.catchTags({
-          PlatformError: (cause) =>
-            Effect.fail(
-              new GitCommandError({
-                operation: "GitVcsDriver.prepareReviewIndex",
-                cwd,
-                command: "git diff",
-                detail: "Could not prepare the review index.",
-                cause,
-              }),
-            ),
-        }),
-      );
-      return yield* readTrackedDiff("HEAD", env);
-    }).pipe(Effect.scoped);
+
+    if (input.range) {
+      const range = input.range;
+      const base = range.base ?? (yield* readEmptyTreeHash(cwd));
+      const result =
+        range.head === null
+          ? yield* readDirtyAgainst(base)
+          : yield* readTrackedDiff(`${base}..${range.head}`);
+      const source: ReviewDiffPreviewSource = {
+        id: "commit-range",
+        kind: "commit-range",
+        title: "Commit range",
+        baseRef: range.base,
+        headRef: range.head,
+        diff: result.stdout,
+        ...(result.files === undefined ? {} : { files: result.files }),
+        diffHash: yield* hashDiff(result.stdout, result.files ?? []),
+        truncated: result.stdoutTruncated,
+      };
+      return { cwd: input.cwd, generatedAt: yield* DateTime.now, sources: [source] };
+    }
+
+    const readDirty =
+      input.file?.sourceKind === "branch-range" ? readTrackedDiff(null) : readDirtyAgainst("HEAD");
     const [dirtyTrackedResult, baseResult] = yield* Effect.all(
       [
         readDirty,
@@ -2535,20 +2579,6 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const baseFiles = baseResult.files;
     const dirtyDiff = dirtyTrackedResult.stdout;
     const baseDiff = baseResult.stdout;
-    const hashDiff = (diff: string, files: ReadonlyArray<ReviewDiffFileStat>) =>
-      crypto.digest("SHA-256", new TextEncoder().encode(JSON.stringify([diff, files]))).pipe(
-        Effect.map(Encoding.encodeHex),
-        Effect.mapError(
-          (cause) =>
-            new GitCommandError({
-              operation: "GitVcsDriver.getReviewDiffPreview.hash",
-              command: "crypto.digest SHA-256",
-              cwd,
-              detail: "Failed to hash review diff.",
-              cause,
-            }),
-        ),
-      );
     const [dirtyDiffHash, baseDiffHash] = yield* Effect.all([
       hashDiff(dirtyDiff, dirtyFiles ?? []),
       hashDiff(baseDiff, baseFiles),
@@ -2709,6 +2739,35 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           input.changeType === "deleted"
             ? Effect.succeed("")
             : readWorkingTreeReviewFile(input, repositoryRoot),
+        ],
+        { concurrency: 2 },
+      );
+      return { oldContents, newContents };
+    }
+
+    if (input.sourceKind === "commit-range") {
+      if (!input.baseRef && input.changeType !== "new") {
+        return yield* reviewDiffFileError(input, "Commit range expansion requires a base commit.");
+      }
+      const headRef = input.headRef;
+      const repositoryRoot =
+        headRef === null
+          ? yield* runGitStdout(
+              "GitVcsDriver.getReviewDiffFileContents.repositoryRoot",
+              input.cwd,
+              ["rev-parse", "--show-toplevel"],
+            ).pipe(Effect.map((value) => value.trim()))
+          : null;
+      const [oldContents, newContents] = yield* Effect.all(
+        [
+          input.changeType === "new" || !input.baseRef
+            ? Effect.succeed("")
+            : readReviewFileAtRevision(input, input.baseRef, input.oldPath),
+          input.changeType === "deleted"
+            ? Effect.succeed("")
+            : headRef === null
+              ? readWorkingTreeReviewFile(input, repositoryRoot ?? input.cwd)
+              : readReviewFileAtRevision(input, headRef, input.newPath),
         ],
         { concurrency: 2 },
       );
