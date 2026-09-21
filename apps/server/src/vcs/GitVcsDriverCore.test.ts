@@ -1127,6 +1127,54 @@ it.layer(TestLayer)("GitVcsDriver core integration", (it) => {
       }),
     );
 
+    it.effect("compares two commits, a root commit, and the working tree to a commit", () =>
+      Effect.gen(function* () {
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const revParse = (ref: string) =>
+          git(cwd, ["rev-parse", ref]).pipe(Effect.map((sha) => sha.trim()));
+        const root = yield* revParse("HEAD");
+        yield* writeTextFile(cwd, "a.txt", "one\n");
+        yield* git(cwd, ["add", "."]);
+        yield* git(cwd, ["commit", "-m", "add a"]);
+        const middle = yield* revParse("HEAD");
+        yield* writeTextFile(cwd, "a.txt", "two\n");
+        yield* git(cwd, ["commit", "-am", "change a"]);
+        const head = yield* revParse("HEAD");
+        yield* writeTextFile(cwd, "untracked.txt", "new\n");
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const paths = (range: { base: string | null; head: string | null }) =>
+          driver.getReviewDiffPreview({ cwd, range }).pipe(
+            Effect.map(({ sources }) => {
+              assert.deepStrictEqual(
+                sources.map((source) => source.kind),
+                ["commit-range"],
+              );
+              return sources[0]!.files!.map((file) => file.path).toSorted();
+            }),
+          );
+
+        assert.deepStrictEqual(yield* paths({ base: root, head }), ["a.txt"]);
+        assert.deepStrictEqual(yield* paths({ base: null, head: root }), ["README.md"]);
+        assert.deepStrictEqual(yield* paths({ base: head, head: null }), ["untracked.txt"]);
+        assert.deepStrictEqual(yield* paths({ base: root, head: null }), [
+          "a.txt",
+          "untracked.txt",
+        ]);
+
+        const contents = yield* driver.getReviewDiffFileContents({
+          cwd,
+          sourceKind: "commit-range",
+          changeType: "change",
+          baseRef: middle,
+          headRef: head,
+          oldPath: "a.txt",
+          newPath: "a.txt",
+        });
+        assert.deepStrictEqual(contents, { oldContents: "one\n", newContents: "two\n" });
+      }),
+    );
+
     it.effect("reads complete tracked and untracked manifests beyond 1 MB", () =>
       Effect.gen(function* () {
         const cwd = yield* makeTmpDir();

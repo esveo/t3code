@@ -2,14 +2,18 @@ import type { EnvironmentId, VcsCommitGraphEntry, VcsCommitGraphRef } from "@t3t
 import { GitBranchIcon, GitCommitHorizontalIcon, XIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { DiffStatLabel } from "~/components/chat/DiffStatLabel";
+
 import { Button } from "~/components/ui/button";
 import { Spinner } from "~/components/ui/spinner";
 import { cn } from "~/lib/utils";
 import { useEnvironmentQuery } from "~/state/query";
 import { gitGraphEnvironment } from "~/state/gitGraph";
+import { vcsEnvironment } from "~/state/vcs";
 
 import { layoutCommitGraph, type CommitGraphEdge } from "./commitGraphLayout";
-import { GitGraphCommitDetails } from "./GitGraphCommitDetails";
+import { GitGraphDiff } from "./GitGraphDiff";
+import { gitGraphDiffRange, nextGitGraphSelection, WORKTREE_ID } from "./gitGraphSelection";
 
 const ROW_HEIGHT = 28;
 const LANE_WIDTH = 14;
@@ -97,18 +101,42 @@ export function GitGraphView({
   readonly onClose?: (() => void) | undefined;
 }) {
   const [limit, setLimit] = useState(INITIAL_LIMIT);
-  const [selectedSha, setSelectedSha] = useState<string | null>(null);
+  const [selection, setSelection] = useState<ReadonlyArray<string>>([]);
   const graph = useEnvironmentQuery(
     gitGraphEnvironment.commitGraph({ environmentId, input: { cwd, limit } }),
   );
+  const status = useEnvironmentQuery(vcsEnvironment.status({ environmentId, input: { cwd } }));
+  const workingTree = status.data?.workingTree;
+  const headSha = graph.data?.headSha ?? null;
+  const showWorktree = status.data?.hasWorkingTreeChanges === true && headSha !== null;
 
-  const commits: ReadonlyArray<VcsCommitGraphEntry> = graph.data?.commits ?? [];
+  // Uncommitted changes ride on top of HEAD as a commit of their own, so the
+  // layout gives them a lane and an edge like any other child.
+  const loadedCommits = graph.data?.commits;
+  const commits = useMemo<ReadonlyArray<VcsCommitGraphEntry>>(() => {
+    const loaded = loadedCommits ?? [];
+    if (!showWorktree || headSha === null) return loaded;
+    return [
+      {
+        sha: WORKTREE_ID,
+        parents: [headSha],
+        refs: [],
+        author: "",
+        authoredAt: "",
+        subject: "Untracked changes",
+      },
+      ...loaded,
+    ];
+  }, [headSha, loadedCommits, showWorktree]);
   const layout = useMemo(
     () => layoutCommitGraph(commits, { colorCount: LANE_HUES.length }),
     [commits],
   );
-  const selected =
-    selectedSha === null ? null : (commits.find((entry) => entry.sha === selectedSha) ?? null);
+  const range = useMemo(() => gitGraphDiffRange(selection, commits), [commits, selection]);
+  const selectedPoints = useMemo(
+    () => commits.filter((commit) => selection.includes(commit.sha)),
+    [commits, selection],
+  );
   const graphWidth = LANE_PADDING * 2 + Math.max(1, layout.laneCount) * LANE_WIDTH;
 
   return (
@@ -146,7 +174,12 @@ export function GitGraphView({
           beside the graph or under it, the inner one how much of each commit
           row fits once that split is made. */}
       <div className="@container/gitgraph flex min-h-0 flex-1 flex-col @2xl/gitgraph:flex-row">
-        <div className="@container/gitgraphrow min-w-0 flex-1 overflow-auto">
+        <div
+          className={cn(
+            "@container/gitgraphrow min-h-0 min-w-0 flex-1 overflow-auto",
+            range && "flex-[2]",
+          )}
+        >
           {graph.error !== null ? (
             <p className="p-6 text-sm text-destructive">{graph.error}</p>
           ) : graph.data?.isRepo === false ? (
@@ -171,14 +204,25 @@ export function GitGraphView({
                     stroke={laneColor(edge.color)}
                     strokeWidth={1.6}
                     strokeLinecap="round"
-                    opacity={edge.open ? 0.3 : 0.9}
-                    {...(edge.open ? { strokeDasharray: "3 4" } : {})}
+                    opacity={edge.open || edge.from === WORKTREE_ID ? 0.3 : 0.9}
+                    {...(edge.open || edge.from === WORKTREE_ID ? { strokeDasharray: "3 4" } : {})}
                   />
                 ))}
                 {layout.rows.map((row) => {
                   const cx = LANE_PADDING + row.lane * LANE_WIDTH;
                   const cy = row.row * ROW_HEIGHT + ROW_HEIGHT / 2;
-                  return row.isMerge ? (
+                  return row.commit.sha === WORKTREE_ID ? (
+                    <circle
+                      key={row.commit.sha}
+                      cx={cx}
+                      cy={cy}
+                      r={DOT_RADIUS + 0.5}
+                      fill="var(--background)"
+                      stroke={laneColor(row.color)}
+                      strokeWidth={1.5}
+                      strokeDasharray="2 2"
+                    />
+                  ) : row.isMerge ? (
                     <circle
                       key={row.commit.sha}
                       cx={cx}
@@ -205,39 +249,65 @@ export function GitGraphView({
                   <li key={row.commit.sha}>
                     <button
                       type="button"
-                      onClick={() => setSelectedSha(row.commit.sha)}
+                      onClick={(event) =>
+                        setSelection((current) =>
+                          nextGitGraphSelection(
+                            current,
+                            row.commit.sha,
+                            event.metaKey || event.ctrlKey,
+                          ),
+                        )
+                      }
                       style={{ height: ROW_HEIGHT, paddingLeft: graphWidth }}
                       className={cn(
                         "flex w-full items-center gap-3 rounded-md pr-2 text-left text-sm",
                         "hover:bg-accent/40",
-                        row.commit.sha === selectedSha && "bg-accent",
+                        selection.includes(row.commit.sha) && "bg-accent",
                       )}
                     >
-                      <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                        {row.commit.refs.map((ref) => (
-                          <span
-                            key={`${ref.kind}:${ref.name}`}
-                            className={cn(
-                              "shrink-0 rounded-full border px-1.5 text-[11px] leading-4",
-                              REF_BADGE_CLASS[ref.kind],
-                            )}
-                          >
-                            {ref.kind === "head" ? `⌂ ${ref.name}` : ref.name}
+                      {row.commit.sha === WORKTREE_ID ? (
+                        <>
+                          <span className="min-w-0 flex-1 truncate text-muted-foreground italic">
+                            Untracked changes
                           </span>
-                        ))}
-                        <span className="truncate">{row.commit.subject}</span>
-                      </span>
-                      {/* Narrow panes keep the subject and the date and drop
+                          {workingTree ? (
+                            <DiffStatLabel
+                              additions={workingTree.insertions}
+                              deletions={workingTree.deletions}
+                              layout="inline"
+                              className="shrink-0 text-xs"
+                            />
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
+                          <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                            {row.commit.refs.map((ref) => (
+                              <span
+                                key={`${ref.kind}:${ref.name}`}
+                                className={cn(
+                                  "shrink-0 rounded-full border px-1.5 text-[11px] leading-4",
+                                  REF_BADGE_CLASS[ref.kind],
+                                )}
+                              >
+                                {ref.kind === "head" ? `⌂ ${ref.name}` : ref.name}
+                              </span>
+                            ))}
+                            <span className="truncate">{row.commit.subject}</span>
+                          </span>
+                          {/* Narrow panes keep the subject and the date and drop
                           the rest; the details pane still has all of it. */}
-                      <span className="hidden w-36 shrink-0 truncate text-xs text-muted-foreground @xl/gitgraphrow:block">
-                        {row.commit.author}
-                      </span>
-                      <span className="w-12 shrink-0 text-right text-xs text-muted-foreground">
-                        {relativeTime(row.commit.authoredAt)}
-                      </span>
-                      <span className="hidden w-16 shrink-0 text-right font-mono text-[11px] text-muted-foreground/70 @lg/gitgraphrow:block">
-                        {row.commit.sha.slice(0, 8)}
-                      </span>
+                          <span className="hidden w-36 shrink-0 truncate text-xs text-muted-foreground @xl/gitgraphrow:block">
+                            {row.commit.author}
+                          </span>
+                          <span className="w-12 shrink-0 text-right text-xs text-muted-foreground">
+                            {relativeTime(row.commit.authoredAt)}
+                          </span>
+                          <span className="hidden w-16 shrink-0 text-right font-mono text-[11px] text-muted-foreground/70 @lg/gitgraphrow:block">
+                            {row.commit.sha.slice(0, 8)}
+                          </span>
+                        </>
+                      )}
                     </button>
                   </li>
                 ))}
@@ -259,8 +329,16 @@ export function GitGraphView({
           )}
         </div>
 
-        {selected ? (
-          <GitGraphCommitDetails commit={selected} onClose={() => setSelectedSha(null)} />
+        {range ? (
+          <GitGraphDiff
+            key={JSON.stringify(range)}
+            environmentId={environmentId}
+            cwd={cwd}
+            range={range}
+            points={selectedPoints}
+            refreshKey={JSON.stringify(workingTree ?? null)}
+            onClose={() => setSelection([])}
+          />
         ) : null}
       </div>
     </div>
