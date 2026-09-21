@@ -59,6 +59,7 @@ import {
   SettingsIcon,
   SquarePenIcon,
   SunIcon,
+  SearchIcon,
   TextSearchIcon,
 } from "lucide-react";
 import {
@@ -122,6 +123,7 @@ import {
   onOpenCommandPalette,
   takePendingProjectPick,
 } from "../commandPaletteBus";
+import { useChatFindStore } from "../chatFindStore";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import {
@@ -660,6 +662,12 @@ function CommandPaletteDialog(props: {
       data-palette-mode={props.mode}
       data-testid="command-palette"
       finalFocus={() => {
+        // An action that moved focus on purpose (find-in-thread, a dialog it
+        // opened) keeps it; only focus left in the palette returns to the composer.
+        const active = document.activeElement;
+        if (active && active !== document.body && !active.closest("[data-command-palette]")) {
+          return false;
+        }
         composerHandleRef?.current?.focusAtEnd();
         return false;
       }}
@@ -1912,6 +1920,20 @@ function OpenCommandPaletteDialog(props: {
       icon: <LinkIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "thread.copyReference",
       run: copyActiveThreadReference,
+    });
+  }
+
+  if (activeThread !== null) {
+    actionItems.push({
+      kind: "action",
+      value: "action:find-in-thread",
+      searchTerms: ["find", "search", "thread", "conversation", "messages", "text", "ctrl+f"],
+      title: "Find in thread",
+      icon: <SearchIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "chat.find",
+      run: async () => {
+        useChatFindStore.getState().show();
+      },
     });
   }
 
