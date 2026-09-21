@@ -49,6 +49,7 @@ import {
   FolderIcon,
   FolderPlusIcon,
   GitCommitHorizontalIcon,
+  OrbitIcon,
   LinkIcon,
   MessageSquareIcon,
   MonitorIcon,
@@ -124,6 +125,7 @@ import {
   selectActiveRightPanel,
   useRightPanelStore,
 } from "../rightPanelStore";
+import { toggleAgentStageForActivePane, useAgentStageStore } from "../agentStage/agentStageStore";
 import { getLatestThreadForProject, sortThreads } from "../lib/threadSort";
 import {
   cn,
@@ -1835,6 +1837,19 @@ function OpenCommandPaletteDialog(props: {
             ...(title ? { title } : {}),
           },
         });
+      },
+    });
+  }
+
+  if (activeThread && useAgentStageStore.getState().enabled) {
+    actionItems.push({
+      kind: "action",
+      value: "action:toggle-agent-stage",
+      searchTerms: ["agent", "stage", "visual", "sprites", "subagents"],
+      title: "Toggle agent stage",
+      icon: <OrbitIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        toggleAgentStageForActivePane();
       },
     });
   }
