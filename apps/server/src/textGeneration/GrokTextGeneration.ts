@@ -19,7 +19,6 @@ import {
   buildPrContentPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
-import { buildThoughtTrailPrompt, sanitizeThoughtTrail } from "./ThoughtTrailPrompt.ts";
 import {
   sanitizeCommitSubject,
   sanitizePrTitle,
@@ -55,8 +54,7 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle"
-      | "summarizeThoughts";
+      | "generateThreadTitle";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -265,26 +263,10 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
-  const summarizeThoughts: TextGeneration.TextGeneration["Service"]["summarizeThoughts"] =
-    Effect.fn("GrokTextGeneration.summarizeThoughts")(function* (input) {
-      const { prompt, outputSchema } = buildThoughtTrailPrompt({ trace: input.trace });
-
-      const generated = yield* runGrokJson({
-        operation: "summarizeThoughts",
-        cwd: input.cwd,
-        prompt,
-        outputSchemaJson: outputSchema,
-        modelSelection: input.modelSelection,
-      });
-
-      return sanitizeThoughtTrail(generated);
-    });
-
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
-    summarizeThoughts,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

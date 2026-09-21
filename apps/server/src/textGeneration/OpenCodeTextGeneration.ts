@@ -20,7 +20,6 @@ import {
   buildPrContentPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
-import { buildThoughtTrailPrompt, sanitizeThoughtTrail } from "./ThoughtTrailPrompt.ts";
 import * as TextGeneration from "./TextGeneration.ts";
 import {
   sanitizeCommitSubject,
@@ -35,7 +34,6 @@ const OpenCodeTextGenerationOperation = Schema.Literals([
   "generatePrContent",
   "generateBranchName",
   "generateThreadTitle",
-  "summarizeThoughts",
 ]);
 
 type OpenCodeTextGenerationOperation = typeof OpenCodeTextGenerationOperation.Type;
@@ -455,26 +453,10 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
       };
     });
 
-  const summarizeThoughts: TextGeneration.TextGeneration["Service"]["summarizeThoughts"] =
-    Effect.fn("OpenCodeTextGeneration.summarizeThoughts")(function* (input) {
-      const { prompt, outputSchema } = buildThoughtTrailPrompt({ trace: input.trace });
-
-      const generated = yield* runOpenCodeJson({
-        operation: "summarizeThoughts",
-        cwd: input.cwd,
-        prompt,
-        outputSchemaJson: outputSchema,
-        modelSelection: input.modelSelection,
-      });
-
-      return sanitizeThoughtTrail(generated);
-    });
-
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
-    summarizeThoughts,
   } satisfies TextGeneration.TextGeneration["Service"];
 });

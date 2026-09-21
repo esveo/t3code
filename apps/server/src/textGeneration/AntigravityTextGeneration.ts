@@ -27,7 +27,6 @@ import {
   buildPrContentPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
-import { buildThoughtTrailPrompt, sanitizeThoughtTrail } from "./ThoughtTrailPrompt.ts";
 import {
   sanitizeCommitSubject,
   sanitizePrTitle,
@@ -406,21 +405,10 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
       };
     });
 
-  const summarizeThoughts: TextGeneration.TextGeneration["Service"]["summarizeThoughts"] =
-    Effect.fn("AntigravityTextGeneration.summarizeThoughts")(function* (input) {
-      const generated = yield* runAntigravityJson({
-        operation: "summarizeThoughts",
-        ...buildThoughtTrailPrompt({ trace: input.trace }),
-        modelSelection: input.modelSelection,
-      });
-      return sanitizeThoughtTrail(generated);
-    });
-
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
-    summarizeThoughts,
   } satisfies TextGeneration.TextGeneration["Service"];
 });
