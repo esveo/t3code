@@ -571,6 +571,13 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.contextWindowMeterEnabled !== DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled
         ? ["Context window indicator"]
         : []),
+      ...(settings.contextWindowControlEnabled !==
+      DEFAULT_UNIFIED_SETTINGS.contextWindowControlEnabled
+        ? ["Context window usage"]
+        : []),
+      ...(settings.promptCacheTimerEnabled !== DEFAULT_UNIFIED_SETTINGS.promptCacheTimerEnabled
+        ? ["Prompt cache timer"]
+        : []),
       ...(settings.responseStreamingMode !== DEFAULT_UNIFIED_SETTINGS.responseStreamingMode
         ? ["Response streaming"]
         : []),
@@ -640,6 +647,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.proactivePanelsEnabled,
       settings.environmentIdentificationMode,
       settings.contextWindowMeterEnabled,
+      settings.contextWindowControlEnabled,
+      settings.promptCacheTimerEnabled,
       settings.fontFamilyCode,
       settings.fontFamilyComposer,
       settings.fontFamilySans,
@@ -747,6 +756,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       sendShortcut: DEFAULT_UNIFIED_SETTINGS.sendShortcut,
       followUpBehavior: DEFAULT_UNIFIED_SETTINGS.followUpBehavior,
       contextWindowMeterEnabled: DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled,
+      contextWindowControlEnabled: DEFAULT_UNIFIED_SETTINGS.contextWindowControlEnabled,
+      promptCacheTimerEnabled: DEFAULT_UNIFIED_SETTINGS.promptCacheTimerEnabled,
       environmentIdentificationMode: DEFAULT_UNIFIED_SETTINGS.environmentIdentificationMode,
       glassOpacity: DEFAULT_UNIFIED_SETTINGS.glassOpacity,
       panelAnimationDurationMs: DEFAULT_UNIFIED_SETTINGS.panelAnimationDurationMs,
@@ -2708,6 +2719,61 @@ export function GeneralSettingsPanel() {
                 <SelectItem value="steer">Steer</SelectItem>
               </SelectPopup>
             </Select>
+          }
+        />
+
+        <SettingsRow
+          {...searchableSetting("context-window-control")}
+          description="Show how full the thread's context window is next to the composer controls."
+          resetAction={
+            settings.contextWindowControlEnabled !==
+            DEFAULT_UNIFIED_SETTINGS.contextWindowControlEnabled ? (
+              <SettingResetButton
+                label="context window usage"
+                onClick={() =>
+                  updateSettings({
+                    contextWindowControlEnabled:
+                      DEFAULT_UNIFIED_SETTINGS.contextWindowControlEnabled,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.contextWindowControlEnabled}
+              onCheckedChange={(checked) =>
+                updateSettings({ contextWindowControlEnabled: Boolean(checked) })
+              }
+              aria-label="Context window usage"
+            />
+          }
+        />
+
+        <SettingsRow
+          {...searchableSetting("prompt-cache-timer")}
+          description="Show how many minutes are left before the prompt cache expires. Claude only."
+          resetAction={
+            settings.promptCacheTimerEnabled !==
+            DEFAULT_UNIFIED_SETTINGS.promptCacheTimerEnabled ? (
+              <SettingResetButton
+                label="prompt cache timer"
+                onClick={() =>
+                  updateSettings({
+                    promptCacheTimerEnabled: DEFAULT_UNIFIED_SETTINGS.promptCacheTimerEnabled,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.promptCacheTimerEnabled}
+              onCheckedChange={(checked) =>
+                updateSettings({ promptCacheTimerEnabled: Boolean(checked) })
+              }
+              aria-label="Prompt cache timer"
+            />
           }
         />
 

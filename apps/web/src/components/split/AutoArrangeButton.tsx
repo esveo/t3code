@@ -23,7 +23,13 @@ import { useSplitThreadStore } from "../../splitThreadStore";
 import { SidebarHeaderIconButton } from "../sidebar/SidebarThreadHeader";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
-import { buildGridLayout, recommendGrid, ROUTE_LEAF_ID, type GridSize } from "./splitLayout.logic";
+import {
+  arrangeByPosition,
+  buildGridLayout,
+  recommendGrid,
+  ROUTE_LEAF_ID,
+  type GridSize,
+} from "./splitLayout.logic";
 
 const PICKER_COLUMNS = 8;
 const PICKER_ROWS = 6;
@@ -91,8 +97,9 @@ export function AutoArrangeButton({
     setOpen(nextOpen);
   };
 
+  const routeThread = routeTarget?.kind === "server" ? routeTarget.threadRef : null;
+
   const applyLayout = (arranged: readonly ScopedThreadRef[], grid: GridSize) => {
-    const routeThread = routeTarget?.kind === "server" ? routeTarget.threadRef : null;
     const { layout, navigateTo } = buildGridLayout({
       threads: arranged,
       routeThread,
@@ -185,20 +192,28 @@ export function AutoArrangeButton({
   const arrange = (fillWithNew: boolean) => {
     const grid = selected;
     const capacity = grid.columns * grid.rows;
-    const existing = threads
-      .slice(0, capacity)
-      .map((thread) => scopeThreadRef(thread.environmentId, thread.id));
+    const existing = threads.map((thread) => scopeThreadRef(thread.environmentId, thread.id));
+    const place = (candidates: readonly ScopedThreadRef[]) =>
+      applyLayout(
+        arrangeByPosition({
+          threads: candidates,
+          layout: useSplitThreadStore.getState().layout,
+          routeThread,
+          grid,
+        }),
+        grid,
+      );
     setOpen(false);
     const missing = capacity - existing.length;
     if (!fillWithNew || missing <= 0) {
-      applyLayout(existing, grid);
+      place(existing);
       return;
     }
     openCommandPalette({
       open: "new-thread-in",
       onProjectPicked: (projectRef) => {
         void createEmptyThreads(projectRef, missing).then((created) => {
-          if (created) applyLayout([...existing, ...created], grid);
+          if (created) place([...existing, ...created]);
         });
       },
     });

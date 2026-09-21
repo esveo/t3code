@@ -44,6 +44,7 @@ import {
   type ProviderRuntimeTurnStatus,
   type ProviderSendTurnInput,
   type ProviderSession,
+  type PromptCacheWindow,
   type ThreadTokenUsageSnapshot,
   type TurnTokenUsage,
   type ProviderUserInputAnswers,
@@ -501,6 +502,10 @@ interface ClaudeSessionContext {
   lastKnownContextWindow: number | undefined;
   lastKnownTokenUsage: ThreadTokenUsageSnapshot | undefined;
   lastKnownTotalProcessedTokens: number | undefined;
+  /** Main-conversation prompt cache, refreshed by every parent API request. */
+  promptCache: PromptCacheWindow | undefined;
+  /** API message that last refreshed `promptCache`; its later frames keep the time. */
+  promptCacheMessageId: string | undefined;
   lastAssistantUuid: string | undefined;
   lastThreadStartedId: string | undefined;
   /** Limits already announced for the running turn, keyed `window:resetsAt`. */
@@ -753,6 +758,20 @@ function finitePositiveInteger(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0
     ? Math.round(value)
     : undefined;
+}
+
+/** The TTL of the cache a Claude response wrote, from its `cache_creation` breakdown. */
+function claudePromptCacheTtl(
+  usage: Record<string, unknown>,
+): PromptCacheWindow["ttl"] | undefined {
+  const creation = usage.cache_creation;
+  if (!creation || typeof creation !== "object" || Array.isArray(creation)) {
+    return undefined;
+  }
+  const breakdown = creation as Record<string, unknown>;
+  if ((finiteNonNegativeInteger(breakdown.ephemeral_1h_input_tokens) ?? 0) > 0) return "1h";
+  if ((finiteNonNegativeInteger(breakdown.ephemeral_5m_input_tokens) ?? 0) > 0) return "5m";
+  return undefined;
 }
 
 function claudeUsageInputTokens(usage: Record<string, unknown>): number {
@@ -2587,17 +2606,49 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     });
   });
 
+  /**
+   * Tracks the main conversation's prompt cache from a parent API response.
+   * Its TTL counts from the request, so the first frame of a message sets the
+   * time and later frames of the same message keep it. A response without
+   * cache tokens means nothing is cached.
+   */
+  const recordPromptCacheUsage = Effect.fn("recordPromptCacheUsage")(function* (
+    context: ClaudeSessionContext,
+    messageId: string | undefined,
+    usage: unknown,
+  ) {
+    if (!usage || typeof usage !== "object" || Array.isArray(usage)) {
+      return;
+    }
+    const record = usage as Record<string, unknown>;
+    const sameMessage = messageId !== undefined && messageId === context.promptCacheMessageId;
+    const cachedTokens =
+      (finiteNonNegativeInteger(record.cache_read_input_tokens) ?? 0) +
+      (finiteNonNegativeInteger(record.cache_creation_input_tokens) ?? 0);
+    const ttl =
+      cachedTokens > 0 ? (claudePromptCacheTtl(record) ?? context.promptCache?.ttl) : undefined;
+    const refreshedAt =
+      sameMessage && context.promptCache ? context.promptCache.refreshedAt : yield* nowIso;
+    context.promptCache = ttl ? { ttl, refreshedAt } : undefined;
+    context.promptCacheMessageId = messageId;
+  });
+
   const emitThreadTokenUsage = Effect.fn("emitThreadTokenUsage")(function* (
     context: ClaudeSessionContext,
-    usage: ThreadTokenUsageSnapshot | undefined,
+    reportedUsage: ThreadTokenUsageSnapshot | undefined,
     options?: {
       readonly rawMethod?: string;
       readonly rawPayload?: unknown;
     },
   ) {
-    if (!usage) {
+    if (!reportedUsage) {
       return;
     }
+    // Snapshots reused from `lastKnownTokenUsage` carry an older cache state.
+    const { promptCache: _staleCache, ...usageWithoutCache } = reportedUsage;
+    const usage: ThreadTokenUsageSnapshot = context.promptCache
+      ? { ...usageWithoutCache, promptCache: context.promptCache }
+      : usageWithoutCache;
 
     context.lastKnownTokenUsage = usage;
     context.lastKnownTotalProcessedTokens =
@@ -2950,8 +3001,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       }
     }
 
-    if (event.type === "message_start" && context.turnState && !streamParentToolUseId) {
-      context.turnState.emittedThinkingText = false;
+    if (event.type === "message_start" && !streamParentToolUseId) {
+      if (context.turnState) {
+        context.turnState.emittedThinkingText = false;
+      }
+      yield* recordPromptCacheUsage(context, event.message.id, event.message.usage);
     }
 
     if (event.type === "message_delta") {
@@ -3511,6 +3565,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       }
     }
 
+    // Synthetic messages (errors, interrupts) never reached the API.
+    if (message.message.model !== "<synthetic>") {
+      yield* recordPromptCacheUsage(context, message.message.id, message.message.usage);
+    }
+
     if (context.turnState) {
       // Limited retries may only carry an assistant error, without a new window
       // event. Later parent responses replace this evidence if the turn recovers.
@@ -3700,6 +3759,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         });
         return;
       case "compact_boundary": {
+        // The compacted conversation is a new prompt the cache does not hold.
+        context.promptCache = undefined;
+        context.promptCacheMessageId = undefined;
         if (context.turnState) {
           context.turnState.latestAssistantUsage = undefined;
           context.turnState.compactedSinceLatestAssistantUsage = true;
@@ -5125,6 +5187,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         lastKnownContextWindow: initialContextWindow,
         lastKnownTokenUsage: undefined,
         lastKnownTotalProcessedTokens: undefined,
+        promptCache: undefined,
+        promptCacheMessageId: undefined,
         lastAssistantUuid: resumeState?.resumeSessionAt,
         lastThreadStartedId: undefined,
         announcedUsageLimits: undefined,

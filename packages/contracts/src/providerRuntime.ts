@@ -260,6 +260,14 @@ const ThreadMetadataUpdatedPayload = Schema.Struct({
 });
 export type ThreadMetadataUpdatedPayload = typeof ThreadMetadataUpdatedPayload.Type;
 
+/** The provider's prompt cache for the main conversation: its TTL and when the
+ *  last request refreshed it. Only providers that report cache TTLs set it. */
+export const PromptCacheWindow = Schema.Struct({
+  ttl: Schema.Literals(["5m", "1h"]),
+  refreshedAt: IsoDateTime,
+});
+export type PromptCacheWindow = typeof PromptCacheWindow.Type;
+
 export const ThreadTokenUsageSnapshot = Schema.Struct({
   usedTokens: NonNegativeInt,
   totalProcessedTokens: Schema.optional(NonNegativeInt),
@@ -277,6 +285,7 @@ export const ThreadTokenUsageSnapshot = Schema.Struct({
   durationMs: Schema.optional(NonNegativeInt),
   compactsAutomatically: Schema.optional(Schema.Boolean),
   autoCompactThreshold: Schema.optional(PositiveInt),
+  promptCache: Schema.optional(PromptCacheWindow),
 });
 export type ThreadTokenUsageSnapshot = typeof ThreadTokenUsageSnapshot.Type;
 

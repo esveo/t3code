@@ -277,6 +277,7 @@ import {
 } from "./composerProviderState";
 import { ContextWindowMeter, ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
 import { ContextWindowControl } from "./ContextWindowControl";
+import { PromptCacheControl } from "./PromptCacheControl";
 import {
   providerSupportsManualCompaction,
   resolveContextWindowModelDisplayName,
@@ -4946,10 +4947,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // Blocks leave the strip from the trailing end, so how many follow a block
   // decides when it goes. Derived rather than hardcoded: the cluster's length
   // depends on which controls the thread's provider offers.
+  const contextWindowControl = settings.contextWindowControlEnabled ? activeContextWindow : null;
+  const promptCache = settings.promptCacheTimerEnabled
+    ? (activeContextWindow?.promptCache ?? null)
+    : null;
   const restingBlockIds = [
     ...(providerTraitsPicker ? ["traits"] : []),
     "mode",
-    ...(activeContextWindow ? ["context"] : []),
+    ...(contextWindowControl ? ["context"] : []),
+    ...(promptCache ? ["cache"] : []),
   ];
   const isRestingBlockHidden = (id: string) =>
     composerControlsHidden ||
@@ -4989,7 +4995,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     },
     // Trailing, so the reading the user can recover from a hover is the first
     // thing to leave a narrow footer.
-    ...(activeContextWindow
+    ...(contextWindowControl
       ? [
           {
             id: "context",
@@ -4997,13 +5003,29 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               <>
                 <ComposerControlSeparator size={composerControlsInStrip ? "xs" : "sm"} />
                 <ContextWindowControl
-                  usage={activeContextWindow}
+                  usage={contextWindowControl}
                   modelDisplayName={activeThreadModelDisplayName}
                   size={composerControlsInStrip ? "xs" : "sm"}
                   hidden={isRestingBlockHidden("context")}
                   compactDisabled={compactDisabled}
                   compactDisabledReason={resolvedCompactDisabledReason}
                   {...(compactCommandAvailable ? { onCompact: compactThreadContext } : {})}
+                />
+              </>
+            ),
+          },
+        ]
+      : []),
+    ...(promptCache
+      ? [
+          {
+            id: "cache",
+            content: (
+              <>
+                <ComposerControlSeparator size={composerControlsInStrip ? "xs" : "sm"} />
+                <PromptCacheControl
+                  promptCache={promptCache}
+                  size={composerControlsInStrip ? "xs" : "sm"}
                 />
               </>
             ),
