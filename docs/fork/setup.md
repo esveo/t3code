@@ -68,6 +68,13 @@ Everything lives outside the checkout, under `$T3CODE_FORK_APP_ROOT`
 `scripts/fork-app.sh status` prints which build is where. Only one prepared
 build waits at a time — a second `prepare` replaces it.
 
+To get an update offer whenever someone pushes to `origin/fork`, run
+`scripts/fork-app.sh watch-install` once. It fetches every minute and prepares
+new commits from its own worktree. It is a plain background process, because
+launchd jobs cannot read `~/Documents`, so a reboot ends it; the next
+`fork-app.sh start` or update click brings it back. Without it, nothing is
+offered until someone runs `prepare`.
+
 Note that `home/` is the app's state, separate from `~/.t3`, which belongs to
 the background service. Your threads and projects live in the service's
 `~/.t3/userdata`, not here.
