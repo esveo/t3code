@@ -95,9 +95,10 @@ function spriteColor(agent: StageAgent, index: number): string {
 
 /** What the bubble says: the current step, or the current thought while thinking. */
 function bubbleText(agent: StageAgent): string | null {
+  // Nothing to say once the agent is done, failed or waits for a prompt.
+  if (!agent.live) return null;
   if (agent.station === "thinking") return agent.thought ?? agent.headline;
   if (agent.station === "writing") return agent.detail ?? agent.headline;
-  if (!agent.live) return null;
   return agent.detail ? `${agent.headline}: ${agent.detail}` : agent.headline;
 }
 
