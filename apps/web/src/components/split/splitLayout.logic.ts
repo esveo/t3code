@@ -562,3 +562,48 @@ export function buildGridLayout(input: {
         };
   return { layout, navigateTo: routeIndex === -1 ? placed[0]! : null };
 }
+
+/**
+ * Picks and orders the threads Auto Arrange places, for `buildGridLayout`.
+ * Threads the layout already shows keep their place on screen as well as the
+ * new grid allows: each goes to the free cell nearest to where its pane was,
+ * closest pairs first. The cells left over take the other threads in the
+ * order given. The route pane counts as showing `routeThread`.
+ */
+export function arrangeByPosition(input: {
+  readonly threads: readonly ScopedThreadRef[];
+  readonly layout: SplitNode;
+  readonly routeThread: ScopedThreadRef | null;
+  readonly grid: GridSize;
+}): ScopedThreadRef[] {
+  const counts = gridColumnCounts(input.threads.length, input.grid);
+  const cells = counts.flatMap((rows, column) =>
+    Array.from({ length: rows }, (_, row) => ({
+      x: (column + 0.5) / counts.length,
+      y: (row + 0.5) / rows,
+    })),
+  );
+  const shown = computeLayout(input.layout).panes.flatMap(({ leaf, rect }) => {
+    const ref = leaf.thread === "route" ? input.routeThread : leaf.thread;
+    const thread = ref && input.threads.find((candidate) => sameThread(candidate, ref));
+    return thread ? [{ thread, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }] : [];
+  });
+  const pairs = shown.flatMap((pane, paneIndex) =>
+    cells.map((cell, cellIndex) => ({
+      paneIndex,
+      cellIndex,
+      distance: (pane.x - cell.x) ** 2 + (pane.y - cell.y) ** 2,
+    })),
+  );
+  // Sort is stable, so ties go to the earlier cell, i.e. left, then top.
+  pairs.sort((left, right) => left.distance - right.distance);
+  const placed: (ScopedThreadRef | null)[] = cells.map(() => null);
+  const placedPanes = new Set<number>();
+  for (const { paneIndex, cellIndex } of pairs) {
+    if (placed[cellIndex] || placedPanes.has(paneIndex)) continue;
+    placed[cellIndex] = shown[paneIndex]!.thread;
+    placedPanes.add(paneIndex);
+  }
+  const rest = input.threads.filter((thread) => !shown.some((pane) => pane.thread === thread));
+  return placed.map((thread) => thread ?? rest.shift()!);
+}
