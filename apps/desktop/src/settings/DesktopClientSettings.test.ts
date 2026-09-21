@@ -34,6 +34,8 @@ const clientSettings: ClientSettings = {
   confirmThreadDelete: false,
   confirmThreadUnpin: false,
   contextWindowMeterEnabled: false,
+  contextWindowControlEnabled: true,
+  promptCacheTimerEnabled: true,
   composerCollapseOnScroll: true,
   dismissedProviderUpdateNotificationKeys: [],
   diffFilesCollapsed: true,
