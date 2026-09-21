@@ -289,7 +289,29 @@ export interface DesktopUpdateState {
   message: string | null;
   errorContext: "check" | "download" | "install" | null;
   canRetry: boolean;
+  /** Private fork: the t3 service's own update, present only in fork builds. */
+  forkService?: DesktopForkServiceState | undefined;
 }
+
+export interface DesktopForkServiceState {
+  /** The version the service runs, from its state file. */
+  runningVersion: string | null;
+  /** A fork server built and waiting for a service restart, or null. */
+  pendingVersion: string | null;
+  /** Why the pending server cannot be switched to by a restart. */
+  blockedReason: string | null;
+  restarting: boolean;
+  /** The last restart's failure. */
+  error: string | null;
+}
+
+export const DesktopForkServiceStateSchema = Schema.Struct({
+  runningVersion: Schema.NullOr(Schema.String),
+  pendingVersion: Schema.NullOr(Schema.String),
+  blockedReason: Schema.NullOr(Schema.String),
+  restarting: Schema.Boolean,
+  error: Schema.NullOr(Schema.String),
+});
 
 export interface DesktopUpdateReleaseNote {
   version: string;
@@ -320,6 +342,7 @@ export const DesktopUpdateStateSchema = Schema.Struct({
   message: Schema.NullOr(Schema.String),
   errorContext: Schema.NullOr(Schema.Literals(["check", "download", "install"])),
   canRetry: Schema.Boolean,
+  forkService: Schema.optional(DesktopForkServiceStateSchema),
 });
 
 export interface DesktopUpdateActionResult {
@@ -1241,6 +1264,8 @@ export interface DesktopBridge {
   checkForUpdate: () => Promise<DesktopUpdateCheckResult>;
   downloadUpdate: () => Promise<DesktopUpdateActionResult>;
   installUpdate: () => Promise<DesktopUpdateActionResult>;
+  /** Private fork: switches the t3 service to the pending fork server. */
+  restartForkService?: () => Promise<DesktopUpdateState>;
   onUpdateState: (listener: (state: DesktopUpdateState) => void) => () => void;
   /** Present when the desktop shell accepts `t3 app` activation requests. */
   appActivation?: {
