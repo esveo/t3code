@@ -165,6 +165,33 @@ describe("split layout", () => {
     });
   });
 
+  it("pushes further dividers once a pane reaches its minimum", () => {
+    const layout: SplitNode = {
+      kind: "split",
+      id: "branch",
+      direction: "row",
+      children: ["route", "a", "b", "c"].map((id) => ({
+        kind: "leaf" as const,
+        id,
+        thread: id === "route" ? ("route" as const) : thread(id),
+      })),
+      sizes: [0.25, 0.25, 0.25, 0.25],
+    };
+    expect(shape(resizeBranch(layout, "branch", 0, 0.55))).toEqual({
+      row: ["route", "a", "b", "c"],
+      sizes: [0.55, 0.1, 0.1, 0.25],
+    });
+    expect(shape(resizeBranch(layout, "branch", 2, 0.05))).toEqual({
+      row: ["route", "a", "b", "c"],
+      sizes: [0.1, 0.1, 0.1, 0.7],
+    });
+    // Every pane on the pushed side keeps its minimum.
+    expect(shape(resizeBranch(layout, "branch", 1, 0.99))).toEqual({
+      row: ["route", "a", "b", "c"],
+      sizes: [0.25, 0.55, 0.1, 0.1],
+    });
+  });
+
   it("equalizes the children of a branch", () => {
     counter = 0;
     let layout = dropNewThread(SINGLE_PANE_LAYOUT, {

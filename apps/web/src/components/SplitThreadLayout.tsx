@@ -309,6 +309,10 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
       const handle = event.currentTarget;
       handle.setPointerCapture(event.pointerId);
       const gridRect = grid.getBoundingClientRect();
+      // Every move resizes the layout the drag started from, so panes a
+      // divider pushed aside come back when it is dragged back.
+      let base = useSplitThreadStore.getState().layout;
+      let resized = base;
       const onMove = (moveEvent: PointerEvent) => {
         const { branchRect } = divider;
         const fraction =
@@ -318,7 +322,9 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
             : ((moveEvent.clientY - gridRect.top) / gridRect.height - branchRect.top) /
               branchRect.height;
         const current = useSplitThreadStore.getState().layout;
-        setLayout(resizeBranch(current, divider.branchId, divider.index, fraction));
+        if (current !== resized) base = current;
+        resized = resizeBranch(base, divider.branchId, divider.index, fraction);
+        setLayout(resized);
       };
       const onUp = () => {
         handle.removeEventListener("pointermove", onMove);
