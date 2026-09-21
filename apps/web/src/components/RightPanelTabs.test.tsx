@@ -124,6 +124,7 @@ function renderTabs(
       onAddGitGraph={() => undefined}
       onAddFiles={() => undefined}
       onAddAgents={() => undefined}
+      onAddAgentStage={() => undefined}
       onAddDevice={() => undefined}
       liveAgentCount={0}
       browserAvailable
@@ -134,6 +135,7 @@ function renderTabs(
       pullRequestAvailable={false}
       pullRequestsAvailable={false}
       agentsAvailable={false}
+      agentStageAvailable={false}
       deviceAvailable={false}
     >
       <div>content</div>

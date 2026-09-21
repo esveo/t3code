@@ -70,6 +70,8 @@ export interface StageAgent {
   readonly detail: string | null;
   /** Latest steps, newest last. */
   readonly recent: ReadonlyArray<string>;
+  /** The latest reasoning of the turn, for the bubble above the sprite. */
+  readonly thought: string | null;
 }
 
 export interface StageModel {
@@ -136,6 +138,7 @@ function deriveMainAgent(
     label: "Main agent",
     role: null,
     recent,
+    thought: latestThought(input.messages, turnId),
   };
 
   const current = findCurrentWorkEntry(entries);
@@ -246,6 +249,20 @@ function findCurrentWorkEntry(entries: ReadonlyArray<WorkLogEntry>): WorkLogEntr
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index]!;
     if (entry.agentSpawn !== undefined || workLogEntryIsToolLike(entry)) return entry;
+  }
+  return null;
+}
+
+function latestThought(
+  messages: ReadonlyArray<OrchestrationMessage>,
+  turnId: string | null,
+): string | null {
+  if (turnId === null) return null;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    if (message.turnId === turnId && message.role === "reasoning") {
+      return tailSnippet(message.text);
+    }
   }
   return null;
 }
@@ -393,6 +410,7 @@ function deriveSubagent(agent: RuntimeSubagent, tool: AttributedTool | null): St
     label,
     role: agent.role,
     recent: agent.recentActivity.slice(-RECENT_LIMIT).map((entry) => entry.summary),
+    thought: agent.progress,
   };
   if (agent.status === "running") {
     if (tool !== null && tool.status === "inProgress") {

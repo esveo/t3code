@@ -231,7 +231,8 @@ import {
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import { BranchToolbar, type BranchToolbarHandle } from "./BranchToolbar";
 import { nextGitGraphPanelStep } from "../gitGraph/gitGraphPanelLadder";
-import { AgentStageOverlay } from "../agentStage/AgentStageOverlay";
+import { AgentStagePanel } from "../agentStage/AgentStagePanel";
+import { useAgentStageEnabled } from "../agentStage/agentStageStore";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import { isEditableFocused } from "../lib/editableFocus";
 import { undoLatestThreadAction } from "../hooks/showUndoToast";
@@ -4608,6 +4609,11 @@ export default function ChatView(props: ChatViewProps) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "agents");
   }, [activeThreadRef]);
+  const agentStageEnabled = useAgentStageEnabled();
+  const addAgentStageSurface = useCallback(() => {
+    if (!activeThreadRef || !agentStageEnabled) return;
+    useRightPanelStore.getState().open(activeThreadRef, "agent-stage");
+  }, [activeThreadRef, agentStageEnabled]);
   const supportsThreadPullRequests =
     serverConfig?.environment.capabilities.threadPullRequests === true;
   const visiblePullRequests = visibleThreadPullRequests(
@@ -9744,6 +9750,8 @@ export default function ChatView(props: ChatViewProps) {
         newShortcutLabel={newTerminalShortcutLabel ?? undefined}
         closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
       />
+    ) : renderedRightPanelSurface?.kind === "agent-stage" ? (
+      <AgentStagePanel threadRef={activeThreadRef} workspaceRoot={activeWorkspaceRoot} />
     ) : renderedRightPanelSurface?.kind === "diff" ? (
       <Suspense fallback={null}>
         <DiffPanel
@@ -9980,7 +9988,6 @@ export default function ChatView(props: ChatViewProps) {
             onDragLeave={workspaceFileDropHandlers.onDragLeave}
             onDrop={workspaceFileDropHandlers.onDrop}
           >
-            <AgentStageOverlay threadRef={activeThreadRef} workspaceRoot={activeWorkspaceRoot} />
             {isWorkspaceFileDragActive ? (
               <div
                 className="pointer-events-none absolute inset-2 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary/60 bg-primary/[0.035]"
@@ -10485,6 +10492,7 @@ export default function ChatView(props: ChatViewProps) {
           onAddPullRequest={addPullRequestSurface}
           onAddPullRequests={addPullRequestsSurface}
           onAddAgents={addAgentsSurface}
+          onAddAgentStage={addAgentStageSurface}
           onAddDevice={addDeviceSurface}
           browserAvailable={isPreviewSupportedInRuntime()}
           terminalAvailable={activeProject !== null}
@@ -10494,6 +10502,7 @@ export default function ChatView(props: ChatViewProps) {
           pullRequestAvailable={pullRequestSurfaceAvailable}
           pullRequestsAvailable={pullRequestsSurfaceAvailable}
           agentsAvailable
+          agentStageAvailable={agentStageEnabled}
           deviceAvailable={activeThreadRef !== null}
           liveAgentCount={agentPanelModel.liveCount}
         >
@@ -10545,6 +10554,7 @@ export default function ChatView(props: ChatViewProps) {
             onAddPullRequest={addPullRequestSurface}
             onAddPullRequests={addPullRequestsSurface}
             onAddAgents={addAgentsSurface}
+            onAddAgentStage={addAgentStageSurface}
             onAddDevice={addDeviceSurface}
             browserAvailable={isPreviewSupportedInRuntime()}
             terminalAvailable={activeProject !== null}
@@ -10554,6 +10564,7 @@ export default function ChatView(props: ChatViewProps) {
             pullRequestAvailable={pullRequestSurfaceAvailable}
             pullRequestsAvailable={pullRequestsSurfaceAvailable}
             agentsAvailable
+            agentStageAvailable={agentStageEnabled}
             deviceAvailable={activeThreadRef !== null}
             liveAgentCount={agentPanelModel.liveCount}
           >

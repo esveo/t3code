@@ -125,7 +125,7 @@ import {
   selectActiveRightPanel,
   useRightPanelStore,
 } from "../rightPanelStore";
-import { toggleAgentStageForActivePane, useAgentStageStore } from "../agentStage/agentStageStore";
+import { useAgentStageStore } from "../agentStage/agentStageStore";
 import { getLatestThreadForProject, sortThreads } from "../lib/threadSort";
 import {
   cn,
@@ -1844,12 +1844,14 @@ function OpenCommandPaletteDialog(props: {
   if (activeThread && useAgentStageStore.getState().enabled) {
     actionItems.push({
       kind: "action",
-      value: "action:toggle-agent-stage",
+      value: "action:open-agent-stage",
       searchTerms: ["agent", "stage", "visual", "sprites", "subagents"],
-      title: "Toggle agent stage",
+      title: "Open agent stage",
       icon: <OrbitIcon className={ITEM_ICON_CLASS} />,
       run: async () => {
-        toggleAgentStageForActivePane();
+        useRightPanelStore
+          .getState()
+          .open(scopeThreadRef(activeThread.environmentId, activeThread.id), "agent-stage");
       },
     });
   }

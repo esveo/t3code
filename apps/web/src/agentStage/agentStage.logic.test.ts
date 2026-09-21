@@ -112,12 +112,13 @@ describe("deriveStageModel", () => {
           data: { command: "npm test" },
         }),
       ],
-      messages: [],
+      messages: [message("reasoning", "Let me run the tests.", false)],
       session: session("running"),
       latestTurn: latestTurn("running"),
     });
     const main = model.agents[0]!;
     expect(main.station).toBe("command");
+    expect(main.thought).toBe("Let me run the tests.");
     expect(main.live).toBe(true);
     expect(main.headline).toMatch(/^Running/);
     expect(main.detail).toBe("npm test");
@@ -138,6 +139,7 @@ describe("deriveStageModel", () => {
     const main = model.agents[0]!;
     expect(main.station).toBe("thinking");
     expect(main.detail).toBe("Now I should check the tests.");
+    expect(main.thought).toBe("Now I should check the tests.");
     expect(main.recent).toHaveLength(1);
   });
 
