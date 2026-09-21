@@ -49,16 +49,30 @@ const STATION_ICONS: Record<StageStation, LucideIcon> = {
   waiting: Hand,
 };
 
-/** Ring radius and the sprites' track, as fractions of half the scene's side. */
-const RING = 0.8;
-const TRACK = 0.6;
-const SPRITE = 40;
-const SPRITE_GAP = 30;
+/** Room outside the ring for the station labels, in px. */
+const LABEL_MARGIN = 56;
+/** Sprites circle their station on this radius, in px. */
+const ORBIT = 28;
+const SPRITE = 30;
 const BUBBLE_WIDTH = 200;
 /** How long a sprite stays put before it may move on, so a quick tool call is still seen. */
 const DWELL_MS = 1600;
 const MOVE_MS = 700;
+const ORBIT_PERIOD_S = 10;
 const SUBAGENT_HUES = [205, 285, 25, 145, 335, 55, 175, 255];
+
+/**
+ * Sprites circle their station while they work there. Transform-only
+ * keyframes stay on the compositor, and the animation is paused for agents
+ * at rest, so an idle stage draws nothing.
+ */
+const ORBIT_STYLE = `
+@keyframes agent-stage-orbit { to { transform: rotate(360deg); } }
+[data-agent-stage-spin] { animation: agent-stage-orbit ${ORBIT_PERIOD_S}s linear infinite; }
+[data-agent-stage-spin="reverse"] { animation-direction: reverse; }
+[data-agent-stage-spin][data-paused="true"] { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) { [data-agent-stage-spin] { animation: none; } }
+`;
 
 interface Point {
   readonly x: number;
@@ -71,12 +85,20 @@ function stationAngle(station: StageStation): number {
 }
 
 function ringPoint(angle: number, half: number, radius: number): Point {
-  return { x: half + Math.cos(angle) * half * radius, y: half + Math.sin(angle) * half * radius };
+  return { x: half + Math.cos(angle) * radius, y: half + Math.sin(angle) * radius };
 }
 
 function spriteColor(agent: StageAgent, index: number): string {
   if (agent.kind === "main") return "var(--primary)";
   return `hsl(${SUBAGENT_HUES[index % SUBAGENT_HUES.length]} 55% 48%)`;
+}
+
+/** What the bubble says: the current step, or the current thought while thinking. */
+function bubbleText(agent: StageAgent): string | null {
+  if (agent.station === "thinking") return agent.thought ?? agent.headline;
+  if (agent.station === "writing") return agent.detail ?? agent.headline;
+  if (!agent.live) return null;
+  return agent.detail ? `${agent.headline}: ${agent.detail}` : agent.headline;
 }
 
 interface DwellEntry {
@@ -179,9 +201,10 @@ function useDrawnStations(agents: ReadonlyArray<StageAgent>): ReadonlyMap<string
 }
 
 /**
- * The scene: stations on a ring, one sprite per agent standing at the station
- * of its current work, the selected agent's doings in the middle. Sprites
- * move by a transform transition only, so a still stage costs nothing.
+ * The scene: stations on a ring, the agents circling the station of their
+ * current work, the selected agent's doings in the middle. A sprite changes
+ * station by a transform transition; while it works it orbits its station,
+ * and agents sharing one form a circle around it.
  */
 export const AgentStage = memo(function AgentStage({
   model,
@@ -213,6 +236,7 @@ export const AgentStage = memo(function AgentStage({
 
   const drawn = useDrawnStations(model.agents);
   const half = side / 2;
+  const ring = Math.max(half - LABEL_MARGIN, 0);
   const selected = model.agents.find((agent) => agent.id === selectedId) ?? model.agents[0]!;
   const occupied = new Set<StageStation>();
   const crowd = new Map<StageStation, number>();
@@ -227,6 +251,7 @@ export const AgentStage = memo(function AgentStage({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-foreground" data-agent-stage>
+      <style>{ORBIT_STYLE}</style>
       <div className="flex shrink-0 items-center gap-2 px-3 pt-2">
         <span className="text-xs text-muted-foreground">
           {model.running ? "Working" : "Resting"}
@@ -236,7 +261,7 @@ export const AgentStage = memo(function AgentStage({
             <Toggle
               pressed={showThoughts}
               onPressedChange={onToggleThoughts}
-              aria-label="Show thoughts"
+              aria-label="Show what the selected agent is doing"
               variant="ghost"
               size="sm"
             >
@@ -244,7 +269,7 @@ export const AgentStage = memo(function AgentStage({
             </Toggle>
           </TooltipTrigger>
           <TooltipPopup side="bottom">
-            {showThoughts ? "Hide the thought bubble" : "Show the latest thought above the sprite"}
+            {showThoughts ? "Hide the bubble" : "Show what the selected agent is doing in a bubble"}
           </TooltipPopup>
         </Tooltip>
       </div>
@@ -252,43 +277,47 @@ export const AgentStage = memo(function AgentStage({
       <div ref={sceneRef} className="flex min-h-0 flex-1 items-center justify-center p-3">
         {side > 0 ? (
           <div className="relative" style={{ width: side, height: side }}>
-            <svg className="absolute inset-0 text-border" viewBox="0 0 100 100" aria-hidden>
+            <svg
+              className="absolute inset-0 text-border"
+              viewBox={`0 0 ${side} ${side}`}
+              aria-hidden
+            >
               <circle
-                cx="50"
-                cy="50"
-                r={50 * RING}
+                cx={half}
+                cy={half}
+                r={ring}
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="0.35"
-                strokeDasharray="0.8 1.4"
+                strokeWidth="1"
+                strokeDasharray="3 5"
               />
             </svg>
 
             {STAGE_STATIONS.map((station) => {
-              const point = ringPoint(stationAngle(station.id), half, RING);
+              const angle = stationAngle(station.id);
+              const point = ringPoint(angle, half, ring);
+              const label = ringPoint(angle, half, ring + ORBIT + SPRITE / 2 + 12);
               const Icon = STATION_ICONS[station.id];
               const active = occupied.has(station.id);
               return (
-                <div
-                  key={station.id}
-                  className="absolute flex w-20 -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-0.5"
-                  style={{ left: point.x, top: point.y }}
-                >
+                <div key={station.id} className="contents">
                   <div
                     className={cn(
-                      "flex size-8 items-center justify-center rounded-full border bg-background transition-colors duration-300",
+                      "absolute flex size-8 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border bg-background transition-colors duration-300",
                       active
                         ? "border-primary bg-primary/10 text-primary"
                         : "border-border text-muted-foreground",
                     )}
+                    style={{ left: point.x, top: point.y }}
                   >
                     <Icon className="size-3.5" />
                   </div>
                   <span
                     className={cn(
-                      "text-center text-[10px] leading-tight",
+                      "absolute -translate-x-1/2 -translate-y-1/2 text-[10px] leading-none whitespace-nowrap",
                       active ? "text-foreground" : "text-muted-foreground",
                     )}
+                    style={{ left: label.x, top: label.y }}
                   >
                     {station.label}
                   </span>
@@ -296,57 +325,72 @@ export const AgentStage = memo(function AgentStage({
               );
             })}
 
-            <SelectedAgentCard agent={selected} width={Math.round(side * 0.46)} />
+            <SelectedAgentCard agent={selected} width={Math.round(side * 0.42)} />
 
             {model.agents.map((agent, index) => {
               const station = drawn.get(agent.id) ?? agent.station;
               const slot = placed.get(station) ?? 0;
               placed.set(station, slot + 1);
               const count = crowd.get(station) ?? 1;
-              const angle = stationAngle(station);
-              const point = ringPoint(angle, half, TRACK);
-              // Fan agents sharing a station out along the ring's tangent.
-              const spread = (slot - (count - 1) / 2) * SPRITE_GAP;
-              const x = point.x - Math.sin(angle) * spread - SPRITE / 2;
-              const y = point.y + Math.cos(angle) * spread - SPRITE / 2;
+              const point = ringPoint(stationAngle(station), half, ring);
+              const slotDeg = (slot / count) * 360 - 90;
               const isSelected = agent.id === selected.id;
-              const bubble = isSelected && showThoughts ? agent.thought : null;
+              const bubble = isSelected && showThoughts ? bubbleText(agent) : null;
               return (
-                <div key={agent.id} className="contents">
-                  <button
-                    type="button"
-                    aria-label={`${agent.label}, ${agent.headline}`}
-                    aria-pressed={isSelected}
-                    onClick={() => onSelect(agent.id)}
-                    className={cn(
-                      "absolute top-0 left-0 flex size-10 items-center justify-center rounded-full text-sm font-semibold text-white shadow-md",
-                      motion,
-                      "ring-offset-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                      isSelected && "ring-2 ring-foreground",
-                      !agent.live && "opacity-50",
-                    )}
-                    style={{
-                      transform: `translate(${x}px, ${y}px)${isSelected ? " scale(1.15)" : ""}`,
-                      backgroundColor: spriteColor(agent, index - 1),
-                      zIndex: isSelected ? 3 : 2,
-                    }}
-                  >
-                    {agent.kind === "main" ? (
-                      <Bot className="size-5" />
-                    ) : (
-                      agent.label.trim().charAt(0).toUpperCase() || "A"
-                    )}
-                  </button>
+                // The orbit's centre travels between stations; everything
+                // inside is relative to it.
+                <div
+                  key={agent.id}
+                  className={cn("absolute top-0 left-0 size-0", motion)}
+                  style={{
+                    transform: `translate(${point.x}px, ${point.y}px)`,
+                    zIndex: isSelected ? 3 : 2,
+                  }}
+                >
+                  <div data-agent-stage-spin data-paused={agent.live ? "false" : "true"}>
+                    <div
+                      className={motion}
+                      style={{ transform: `rotate(${slotDeg}deg) translate(${ORBIT}px)` }}
+                    >
+                      <div
+                        data-agent-stage-spin="reverse"
+                        data-paused={agent.live ? "false" : "true"}
+                      >
+                        <button
+                          type="button"
+                          aria-label={`${agent.label}, ${agent.headline}`}
+                          aria-pressed={isSelected}
+                          onClick={() => onSelect(agent.id)}
+                          className={cn(
+                            "flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-xs font-semibold text-white shadow-md transition-[scale,opacity] duration-300",
+                            "ring-offset-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            isSelected && "ring-2 ring-foreground",
+                            !agent.live && "opacity-50",
+                          )}
+                          style={{
+                            width: SPRITE,
+                            height: SPRITE,
+                            rotate: `${-slotDeg}deg`,
+                            scale: isSelected ? "1.15" : "1",
+                            backgroundColor: spriteColor(agent, index - 1),
+                          }}
+                        >
+                          {agent.kind === "main" ? (
+                            <Bot className="size-4" />
+                          ) : (
+                            agent.label.trim().charAt(0).toUpperCase() || "A"
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                   {bubble ? (
                     <div
                       aria-live="polite"
-                      className={cn(
-                        "pointer-events-none absolute top-0 left-0 z-[4] rounded-lg border border-border bg-popover px-2 py-1.5 text-[11px] leading-snug text-popover-foreground shadow-md",
-                        motion,
-                      )}
+                      className="pointer-events-none absolute top-0 left-0 rounded-lg border border-border bg-popover px-2 py-1.5 text-[11px] leading-snug text-popover-foreground shadow-md"
                       style={{
                         width: BUBBLE_WIDTH,
-                        transform: `translate(${x + SPRITE / 2 - BUBBLE_WIDTH / 2}px, ${y - 10}px) translateY(-100%)`,
+                        transform: `translate(${-BUBBLE_WIDTH / 2}px, ${-(ORBIT + SPRITE / 2 + 10)}px) translateY(-100%)`,
                       }}
                     >
                       <p className="line-clamp-3 break-words">{bubble}</p>

@@ -49,7 +49,7 @@ export const STAGE_STATIONS: ReadonlyArray<{ readonly id: StageStation; readonly
     { id: "browser", label: "Browser" },
     { id: "tool", label: "Tools" },
     { id: "delegate", label: "Subagents" },
-    { id: "waiting", label: "Waiting for you" },
+    { id: "waiting", label: "Waiting" },
     { id: "writing", label: "Answering" },
     { id: "idle", label: "Idle" },
   ];
