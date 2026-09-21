@@ -133,14 +133,19 @@ function ThoughtTrailBody({ trail }: { trail: ThoughtTrail }) {
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    // A long turn outruns the popup, so the trail scrolls inside it rather
+    // than pushing the footer off the screen.
+    <div className="-me-1 flex max-h-56 flex-col gap-2 overflow-y-auto overscroll-contain pe-1">
       {trail.steps.length > 0 ? (
-        <ol className="relative ms-[3px] flex flex-col gap-2 border-border border-s ps-3">
+        <ol className="relative ms-[3px] flex flex-col gap-2 border-border border-s ps-4">
           {trail.steps.map((step) => (
             <li key={step} className="relative text-[11px] leading-4">
               <span
                 aria-hidden="true"
-                className="-start-[calc(0.1875rem+1px)] absolute top-1.5 size-1.5 rounded-full bg-muted-foreground/60"
+                // Centred on the rail, which sits one padding step before the
+                // text: offset by the padding too, or the dot lands on the
+                // first letter.
+                className="-start-[calc(1rem+0.1875rem+1px)] absolute top-1.5 size-1.5 rounded-full bg-muted-foreground/60"
               />
               {step}
             </li>
