@@ -7,8 +7,9 @@
  * `fork-app.sh watch`, which does both for new commits on `origin/fork`.
  *
  * A prepared app or a pending server is reported as one downloaded update,
- * whose "install" hands off to `fork-app.sh update`: it restarts the service on
- * the new server and the app side by side. Threads, subagents and workflows
+ * whose "install" runs `fork-app.sh restart-service` and `fork-app.sh restart`
+ * side by side. Both commands predate the single button, so a checkout whose
+ * script was not updated with the app still installs everything. Threads, subagents and workflows
  * continue after the service restart, so there is nothing to confirm.
  *
  * Active only when `T3CODE_FORK_APP_ROOT` and `T3CODE_FORK_APP_SCRIPT` are set;
@@ -253,6 +254,7 @@ const makeForkUpdates = (input: { readonly root: string; readonly script: string
 
     const logDir = NodePath.join(input.root, "logs");
     const watchLog = NodePath.join(logDir, "fork-watch.log");
+    const appLog = NodePath.join(logDir, "fork-app.log");
 
     // One pass at a time; a build takes minutes, so passes queue up otherwise.
     const watchMutex = yield* Semaphore.make(1);
@@ -275,18 +277,33 @@ const makeForkUpdates = (input: { readonly root: string; readonly script: string
 
     const install = Effect.gen(function* () {
       yield* Ref.set(installingRef, true);
+      const service = (yield* Ref.get(stateRef)).forkService;
+      const restartService =
+        service !== undefined && service.pendingVersion !== null && service.blockedReason === null;
       const failed = yield* Effect.sync(() => {
-        try {
-          // Detached so the script outlives this process when it stops the app.
-          const child = NodeChildProcess.spawn(input.script, ["update"], {
+        // Detached so the scripts outlive this process when `restart` stops the app.
+        const spawnDetached = (command: string, log: number | "ignore") => {
+          const child = NodeChildProcess.spawn(input.script, [command], {
             detached: true,
-            stdio: "ignore",
+            stdio: ["ignore", log, log],
             env: {
               ...process.env,
               PATH: `${process.env.PATH ?? ""}:/usr/bin:/bin:/usr/sbin:/sbin`,
             },
           });
           child.unref();
+        };
+        try {
+          if (restartService) {
+            NodeFS.mkdirSync(logDir, { recursive: true });
+            const log = NodeFS.openSync(appLog, "a");
+            try {
+              spawnDetached("restart-service", log);
+            } finally {
+              NodeFS.closeSync(log);
+            }
+          }
+          spawnDetached("restart", "ignore");
           return false;
         } catch {
           return true;
