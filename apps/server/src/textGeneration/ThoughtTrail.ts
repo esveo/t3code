@@ -1,6 +1,8 @@
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import {
+  type ModelSelection,
+  type ProviderOptionSelection,
   ThoughtTrailError,
   type ThoughtTrailInput,
   type ThoughtTrailResult,
@@ -10,6 +12,31 @@ import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import type * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import type * as ServerSettings from "../serverSettings.ts";
 import type * as TextGeneration from "./TextGeneration.ts";
+
+/**
+ * The model reads thinking that is already written, so thinking about it first
+ * buys nothing and costs the reader seconds. Measured on Haiku over a 17k
+ * trace: 3,437 output tokens and 38s with deliberation on, 637 tokens and 10s
+ * with it off, for the same trail. The reader picks the model in settings;
+ * this operation picks the effort.
+ */
+function withoutDeliberation(selection: ModelSelection): ModelSelection {
+  const quiet: ReadonlyArray<ProviderOptionSelection> = [
+    { id: "thinking", value: false },
+    { id: "effort", value: "low" },
+    { id: "reasoningEffort", value: "low" },
+  ];
+  const overridden = new Set(quiet.map((option) => option.id));
+  return {
+    ...selection,
+    // Unknown ids are dropped by the adapters' descriptor lookup, so the same
+    // list can carry every provider's name for the same knob.
+    options: [
+      ...(selection.options ?? []).filter((option) => !overridden.has(option.id)),
+      ...quiet,
+    ],
+  };
+}
 
 /**
  * Recap one turn's thinking on the project's text-generation model.
@@ -46,7 +73,7 @@ export const summarizeTurnThoughts = Effect.fnUntraced(function* (input: {
     return yield* Effect.fail(new ThoughtTrailError({ detail: "This turn did not think." }));
   }
 
-  const { textGenerationModelSelection: modelSelection } = resolveProjectSettings(
+  const { textGenerationModelSelection: configuredModel } = resolveProjectSettings(
     yield* input.settings.getSettings.pipe(
       Effect.mapError(
         (cause) => new ThoughtTrailError({ detail: "Failed to read settings.", cause }),
@@ -54,6 +81,8 @@ export const summarizeTurnThoughts = Effect.fnUntraced(function* (input: {
     ),
     thread.projectId,
   ).settings;
+
+  const modelSelection = withoutDeliberation(configuredModel);
 
   // Only somewhere to run: the prompt carries the whole input, and the
   // adapters that read a checkout use a temp directory for this operation.

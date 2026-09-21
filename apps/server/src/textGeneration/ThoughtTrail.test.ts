@@ -58,6 +58,7 @@ describe("summarizeTurnThoughts", () => {
   it.effect("sends only that turn's reasoning, in order", () =>
     Effect.gen(function* () {
       const seen: string[] = [];
+      const selections: Array<{ options?: ReadonlyArray<unknown> }> = [];
       const result = yield* summarizeTurnThoughts({
         request: { threadId: THREAD_ID, turnId: TURN_ID },
         projection: makeProjection([
@@ -70,11 +71,18 @@ describe("summarizeTurnThoughts", () => {
         settings,
         textGeneration: makeTextGeneration((input) => {
           seen.push(input.trace);
+          selections.push(input.modelSelection);
           return Effect.succeed({ steps: ["Read the resolver"], outcome: "Fixed it" });
         }),
       });
 
       expect(seen).toEqual(["Read the resolver.\n\nRan the test."]);
+      // A recap never needs the model to deliberate first.
+      expect(selections.at(0)?.options).toEqual([
+        { id: "thinking", value: false },
+        { id: "effort", value: "low" },
+        { id: "reasoningEffort", value: "low" },
+      ]);
       expect(result).toEqual({
         steps: ["Read the resolver"],
         outcome: "Fixed it",
