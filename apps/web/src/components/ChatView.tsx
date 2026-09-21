@@ -368,7 +368,6 @@ import {
 } from "../state/entities";
 import { environmentShell } from "../state/shell";
 import { ChatComposer, type ChatComposerHandle } from "./chat/ChatComposer";
-import { resolveThoughtTrailSource } from "./chat/thoughtSummary";
 import { createPageScrollController, type PageScrollKey } from "./chat/pageScrollController";
 import { DraftHeroHeadline } from "./chat/DraftHeroHeadline";
 import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
@@ -3542,18 +3541,6 @@ export default function ChatView(props: ChatViewProps) {
     optimisticUserMessages,
     projectHandoffMessagePreviews,
   ]);
-  // Only once the turn has settled: a recap of a trace that is still growing
-  // would be wrong before it finished rendering.
-  const thoughtTrail = useMemo(
-    () =>
-      resolveThoughtTrailSource({
-        messages: timelineMessages,
-        turnId: activeLatestTurn?.turnId ?? null,
-        settled: latestTurnSettled,
-        keyPrefix: activeThreadId ?? "",
-      }),
-    [activeLatestTurn?.turnId, activeThreadId, latestTurnSettled, timelineMessages],
-  );
   const timelineProjectionRef = useRef<{
     threadKey: string | null;
     projection: TimelineEntriesProjection;
@@ -10262,7 +10249,6 @@ export default function ChatView(props: ChatViewProps) {
                             compactThreadUnavailable={compactThreadUnavailable}
                             compactDisabled={compactDisabled}
                             compactDisabledReason={compactDisabledReason}
-                            thoughtTrail={thoughtTrail}
                             resolvedTheme={resolvedTheme}
                             settings={settings}
                             keybindings={keybindings}

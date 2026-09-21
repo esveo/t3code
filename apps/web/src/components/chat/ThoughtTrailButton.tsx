@@ -1,18 +1,78 @@
 import { BrainIcon, RotateCwIcon } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { createContext, memo, use, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { ComposerControl, ComposerControlIcon, type ComposerControlSize } from "./ComposerControl";
-import { useComposerMenuProps } from "./composerEventScope";
-import { useComposerMenuState } from "./useComposerMenuState";
 import {
+  deriveTurnsWithThoughts,
   generateStubThoughtTrail,
+  readTurnThoughts,
+  type ThoughtEntry,
   type ThoughtTrail,
-  type ThoughtTrailSource,
 } from "./thoughtSummary";
+
+interface ThoughtTrails {
+  readonly turns: ReadonlySet<string>;
+  readonly read: (turnId: string) => string;
+}
+
+const EMPTY_THOUGHT_TRAILS: ThoughtTrails = { turns: new Set(), read: () => "" };
+const ThoughtTrailsCtx = createContext<ThoughtTrails>(EMPTY_THOUGHT_TRAILS);
+
+/**
+ * Makes each turn's thinking reachable from its assistant footer.
+ *
+ * The trace itself is read on demand from a ref rather than carried in the
+ * context: the timeline re-renders on every streaming frame, and a context
+ * value that changed with it would drag every visible row along.
+ */
+export function ThoughtTrailsProvider({
+  entries,
+  liveTurnId,
+  children,
+}: {
+  entries: ReadonlyArray<ThoughtEntry>;
+  liveTurnId: string | null;
+  children: React.ReactNode;
+}) {
+  const entriesRef = useRef(entries);
+  useEffect(() => {
+    entriesRef.current = entries;
+  }, [entries]);
+
+  const derived = useMemo(
+    () => deriveTurnsWithThoughts(entries, liveTurnId),
+    [entries, liveTurnId],
+  );
+  const turns = useStableTurnSet(derived);
+  const value = useMemo<ThoughtTrails>(
+    () => ({ turns, read: (turnId) => readTurnThoughts(entriesRef.current, turnId) }),
+    [turns],
+  );
+
+  return <ThoughtTrailsCtx value={value}>{children}</ThoughtTrailsCtx>;
+}
+
+/** A fresh Set every frame would churn the context; only membership matters. */
+function useStableTurnSet(next: ReadonlySet<string>): ReadonlySet<string> {
+  const [stable, setStable] = useState(next);
+  const value = sameMembers(stable, next) ? stable : next;
+  if (value !== stable) {
+    setStable(value);
+  }
+  return value;
+}
+
+function sameMembers(left: ReadonlySet<string>, right: ReadonlySet<string>) {
+  if (left === right) return true;
+  if (left.size !== right.size) return false;
+  for (const member of left) {
+    if (!right.has(member)) return false;
+  }
+  return true;
+}
 
 type TrailState =
   | { readonly key: string; readonly status: "idle" }
@@ -22,40 +82,39 @@ type TrailState =
 const TRIGGER_LABEL = "Recap the thinking";
 
 /**
- * Sits beside the context window, because both answer the same question about
- * the turn that just finished: what did it cost, and what went on in there.
- * The recap is asked for, never computed on its own, and lives only for the
- * session.
+ * Sits with copy and the timestamp under an answer: the same footer you reach
+ * for once the turn is done. Absent when the turn did not think, or while it
+ * still is. The recap is asked for, never computed on its own, and lives only
+ * for the session.
  */
-export function ThoughtSummaryControl(props: {
-  source: ThoughtTrailSource;
-  size?: ComposerControlSize;
-  /** Measured but out of flow: close the popup rather than orphaning it. */
-  hidden?: boolean;
+export const ThoughtTrailButton = memo(function ThoughtTrailButton({
+  turnId,
+}: {
+  turnId: string | null;
 }) {
-  const { source } = props;
-  const size = props.size ?? "sm";
-  const composerFloatingLayerProps = useComposerMenuProps();
-  const [open, setOpen] = useComposerMenuState(props.hidden);
-  const [state, setState] = useState<TrailState>({ key: source.key, status: "idle" });
+  const trails = use(ThoughtTrailsCtx);
+  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<TrailState>({ key: turnId ?? "", status: "idle" });
   const runIdRef = useRef(0);
 
-  // A new turn drops the previous recap rather than showing it against the
-  // wrong prompt. Derived here so no effect has to chase the prop.
-  const current: TrailState =
-    state.key === source.key ? state : { key: source.key, status: "idle" };
+  // A recap belongs to the turn it was made from, so a row recycled onto
+  // another turn starts over. Derived here so no effect has to chase the prop.
+  const current: TrailState = state.key === turnId ? state : { key: turnId ?? "", status: "idle" };
 
-  const generate = useCallback(() => {
-    const key = source.key;
+  if (turnId === null || !trails.turns.has(turnId)) {
+    return null;
+  }
+
+  const generate = () => {
     const runId = runIdRef.current + 1;
     runIdRef.current = runId;
-    setState({ key, status: "pending" });
-    void generateStubThoughtTrail(source.text).then((trail) => {
+    setState({ key: turnId, status: "pending" });
+    void generateStubThoughtTrail(trails.read(turnId)).then((trail) => {
       if (runIdRef.current === runId) {
-        setState({ key, status: "ready", trail });
+        setState({ key: turnId, status: "ready", trail });
       }
     });
-  }, [source]);
+  };
 
   return (
     <Popover
@@ -72,23 +131,25 @@ export function ThoughtSummaryControl(props: {
           render={
             <PopoverTrigger
               render={
-                <ComposerControl
-                  size={size}
-                  className="shrink-0"
+                <Button
                   type="button"
+                  size="icon-xs"
+                  variant="ghost"
                   aria-label={TRIGGER_LABEL}
-                  data-chat-thought-summary-control
+                  className="text-muted-foreground hover:text-foreground"
+                  data-chat-thought-trail-button
                 />
               }
             />
           }
         >
-          <ComposerControlIcon icon={BrainIcon} size={size} />
+          <BrainIcon className="size-3" />
         </TooltipTrigger>
-        <TooltipPopup side="top">{TRIGGER_LABEL}</TooltipPopup>
+        <TooltipPopup>
+          <p>{TRIGGER_LABEL}</p>
+        </TooltipPopup>
       </Tooltip>
       <PopoverPopup
-        {...composerFloatingLayerProps}
         tooltipStyle
         side="top"
         align="start"
@@ -125,7 +186,7 @@ export function ThoughtSummaryControl(props: {
       </PopoverPopup>
     </Popover>
   );
-}
+});
 
 function ThoughtTrailBody({ trail }: { trail: ThoughtTrail }) {
   if (trail.steps.length === 0 && trail.outcome === null) {

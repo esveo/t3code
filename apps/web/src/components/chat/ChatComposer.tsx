@@ -277,8 +277,6 @@ import {
 } from "./composerProviderState";
 import { ContextWindowMeter, ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
 import { ContextWindowControl } from "./ContextWindowControl";
-import { ThoughtSummaryControl } from "./ThoughtSummaryControl";
-import type { ThoughtTrailSource } from "./thoughtSummary";
 import {
   providerSupportsManualCompaction,
   resolveContextWindowModelDisplayName,
@@ -1409,8 +1407,6 @@ export interface ChatComposerProps {
   compactThreadUnavailable: boolean;
   compactDisabled: boolean;
   compactDisabledReason: string | null;
-  /** The settled turn's thinking, when there is any to recap. */
-  thoughtTrail: ThoughtTrailSource | null;
 
   // Misc
   resolvedTheme: "light" | "dark";
@@ -1538,7 +1534,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     compactThreadUnavailable,
     compactDisabled,
     compactDisabledReason,
-    thoughtTrail,
     resolvedTheme,
     settings,
     keybindings,
@@ -4955,7 +4950,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     ...(providerTraitsPicker ? ["traits"] : []),
     "mode",
     ...(activeContextWindow ? ["context"] : []),
-    ...(thoughtTrail ? ["thoughts"] : []),
   ];
   const isRestingBlockHidden = (id: string) =>
     composerControlsHidden ||
@@ -5012,22 +5006,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   {...(compactCommandAvailable ? { onCompact: compactThreadContext } : {})}
                 />
               </>
-            ),
-          },
-        ]
-      : []),
-    // Last in, first out of a narrow footer: a recap you can ask for again is
-    // the cheapest thing in the cluster to lose.
-    ...(thoughtTrail
-      ? [
-          {
-            id: "thoughts",
-            content: (
-              <ThoughtSummaryControl
-                source={thoughtTrail}
-                size={composerControlsInStrip ? "xs" : "sm"}
-                hidden={isRestingBlockHidden("thoughts")}
-              />
             ),
           },
         ]

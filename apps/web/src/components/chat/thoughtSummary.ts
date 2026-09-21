@@ -9,38 +9,58 @@ export interface ThoughtTrail {
   readonly outcome: string | null;
 }
 
-export interface ThoughtTrailSource {
-  /** One trail per thread turn: also the reset signal when the turn changes. */
-  readonly key: string;
-  readonly text: string;
+/** A timeline entry, narrowed to the part a trail is built from. */
+export interface ThoughtEntry {
+  readonly kind: string;
+  readonly message?:
+    | {
+        readonly role: string;
+        readonly text: string;
+        readonly turnId: string | null;
+      }
+    | undefined;
 }
 
 /**
- * Every reasoning message of a turn as one blob, or null when there is nothing
- * worth recapping. Gated on the turn having settled, because a trail built
- * from a trace that is still growing is stale the moment it is read.
+ * Turns whose thinking is finished and worth recapping.
+ *
+ * Deliberately no text: this runs on every streaming frame, so it counts what
+ * is there and leaves the concatenating to the click. The live turn is left
+ * out, because a recap of a trace that is still growing is stale the moment it
+ * is read.
  */
-export function resolveThoughtTrailSource(input: {
-  readonly messages: ReadonlyArray<{
-    readonly role: string;
-    readonly text: string;
-    readonly turnId: string | null;
-  }>;
-  readonly turnId: string | null;
-  readonly settled: boolean;
-  readonly keyPrefix: string;
-}): ThoughtTrailSource | null {
-  if (!input.settled || input.turnId === null) {
-    return null;
+export function deriveTurnsWithThoughts(
+  entries: ReadonlyArray<ThoughtEntry>,
+  skipTurnId: string | null,
+): ReadonlySet<string> {
+  const turns = new Set<string>();
+  for (const entry of entries) {
+    const message = entry.message;
+    if (
+      message?.role === "reasoning" &&
+      message.turnId !== null &&
+      message.turnId !== skipTurnId &&
+      message.text.trim().length > 0
+    ) {
+      turns.add(message.turnId);
+    }
   }
+  return turns;
+}
 
-  const text = input.messages
-    .filter((message) => message.role === "reasoning" && message.turnId === input.turnId)
-    .map((message) => message.text.trim())
-    .filter((trace) => trace.length > 0)
-    .join("\n\n");
-
-  return text.length === 0 ? null : { key: `${input.keyPrefix}:${input.turnId}`, text };
+/** Every reasoning message of one turn, in order, as one blob. */
+export function readTurnThoughts(entries: ReadonlyArray<ThoughtEntry>, turnId: string): string {
+  const traces: string[] = [];
+  for (const entry of entries) {
+    const message = entry.message;
+    if (message?.role === "reasoning" && message.turnId === turnId) {
+      const trace = message.text.trim();
+      if (trace.length > 0) {
+        traces.push(trace);
+      }
+    }
+  }
+  return traces.join("\n\n");
 }
 
 const MAX_TRAIL_STEPS = 7;

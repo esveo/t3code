@@ -1,39 +1,46 @@
 import { describe, expect, it } from "vite-plus/test";
-import { deriveStubThoughtTrail, resolveThoughtTrailSource } from "./thoughtSummary";
+import {
+  deriveStubThoughtTrail,
+  deriveTurnsWithThoughts,
+  readTurnThoughts,
+} from "./thoughtSummary";
 
-const messages = [
-  { role: "user", text: "fix the bug", turnId: "turn-1" },
-  { role: "reasoning", text: "First I read the file.", turnId: "turn-1" },
-  { role: "assistant", text: "Fixed it.", turnId: "turn-1" },
-  { role: "reasoning", text: "Then I checked the test.", turnId: "turn-1" },
-  { role: "reasoning", text: "A later turn.", turnId: "turn-2" },
+const entries = [
+  { kind: "message", message: { role: "user", text: "fix the bug", turnId: "turn-1" } },
+  {
+    kind: "message",
+    message: { role: "reasoning", text: "First I read the file.", turnId: "turn-1" },
+  },
+  { kind: "work" },
+  { kind: "message", message: { role: "assistant", text: "Fixed it.", turnId: "turn-1" } },
+  {
+    kind: "message",
+    message: { role: "reasoning", text: "Then I checked the test.", turnId: "turn-1" },
+  },
+  { kind: "message", message: { role: "reasoning", text: "   ", turnId: "turn-2" } },
+  { kind: "message", message: { role: "reasoning", text: "Still going.", turnId: "turn-3" } },
 ];
 
-describe("resolveThoughtTrailSource", () => {
-  it("joins the turn's reasoning and keys it per thread turn", () => {
-    expect(
-      resolveThoughtTrailSource({ messages, turnId: "turn-1", settled: true, keyPrefix: "t" }),
-    ).toEqual({ key: "t:turn-1", text: "First I read the file.\n\nThen I checked the test." });
+describe("deriveTurnsWithThoughts", () => {
+  it("names the turns that thought, and only those", () => {
+    // turn-2 thought nothing but whitespace, turn-3 is still running.
+    expect([...deriveTurnsWithThoughts(entries, "turn-3")]).toEqual(["turn-1"]);
   });
 
-  it("offers nothing until the turn has settled", () => {
-    expect(
-      resolveThoughtTrailSource({ messages, turnId: "turn-1", settled: false, keyPrefix: "t" }),
-    ).toBeNull();
+  it("includes a finished turn once it is no longer the live one", () => {
+    expect([...deriveTurnsWithThoughts(entries, null)]).toEqual(["turn-1", "turn-3"]);
+  });
+});
+
+describe("readTurnThoughts", () => {
+  it("joins the turn's reasoning in order", () => {
+    expect(readTurnThoughts(entries, "turn-1")).toBe(
+      "First I read the file.\n\nThen I checked the test.",
+    );
   });
 
-  it("offers nothing for a turn that did not think", () => {
-    expect(
-      resolveThoughtTrailSource({
-        messages: [{ role: "reasoning", text: "   ", turnId: "turn-1" }],
-        turnId: "turn-1",
-        settled: true,
-        keyPrefix: "t",
-      }),
-    ).toBeNull();
-    expect(
-      resolveThoughtTrailSource({ messages, turnId: null, settled: true, keyPrefix: "t" }),
-    ).toBeNull();
+  it("returns nothing for a turn that did not think", () => {
+    expect(readTurnThoughts(entries, "turn-2")).toBe("");
   });
 });
 
