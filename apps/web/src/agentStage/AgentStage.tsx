@@ -6,7 +6,6 @@ import {
   Globe,
   Hand,
   MessageSquare,
-  MessageSquareText,
   PencilLine,
   Search,
   Terminal,
@@ -24,8 +23,6 @@ import {
   useSyncExternalStore,
 } from "react";
 
-import { Toggle } from "~/components/ui/toggle";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
 
 import {
@@ -55,7 +52,6 @@ const LABEL_WIDTH = 72;
 /** Sprites circle their station on this radius, in px. */
 const ORBIT = 28;
 const SPRITE = 30;
-const BUBBLE_WIDTH = 200;
 /** How long a sprite stays put before it may move on, so a quick tool call is still seen. */
 const DWELL_MS = 1600;
 const MOVE_MS = 700;
@@ -92,15 +88,6 @@ function ringPoint(angle: number, half: number, radius: number): Point {
 function spriteColor(agent: StageAgent, index: number): string {
   if (agent.kind === "main") return "var(--primary)";
   return `hsl(${SUBAGENT_HUES[index % SUBAGENT_HUES.length]} 55% 48%)`;
-}
-
-/** What the bubble says: the current step, or the current thought while thinking. */
-function bubbleText(agent: StageAgent): string | null {
-  // Nothing to say once the agent is done, failed or waits for a prompt.
-  if (!agent.live) return null;
-  if (agent.station === "thinking") return agent.thought ?? agent.headline;
-  if (agent.station === "writing") return agent.detail ?? agent.headline;
-  return agent.detail ? `${agent.headline}: ${agent.detail}` : agent.headline;
 }
 
 interface DwellEntry {
@@ -211,15 +198,11 @@ function useDrawnStations(agents: ReadonlyArray<StageAgent>): ReadonlyMap<string
 export const AgentStage = memo(function AgentStage({
   model,
   selectedId,
-  showThoughts,
   onSelect,
-  onToggleThoughts,
 }: {
   model: StageModel;
   selectedId: string;
-  showThoughts: boolean;
   onSelect: (agentId: string) => void;
-  onToggleThoughts: (show: boolean) => void;
 }) {
   const sceneRef = useRef<HTMLDivElement | null>(null);
   const [side, setSide] = useState(0);
@@ -239,6 +222,8 @@ export const AgentStage = memo(function AgentStage({
   const drawn = useDrawnStations(model.agents);
   const half = side / 2;
   const ring = Math.max(half - LABEL_MARGIN, 0);
+  // Up to the orbits' inner edge, never below what a narrow panel can spare.
+  const cardWidth = Math.round(Math.max(2 * (ring - ORBIT - SPRITE / 2 - 12), side * 0.4));
   const selected = model.agents.find((agent) => agent.id === selectedId) ?? model.agents[0]!;
   const occupied = new Set<StageStation>();
   const crowd = new Map<StageStation, number>();
@@ -260,22 +245,6 @@ export const AgentStage = memo(function AgentStage({
         <span className="text-xs text-muted-foreground">
           {model.running ? "Working" : "Resting"}
         </span>
-        <Tooltip>
-          <TooltipTrigger render={<span className="ml-auto flex shrink-0" />}>
-            <Toggle
-              pressed={showThoughts}
-              onPressedChange={onToggleThoughts}
-              aria-label="Show what the selected agent is doing"
-              variant="ghost"
-              size="sm"
-            >
-              <MessageSquareText className="size-4" />
-            </Toggle>
-          </TooltipTrigger>
-          <TooltipPopup side="bottom">
-            {showThoughts ? "Hide the bubble" : "Show what the selected agent is doing in a bubble"}
-          </TooltipPopup>
-        </Tooltip>
       </div>
 
       <div ref={sceneRef} className="flex min-h-0 flex-1 items-center justify-center p-3">
@@ -336,7 +305,7 @@ export const AgentStage = memo(function AgentStage({
               );
             })}
 
-            <SelectedAgentCard agent={selected} width={Math.round(side * 0.42)} />
+            <SelectedAgentCard agent={selected} width={cardWidth} />
 
             {model.agents.map((agent, index) => {
               const station = drawn.get(agent.id) ?? agent.station;
@@ -346,7 +315,6 @@ export const AgentStage = memo(function AgentStage({
               const point = ringPoint(stationAngle(station), half, ring);
               const slotDeg = (slot / count) * 360 - 90;
               const isSelected = agent.id === selected.id;
-              const bubble = isSelected && showThoughts ? bubbleText(agent) : null;
               return (
                 // The orbit's centre travels between stations; everything
                 // inside is relative to it.
@@ -400,22 +368,6 @@ export const AgentStage = memo(function AgentStage({
                       </div>
                     </div>
                   </div>
-                  {bubble ? (
-                    <div
-                      aria-live="polite"
-                      className="pointer-events-none absolute top-0 left-0 rounded-lg border border-border bg-popover px-2 py-1.5 text-[11px] leading-snug text-popover-foreground shadow-md"
-                      style={{
-                        width: BUBBLE_WIDTH,
-                        transform: `translate(${-BUBBLE_WIDTH / 2}px, ${-(ORBIT + SPRITE / 2 + 10)}px) translateY(-100%)`,
-                      }}
-                    >
-                      <p className="line-clamp-3 break-words">{bubble}</p>
-                      <span
-                        aria-hidden
-                        className="absolute -bottom-1.5 left-1/2 size-3 -translate-x-1/2 rotate-45 border-r border-b border-border bg-popover"
-                      />
-                    </div>
-                  ) : null}
                 </div>
               );
             })}
@@ -489,7 +441,7 @@ function SelectedAgentCard({ agent, width }: { agent: StageAgent; width: number 
       {agent.detail ? (
         <p
           className={cn(
-            "line-clamp-3 text-[11px] break-words text-muted-foreground",
+            "line-clamp-4 text-[11px] break-words text-muted-foreground",
             monospace && "font-mono",
           )}
         >

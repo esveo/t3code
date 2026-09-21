@@ -53,17 +53,13 @@ function ThreadAgentStage({
   const selectedId = model.agents.some((agent) => agent.id === storedSelection)
     ? storedSelection!
     : MAIN_AGENT_ID;
-  const showThoughts = useAgentStageStore((state) => state.showThoughts);
   const select = useAgentStageStore((state) => state.select);
-  const setShowThoughts = useAgentStageStore((state) => state.setShowThoughts);
 
   return (
     <AgentStage
       model={model}
       selectedId={selectedId}
-      showThoughts={showThoughts}
       onSelect={(agentId) => select(threadKey, agentId)}
-      onToggleThoughts={setShowThoughts}
     />
   );
 }
