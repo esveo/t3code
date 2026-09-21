@@ -43,15 +43,12 @@ export function ContextWindowControl(props: {
   size?: ComposerControlSize;
   /** Measured but out of flow: close the popup rather than orphaning it. */
   hidden?: boolean;
-  /** Narrow footers keep the bar and drop the number. */
-  showPercentage?: boolean;
   onCompact?: (() => void) | undefined;
   compactDisabled?: boolean | undefined;
   compactDisabledReason?: string | null | undefined;
 }) {
   const { usage, modelDisplayName, onCompact, compactDisabled, compactDisabledReason } = props;
   const size = props.size ?? "sm";
-  const showPercentage = props.showPercentage ?? true;
   const composerFloatingLayerProps = useComposerMenuProps();
   const [open, setOpen] = useComposerMenuState(props.hidden);
 
@@ -112,11 +109,15 @@ export function ContextWindowControl(props: {
             ) : null}
           </span>
         ) : null}
-        {showPercentage || !showsFill ? (
-          <span className={cn("tabular-nums", toneLabelClassName[tone])}>
-            {showsFill ? percentageLabel : tokensLabel}
-          </span>
-        ) : null}
+        <span
+          // A narrow strip drops the number and keeps the fill, the same way
+          // the other controls fall back to their icon. Without a fill the
+          // number is the whole reading, so it is not offered up.
+          data-composer-control-label={showsFill ? "" : undefined}
+          className={cn("tabular-nums", toneLabelClassName[tone])}
+        >
+          {showsFill ? percentageLabel : tokensLabel}
+        </span>
       </PopoverTrigger>
       <PopoverPopup
         {...composerFloatingLayerProps}
