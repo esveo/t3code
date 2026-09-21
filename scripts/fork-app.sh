@@ -118,6 +118,7 @@ start() {
     echo "No build in $ROOT/current yet; run 'scripts/fork-app.sh prepare' first." >&2
     return 1
   fi
+  resume_watch
   use_node
   local settings="$HOME_DIR/userdata/desktop-settings.json"
   [[ -f "$settings" ]] || echo '{"localEnvironmentEnabled":false}' > "$settings"
@@ -322,6 +323,9 @@ WATCH_INTERVAL="${T3CODE_FORK_WATCH_INTERVAL:-60}"
 WATCH_SOURCE="$ROOT/source"
 WATCH_PID="$ROOT/.watch.pid"
 WATCH_LOG="$LOG_DIR/fork-watch.log"
+# Present while watching is wanted, so `start` can bring the loop back after a
+# reboot or logout ended it.
+WATCH_WANTED="$ROOT/.watch-wanted"
 
 # One pass: pick up what was pushed to the fork branch and build it, unless
 # that commit is already built. Never touches the working checkout beyond the
@@ -374,9 +378,10 @@ watch_loop() {
 # A launchd agent would be the obvious home for this, but launchd jobs are
 # denied the Documents folder this fork lives in, so the loop runs as a plain
 # detached process started from the user's session instead. It survives closing
-# the terminal, not logging out.
+# the terminal, not logging out; `start` resumes it (see resume_watch).
 watch_install() {
   local pid
+  touch "$WATCH_WANTED"
   pid="$(watch_pid)"
   if [[ -n "$pid" ]]; then
     echo "Already watching origin/$WATCH_BRANCH (pid $pid, log: $WATCH_LOG)."
@@ -401,11 +406,18 @@ watch_install() {
   echo "New commits are built into next/; the app's update button offers them."
 }
 
+# Restarts a wanted watcher that a reboot or logout ended. Called by `start`,
+# which every way of opening the app goes through.
+resume_watch() {
+  [[ -f "$WATCH_WANTED" && -z "$(watch_pid)" ]] || return 0
+  watch_install || echo "Could not resume watching origin/$WATCH_BRANCH; see $WATCH_LOG" >&2
+}
+
 watch_uninstall() {
   local pid
   pid="$(watch_pid)"
   [[ -n "$pid" ]] && kill "$pid" 2>/dev/null
-  rm -f "$WATCH_PID"
+  rm -f "$WATCH_PID" "$WATCH_WANTED"
   echo "Stopped watching origin/$WATCH_BRANCH."
 }
 
@@ -443,7 +455,13 @@ case "${1:-}" in
     echo "app:     $([[ -n "$(app_pids)" ]] && echo running || echo stopped)"
     echo "current: $([[ -d "$ROOT/current" ]] && label_of "$ROOT/current" || echo none)"
     echo "next:    $([[ -d "$ROOT/next" ]] && label_of "$ROOT/next" || echo none)"
-    echo "watch:   $([[ -n "$(watch_pid)" ]] && echo "origin/$WATCH_BRANCH every ${WATCH_INTERVAL}s" || echo off)"
+    if [[ -n "$(watch_pid)" ]]; then
+      echo "watch:   origin/$WATCH_BRANCH every ${WATCH_INTERVAL}s"
+    elif [[ -f "$WATCH_WANTED" ]]; then
+      echo "watch:   stopped (ended by a reboot or logout); resumes with the next start, or run watch-install"
+    else
+      echo "watch:   off"
+    fi
     ;;
   *)
     echo "usage: $0 prepare|prepare-server|restart|start|stop|status" >&2
