@@ -38,6 +38,26 @@ can be in flight without disturbing the build the user works in all day.
 - Upstream is rebased into the feature branches, not into `fork`; `fork` takes
   it through the merges like anything else.
 
+## Staying mergeable with upstream
+
+Upstream keeps moving and gets rebased in regularly. Every line this fork adds
+to a file upstream also edits is a conflict someone resolves by hand later, so
+write changes with that merge in mind, not just with the current diff in mind.
+
+- Prefer a new file over editing an existing one. A fork-only component, hook,
+  or module costs nothing at merge time; twenty lines spread through an
+  upstream file cost a conflict every time upstream touches it.
+- When an upstream file has to change, make the edit as small and as local as
+  possible: one import plus one call site beats an inline block, and a wrapper
+  around upstream's code beats a rewrite of it.
+- Do not reformat, rename, or tidy upstream code along the way. Unrelated churn
+  in an upstream file is pure merge cost.
+- Keep the fork's parts recognizable, so a conflict is quick to resolve: group
+  the change in one place instead of sprinkling it, and give it a name that
+  makes clear it belongs to the fork.
+- Mention in the handover when a change had to touch upstream files in a way
+  that will likely conflict, so the next rebase is not a surprise.
+
 ## Finishing a feature
 
 The user runs the fork's desktop app as a prebuilt build and switches to a new
@@ -101,6 +121,5 @@ an agent prepared from a feature branch is replaced by the next commit on
   `npx vp test run <files>`, and `npx vp lint <files>`. The prepare hook
   rewrites `pnpm-lock.yaml`; restore it with `git checkout pnpm-lock.yaml`
   unless dependencies really changed.
-- Keep fork-only changes in new files where possible, so rebasing onto
-  `upstream/main` stays conflict-free. Commit on a feature branch, never on
-  `fork` or `main`. A worktree needs its own `npx pnpm@11.10.0 install` first.
+- Commit on a feature branch, never on `fork` or `main`. A worktree needs its
+  own `npx pnpm@11.10.0 install` first.
