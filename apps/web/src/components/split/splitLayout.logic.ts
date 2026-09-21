@@ -564,23 +564,46 @@ export function buildGridLayout(input: {
 }
 
 /**
- * Orders threads for Auto Arrange so re-arranging keeps what is on screen in
- * place: threads the layout already shows come first, in pane order, then the
- * rest in the order given. The route pane counts as showing `routeThread`.
+ * Picks and orders the threads Auto Arrange places, for `buildGridLayout`.
+ * Threads the layout already shows keep their place on screen as well as the
+ * new grid allows: each goes to the free cell nearest to where its pane was,
+ * closest pairs first. The cells left over take the other threads in the
+ * order given. The route pane counts as showing `routeThread`.
  */
-export function orderByLayout(
-  threads: readonly ScopedThreadRef[],
-  layout: SplitNode,
-  routeThread: ScopedThreadRef | null,
-): ScopedThreadRef[] {
-  const shown = listLeaves(layout).flatMap((leaf) => {
-    const ref = leaf.thread === "route" ? routeThread : leaf.thread;
-    return ref ? [ref] : [];
+export function arrangeByPosition(input: {
+  readonly threads: readonly ScopedThreadRef[];
+  readonly layout: SplitNode;
+  readonly routeThread: ScopedThreadRef | null;
+  readonly grid: GridSize;
+}): ScopedThreadRef[] {
+  const counts = gridColumnCounts(input.threads.length, input.grid);
+  const cells = counts.flatMap((rows, column) =>
+    Array.from({ length: rows }, (_, row) => ({
+      x: (column + 0.5) / counts.length,
+      y: (row + 0.5) / rows,
+    })),
+  );
+  const shown = computeLayout(input.layout).panes.flatMap(({ leaf, rect }) => {
+    const ref = leaf.thread === "route" ? input.routeThread : leaf.thread;
+    const thread = ref && input.threads.find((candidate) => sameThread(candidate, ref));
+    return thread ? [{ thread, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }] : [];
   });
-  const paneIndex = (thread: ScopedThreadRef) => {
-    const index = shown.findIndex((ref) => sameThread(ref, thread));
-    return index === -1 ? shown.length : index;
-  };
-  // Array.prototype.sort is stable, so threads outside the layout keep their order.
-  return [...threads].sort((left, right) => paneIndex(left) - paneIndex(right));
+  const pairs = shown.flatMap((pane, paneIndex) =>
+    cells.map((cell, cellIndex) => ({
+      paneIndex,
+      cellIndex,
+      distance: (pane.x - cell.x) ** 2 + (pane.y - cell.y) ** 2,
+    })),
+  );
+  // Sort is stable, so ties go to the earlier cell, i.e. left, then top.
+  pairs.sort((left, right) => left.distance - right.distance);
+  const placed: (ScopedThreadRef | null)[] = cells.map(() => null);
+  const placedPanes = new Set<number>();
+  for (const { paneIndex, cellIndex } of pairs) {
+    if (placed[cellIndex] || placedPanes.has(paneIndex)) continue;
+    placed[cellIndex] = shown[paneIndex]!.thread;
+    placedPanes.add(paneIndex);
+  }
+  const rest = input.threads.filter((thread) => !shown.some((pane) => pane.thread === thread));
+  return placed.map((thread) => thread ?? rest.shift()!);
 }

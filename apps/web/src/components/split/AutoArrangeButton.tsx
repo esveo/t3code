@@ -24,8 +24,8 @@ import { SidebarHeaderIconButton } from "../sidebar/SidebarThreadHeader";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import {
+  arrangeByPosition,
   buildGridLayout,
-  orderByLayout,
   recommendGrid,
   ROUTE_LEAF_ID,
   type GridSize,
@@ -192,22 +192,28 @@ export function AutoArrangeButton({
   const arrange = (fillWithNew: boolean) => {
     const grid = selected;
     const capacity = grid.columns * grid.rows;
-    const existing = orderByLayout(
-      threads.map((thread) => scopeThreadRef(thread.environmentId, thread.id)),
-      useSplitThreadStore.getState().layout,
-      routeThread,
-    ).slice(0, capacity);
+    const existing = threads.map((thread) => scopeThreadRef(thread.environmentId, thread.id));
+    const place = (candidates: readonly ScopedThreadRef[]) =>
+      applyLayout(
+        arrangeByPosition({
+          threads: candidates,
+          layout: useSplitThreadStore.getState().layout,
+          routeThread,
+          grid,
+        }),
+        grid,
+      );
     setOpen(false);
     const missing = capacity - existing.length;
     if (!fillWithNew || missing <= 0) {
-      applyLayout(existing, grid);
+      place(existing);
       return;
     }
     openCommandPalette({
       open: "new-thread-in",
       onProjectPicked: (projectRef) => {
         void createEmptyThreads(projectRef, missing).then((created) => {
-          if (created) applyLayout([...existing, ...created], grid);
+          if (created) place([...existing, ...created]);
         });
       },
     });

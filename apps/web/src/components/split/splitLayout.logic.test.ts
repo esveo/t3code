@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   appendRoutePane,
   appendThreadPane,
+  arrangeByPosition,
   buildGridLayout,
   closeLeaf,
   computeLayout,
@@ -13,7 +14,6 @@ import {
   findLeaf,
   gridColumnCounts,
   listLeaves,
-  orderByLayout,
   recommendGrid,
   resizeBranch,
   resolveDropZone,
@@ -297,17 +297,73 @@ describe("auto arrange", () => {
     ]);
   });
 
-  it("keeps the panes already on screen in their order when re-arranging", () => {
+  const cellsOf = (layout: SplitNode, routeThread: ScopedThreadRef) =>
+    listLeaves(layout).map((leaf) =>
+      leaf.thread === "route" ? routeThread.threadId : leaf.thread.threadId,
+    );
+  const arrange = (
+    threads: readonly string[],
+    layout: SplitNode,
+    routeThread: string,
+    grid: { columns: number; rows: number },
+  ) =>
+    arrangeByPosition({
+      threads: threads.map(thread),
+      layout,
+      routeThread: thread(routeThread),
+      grid,
+    }).map((ref) => ref.threadId);
+
+  it("keeps open panes where they are when the sidebar order changed", () => {
     const { layout } = buildGridLayout({
       threads: ["a", "b", "c"].map(thread),
       routeThread: thread("a"),
       grid: { columns: 3, rows: 1 },
       makeId: (prefix) => `${prefix}-${++counter}`,
     });
-    // The sidebar reordered by activity and gained a thread.
-    const sidebar = ["d", "c", "a", "b"].map(thread);
-    const ordered = orderByLayout(sidebar, layout, thread("a"));
-    expect(ordered.map((ref) => ref.threadId)).toEqual(["a", "b", "c", "d"]);
+    expect(cellsOf(layout, thread("a"))).toEqual(["a", "b", "c"]);
+    // The sidebar reordered by activity: nothing moves.
+    expect(arrange(["c", "a", "b"], layout, "a", { columns: 3, rows: 1 })).toEqual(["a", "b", "c"]);
+    // A fourth column: a and c keep the edges, the new thread takes the gap.
+    expect(arrange(["d", "c", "a", "b"], layout, "a", { columns: 4, rows: 1 })).toEqual([
+      "a",
+      "b",
+      "d",
+      "c",
+    ]);
+  });
+
+  it("keeps open panes near their old spot when the grid changes shape", () => {
+    // 2 × 2, filled column by column: a b in the left column, c d in the right.
+    const { layout } = buildGridLayout({
+      threads: ["a", "b", "c", "d"].map(thread),
+      routeThread: thread("a"),
+      grid: { columns: 2, rows: 2 },
+      makeId: (prefix) => `${prefix}-${++counter}`,
+    });
+    // 3 × 2 with five threads has columns of 1, 2 and 2: a over b and c over d
+    // stay stacked side by side, and the new thread takes the free column.
+    expect(arrange(["e", "d", "c", "b", "a"], layout, "a", { columns: 3, rows: 2 })).toEqual([
+      "e",
+      "a",
+      "b",
+      "c",
+      "d",
+    ]);
+  });
+
+  it("prefers the open panes when the grid is smaller than the thread list", () => {
+    const { layout } = buildGridLayout({
+      threads: ["a", "b"].map(thread),
+      routeThread: thread("a"),
+      grid: { columns: 2, rows: 1 },
+      makeId: (prefix) => `${prefix}-${++counter}`,
+    });
+    expect(arrange(["x", "y", "b", "a"], layout, "a", { columns: 3, rows: 1 })).toEqual([
+      "a",
+      "x",
+      "b",
+    ]);
   });
 
   it("routes to the first session when the open thread is not arranged", () => {
