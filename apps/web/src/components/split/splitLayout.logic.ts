@@ -562,3 +562,25 @@ export function buildGridLayout(input: {
         };
   return { layout, navigateTo: routeIndex === -1 ? placed[0]! : null };
 }
+
+/**
+ * Orders threads for Auto Arrange so re-arranging keeps what is on screen in
+ * place: threads the layout already shows come first, in pane order, then the
+ * rest in the order given. The route pane counts as showing `routeThread`.
+ */
+export function orderByLayout(
+  threads: readonly ScopedThreadRef[],
+  layout: SplitNode,
+  routeThread: ScopedThreadRef | null,
+): ScopedThreadRef[] {
+  const shown = listLeaves(layout).flatMap((leaf) => {
+    const ref = leaf.thread === "route" ? routeThread : leaf.thread;
+    return ref ? [ref] : [];
+  });
+  const paneIndex = (thread: ScopedThreadRef) => {
+    const index = shown.findIndex((ref) => sameThread(ref, thread));
+    return index === -1 ? shown.length : index;
+  };
+  // Array.prototype.sort is stable, so threads outside the layout keep their order.
+  return [...threads].sort((left, right) => paneIndex(left) - paneIndex(right));
+}

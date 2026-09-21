@@ -13,6 +13,7 @@ import {
   findLeaf,
   gridColumnCounts,
   listLeaves,
+  orderByLayout,
   recommendGrid,
   resizeBranch,
   resolveDropZone,
@@ -294,6 +295,19 @@ describe("auto arrange", () => {
       "split",
       "split",
     ]);
+  });
+
+  it("keeps the panes already on screen in their order when re-arranging", () => {
+    const { layout } = buildGridLayout({
+      threads: ["a", "b", "c"].map(thread),
+      routeThread: thread("a"),
+      grid: { columns: 3, rows: 1 },
+      makeId: (prefix) => `${prefix}-${++counter}`,
+    });
+    // The sidebar reordered by activity and gained a thread.
+    const sidebar = ["d", "c", "a", "b"].map(thread);
+    const ordered = orderByLayout(sidebar, layout, thread("a"));
+    expect(ordered.map((ref) => ref.threadId)).toEqual(["a", "b", "c", "d"]);
   });
 
   it("routes to the first session when the open thread is not arranged", () => {
