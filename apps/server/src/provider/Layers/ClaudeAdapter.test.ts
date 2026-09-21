@@ -3470,6 +3470,92 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("reports the main conversation's prompt cache TTL with token usage", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      const runtimeEventsFiber = yield* Stream.takeUntil(
+        adapter.streamEvents,
+        (event) => event.type === "turn.completed",
+      ).pipe(Stream.runCollect, Effect.forkChild);
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId: THREAD_ID, input: "hello", attachments: [] });
+
+      const assistant = (
+        uuid: string,
+        overrides: { parent_tool_use_id?: string; model?: string; usage: object },
+      ) =>
+        ({
+          type: "assistant",
+          session_id: "sdk-session-prompt-cache",
+          uuid,
+          parent_tool_use_id: overrides.parent_tool_use_id ?? null,
+          message: {
+            id: `message-${uuid}`,
+            role: "assistant",
+            model: overrides.model ?? SYNTHETIC_CLAUDE_CAPABLE_MODEL,
+            content: [],
+            usage: overrides.usage,
+          },
+        }) as unknown as SDKMessage;
+
+      harness.query.emit(
+        assistant("main", {
+          usage: {
+            input_tokens: 2,
+            cache_read_input_tokens: 900,
+            cache_creation_input_tokens: 100,
+            cache_creation: { ephemeral_1h_input_tokens: 100, ephemeral_5m_input_tokens: 0 },
+            output_tokens: 20,
+          },
+        }),
+      );
+      // Neither a subagent's request nor a synthetic message touches the
+      // main conversation's cache.
+      harness.query.emit(
+        assistant("subagent", {
+          parent_tool_use_id: "tool-agent-1",
+          usage: { input_tokens: 50, output_tokens: 5 },
+        }),
+      );
+      harness.query.emit(
+        assistant("synthetic", {
+          model: "<synthetic>",
+          usage: { input_tokens: 0, output_tokens: 0 },
+        }),
+      );
+      harness.query.emit({
+        type: "result",
+        subtype: "success",
+        is_error: false,
+        duration_ms: 1234,
+        duration_api_ms: 1200,
+        num_turns: 1,
+        result: "done",
+        stop_reason: "end_turn",
+        session_id: "sdk-session-prompt-cache",
+        usage: { input_tokens: 2, output_tokens: 20 },
+      } as unknown as SDKMessage);
+
+      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
+      const usageEvent = runtimeEvents.findLast(
+        (event) => event.type === "thread.token-usage.updated",
+      );
+      assert.equal(usageEvent?.type, "thread.token-usage.updated");
+      if (usageEvent?.type === "thread.token-usage.updated") {
+        assert.equal(usageEvent.payload.usage.promptCache?.ttl, "1h");
+        assert.equal(typeof usageEvent.payload.usage.promptCache?.refreshedAt, "string");
+      }
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("completes with result usage without querying current context usage", () => {
     const harness = makeHarness();
     let getContextUsageCalls = 0;

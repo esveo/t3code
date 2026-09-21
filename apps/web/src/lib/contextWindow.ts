@@ -1,4 +1,5 @@
 import type { OrchestrationThreadActivity, ThreadTokenUsageSnapshot } from "@t3tools/contracts";
+import { asPromptCacheWindow } from "./promptCache";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
@@ -67,6 +68,7 @@ export function deriveLatestContextWindowSnapshot(
       durationMs: asFiniteNumber(payload?.durationMs),
       compactsAutomatically: asBoolean(payload?.compactsAutomatically) ?? false,
       autoCompactThreshold: asFiniteNumber(payload?.autoCompactThreshold),
+      promptCache: asPromptCacheWindow(payload?.promptCache),
       updatedAt: activity.createdAt,
     };
   }

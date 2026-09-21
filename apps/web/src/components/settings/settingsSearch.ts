@@ -370,6 +370,18 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["queue steer running turn send default behavior composer"],
   },
   {
+    id: "context-window-control",
+    title: "Context window usage",
+    to: "/settings/general",
+    searchTerms: ["composer tokens usage meter percentage compaction"],
+  },
+  {
+    id: "prompt-cache-timer",
+    title: "Prompt cache timer",
+    to: "/settings/general",
+    searchTerms: ["composer claude cache ttl expire minutes warm cold tokens"],
+  },
+  {
     id: "provider-update-checks",
     title: "Provider update checks",
     to: "/settings/general",
