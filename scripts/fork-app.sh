@@ -15,10 +15,8 @@
 #   scripts/fork-app.sh prepare   build this checkout (including uncommitted
 #                                 changes) into next/ — agents run this
 #   scripts/fork-app.sh restart   switch to next/ if one is prepared, then
-#                                 relaunch
-#   scripts/fork-app.sh update    restart-service when a newer server waits, and
-#                                 restart the app at the same time — the app's
-#                                 update button runs this
+#                                 relaunch — the app's update button runs this,
+#                                 beside restart-service when a server waits
 #   scripts/fork-app.sh start | stop | status
 #
 # Features with a server side need the fork's server too, because the app only
@@ -59,7 +57,7 @@ mkdir -p "$ROOT" "$HOME_DIR/userdata" "$LOG_DIR"
 
 # A restart without a terminal comes from the app's update button or the
 # Finder launcher; nobody sees its output, so keep a log.
-if [[ ! -t 1 && ( "${1:-}" == restart || "${1:-}" == update ) ]]; then
+if [[ ! -t 1 && "${1:-}" == restart ]]; then
   exec >>"$LOG_DIR/fork-app.log" 2>&1
   echo "--- $(date '+%F %T') fork-app.sh ${1:-} (pid $$, parent $PPID)"
 fi
@@ -434,25 +432,6 @@ restart_service() {
     "$RUNTIME_DIR/versions/$version/t3" service restart
 }
 
-# True when the service should switch to, or still has to restart on, the
-# newest fork server.
-service_update_pending() {
-  local version
-  version="$(json_field "$SERVER_INFO" version)"
-  [[ -n "$version" && -f "$SERVICE_STATE" && -z "$(json_field "$SERVER_INFO" blocked)" ]] || return 1
-  [[ "$version" != "$(active_server_version)" || -f "$RESTART_PENDING" ]]
-}
-
-# The app's one update button: the service and the app restart side by side.
-# The app reconnects on its own once the service is back, and threads resume
-# from the service's startup, so neither waits for the other.
-update() {
-  if service_update_pending; then
-    (restart_service &!)
-  fi
-  restart
-}
-
 WATCH_BRANCH="${T3CODE_FORK_WATCH_BRANCH:-fork}"
 WATCH_SOURCE="$ROOT/source"
 
@@ -511,7 +490,6 @@ case "${1:-}" in
   restart-service) restart_service ;;
   watch) watch_once ;;
   restart) restart ;;
-  update) update ;;
   start) stop && start ;;
   stop) stop ;;
   status)
@@ -522,7 +500,7 @@ case "${1:-}" in
     echo "server:  $(json_field "$SERVER_INFO" version)"
     ;;
   *)
-    echo "usage: $0 prepare|restart|update|start|stop|status|watch" >&2
+    echo "usage: $0 prepare|restart|start|stop|status|watch" >&2
     echo "       $0 prepare-server|restart-service" >&2
     exit 2
     ;;

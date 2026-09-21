@@ -73,8 +73,8 @@ While it runs, the app checks `origin/fork` every minute
 (`fork-app.sh watch`, logged to `logs/fork-watch.log`) and prepares new commits
 from its own worktree: the app always, the server only when something it is
 built from changed. The sidebar's update icon (and **Check for updates** when
-nothing waits) installs both at once with `fork-app.sh update`: the service
-switches to the new server and restarts while the app restarts beside it. With
+nothing waits) installs both at once: it runs `fork-app.sh restart-service`
+and `fork-app.sh restart` side by side. With
 **Settings → General → Continue threads after restarts** on (the default),
 running threads, subagents and workflows continue after the service restart.
 
@@ -258,3 +258,10 @@ has to be repeated, because the plist would still name a launcher speaking the
 old protocol. `prepare-server` notices that bump, builds nothing, and records
 why in `server.json`; the update button then offers only the app, and
 `logs/fork-watch.log` points here.
+
+Coming from a build that still had a separate server icon: click that build's
+update icon first, which switches only the app, then the new app's update icon.
+The old server does not yet record running background work, and it marks
+running turns for continuation only when **Continue threads after restarts**
+is switched on. Turn that on before this first switch, or make it while no
+agent is working; from then on every restart continues threads on its own.
