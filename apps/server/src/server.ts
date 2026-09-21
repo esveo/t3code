@@ -55,6 +55,7 @@ import { ProviderInstanceRegistry } from "./provider/Services/ProviderInstanceRe
 import { ProviderRegistry } from "./provider/Services/ProviderRegistry.ts";
 import { ProviderSessionReaperLive } from "./provider/Layers/ProviderSessionReaper.ts";
 import { ProviderUsageLimitsIngestionLive } from "./provider/Layers/ProviderUsageLimitsIngestion.ts";
+import { BackgroundWorkLedgerLive } from "./orchestration/BackgroundWorkLedger.ts";
 import * as OpenCodeRuntime from "./provider/opencodeRuntime.ts";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as CheckpointStore from "./checkpointing/CheckpointStore.ts";
@@ -453,6 +454,8 @@ const ProviderRuntimeLayerLive = ProviderSessionReaperLive.pipe(
   // Subscribes to `account.rate-limits.updated` so usage bars track live
   // telemetry instead of waiting for the next status probe.
   Layer.provideMerge(ProviderUsageLimitsIngestionLive),
+  // Keeps running background work in session bindings for restart recovery.
+  Layer.provideMerge(BackgroundWorkLedgerLive),
   Layer.provideMerge(ProviderLayerLive),
   Layer.provideMerge(OrchestrationLayerLive),
 );
