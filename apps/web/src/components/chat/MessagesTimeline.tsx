@@ -12,6 +12,11 @@ import {
   type TimelineMinimapItem,
 } from "./timelineMinimapItems";
 import {
+  compactPinnedUserMessageText,
+  PinnedUserMessage,
+  resolvePinnedUserMessageIndex,
+} from "./PinnedUserMessage";
+import {
   COMPOSER_CONTEXT_KINDS,
   type AssistantCitation,
   type EnvironmentId,
@@ -960,6 +965,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const alwaysRender = citationAlwaysRender ?? restoringAlwaysRender;
   const [minimapHitStripWidth, setMinimapHitStripWidth] = useState(0);
   const [minimapCurrentIndex, setMinimapCurrentIndex] = useState<number | null>(null);
+  // Tracked by id, not index: a thread switch swaps the rows before the next
+  // scroll frame recomputes, and a stale index would pin the wrong prompt.
+  const [pinnedUserMessageId, setPinnedUserMessageId] = useState<string | null>(null);
   const handleAnchorReady = useCallback(
     (info: { anchorIndex: number | undefined }) => {
       if (anchorMessageId !== null && info.anchorIndex !== undefined) {
@@ -1049,6 +1057,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }
     reportContentOverflow();
     if (!state || minimapItems.length === 0) {
+      setPinnedUserMessageId(null);
       return;
     }
 
@@ -1082,6 +1091,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     setMinimapCurrentIndex((current) =>
       current === nextCurrentIndex ? current : nextCurrentIndex,
     );
+    const pinnedIndex = resolvePinnedUserMessageIndex({ scrollTop, itemBounds });
+    const nextPinnedId = pinnedIndex === null ? null : (minimapItems[pinnedIndex]?.id ?? null);
+    setPinnedUserMessageId((current) => (current === nextPinnedId ? current : nextPinnedId));
   }, [
     citationPositioning,
     paintedExpandedTurnIds,
@@ -1248,6 +1260,15 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [],
   );
 
+  const pinnedUserMessage = useMemo(() => {
+    const item =
+      pinnedUserMessageId === null
+        ? null
+        : (minimapItems.find((candidate) => candidate.id === pinnedUserMessageId) ?? null);
+    const text = compactPinnedUserMessageText(item?.userText);
+    return item && text !== null ? { rowIndex: item.rowIndex, text } : null;
+  }, [minimapItems, pinnedUserMessageId]);
+
   if (rows.length === 0 && !isWorking) {
     if (hideEmptyPlaceholder) {
       // Occupy the pane with the theme surface so a thread switch cannot
@@ -1330,6 +1351,19 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             }
             ListFooterComponent={timelineListFooter}
           />
+          {pinnedUserMessage ? (
+            <PinnedUserMessage
+              text={pinnedUserMessage.text}
+              onSelect={() => {
+                onManualNavigation();
+                void listRef.current?.scrollToIndex({
+                  index: pinnedUserMessage.rowIndex,
+                  animated: true,
+                  viewOffset: 24,
+                });
+              }}
+            />
+          ) : null}
           <TimelineMinimap
             items={minimapItems}
             hasPersistentGutter={minimapHasPersistentGutter}
