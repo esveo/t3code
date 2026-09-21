@@ -1,32 +1,25 @@
 import { BrainIcon, RotateCwIcon } from "lucide-react";
-import { createContext, memo, use, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, memo, use, useMemo, useState } from "react";
+import type { EnvironmentId, ThreadId, TurnId } from "@t3tools/contracts";
+import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import type * as Cause from "effect/Cause";
 
+import { thoughtTrailEnvironment } from "~/state/thoughtTrail";
+import { useAtomCommand } from "~/state/use-atom-command";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import {
-  deriveTurnsWithThoughts,
-  generateStubThoughtTrail,
-  readTurnThoughts,
-  type ThoughtEntry,
-  type ThoughtTrail,
-} from "./thoughtSummary";
+import { deriveTurnsWithThoughts, type ThoughtEntry, type ThoughtTrail } from "./thoughtSummary";
 
-interface ThoughtTrails {
-  readonly turns: ReadonlySet<string>;
-  readonly read: (turnId: string) => string;
-}
-
-const EMPTY_THOUGHT_TRAILS: ThoughtTrails = { turns: new Set(), read: () => "" };
-const ThoughtTrailsCtx = createContext<ThoughtTrails>(EMPTY_THOUGHT_TRAILS);
+const ThoughtTurnsCtx = createContext<ReadonlySet<string>>(new Set());
 
 /**
- * Makes each turn's thinking reachable from its assistant footer.
+ * Tells each assistant footer whether its turn has thinking to recap.
  *
- * The trace itself is read on demand from a ref rather than carried in the
- * context: the timeline re-renders on every streaming frame, and a context
- * value that changed with it would drag every visible row along.
+ * Only membership, never the trace: the timeline re-renders on every streaming
+ * frame, and a context value that changed with it would drag every visible row
+ * along. The trace stays on the server, which reads it by turn when asked.
  */
 export function ThoughtTrailsProvider({
   entries,
@@ -37,22 +30,13 @@ export function ThoughtTrailsProvider({
   liveTurnId: string | null;
   children: React.ReactNode;
 }) {
-  const entriesRef = useRef(entries);
-  useEffect(() => {
-    entriesRef.current = entries;
-  }, [entries]);
-
   const derived = useMemo(
     () => deriveTurnsWithThoughts(entries, liveTurnId),
     [entries, liveTurnId],
   );
   const turns = useStableTurnSet(derived);
-  const value = useMemo<ThoughtTrails>(
-    () => ({ turns, read: (turnId) => readTurnThoughts(entriesRef.current, turnId) }),
-    [turns],
-  );
 
-  return <ThoughtTrailsCtx value={value}>{children}</ThoughtTrailsCtx>;
+  return <ThoughtTurnsCtx value={turns}>{children}</ThoughtTurnsCtx>;
 }
 
 /** A fresh Set every frame would churn the context; only membership matters. */
@@ -77,42 +61,58 @@ function sameMembers(left: ReadonlySet<string>, right: ReadonlySet<string>) {
 type TrailState =
   | { readonly key: string; readonly status: "idle" }
   | { readonly key: string; readonly status: "pending" }
-  | { readonly key: string; readonly status: "ready"; readonly trail: ThoughtTrail };
+  | {
+      readonly key: string;
+      readonly status: "ready";
+      readonly trail: ThoughtTrail;
+      readonly model: string;
+    }
+  | { readonly key: string; readonly status: "error"; readonly detail: string };
 
 const TRIGGER_LABEL = "Recap the thinking";
 
 /**
  * Sits with copy and the timestamp under an answer: the same footer you reach
  * for once the turn is done. Absent when the turn did not think, or while it
- * still is. The recap is asked for, never computed on its own, and lives only
- * for the session.
+ * still is. The recap is asked for, never produced with the turn, and it is
+ * kept for the session rather than stored with the thread.
  */
 export const ThoughtTrailButton = memo(function ThoughtTrailButton({
   turnId,
+  threadRef,
 }: {
-  turnId: string | null;
+  turnId: TurnId | null;
+  threadRef: { readonly environmentId: EnvironmentId; readonly threadId: ThreadId } | null;
 }) {
-  const trails = use(ThoughtTrailsCtx);
+  const turns = use(ThoughtTurnsCtx);
+  const summarize = useAtomCommand(thoughtTrailEnvironment.summarize, { reportFailure: false });
   const [open, setOpen] = useState(false);
   const [state, setState] = useState<TrailState>({ key: turnId ?? "", status: "idle" });
-  const runIdRef = useRef(0);
 
   // A recap belongs to the turn it was made from, so a row recycled onto
   // another turn starts over. Derived here so no effect has to chase the prop.
   const current: TrailState = state.key === turnId ? state : { key: turnId ?? "", status: "idle" };
 
-  if (turnId === null || !trails.turns.has(turnId)) {
+  if (turnId === null || threadRef === null || !turns.has(turnId)) {
     return null;
   }
 
   const generate = () => {
-    const runId = runIdRef.current + 1;
-    runIdRef.current = runId;
     setState({ key: turnId, status: "pending" });
-    void generateStubThoughtTrail(trails.read(turnId)).then((trail) => {
-      if (runIdRef.current === runId) {
-        setState({ key: turnId, status: "ready", trail });
-      }
+    void summarize({
+      environmentId: threadRef.environmentId,
+      input: { threadId: threadRef.threadId, turnId },
+    }).then((result) => {
+      setState(
+        result._tag === "Success"
+          ? {
+              key: turnId,
+              status: "ready",
+              trail: { steps: result.value.steps, outcome: result.value.outcome },
+              model: result.value.model,
+            }
+          : { key: turnId, status: "error", detail: describeFailure(result) },
+      );
     });
   };
 
@@ -159,7 +159,7 @@ export const ThoughtTrailButton = memo(function ThoughtTrailButton({
         <div className="flex flex-col gap-2 p-[var(--floating-content-inset)]">
           <div className="flex items-center justify-between gap-3">
             <div className="font-medium text-muted-foreground text-xs">Thought trail</div>
-            {current.status === "ready" ? (
+            {current.status === "ready" || current.status === "error" ? (
               <Button
                 size="icon-xs"
                 variant="ghost"
@@ -173,20 +173,37 @@ export const ThoughtTrailButton = memo(function ThoughtTrailButton({
           </div>
           {current.status === "ready" ? (
             <ThoughtTrailBody trail={current.trail} />
+          ) : current.status === "error" ? (
+            <div className="text-pretty text-[11px] text-error leading-4">{current.detail}</div>
           ) : (
             <div className="flex items-center gap-2 py-1 text-secondary-label text-[11px]">
               <Spinner className="size-3.5" />
               Reading back the thinking
             </div>
           )}
-          <div className="text-pretty text-secondary-label text-[11px] opacity-70">
-            Prototype: assembled locally, no model call yet.
-          </div>
+          {current.status === "ready" ? (
+            <div className="text-secondary-label text-[11px] opacity-70">
+              Summarized by {current.model}
+            </div>
+          ) : null}
         </div>
       </PopoverPopup>
     </Popover>
   );
 });
+
+function describeFailure(result: { readonly cause: Cause.Cause<unknown> }) {
+  const error: unknown = squashAtomCommandFailure(result);
+  const detail =
+    error instanceof Error
+      ? error.message
+      : typeof error === "object" && error !== null && "detail" in error
+        ? String((error as { detail: unknown }).detail)
+        : null;
+  return detail && detail.length > 0
+    ? detail
+    : "Could not recap the thinking. The server may not support it yet.";
+}
 
 function ThoughtTrailBody({ trail }: { trail: ThoughtTrail }) {
   if (trail.steps.length === 0 && trail.outcome === null) {

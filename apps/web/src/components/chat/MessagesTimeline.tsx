@@ -2488,7 +2488,7 @@ function AssistantMessageMeta({
         showCopyButton={showCopyButton}
         streaming={copyStreaming}
       />
-      <ThoughtTrailButton turnId={message.turnId} />
+      <ThoughtTrailButton turnId={message.turnId} threadRef={ctx.threadRef} />
       {!message.streaming && (
         <Tooltip>
           <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
