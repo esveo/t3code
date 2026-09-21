@@ -5004,6 +5004,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 <ComposerControlSeparator size={composerControlsInStrip ? "xs" : "sm"} />
                 <ContextWindowControl
                   usage={contextWindowControl}
+                  environmentId={environmentId}
+                  threadId={activeThreadId}
                   modelDisplayName={activeThreadModelDisplayName}
                   size={composerControlsInStrip ? "xs" : "sm"}
                   hidden={isRestingBlockHidden("context")}

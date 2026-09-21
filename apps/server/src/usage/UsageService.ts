@@ -49,6 +49,7 @@ import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
 import { mergeProviderInstanceEnvironment } from "../provider/ProviderInstanceEnvironment.ts";
 import { UsageAggregator } from "./usageAggregation.ts";
 import { createOverrideRateTable, parseRateTable, type RateTable } from "./usagePricing.ts";
+import { summarizeSessionRecords, type ThreadSessionUsage } from "./threadSessionUsage.ts";
 import {
   listTranscriptFiles,
   readDirectoryVolumeId,
@@ -107,12 +108,28 @@ const decodeCachedSources = Schema.decodeUnknownOption(
   Schema.Struct({ sources: Schema.Record(Schema.String, CachedSource) }),
 );
 
+export interface SessionUsageInput {
+  readonly provider: UsageProviderKind;
+  readonly sessionIds: readonly string[];
+  /** Epoch ms of the session's last known activity; see `readSessionUsage`. */
+  readonly sinceMs: number;
+}
+
+export interface SessionUsageReport extends ThreadSessionUsage {
+  readonly pricing: UsagePricing;
+  readonly scanDurationMs: number;
+}
+
 export class UsageService extends Context.Service<
   UsageService,
   {
     readonly readSummary: (input: UsageSummaryInput) => Effect.Effect<UsageSummary, UsageReadError>;
     /** Refetches the rate table ahead of its TTL. See `ensureRates`. */
     readonly refreshRates: Effect.Effect<UsagePricing>;
+    /** One thread's own tokens and cost. See `readSessionUsage`. */
+    readonly readSessionUsage: (
+      input: SessionUsageInput,
+    ) => Effect.Effect<SessionUsageReport, UsageReadError>;
   }
 >()("t3/usage/UsageService") {}
 
@@ -140,6 +157,24 @@ export const layerTest = Layer.succeed(
         scanDurationMs: 0,
       }),
     refreshRates: Effect.succeed(EMPTY_PRICING),
+    readSessionUsage: () =>
+      Effect.succeed({
+        models: [],
+        totals: {
+          uncachedInputTokens: 0,
+          cachedInputTokens: 0,
+          cacheCreationTokens: 0,
+          outputTokens: 0,
+          reasoningTokens: 0,
+        },
+        costUsd: 0,
+        cacheSavingsUsd: 0,
+        records: 0,
+        firstRecordAtMs: null,
+        lastRecordAtMs: null,
+        pricing: EMPTY_PRICING,
+        scanDurationMs: 0,
+      }),
   }),
 );
 
@@ -661,6 +696,50 @@ export const make = Effect.gen(function* () {
       priceOverrides,
     ]);
 
+  /**
+   * Usage for one provider session, priced exactly as the daily summary
+   * prices it.
+   *
+   * `sinceMs` is the session's last known activity: a transcript's mtime can
+   * only be at or after it, so the walk skips every unrelated file instead of
+   * parsing the whole history to answer for one thread.
+   */
+  const readSessionUsage = Effect.fn("UsageService.readSessionUsage")(function* (
+    input: SessionUsageInput,
+  ) {
+    const settings = yield* readSettings;
+    const startedAtMs = yield* Clock.currentTimeMillis;
+    yield* ensureScanCacheLoaded;
+
+    const retentionCutoffMs = startedAtMs - CACHE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    const windowStartMs = Math.max(0, input.sinceMs - MTIME_SLACK_MS);
+    const [, scannedDirs] = yield* Effect.all(
+      [ensureRates(false), collectDirs(windowStartMs, settings, retentionCutoffMs)],
+      { concurrency: 2 },
+    );
+
+    const sessionIds = new Set(input.sessionIds);
+    const records: UsageRecord[] = [];
+    for (const scanned of scannedDirs) {
+      if (scanned.provider !== input.provider || scanned.files === null) continue;
+      for (const file of scanned.files) records.push(...file.records);
+    }
+    yield* persistScanCache();
+
+    const summary = summarizeSessionRecords({
+      records,
+      sessionIds,
+      rates,
+      priceOverrides: createOverrideRateTable(settings.usagePriceOverrides),
+    });
+    const finishedAtMs = yield* Clock.currentTimeMillis;
+    return {
+      ...summary,
+      pricing: pricing(),
+      scanDurationMs: Math.max(0, finishedAtMs - startedAtMs),
+    } satisfies SessionUsageReport;
+  });
+
   const readSummary = Effect.fn("UsageService.readSummary")(function* (input: UsageSummaryInput) {
     const settings = yield* readSettings;
     const key = scanKey(input, settings.usagePriceOverrides);
@@ -691,7 +770,7 @@ export const make = Effect.gen(function* () {
     return yield* Deferred.await(deferred);
   });
 
-  return { readSummary, refreshRates } as const;
+  return { readSummary, refreshRates, readSessionUsage } as const;
 });
 
 export const layer = Layer.effect(UsageService, make);
