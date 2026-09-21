@@ -58,25 +58,23 @@ one with the app's update button. Your job ends with that build prepared.
 
 ### Staying current with `fork`
 
-`scripts/fork-app.sh watch-install` starts a check that runs every minute: it
-fetches `origin/fork` and, when that branch moved, builds the new commit into
-the waiting slot, so the app's update button offers it shortly after someone
-pushes. `watch-uninstall` stops it, `status` shows whether it runs, and the log
-is `~/Documents/private/t3code-app/logs/fork-watch.log`. It is a detached
-process, not a launchd agent — launchd jobs are denied the Documents folder
-this fork lives in — so a reboot or logout ends it. `watch-install` remembers
-that watching is wanted, and `fork-app.sh start` (which the Finder launcher and
-the update button go through) resumes it, so opening the app after a reboot
-brings it back; `status` says when it is wanted but not running.
+While the app runs, it runs `scripts/fork-app.sh watch` every minute: that
+fetches `origin/fork` and, when the branch moved, prepares the new commit —
+the app into the waiting slot, and the server with `prepare-server` when
+anything the server is built from changed. The app's update icon then offers
+the app, and a separate server icon offers the service restart, which the user
+confirms because it ends every agent session. The log is
+`~/Documents/private/t3code-app/logs/fork-watch.log`.
 
 It builds from its own detached worktree in
 `~/Documents/private/t3code-app/source`, never from a working checkout, so
 uncommitted work is neither built nor disturbed. It prepares only — switching
-stays the user's click. Note that it competes for the one waiting slot: a build
+stays the user's click, for the app and for the service alike. Note that it competes for the one waiting slot: a build
 an agent prepared from a feature branch is replaced by the next commit on
 `fork`, so let the user try such a build before pushing to `fork`.
 
-- **Never run `scripts/fork-app.sh restart`, `start`, or `stop`**, never run
+- **Never run `scripts/fork-app.sh restart`, `restart-service`, `start`, or
+  `stop`**, never run
   `vp run start:desktop`, and never kill the app's Electron processes. The user
   decides when to switch.
 - Only one prepared build waits at a time; a later `prepare` from another agent

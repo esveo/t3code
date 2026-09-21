@@ -170,6 +170,7 @@ import {
 import { searchableSetting } from "./settingsSearch";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
+import { ForkServiceSettingsRow } from "../sidebar/ForkServiceUpdateButton";
 
 const ENVIRONMENT_IDENTIFICATION_LABELS: Record<EnvironmentIdentificationMode, string> = {
   artwork: "Artwork",
@@ -415,6 +416,7 @@ function AboutVersionSection() {
           </Tooltip>
         }
       />
+      <ForkServiceSettingsRow />
       {hasDesktopBridge ? (
         <SettingsRow
           title="Update track"

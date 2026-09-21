@@ -28,6 +28,11 @@ import {
   shouldShowDesktopUpdateCheckIcon,
 } from "./DesktopUpdateStatusIcon";
 import { SidebarUpdateReleaseNotes } from "./SidebarUpdateReleaseNotes";
+import {
+  ForkAppUpdateIcon,
+  getForkAppUpdateTooltip,
+  isForkUpdateState,
+} from "./ForkServiceUpdateButton";
 
 type SidebarUpdatePopoverChangeDetails = Parameters<
   NonNullable<ComponentProps<typeof Popover>["onOpenChange"]>
@@ -141,9 +146,12 @@ function SidebarUpdateControl() {
     isDownloading,
     showCheckIcon,
   });
+  const isForkAppInstall = action === "install" && isForkUpdateState(state);
   const tooltip = showUpdateDetails
     ? state
-      ? getDesktopUpdateButtonTooltip(state)
+      ? isForkAppInstall
+        ? getForkAppUpdateTooltip(state)
+        : getDesktopUpdateButtonTooltip(state)
       : "Update available"
     : showCheckIcon
       ? "Checking for updates…"
@@ -317,13 +325,17 @@ function SidebarUpdateControl() {
         );
       }}
     >
-      <DesktopUpdateStatusIcon
-        key={showCheckIcon ? checkAnimationKey : iconStatus}
-        downloadPercent={state?.downloadPercent ?? null}
-        isCheckAnimating={showCheckIcon && !prefersReducedMotion}
-        onCheckAnimationIteration={handleCheckAnimationIteration}
-        status={iconStatus}
-      />
+      {isForkAppInstall && !showCheckIcon ? (
+        <ForkAppUpdateIcon />
+      ) : (
+        <DesktopUpdateStatusIcon
+          key={showCheckIcon ? checkAnimationKey : iconStatus}
+          downloadPercent={state?.downloadPercent ?? null}
+          isCheckAnimating={showCheckIcon && !prefersReducedMotion}
+          onCheckAnimationIteration={handleCheckAnimationIteration}
+          status={iconStatus}
+        />
+      )}
     </button>
   );
 

@@ -31,8 +31,8 @@ or the client asks for something the server cannot answer.
   baked-in cloud configuration (see [step 4](#4-give-the-server-its-cloud-config)).
 - **Rust/cargo**, or a prebuilt resource monitor. `prepare-server` reuses
   `native/resource-monitor/target/<triple>/release/t3-resource-monitor` from the
-  checkout when it exists and falls back to cargo. `npx vp run
-build:resource-monitor` produces it once.
+  checkout when it exists, then the one the running service ships, and falls
+  back to cargo. `npx vp run build:resource-monitor` produces it once.
 
 ## 1. Check out and install
 
@@ -58,22 +58,25 @@ the usual loop is: `prepare`, then click update in the app.
 Everything lives outside the checkout, under `$T3CODE_FORK_APP_ROOT`
 (default `~/Documents/private/t3code-app`):
 
-| Slot       | What it holds                                                          |
-| ---------- | ---------------------------------------------------------------------- |
-| `current/` | the build the running app uses                                         |
-| `next/`    | a prepared build waiting for a restart                                 |
-| `staging/` | where `prepare` builds; recycled from the previous `current`           |
-| `home/`    | the app's own `T3CODE_HOME`: settings and the saved service connection |
+| Slot          | What it holds                                                          |
+| ------------- | ---------------------------------------------------------------------- |
+| `current/`    | the build the running app uses                                         |
+| `next/`       | a prepared build waiting for a restart                                 |
+| `staging/`    | where `prepare` builds; recycled from the previous `current`           |
+| `home/`       | the app's own `T3CODE_HOME`: settings and the saved service connection |
+| `server.json` | the newest fork server `prepare-server` built for the service          |
 
 `scripts/fork-app.sh status` prints which build is where. Only one prepared
 build waits at a time — a second `prepare` replaces it.
 
-To get an update offer whenever someone pushes to `origin/fork`, run
-`scripts/fork-app.sh watch-install` once. It fetches every minute and prepares
-new commits from its own worktree. It is a plain background process, because
-launchd jobs cannot read `~/Documents`, so a reboot ends it; the next
-`fork-app.sh start` or update click brings it back. Without it, nothing is
-offered until someone runs `prepare`.
+While it runs, the app checks `origin/fork` every minute
+(`fork-app.sh watch`, logged to `logs/fork-watch.log`) and prepares new commits
+from its own worktree: the app always, the server only when something it is
+built from changed. The two update separately in the sidebar. The update icon
+restarts only the app, and agents keep running. A server icon beside it
+switches the service to the new server, after a confirmation, because that
+restart ends every agent session. It stays until the service really runs the
+new version, and Settings offers the same restart.
 
 Note that `home/` is the app's state, separate from `~/.t3`, which belongs to
 the background service. Your threads and projects live in the service's
@@ -89,11 +92,13 @@ This mirrors the release pipeline — single executable, web client, resource
 monitor — and installs the result into
 `~/.t3/runtime/versions/<version>`, where `<version>` is one patch above the
 checkout's server version plus a branch-and-commit prerelease tag, for example
-`0.0.43-fork.feat-git-graph.2763366`. It then writes that version into
-`~/.t3/runtime/service-state.json` as `activeVersion`.
+`0.0.43-fork.feat-git-graph.2763366`, and records it in `server.json` beside
+the app slots. When the server is unchanged since the last one built, it builds
+nothing.
 
-It deliberately does not restart anything: the child currently serving your
-agents keeps running the version it started with.
+It deliberately does not switch or restart anything: that is
+`scripts/fork-app.sh restart-service`, which the app's server icon runs once
+the service is set up, and which ends every running agent session.
 
 **On its own, this is not enough.** Two further steps are needed, and skipping
 either one leaves you with a service that crash-loops or a server that cannot
@@ -145,11 +150,11 @@ copying them from anywhere else.
 
 ### Doing both
 
-`FORK` is the version `prepare-server` just made active, and `PROTOCOL` is read
-from the source the fork was built from, so the two always agree:
+`FORK` is the version `prepare-server` just built, and `PROTOCOL` is read from
+the source the fork was built from, so the two always agree:
 
 ```bash
-FORK=$(python3 -c "import json;print(json.load(open('$HOME/.t3/runtime/service-state.json'))['activeVersion'])")
+FORK=$(python3 -c "import json;print(json.load(open('$HOME/Documents/private/t3code-app/server.json'))['version'])")
 PROTOCOL=$(sed -n 's/.*SERVICE_LAUNCHER_PROTOCOL = \([0-9]*\).*/\1/p' apps/server/src/cloud/serviceProtocol.ts)
 RELEASE=<your installed release version, e.g. 0.0.42>
 PLIST="$HOME/Library/LaunchAgents/com.t3tools.t3code.service.plist"
@@ -245,8 +250,10 @@ For the app, `scripts/fork-app.sh stop` is enough; the official
 
 For the app: `scripts/fork-app.sh prepare`, then the update button.
 
-For the server: `scripts/fork-app.sh prepare-server`, then restart the service.
-The plist and the cloud environment variables stay valid and do not need
-redoing — unless a rebase brings a `SERVICE_LAUNCHER_PROTOCOL` bump, in which
-case step 4 has to be repeated, because the plist would still name a launcher
-speaking the old protocol.
+For the server: `scripts/fork-app.sh prepare-server`, then the app's server
+icon. Both happen on their own for commits pushed to `origin/fork`. The plist
+and the cloud environment variables stay valid and do not need redoing —
+unless a rebase brings a `SERVICE_LAUNCHER_PROTOCOL` bump, in which case step 4
+has to be repeated, because the plist would still name a launcher speaking the
+old protocol. `prepare-server` notices that bump, builds nothing, and the
+server icon turns into a warning that points here.

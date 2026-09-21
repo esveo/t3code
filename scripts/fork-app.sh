@@ -3,10 +3,11 @@
 # installation and no dev server. Builds live outside the checkout in
 # $T3CODE_FORK_APP_ROOT (default ~/Documents/private/t3code-app):
 #
-#   current/  the build the running app uses
-#   next/     a prepared build, waiting for a restart
-#   staging/  where `prepare` builds; recycled from the previous `current`
-#   home/     app state (T3CODE_HOME): settings and the saved service connection
+#   current/      the build the running app uses
+#   next/         a prepared build, waiting for a restart
+#   staging/      where `prepare` builds; recycled from the previous `current`
+#   home/         app state (T3CODE_HOME): settings and the saved service connection
+#   server.json   the newest fork server built for the t3 service
 #
 # The app keeps its local environment off and talks to the machine's t3
 # background service, so restarting it never stops agents.
@@ -18,33 +19,33 @@
 #                                 app's update button
 #   scripts/fork-app.sh start | stop | status
 #
-# Staying current with the fork branch, without touching the working checkout:
-#
-#   scripts/fork-app.sh watch-install     check every minute and build what
-#                                         lands on origin/fork
-#   scripts/fork-app.sh watch-uninstall   stop it
-#   scripts/fork-app.sh watch             one such check, by hand
-#
-# `watch` fetches into this repo and builds from its own detached worktree in
-# source/, so an agent's uncommitted work is never built or disturbed. It only
-# prepares; switching stays the update button's job.
-#
 # Features with a server side need the fork's server too, because the app only
 # ever talks to the machine's t3 service:
 #
-#   scripts/fork-app.sh prepare-server   build this checkout into a t3 runtime,
-#                                        install it beside the release one and
-#                                        point the service at it
+#   scripts/fork-app.sh prepare-server    when the server changed since the last
+#                                         one built, build this checkout into a
+#                                         t3 runtime and install it beside the
+#                                         others; the service keeps running
+#   scripts/fork-app.sh restart-service   switch the service to that runtime
+#                                         and restart it, which ends every
+#                                         running agent session — the user runs
+#                                         this from the app's service button
 #
-# `prepare-server` never stops the running service: the child that serves the
-# agents keeps running the version it started with, and the new one takes over
-# at the next restart that happens anyway. Undo by putting the previous version
-# back into ~/.t3/runtime/service-state.json; the release runtime stays
-# installed.
+# Undo a server switch by putting the previous version back into
+# ~/.t3/runtime/service-state.json; the release runtime stays installed.
+#
+# Staying current with the fork branch, without touching the working checkout:
+#
+#   scripts/fork-app.sh watch   fetch origin/fork and prepare the app and, when
+#                               needed, the server for a new commit
+#
+# The running app runs `watch` every minute. It builds from its own detached
+# worktree in source/, so an agent's uncommitted work is never built or
+# disturbed, and it only prepares; switching stays the user's click.
 set -euo pipefail
 
-# The watcher loop runs from a copy of this script (see watch_install), so the
-# repo it works on is handed over rather than derived from the copy's path.
+# `watch` hands its builds to the copy of this script in source/, which would
+# otherwise take source/ for the repo to fetch into.
 SCRIPT_REPO="${T3CODE_FORK_REPO:-${0:A:h:h}}"
 ROOT="${T3CODE_FORK_APP_ROOT:-$HOME/Documents/private/t3code-app}"
 HOME_DIR="$ROOT/home"
@@ -118,7 +119,6 @@ start() {
     echo "No build in $ROOT/current yet; run 'scripts/fork-app.sh prepare' first." >&2
     return 1
   fi
-  resume_watch
   use_node
   local settings="$HOME_DIR/userdata/desktop-settings.json"
   [[ -f "$settings" ]] || echo '{"localEnvironmentEnabled":false}' > "$settings"
@@ -215,20 +215,82 @@ prepare() {
 # version. Mirrors the release pipeline (single-executable, web client,
 # resource monitor, runtime externals) so the result is layout-identical to an
 # installed release.
+RUNTIME_DIR="$HOME/.t3/runtime"
+SERVICE_STATE="$RUNTIME_DIR/service-state.json"
+# Written by the t3 CLI too; the launcher removes it when it starts, so it
+# marks a switched version that the service has not picked up yet.
+RESTART_PENDING="$RUNTIME_DIR/.restart-pending"
+SERVER_INFO="$ROOT/server.json"
+SERVER_STAGING="$ROOT/server-staging"
+
+# A flat string field of a JSON file, or nothing.
+json_field() {
+  sed -n "s/.*\"$2\": *\"\\([^\"]*\\)\".*/\\1/p" "$1" 2>/dev/null | head -1 || true
+}
+
+active_server_version() {
+  json_field "$SERVICE_STATE" activeVersion
+}
+
+# Everything the t3 runtime is built from. The service also serves a web
+# client, but the fork app carries its own, so client-only changes do not ask
+# for a service restart.
+SERVER_PATHS=(
+  .
+  ':(exclude)apps/web' ':(exclude)apps/desktop' ':(exclude)apps/mobile'
+  ':(exclude)apps/marketing' ':(exclude)packages/client-runtime'
+  ':(exclude)docs' ':(exclude)*.md' ':(exclude)scripts/fork-app.sh'
+  ':(exclude).github' ':(exclude).repos'
+)
+
+# Builds this checkout into a t3 runtime when its server differs from the
+# newest one built (or, before the first, from the one the service runs), and
+# records the result in server.json. Never switches the service: that is
+# restart-service, because a service restart ends every agent session.
 prepare_server() {
   local source_repo="$SCRIPT_REPO"
-  acquire_lock prepare
-  trap 'release_lock prepare' EXIT
+  acquire_lock prepare-server
+  trap 'release_lock prepare-server' EXIT
   use_node
+  [[ -f "$SERVICE_STATE" ]] || { echo "No t3 service state at $SERVICE_STATE." >&2; return 1; }
 
-  local runtime_dir="$HOME/.t3/runtime"
-  local state="$runtime_dir/service-state.json"
-  [[ -f "$state" ]] || { echo "No t3 service state at $state." >&2; return 1; }
-
-  local branch sha commit slug version
+  local branch sha commit
   branch="$(branch_of "$source_repo")"
   sha="$(git -C "$source_repo" rev-parse HEAD)"
   commit="${sha[1,7]}"
+
+  # The baseline is the server a restart would run: the newest fork server
+  # built, or the service's own version. Fork versions end in their commit.
+  local base_version base_commit
+  base_version="$(json_field "$SERVER_INFO" version)"
+  [[ -n "$base_version" && -x "$RUNTIME_DIR/versions/$base_version/t3" ]] ||
+    base_version="$(active_server_version)"
+  base_commit=""
+  [[ "$base_version" == *-fork.* ]] && base_commit="${base_version##*.}"
+  if [[ -n "$base_commit" ]] &&
+    git -C "$source_repo" rev-parse --verify --quiet "$base_commit^{commit}" >/dev/null &&
+    git -C "$source_repo" diff --quiet "$base_commit" -- "${SERVER_PATHS[@]}"
+  then
+    write_server_info "$base_version" "$sha" ""
+    echo "The server is unchanged since $base_version; nothing to build."
+    return
+  fi
+
+  # A launcher speaks one protocol with the child it starts. A bump needs the
+  # launcher moved by hand (docs/fork/setup.md, step 4), so offering the new
+  # server as a plain restart would crash-loop the service.
+  local protocol running_protocol
+  protocol="$(sed -n 's/.*SERVICE_LAUNCHER_PROTOCOL = \([0-9]*\).*/\1/p' \
+    "$source_repo/apps/server/src/cloud/serviceProtocol.ts")"
+  running_protocol="$(sed -n 's/.*"protocol": *\([0-9]*\).*/\1/p' "$SERVICE_STATE")"
+  if [[ "$protocol" != "$running_protocol" ]]; then
+    write_server_info "$base_version" "$sha" \
+      "The service launcher protocol changed ($running_protocol → $protocol). Move the launcher by hand as in docs/fork/setup.md, step 4."
+    echo "Launcher protocol changed ($running_protocol → $protocol); not building the server." >&2
+    return
+  fi
+
+  local slug version
   # Semver prerelease identifiers allow [0-9A-Za-z-] only.
   slug="$(echo "$branch" | tr -c '[:alnum:]-' '-' | sed 's/-\{2,\}/-/g; s/^-//; s/-$//')"
   # The base is one patch above the checkout's server version, so the fork
@@ -240,12 +302,12 @@ prepare_server() {
   base="$(node -e "const v=require('$source_repo/apps/server/package.json').version.split('.');console.log([v[0],v[1],Number(v[2])+1].join('.'))")"
   version="$base-fork.$slug.$commit"
 
-  local staging="$ROOT/staging"
+  # Its own staging directory: the version is written into its package.json,
+  # which must not reach an app build.
+  local staging="$SERVER_STAGING"
   mkdir -p "$staging"
-  rm -f "$staging/.fork-build.json"
   echo "Syncing $source_repo → $staging …"
-  rsync -a --delete --exclude=.git --exclude=.fork-build.json \
-    --filter=':- .gitignore' "$source_repo/" "$staging/"
+  rsync -a --delete --exclude=.git --filter=':- .gitignore' "$source_repo/" "$staging/"
 
   node -e "const fs=require('fs');const p='$staging/apps/server/package.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.version='$version';fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n')"
 
@@ -267,24 +329,34 @@ prepare_server() {
   (cd "$staging" && T3CODE_COMMIT_HASH="$sha" \
     node apps/server/scripts/cli.ts build-exe --target "$target_key")
 
-  # The release job hands the archive a directory keyed by platform-arch; the
-  # checked-out Rust build is the same binary, so reuse it when it is there.
+  # The release job hands the archive a directory keyed by platform-arch. The
+  # monitor rarely changes, so a checkout's own Rust build or the one the
+  # service already ships serves; cargo is only the fallback, and it is not
+  # installed on every machine that runs this.
   local monitor_root="$staging/.fork-resource-monitor"
   rm -rf "$monitor_root"
   mkdir -p "$monitor_root/$target_key"
-  # `target/` is gitignored, so it never reaches staging; the checkout's own
-  # build is the same source at the same commit. Cargo is only the fallback,
-  # and it is not installed on every machine that runs this.
-  local monitor="$source_repo/native/resource-monitor/target/$rust_target/release/t3-resource-monitor"
-  if [[ ! -x "$monitor" ]]; then
+  local checkout monitor=""
+  checkout="$(git -C "$source_repo" rev-parse --path-format=absolute --git-common-dir)"
+  checkout="${checkout:h}"
+  local candidate
+  for candidate in \
+    "$source_repo/native/resource-monitor/target/$rust_target/release/t3-resource-monitor" \
+    "$checkout/native/resource-monitor/target/$rust_target/release/t3-resource-monitor" \
+    "$RUNTIME_DIR/versions/$(active_server_version)/resource-monitor/$target_key/t3-resource-monitor"
+  do
+    if [[ -x "$candidate" ]]; then monitor="$candidate"; break; fi
+  done
+  if [[ -z "$monitor" ]]; then
     if ! command -v cargo >/dev/null; then
-      echo "No resource monitor at $monitor and no cargo to build one." >&2
+      echo "No resource monitor found and no cargo to build one." >&2
       echo "Run 'npx vp run build:resource-monitor' in the checkout, then retry." >&2
       return 1
     fi
     echo "Building resource monitor …"
     (cd "$source_repo" && cargo build --locked --release \
       --manifest-path native/resource-monitor/Cargo.toml)
+    monitor="$source_repo/native/resource-monitor/target/$rust_target/release/t3-resource-monitor"
   fi
   cp "$monitor" "$monitor_root/$target_key/t3-resource-monitor"
 
@@ -298,7 +370,7 @@ prepare_server() {
   archive="$(echo "$staging"/release-cli/*.tar.gz)"
   [[ -f "$archive" ]] || { echo "No archive was produced." >&2; return 1; }
 
-  local target="$runtime_dir/versions/$version"
+  local target="$RUNTIME_DIR/versions/$version"
   echo "Installing into $target …"
   rm -rf "$target"
   mkdir -p "$target"
@@ -306,41 +378,78 @@ prepare_server() {
   [[ -x "$target/t3" ]] || { echo "Extracted runtime has no t3 executable." >&2; rm -rf "$target"; return 1; }
   printf '%s\n' "$version" > "$target/.install-complete"
 
-  local previous
-  previous="$(node -e "console.log(JSON.parse(require('fs').readFileSync('$state','utf8')).activeVersion)")"
-  node -e "const fs=require('fs');const s='$state';const j=JSON.parse(fs.readFileSync(s,'utf8'));j.activeVersion='$version';fs.writeFileSync(s+'.fork-tmp',JSON.stringify(j,null,2)+'\n');fs.renameSync(s+'.fork-tmp',s)"
-  printf '%s\n' "$previous" > "$runtime_dir/.fork-previous-version"
+  write_server_info "$version" "$sha" ""
+  prune_server_versions
+  echo "Installed $version ($branch@$commit). The service keeps running"
+  echo "$(active_server_version) until restart-service switches it."
+}
 
-  echo
-  echo "Installed $version ($branch@$commit) and set it active."
-  echo "The running service keeps serving agents on $previous; the fork server"
-  echo "takes over at the next service restart, which nothing here triggers."
-  echo "To go back: put \"activeVersion\": \"$previous\" into $state."
+write_server_info() {
+  local version="$1" sha="$2" blocked="$3"
+  printf '{"version": "%s", "commit": "%s", "blocked": "%s", "builtAt": "%s"}\n' \
+    "$version" "$sha" "$blocked" "$(date -u +%FT%TZ)" > "$SERVER_INFO.tmp"
+  mv "$SERVER_INFO.tmp" "$SERVER_INFO"
+}
+
+# Each runtime is ~200 MB. Keeps release versions, the one the service runs,
+# the one it ran before, the newest built, and the launcher's own.
+prune_server_versions() {
+  local keep=(
+    "$(active_server_version)"
+    "$(cat "$RUNTIME_DIR/.fork-previous-version" 2>/dev/null || true)"
+    "$(json_field "$SERVER_INFO" version)"
+  )
+  local plist="$HOME/Library/LaunchAgents/com.t3tools.t3code.service.plist"
+  keep+=(${(f)"$(sed -n 's|.*/runtime/versions/\([^/<]*\)/.*|\1|p' "$plist" 2>/dev/null)"})
+  local dir
+  for dir in "$RUNTIME_DIR"/versions/*-fork.*(N/); do
+    (( ${keep[(Ie)${dir:t}]} )) && continue
+    echo "Removing unused server ${dir:t} …"
+    rm -rf "$dir"
+  done
+}
+
+# Switches the service to the newest fork server and restarts it. Ends every
+# running agent session; only the user starts this, from the app.
+restart_service() {
+  local version
+  version="$(json_field "$SERVER_INFO" version)"
+  [[ -n "$version" ]] || { echo "No fork server prepared; run prepare-server." >&2; return 1; }
+  [[ -x "$RUNTIME_DIR/versions/$version/t3" ]] ||
+    { echo "Server $version is not installed; run prepare-server." >&2; return 1; }
+  local previous
+  previous="$(active_server_version)"
+  if [[ "$previous" != "$version" ]]; then
+    node -e "const fs=require('fs');const s='$SERVICE_STATE';const j=JSON.parse(fs.readFileSync(s,'utf8'));j.activeVersion='$version';fs.writeFileSync(s+'.fork-tmp',JSON.stringify(j,null,2)+'\n');fs.renameSync(s+'.fork-tmp',s)"
+    printf '%s\n' "$previous" > "$RUNTIME_DIR/.fork-previous-version"
+  fi
+  # Stays behind if the restart fails, so the app keeps offering it.
+  printf '%s\n' "$version" > "$RESTART_PENDING"
+  echo "Restarting the t3 service on $version (was $previous) …"
+  # The service lives in ~/.t3, not in the app's own home, and the CLI refuses
+  # a unit that belongs to another base directory.
+  env -u T3_SERVICE_LAUNCHER_CONTEXT -u T3_BOOT_SERVICE_UNIT T3CODE_HOME="$HOME/.t3" \
+    "$RUNTIME_DIR/versions/$version/t3" service restart
 }
 
 WATCH_BRANCH="${T3CODE_FORK_WATCH_BRANCH:-fork}"
-WATCH_INTERVAL="${T3CODE_FORK_WATCH_INTERVAL:-60}"
 WATCH_SOURCE="$ROOT/source"
-WATCH_PID="$ROOT/.watch.pid"
-WATCH_LOG="$LOG_DIR/fork-watch.log"
-# Present while watching is wanted, so `start` can bring the loop back after a
-# reboot or logout ended it.
-WATCH_WANTED="$ROOT/.watch-wanted"
 
-# One pass: pick up what was pushed to the fork branch and build it, unless
-# that commit is already built. Never touches the working checkout beyond the
-# fetch — it builds from its own detached worktree.
+# One pass: prepare the app and the server for what was pushed to the fork
+# branch, skipping whichever is already built for that commit. Never touches
+# the working checkout beyond the fetch — it builds from its own detached
+# worktree. The running app starts one every minute.
 watch_once() {
   git -C "$SCRIPT_REPO" fetch --quiet origin "$WATCH_BRANCH" || {
     echo "$(date '+%F %T') fetch failed; trying again next pass" >&2
     return 0
   }
-  local remote
+  local remote app_built=0 server_built=0
   remote="$(git -C "$SCRIPT_REPO" rev-parse "origin/$WATCH_BRANCH")"
-  if [[ "$remote" == "$(commit_of "$ROOT/next")" || "$remote" == "$(commit_of "$ROOT/current")" ]]
-  then
-    return 0
-  fi
+  [[ "$remote" == "$(commit_of "$ROOT/next")" || "$remote" == "$(commit_of "$ROOT/current")" ]] &&
+    app_built=1
+  [[ "$remote" == "$(json_field "$SERVER_INFO" commit)" ]] && server_built=1
+  (( app_built && server_built )) && return 0
   if [[ ! -e "$WATCH_SOURCE/.git" ]]; then
     rm -rf "$WATCH_SOURCE"
     git -C "$SCRIPT_REPO" worktree add --detach "$WATCH_SOURCE" "$remote" >/dev/null
@@ -348,77 +457,11 @@ watch_once() {
   # --force: the worktree is ours alone, so whatever a failed build left in it
   # gives way to the commit being built.
   git -C "$WATCH_SOURCE" checkout --detach --force "$remote" >/dev/null 2>&1
-  echo "$(date '+%F %T') origin/$WATCH_BRANCH moved to ${remote[1,7]}; building …"
-  # Without -u the loop's own repo override would reach the build and make it
-  # use the working checkout — the one thing this worktree exists to avoid.
-  env -u T3CODE_FORK_REPO "$WATCH_SOURCE/scripts/fork-app.sh" prepare
-}
-
-# Prints the running watcher's pid, or nothing. Always succeeds: `set -e`
-# would end the script on a plain "not running".
-watch_pid() {
-  local pid
-  pid="$(cat "$WATCH_PID" 2>/dev/null || true)"
-  if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
-    echo "$pid"
-  fi
-  return 0
-}
-
-watch_loop() {
-  echo $$ > "$WATCH_PID"
-  trap 'rm -f "$WATCH_PID"' EXIT
-  echo "$(date '+%F %T') watching origin/$WATCH_BRANCH every ${WATCH_INTERVAL}s (pid $$)"
-  while true; do
-    watch_once || true
-    sleep "$WATCH_INTERVAL"
-  done
-}
-
-# A launchd agent would be the obvious home for this, but launchd jobs are
-# denied the Documents folder this fork lives in, so the loop runs as a plain
-# detached process started from the user's session instead. It survives closing
-# the terminal, not logging out; `start` resumes it (see resume_watch).
-watch_install() {
-  local pid
-  touch "$WATCH_WANTED"
-  pid="$(watch_pid)"
-  if [[ -n "$pid" ]]; then
-    echo "Already watching origin/$WATCH_BRANCH (pid $pid, log: $WATCH_LOG)."
-    return
-  fi
-  rm -f "$WATCH_PID"
-  # From a copy: the loop lives for days, and zsh reads a script as it runs, so
-  # editing the checkout's copy underneath it would corrupt the running loop.
-  cp "$SCRIPT_REPO/scripts/fork-app.sh" "$ROOT/.watch-loop.zsh"
-  T3CODE_FORK_REPO="$SCRIPT_REPO" nohup /bin/zsh "$ROOT/.watch-loop.zsh" watch-loop \
-    >>"$WATCH_LOG" 2>&1 &!
-  for _ in {1..20}; do
-    pid="$(watch_pid)"
-    [[ -n "$pid" ]] && break
-    sleep 0.2
-  done
-  if [[ -z "$pid" ]]; then
-    echo "The watcher did not start; see $WATCH_LOG" >&2
-    return 1
-  fi
-  echo "Watching origin/$WATCH_BRANCH every ${WATCH_INTERVAL}s (pid $pid, log: $WATCH_LOG)."
-  echo "New commits are built into next/; the app's update button offers them."
-}
-
-# Restarts a wanted watcher that a reboot or logout ended. Called by `start`,
-# which every way of opening the app goes through.
-resume_watch() {
-  [[ -f "$WATCH_WANTED" && -z "$(watch_pid)" ]] || return 0
-  watch_install || echo "Could not resume watching origin/$WATCH_BRANCH; see $WATCH_LOG" >&2
-}
-
-watch_uninstall() {
-  local pid
-  pid="$(watch_pid)"
-  [[ -n "$pid" ]] && kill "$pid" 2>/dev/null
-  rm -f "$WATCH_PID" "$WATCH_WANTED"
-  echo "Stopped watching origin/$WATCH_BRANCH."
+  echo "$(date '+%F %T') origin/$WATCH_BRANCH is at ${remote[1,7]}; preparing …"
+  # Without -u an inherited repo override would reach the build and make it use
+  # the working checkout — the one thing this worktree exists to avoid.
+  (( app_built )) || env -u T3CODE_FORK_REPO "$WATCH_SOURCE/scripts/fork-app.sh" prepare
+  (( server_built )) || env -u T3CODE_FORK_REPO "$WATCH_SOURCE/scripts/fork-app.sh" prepare-server
 }
 
 restart() {
@@ -444,10 +487,8 @@ restart() {
 case "${1:-}" in
   prepare) prepare ;;
   prepare-server) prepare_server ;;
+  restart-service) restart_service ;;
   watch) watch_once ;;
-  watch-loop) watch_loop ;;
-  watch-install) watch_install ;;
-  watch-uninstall) watch_uninstall ;;
   restart) restart ;;
   start) stop && start ;;
   stop) stop ;;
@@ -455,17 +496,12 @@ case "${1:-}" in
     echo "app:     $([[ -n "$(app_pids)" ]] && echo running || echo stopped)"
     echo "current: $([[ -d "$ROOT/current" ]] && label_of "$ROOT/current" || echo none)"
     echo "next:    $([[ -d "$ROOT/next" ]] && label_of "$ROOT/next" || echo none)"
-    if [[ -n "$(watch_pid)" ]]; then
-      echo "watch:   origin/$WATCH_BRANCH every ${WATCH_INTERVAL}s"
-    elif [[ -f "$WATCH_WANTED" ]]; then
-      echo "watch:   stopped (ended by a reboot or logout); resumes with the next start, or run watch-install"
-    else
-      echo "watch:   off"
-    fi
+    echo "service: $(active_server_version)$([[ -f "$RESTART_PENDING" ]] && echo ", restart pending")"
+    echo "server:  $(json_field "$SERVER_INFO" version)"
     ;;
   *)
-    echo "usage: $0 prepare|prepare-server|restart|start|stop|status" >&2
-    echo "       $0 watch|watch-install|watch-uninstall" >&2
+    echo "usage: $0 prepare|restart|start|stop|status|watch" >&2
+    echo "       $0 prepare-server|restart-service" >&2
     exit 2
     ;;
 esac
