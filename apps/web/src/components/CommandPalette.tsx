@@ -2254,7 +2254,7 @@ function OpenCommandPaletteDialog(props: {
           existing.id,
           clientSettings.sidebarThreadSortOrder,
         );
-        if (latestThread) {
+        if (latestThread && latestThread.settledOverride !== "settled") {
           await openThread(scopeThreadRef(latestThread.environmentId, latestThread.id));
         } else {
           const navigationResult = await settlePromise(() =>
