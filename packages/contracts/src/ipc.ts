@@ -300,17 +300,12 @@ export interface DesktopForkServiceState {
   pendingVersion: string | null;
   /** Why the pending server cannot be switched to by a restart. */
   blockedReason: string | null;
-  restarting: boolean;
-  /** The last restart's failure. */
-  error: string | null;
 }
 
 export const DesktopForkServiceStateSchema = Schema.Struct({
   runningVersion: Schema.NullOr(Schema.String),
   pendingVersion: Schema.NullOr(Schema.String),
   blockedReason: Schema.NullOr(Schema.String),
-  restarting: Schema.Boolean,
-  error: Schema.NullOr(Schema.String),
 });
 
 export interface DesktopUpdateReleaseNote {
@@ -1264,8 +1259,6 @@ export interface DesktopBridge {
   checkForUpdate: () => Promise<DesktopUpdateCheckResult>;
   downloadUpdate: () => Promise<DesktopUpdateActionResult>;
   installUpdate: () => Promise<DesktopUpdateActionResult>;
-  /** Private fork: switches the t3 service to the pending fork server. */
-  restartForkService?: () => Promise<DesktopUpdateState>;
   onUpdateState: (listener: (state: DesktopUpdateState) => void) => () => void;
   /** Present when the desktop shell accepts `t3 app` activation requests. */
   appActivation?: {

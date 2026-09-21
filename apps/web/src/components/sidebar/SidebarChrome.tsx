@@ -28,7 +28,6 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
 import { SidebarProviderUpdatePill } from "./SidebarProviderUpdatePill";
 import { SidebarUpdateArchitectureWarning, SidebarUpdatePill } from "./SidebarUpdatePill";
-import { ForkServiceUpdateButton } from "./ForkServiceUpdateButton";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 
 export const SidebarChromeHeader = memo(function SidebarChromeHeader({
@@ -215,7 +214,6 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
         </>
       )}
       <SidebarUpdatePill />
-      <ForkServiceUpdateButton />
     </SidebarMenu>
   );
 });

@@ -67,8 +67,9 @@ While the app runs, it runs `scripts/fork-app.sh watch` every minute: that
 fetches `origin/fork` and, when the branch moved, prepares the new commit —
 the app into the waiting slot, and the server with `prepare-server` when
 anything the server is built from changed. The app's update icon then offers
-the app, and a separate server icon offers the service restart, which the user
-confirms because it ends every agent session. The log is
+both in one click: it restarts the service on the new server and the app side
+by side, and running threads, subagents and workflows continue after the
+service restart. The log is
 `~/Documents/private/t3code-app/logs/fork-watch.log`.
 
 It builds from its own detached worktree in

@@ -72,11 +72,11 @@ build waits at a time — a second `prepare` replaces it.
 While it runs, the app checks `origin/fork` every minute
 (`fork-app.sh watch`, logged to `logs/fork-watch.log`) and prepares new commits
 from its own worktree: the app always, the server only when something it is
-built from changed. The two update separately in the sidebar. The update icon
-restarts only the app, and agents keep running. A server icon beside it
-switches the service to the new server, after a confirmation, because that
-restart ends every agent session. It stays until the service really runs the
-new version, and Settings offers the same restart.
+built from changed. The sidebar's update icon (and **Check for updates** when
+nothing waits) installs both at once with `fork-app.sh update`: the service
+switches to the new server and restarts while the app restarts beside it. With
+**Settings → General → Continue threads after restarts** on (the default),
+running threads, subagents and workflows continue after the service restart.
 
 Note that `home/` is the app's state, separate from `~/.t3`, which belongs to
 the background service. Your threads and projects live in the service's
@@ -97,8 +97,8 @@ the app slots. When the server is unchanged since the last one built, it builds
 nothing.
 
 It deliberately does not switch or restart anything: that is
-`scripts/fork-app.sh restart-service`, which the app's server icon runs once
-the service is set up, and which ends every running agent session.
+`scripts/fork-app.sh restart-service`, which the app's update button runs once
+the service is set up.
 
 **On its own, this is not enough.** Two further steps are needed, and skipping
 either one leaves you with a service that crash-loops or a server that cannot
@@ -250,10 +250,11 @@ For the app, `scripts/fork-app.sh stop` is enough; the official
 
 For the app: `scripts/fork-app.sh prepare`, then the update button.
 
-For the server: `scripts/fork-app.sh prepare-server`, then the app's server
-icon. Both happen on their own for commits pushed to `origin/fork`. The plist
+For the server: `scripts/fork-app.sh prepare-server`, then the same update
+button. Both happen on their own for commits pushed to `origin/fork`. The plist
 and the cloud environment variables stay valid and do not need redoing —
 unless a rebase brings a `SERVICE_LAUNCHER_PROTOCOL` bump, in which case step 4
 has to be repeated, because the plist would still name a launcher speaking the
-old protocol. `prepare-server` notices that bump, builds nothing, and the
-server icon turns into a warning that points here.
+old protocol. `prepare-server` notices that bump, builds nothing, and records
+why in `server.json`; the update button then offers only the app, and
+`logs/fork-watch.log` points here.
