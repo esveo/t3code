@@ -77,16 +77,24 @@ const REF_BADGE_CLASS: Record<VcsCommitGraphRef["kind"], string> = {
   other: "border-border bg-muted/60 text-muted-foreground",
 };
 
+/**
+ * `page` owns the whole window and titles itself; `embedded` sits in the right
+ * panel, whose tab bar already carries the name and the close button.
+ */
+export type GitGraphViewMode = "page" | "embedded";
+
 export function GitGraphView({
   environmentId,
   cwd,
   title,
+  mode = "page",
   onClose,
 }: {
   readonly environmentId: EnvironmentId;
   readonly cwd: string;
   readonly title: string;
-  readonly onClose: () => void;
+  readonly mode?: GitGraphViewMode;
+  readonly onClose?: (() => void) | undefined;
 }) {
   const [limit, setLimit] = useState(INITIAL_LIMIT);
   const [selectedSha, setSelectedSha] = useState<string | null>(null);
@@ -105,26 +113,40 @@ export function GitGraphView({
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
-      <header className="flex shrink-0 items-center gap-3 border-b px-4 py-2.5">
-        <GitCommitHorizontalIcon className="size-4 text-muted-foreground" />
-        <span className="text-sm font-semibold">Git Graph</span>
-        <span className="truncate text-xs text-muted-foreground">{title}</span>
+      <header
+        className={cn(
+          "flex shrink-0 items-center gap-3 border-b px-4",
+          mode === "embedded" ? "py-1.5" : "py-2.5",
+        )}
+      >
+        {mode === "page" ? (
+          <>
+            <GitCommitHorizontalIcon className="size-4 text-muted-foreground" />
+            <span className="text-sm font-semibold">Git Graph</span>
+          </>
+        ) : null}
+        <span className="min-w-0 truncate text-xs text-muted-foreground">{title}</span>
         {graph.data?.currentRefName ? (
-          <span className="flex items-center gap-1.5 rounded-md border px-2 py-1 text-xs text-muted-foreground">
-            <GitBranchIcon className="size-3 opacity-70" />
+          <span className="flex min-w-0 items-center gap-1.5 rounded-md border px-2 py-1 text-xs text-muted-foreground">
+            <GitBranchIcon className="size-3 shrink-0 opacity-70" />
             <span className="max-w-60 truncate text-foreground">{graph.data.currentRefName}</span>
           </span>
         ) : null}
         <div className="ml-auto flex items-center gap-2">
           {graph.isPending ? <Spinner className="size-4" /> : null}
-          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close Git Graph">
-            <XIcon className="size-4" />
-          </Button>
+          {onClose ? (
+            <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="Close Git Graph">
+              <XIcon className="size-4" />
+            </Button>
+          ) : null}
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1">
-        <div className="min-w-0 flex-1 overflow-auto">
+      {/* Two nested containers: the outer one decides whether the details sit
+          beside the graph or under it, the inner one how much of each commit
+          row fits once that split is made. */}
+      <div className="@container/gitgraph flex min-h-0 flex-1 flex-col @2xl/gitgraph:flex-row">
+        <div className="@container/gitgraphrow min-w-0 flex-1 overflow-auto">
           {graph.error !== null ? (
             <p className="p-6 text-sm text-destructive">{graph.error}</p>
           ) : graph.data?.isRepo === false ? (
@@ -205,13 +227,15 @@ export function GitGraphView({
                         ))}
                         <span className="truncate">{row.commit.subject}</span>
                       </span>
-                      <span className="w-36 shrink-0 truncate text-xs text-muted-foreground">
+                      {/* Narrow panes keep the subject and the date and drop
+                          the rest; the details pane still has all of it. */}
+                      <span className="hidden w-36 shrink-0 truncate text-xs text-muted-foreground @xl/gitgraphrow:block">
                         {row.commit.author}
                       </span>
                       <span className="w-12 shrink-0 text-right text-xs text-muted-foreground">
                         {relativeTime(row.commit.authoredAt)}
                       </span>
-                      <span className="w-16 shrink-0 text-right font-mono text-[11px] text-muted-foreground/70">
+                      <span className="hidden w-16 shrink-0 text-right font-mono text-[11px] text-muted-foreground/70 @lg/gitgraphrow:block">
                         {row.commit.sha.slice(0, 8)}
                       </span>
                     </button>
