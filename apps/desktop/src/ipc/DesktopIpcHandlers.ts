@@ -36,7 +36,6 @@ import {
   installUpdate,
   setUpdateChannel,
 } from "./methods/updates.ts";
-import { restartForkService } from "./methods/forkUpdates.ts";
 import {
   getAppBranding,
   getLocalEnvironmentBootstraps,
@@ -143,7 +142,6 @@ export const installDesktopIpcHandlers = Effect.fn("desktop.ipc.installHandlers"
   yield* ipc.handle(downloadUpdate);
   yield* ipc.handle(installUpdate);
   yield* ipc.handle(checkForUpdate);
-  yield* ipc.handle(restartForkService);
   for (const previewMethod of PreviewIpc.methods) {
     yield* ipc.handle(previewMethod);
   }

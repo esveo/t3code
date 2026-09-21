@@ -28,11 +28,7 @@ import {
   shouldShowDesktopUpdateCheckIcon,
 } from "./DesktopUpdateStatusIcon";
 import { SidebarUpdateReleaseNotes } from "./SidebarUpdateReleaseNotes";
-import {
-  ForkAppUpdateIcon,
-  getForkAppUpdateTooltip,
-  isForkUpdateState,
-} from "./ForkServiceUpdateButton";
+import { getForkUpdateTooltip, isForkUpdateState } from "./forkUpdate";
 
 type SidebarUpdatePopoverChangeDetails = Parameters<
   NonNullable<ComponentProps<typeof Popover>["onOpenChange"]>
@@ -150,7 +146,7 @@ function SidebarUpdateControl() {
   const tooltip = showUpdateDetails
     ? state
       ? isForkAppInstall
-        ? getForkAppUpdateTooltip()
+        ? getForkUpdateTooltip(state)
         : getDesktopUpdateButtonTooltip(state)
       : "Update available"
     : showCheckIcon
@@ -218,8 +214,8 @@ function SidebarUpdateControl() {
     }
 
     if (action === "install") {
-      // Fork: installing only swaps in a prepared build and relaunches the app;
-      // agents run in the background service, so there is nothing to confirm.
+      // Fork: installing restarts the app and the service; threads continue
+      // after the service restart, so there is nothing to confirm.
       void bridge
         .installUpdate()
         .then((result) => {
@@ -325,17 +321,13 @@ function SidebarUpdateControl() {
         );
       }}
     >
-      {isForkAppInstall && !showCheckIcon ? (
-        <ForkAppUpdateIcon />
-      ) : (
-        <DesktopUpdateStatusIcon
-          key={showCheckIcon ? checkAnimationKey : iconStatus}
-          downloadPercent={state?.downloadPercent ?? null}
-          isCheckAnimating={showCheckIcon && !prefersReducedMotion}
-          onCheckAnimationIteration={handleCheckAnimationIteration}
-          status={iconStatus}
-        />
-      )}
+      <DesktopUpdateStatusIcon
+        key={showCheckIcon ? checkAnimationKey : iconStatus}
+        downloadPercent={state?.downloadPercent ?? null}
+        isCheckAnimating={showCheckIcon && !prefersReducedMotion}
+        onCheckAnimationIteration={handleCheckAnimationIteration}
+        status={iconStatus}
+      />
     </button>
   );
 
