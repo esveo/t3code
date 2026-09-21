@@ -228,6 +228,11 @@ export function swapLeaves(root: SplitNode, firstId: string, secondId: string): 
 }
 
 /** Moves the divider after child `index` of `branchId` to `fraction` of that branch. */
+/**
+ * Moves divider `index` of `branchId` to `fraction` of the branch. Once the
+ * pane ahead of it reaches its minimum, the divider pushes the next ones
+ * along, as far as the minimums of all panes on that side allow.
+ */
 export function resizeBranch(
   root: SplitNode,
   branchId: string,
@@ -235,17 +240,23 @@ export function resizeBranch(
   fraction: number,
 ): SplitNode {
   return replaceNode(root, branchId, (node) => {
-    if (node.kind !== "split" || index < 0 || index >= node.children.length - 1) return node;
-    const start = node.sizes.slice(0, index).reduce((sum, size) => sum + size, 0);
-    const pairTotal = (node.sizes[index] ?? 0) + (node.sizes[index + 1] ?? 0);
-    const first = Math.min(
-      pairTotal - MIN_PANE_FRACTION,
-      Math.max(MIN_PANE_FRACTION, fraction - start),
-    );
-    if (pairTotal <= MIN_PANE_FRACTION * 2) return node;
+    const count = node.kind === "split" ? node.children.length : 0;
+    if (node.kind !== "split" || index < 0 || index >= count - 1) return node;
+    const lowest = (index + 1) * MIN_PANE_FRACTION;
+    const highest = 1 - (count - index - 1) * MIN_PANE_FRACTION;
+    if (lowest > highest) return node;
     const sizes = [...node.sizes];
-    sizes[index] = first;
-    sizes[index + 1] = pairTotal - first;
+    const position = sizes.slice(0, index + 1).reduce((sum, size) => sum + size, 0);
+    const target = Math.min(highest, Math.max(lowest, fraction));
+    const step = target > position ? 1 : -1;
+    let remaining = Math.abs(target - position);
+    for (let i = step > 0 ? index + 1 : index; remaining > 0 && i >= 0 && i < count; i += step) {
+      const taken = Math.min(remaining, Math.max(0, (sizes[i] ?? 0) - MIN_PANE_FRACTION));
+      sizes[i] = (sizes[i] ?? 0) - taken;
+      remaining -= taken;
+    }
+    const grown = step > 0 ? index : index + 1;
+    sizes[grown] = (sizes[grown] ?? 0) + Math.abs(target - position) - remaining;
     return { ...node, sizes };
   });
 }
