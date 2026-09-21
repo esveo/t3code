@@ -135,6 +135,8 @@ import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import { linkCreatedPullRequest } from "./git/linkCreatedPullRequest.ts";
+import * as TextGeneration from "./textGeneration/TextGeneration.ts";
+import { summarizeTurnThoughts } from "./textGeneration/ThoughtTrail.ts";
 import * as ReviewService from "./review/ReviewService.ts";
 import * as ProjectSetupScriptRunner from "./project/ProjectSetupScriptRunner.ts";
 import * as ProjectCloneTracker from "./project/ProjectCloneTracker.ts";
@@ -550,6 +552,7 @@ const makeWsRpcLayer = (
       const externalLauncher = yield* ExternalLauncher.ExternalLauncher;
       const remoteOpenTargets = yield* RemoteOpenTargets.RemoteOpenTargets;
       const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
+      const textGeneration = yield* TextGeneration.TextGeneration;
       const review = yield* ReviewService.ReviewService;
       const vcsProvisioning = yield* VcsProvisioningService.VcsProvisioningService;
       const vcsStatusBroadcaster = yield* VcsStatusBroadcaster.VcsStatusBroadcaster;
@@ -3283,6 +3286,17 @@ const makeWsRpcLayer = (
             {
               "rpc.aggregate": "git",
             },
+          ),
+        [WS_METHODS.threadSummarizeThoughts]: (input) =>
+          observeRpcEffect(
+            WS_METHODS.threadSummarizeThoughts,
+            summarizeTurnThoughts({
+              request: input,
+              projection: projectionSnapshotQuery,
+              settings: serverSettings,
+              textGeneration,
+            }),
+            { "rpc.aggregate": "orchestration" },
           ),
         [WS_METHODS.gitPreparePullRequestThread]: (input) =>
           observeRpcEffect(

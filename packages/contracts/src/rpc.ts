@@ -87,6 +87,7 @@ import {
   ReviewDiffPreviewResult,
 } from "./review.ts";
 import { KeybindingsConfigError } from "./keybindings.ts";
+import { ThoughtTrailError, ThoughtTrailInput, ThoughtTrailResult } from "./thoughtTrail.ts";
 import {
   ClientOrchestrationCommand,
   ORCHESTRATION_WS_METHODS,
@@ -324,6 +325,9 @@ export const WS_METHODS = {
   gitRunStackedAction: "git.runStackedAction",
   gitResolvePullRequest: "git.resolvePullRequest",
   gitPreparePullRequestThread: "git.preparePullRequestThread",
+
+  // Thought trail
+  threadSummarizeThoughts: "thread.summarizeThoughts",
 
   // Review methods
   reviewGetDiffPreview: "review.getDiffPreview",
@@ -1044,6 +1048,12 @@ const WsGitResolvePullRequestRpc = Rpc.make(WS_METHODS.gitResolvePullRequest, {
   error: Schema.Union([GitManagerServiceError, EnvironmentAuthorizationError]),
 });
 
+const WsThreadSummarizeThoughtsRpc = Rpc.make(WS_METHODS.threadSummarizeThoughts, {
+  payload: ThoughtTrailInput,
+  success: ThoughtTrailResult,
+  error: Schema.Union([ThoughtTrailError, EnvironmentAuthorizationError]),
+});
+
 const WsGitPreparePullRequestThreadRpc = Rpc.make(WS_METHODS.gitPreparePullRequestThread, {
   payload: GitPreparePullRequestThreadInput,
   success: GitPreparePullRequestThreadResult,
@@ -1535,4 +1545,5 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationGetArchivedShellSnapshotRpc,
   WsOrchestrationSubscribeShellRpc,
   WsOrchestrationSubscribeThreadRpc,
+  WsThreadSummarizeThoughtsRpc,
 );

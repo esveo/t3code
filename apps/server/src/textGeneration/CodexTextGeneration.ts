@@ -28,6 +28,7 @@ import {
   buildPrContentPrompt,
   buildThreadTitlePrompt,
 } from "./TextGenerationPrompts.ts";
+import { buildThoughtTrailPrompt, sanitizeThoughtTrail } from "./ThoughtTrailPrompt.ts";
 import {
   normalizeCliError,
   sanitizeCommitSubject,
@@ -103,7 +104,8 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle",
+      | "generateThreadTitle"
+      | "summarizeThoughts",
     value: unknown,
   ): Effect.Effect<string, TextGenerationError> =>
     encodeJsonString(value).pipe(
@@ -122,7 +124,8 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle",
+      | "generateThreadTitle"
+      | "summarizeThoughts",
     attachments: TextGeneration.BranchNameGenerationInput["attachments"],
   ): Effect.fn.Return<MaterializedImageAttachments, TextGenerationError> {
     if (!attachments || attachments.length === 0) {
@@ -164,7 +167,8 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       | "generateCommitMessage"
       | "generatePrContent"
       | "generateBranchName"
-      | "generateThreadTitle";
+      | "generateThreadTitle"
+      | "summarizeThoughts";
     cwd: string;
     prompt: string;
     outputSchemaJson: S;
@@ -417,10 +421,26 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
       } satisfies TextGeneration.ThreadTitleGenerationResult;
     });
 
+  const summarizeThoughts: TextGeneration.TextGeneration["Service"]["summarizeThoughts"] =
+    Effect.fn("CodexTextGeneration.summarizeThoughts")(function* (input) {
+      const { prompt, outputSchema } = buildThoughtTrailPrompt({ trace: input.trace });
+
+      const generated = yield* runCodexJson({
+        operation: "summarizeThoughts",
+        cwd: input.cwd,
+        prompt,
+        outputSchemaJson: outputSchema,
+        modelSelection: input.modelSelection,
+      });
+
+      return sanitizeThoughtTrail(generated);
+    });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    summarizeThoughts,
   } satisfies TextGeneration.TextGeneration["Service"];
 });
