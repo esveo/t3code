@@ -5,20 +5,20 @@ import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 
 import { cn } from "~/lib/utils";
 import { type ContextWindowSnapshot, formatContextWindowTokens } from "~/lib/contextWindow";
-import { ComposerControl, type ComposerControlSize } from "../components/chat/ComposerControl";
-import { useComposerMenuProps } from "../components/chat/composerEventScope";
-import { useComposerMenuState } from "../components/chat/useComposerMenuState";
-import { formatContextWindowCompactionMessage } from "../components/chat/ContextWindowMeter.logic";
+import { ComposerControl, type ComposerControlSize } from "../chat/ComposerControl";
+import { useComposerMenuProps } from "../chat/composerEventScope";
+import { useComposerMenuState } from "../chat/useComposerMenuState";
+import { formatContextWindowCompactionMessage } from "../chat/ContextWindowMeter.logic";
 import {
   formatContextWindowPercentage,
   hasContextWindowFill,
   resolveContextWindowLimitPercentage,
   resolveContextWindowTone,
   type ContextWindowTone,
-} from "../components/chat/contextWindowControl.logic";
-import { Button } from "../components/ui/button";
-import { Popover, PopoverPopup, PopoverTrigger } from "../components/ui/popover";
-import { Toggle, ToggleGroup } from "../components/ui/toggle-group";
+} from "../chat/contextWindowControl.logic";
+import { Button } from "../ui/button";
+import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { contextWindowRows } from "./contextWindowRows";
 import { ThreadCostPanel } from "./ThreadCostPanel";
 

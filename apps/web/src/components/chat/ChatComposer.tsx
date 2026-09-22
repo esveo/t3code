@@ -276,7 +276,7 @@ import {
   renderProviderTraitsPicker,
 } from "./composerProviderState";
 import { ContextWindowMeter, ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
-import { ThreadUsageControl } from "~/threadUsage/ThreadUsageControl";
+import { ThreadUsageControl } from "~/components/threadUsage/ThreadUsageControl";
 import { PromptCacheControl } from "./PromptCacheControl";
 import {
   providerSupportsManualCompaction,

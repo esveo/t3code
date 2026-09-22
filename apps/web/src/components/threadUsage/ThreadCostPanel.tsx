@@ -3,8 +3,8 @@ import { formatTokens } from "@t3tools/shared/usageFormat";
 import { RotateCwIcon } from "lucide-react";
 
 import { cn } from "~/lib/utils";
-import { Button } from "../components/ui/button";
-import { Spinner } from "../components/ui/spinner";
+import { Button } from "../ui/button";
+import { Spinner } from "../ui/spinner";
 import {
   formatThreadCost,
   threadCostNote,

@@ -9,8 +9,8 @@
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { createThreadUsageAtomFamily } from "@t3tools/client-runtime/state/thread-usage";
 
-import { connectionAtomRuntime } from "../connection/runtime";
-import { useEnvironmentQuery } from "../state/query";
+import { connectionAtomRuntime } from "../../connection/runtime";
+import { useEnvironmentQuery } from "../../state/query";
 
 const threadUsageAtom = createThreadUsageAtomFamily(connectionAtomRuntime);
 
