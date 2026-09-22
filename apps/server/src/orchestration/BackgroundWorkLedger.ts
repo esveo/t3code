@@ -150,6 +150,37 @@ export function readBackgroundTasks(runtimePayload: unknown): ReadonlyArray<Back
   );
 }
 
+/**
+ * Preparing a continuation moves the task list here, out of the key the
+ * resumed session's ledger writes, and it stays until the prompt naming the
+ * tasks was sent. A process exit in between resumes from it again.
+ */
+export const PENDING_BACKGROUND_TASKS_KEY = "continuationBackgroundTasks";
+
+/** The work a restart interrupted: the live list, else one still waiting to be sent. */
+export function readInterruptedBackgroundTasks(
+  runtimePayload: unknown,
+): ReadonlyArray<BackgroundTask> {
+  const live = readBackgroundTasks(runtimePayload);
+  if (live.length > 0 || runtimePayload === null || typeof runtimePayload !== "object") {
+    return live;
+  }
+  return readBackgroundTasks({
+    [BACKGROUND_TASKS_KEY]: (runtimePayload as Record<string, unknown>)[
+      PENDING_BACKGROUND_TASKS_KEY
+    ],
+  });
+}
+
+/** The payload patch that drops a waiting list, or nothing when there is none. */
+export function clearedPendingBackgroundTasks(runtimePayload: unknown) {
+  const pending =
+    runtimePayload !== null && typeof runtimePayload === "object"
+      ? (runtimePayload as Record<string, unknown>)[PENDING_BACKGROUND_TASKS_KEY]
+      : null;
+  return pending != null ? { [PENDING_BACKGROUND_TASKS_KEY]: null } : {};
+}
+
 function describeTask(task: BackgroundTask): string {
   const name = task.title ? `"${task.title}"` : task.taskId;
   switch (task.kind) {
