@@ -1,6 +1,6 @@
 import type { EnvironmentId, VcsCommitGraphEntry, VcsCommitGraphRef } from "@t3tools/contracts";
 import { GitBranchIcon, GitCommitHorizontalIcon, XIcon } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { DiffStatLabel } from "~/components/chat/DiffStatLabel";
 
@@ -13,6 +13,7 @@ import { vcsEnvironment } from "~/state/vcs";
 
 import { layoutCommitGraph, type CommitGraphEdge } from "./commitGraphLayout";
 import { GitGraphDiff } from "./GitGraphDiff";
+import { gitGraphIsFresh, gitGraphStatusKey } from "./gitGraphRefresh.logic";
 import { gitGraphDiffRange, nextGitGraphSelection, WORKTREE_ID } from "./gitGraphSelection";
 
 const ROW_HEIGHT = 28;
@@ -108,6 +109,15 @@ export function GitGraphView({
   const status = useEnvironmentQuery(vcsEnvironment.status({ environmentId, input: { cwd } }));
   const workingTree = status.data?.workingTree;
   const headSha = graph.data?.headSha ?? null;
+  // The graph is read once and then kept for a while, so a reopened panel
+  // would show the old commits. The live status says when to read again.
+  const statusKey = gitGraphStatusKey(status.data);
+  const { refresh: refreshGraph, isPending: graphPending, dataUpdatedAt: graphUpdatedAt } = graph;
+  useEffect(() => {
+    if (statusKey === null || graphPending) return;
+    if (gitGraphIsFresh(graphUpdatedAt, Date.now())) return;
+    refreshGraph();
+  }, [graphPending, graphUpdatedAt, refreshGraph, statusKey]);
   const showWorktree = status.data?.hasWorkingTreeChanges === true && headSha !== null;
 
   // Uncommitted changes ride on top of HEAD as a commit of their own, so the
@@ -154,10 +164,12 @@ export function GitGraphView({
           </>
         ) : null}
         <span className="min-w-0 truncate text-xs text-muted-foreground">{title}</span>
-        {graph.data?.currentRefName ? (
+        {(status.data?.refName ?? graph.data?.currentRefName) ? (
           <span className="flex min-w-0 items-center gap-1.5 rounded-md border px-2 py-1 text-xs text-muted-foreground">
             <GitBranchIcon className="size-3 shrink-0 opacity-70" />
-            <span className="max-w-60 truncate text-foreground">{graph.data.currentRefName}</span>
+            <span className="max-w-60 truncate text-foreground">
+              {status.data?.refName ?? graph.data?.currentRefName}
+            </span>
           </span>
         ) : null}
         <div className="ml-auto flex items-center gap-2">
