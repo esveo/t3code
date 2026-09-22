@@ -382,6 +382,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["composer claude cache ttl expire minutes warm cold tokens"],
   },
   {
+    id: "agent-stage",
+    title: "Agent stage",
+    to: "/settings/general",
+    searchTerms: ["sprites stations subagents thinking editing terminal right panel everything"],
+  },
+  {
     id: "provider-update-checks",
     title: "Provider update checks",
     to: "/settings/general",
