@@ -105,7 +105,8 @@ const reconcile = (input: {
         recordImportedTranscript: () => Effect.die("unused"),
         getProvider: () => Effect.die("unused"),
         listThreadIds: () => Effect.die("unused"),
-        listBindings: () => Effect.succeed([binding]),
+        listBindings: () =>
+          Effect.succeed([{ ...binding, lastSeenAt: "2026-01-01T00:00:00.000Z" }]),
       }),
       Effect.provideService(OrchestrationEngine.OrchestrationEngineService, {
         readEvents: () => Stream.empty,
