@@ -609,6 +609,10 @@ export const make = Effect.gen(function* () {
         if (!isThreadPopoutUrl({ applicationUrl, targetUrl: details.url })) return;
         popoutWindows.add(popup);
         popup.on("closed", () => popoutWindows.delete(popup));
+        // A popout carries the desktop bridge preload, so it gets the main
+        // window's guards: no foreign page may load into it or open from it.
+        popup.webContents.setWindowOpenHandler(handleWindowOpen);
+        popup.webContents.on("will-navigate", guardNavigation);
       });
     };
     installContextMenu(window, window.webContents);
@@ -616,7 +620,10 @@ export const make = Effect.gen(function* () {
       installContextMenu(window, contents);
     });
 
-    window.webContents.setWindowOpenHandler(({ url, features }) => {
+    const handleWindowOpen = ({
+      url,
+      features,
+    }: Electron.HandlerDetails): Electron.WindowOpenHandlerResponse => {
       if (isThreadPopoutUrl({ applicationUrl, targetUrl: url })) {
         return {
           action: "allow",
@@ -632,8 +639,8 @@ export const make = Effect.gen(function* () {
         void runPromise(electronShell.openExternal(url));
       }
       return { action: "deny" };
-    });
-    window.webContents.on("will-navigate", (event, url) => {
+    };
+    const guardNavigation = (event: Electron.Event, url: string) => {
       if (
         isSameOriginRendererNavigation({
           applicationUrl,
@@ -647,7 +654,9 @@ export const make = Effect.gen(function* () {
       if (Option.isSome(ElectronShell.parseSafeExternalUrl(url))) {
         void runPromise(electronShell.openExternal(url));
       }
-    });
+    };
+    window.webContents.setWindowOpenHandler(handleWindowOpen);
+    window.webContents.on("will-navigate", guardNavigation);
 
     // Electron's windowMenu close role owns CmdOrCtrl+W. Holding the
     // close-terminal shortcut can outlive the terminal that handled its first

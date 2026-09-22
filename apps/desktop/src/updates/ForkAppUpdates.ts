@@ -427,12 +427,19 @@ const makeForkUpdates = (input: { readonly root: string; readonly script: string
           }
         });
         if (failed) return yield* installFailure(`Could not run ${input.script}`);
+        // Only an app restart ends this process; a service-only switch keeps
+        // it running, so it must not stay marked as installing.
+        if (target === null) yield* Ref.set(installingRef, false);
         return { accepted: true, completed: true, state: yield* Ref.get(stateRef) };
       });
 
     /** Removes a branch's build and server; the list refreshes right after. */
     const remove = (slug: string) =>
       Effect.gen(function* () {
+        const known = yield* Ref.get(stateRef);
+        if (!(known.forkBuilds ?? []).some((build) => build.slug === slug)) {
+          return { accepted: false, completed: false, state: known };
+        }
         yield* Effect.sync(() => NodeFS.mkdirSync(logDir, { recursive: true }));
         const code = yield* runScript(input.script, ["delete", slug], appLog);
         const state = yield* refresh(false);
