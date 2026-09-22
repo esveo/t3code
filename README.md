@@ -2,6 +2,7 @@ Feature requests are tracked [here](https://github.com/orgs/esveo/projects/3).
 
 Fork of [T3 Code](https://github.com/pingdotgg/t3code) with features and fixes:
 
+- Fix: the macOS Dock icon matches the blue favicon ([f61eb0e](https://github.com/esveo/t3code/commit/f61eb0e7895ffeee7c91cabb760a31509ebfb910)).
 - Split view: threads side by side, arranged by drag and drop ([2187e3f](https://github.com/esveo/t3code/commit/2187e3f3806fbcde1ff88f46996463c5b75fe0c6), [5cb5bdb](https://github.com/esveo/t3code/commit/5cb5bdb6624ab3914b0d208c78fce88f97fec1ce), [7cdf86e](https://github.com/esveo/t3code/commit/7cdf86eabd53d9957a465091d845d19ce120c5fa), [263c6b2](https://github.com/esveo/t3code/commit/263c6b2a7abe3af8962a6096358e0d58193244cb), [4429f8a](https://github.com/esveo/t3code/commit/4429f8abc4cf1b99b8d3e1fdf16f471ea90a25b5))
 - Double-clicking a split divider evens out its panes ([b139481](https://github.com/esveo/t3code/commit/b1394819061fca9f0f15d83bd50ae314e08f26d2))
 - Dragging a split divider pushes its neighbours aside ([97140f8](https://github.com/esveo/t3code/commit/97140f8dad997841f79504d4263f21f699ae0dff))
