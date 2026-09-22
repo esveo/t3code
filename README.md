@@ -1,4 +1,4 @@
-Feature-Requests tracken wir [hier](https://github.com/orgs/esveo/projects/3).
+Feature requests are tracked [here](https://github.com/orgs/esveo/projects/3).
 
 Fork of [T3 Code](https://github.com/pingdotgg/t3code) with features and fixes:
 

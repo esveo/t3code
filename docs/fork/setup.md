@@ -258,10 +258,3 @@ has to be repeated, because the plist would still name a launcher speaking the
 old protocol. `prepare-server` notices that bump, builds nothing, and records
 why in `server.json`; the update button then offers only the app, and
 `logs/fork-watch.log` points here.
-
-Coming from a build that still had a separate server icon: click that build's
-update icon first, which switches only the app, then the new app's update icon.
-The old server does not yet record running background work, and it marks
-running turns for continuation only when **Continue threads after restarts**
-is switched on. Turn that on before this first switch, or make it while no
-agent is working; from then on every restart continues threads on its own.
