@@ -48,8 +48,8 @@
 # disturbed, and it only prepares; switching stays the user's click.
 set -euo pipefail
 
-# `watch` hands its builds to the copy of this script in source/, which would
-# otherwise take source/ for the repo to fetch into.
+# `watch` builds the fork worktree in source/ with this script, so the slots
+# it fills are the ones this script reads; the override names that worktree.
 SCRIPT_REPO="${T3CODE_FORK_REPO:-${0:A:h:h}}"
 ROOT="${T3CODE_FORK_APP_ROOT:-$HOME/Documents/private/t3code-app}"
 HOME_DIR="$ROOT/home"
@@ -505,10 +505,8 @@ watch_once() {
   # gives way to the commit being built.
   git -C "$WATCH_SOURCE" checkout --detach --force "$remote" >/dev/null 2>&1
   echo "$(date '+%F %T') origin/$WATCH_BRANCH is at ${remote[1,7]}; preparing …"
-  # Without -u an inherited repo override would reach the build and make it use
-  # the working checkout — the one thing this worktree exists to avoid.
-  (( app_built )) || env -u T3CODE_FORK_REPO "$WATCH_SOURCE/scripts/fork-app.sh" prepare
-  (( server_built )) || env -u T3CODE_FORK_REPO "$WATCH_SOURCE/scripts/fork-app.sh" prepare-server
+  (( app_built )) || T3CODE_FORK_REPO="$WATCH_SOURCE" "${0:A}" prepare
+  (( server_built )) || T3CODE_FORK_REPO="$WATCH_SOURCE" "${0:A}" prepare-server
 }
 
 # Moves the running build back into its branch's slot, so the update menu can
