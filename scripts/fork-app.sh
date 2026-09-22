@@ -51,6 +51,8 @@ set -euo pipefail
 # `watch` builds the fork worktree in source/ with this script, so the slots
 # it fills are the ones this script reads; the override names that worktree.
 SCRIPT_REPO="${T3CODE_FORK_REPO:-${0:A:h:h}}"
+# Inside a function $0 is the function's name, so the path is taken here.
+SCRIPT_PATH="${0:A}"
 ROOT="${T3CODE_FORK_APP_ROOT:-$HOME/Documents/private/t3code-app}"
 HOME_DIR="$ROOT/home"
 LOG_DIR="$ROOT/logs"
@@ -522,8 +524,8 @@ watch_once() {
   # gives way to the commit being built.
   git -C "$WATCH_SOURCE" checkout --detach --force "$remote" >/dev/null 2>&1
   echo "$(date '+%F %T') origin/$WATCH_BRANCH is at ${remote[1,7]}; preparing …"
-  (( app_built )) || T3CODE_FORK_REPO="$WATCH_SOURCE" "${0:A}" prepare
-  (( server_built )) || T3CODE_FORK_REPO="$WATCH_SOURCE" "${0:A}" prepare-server
+  (( app_built )) || T3CODE_FORK_REPO="$WATCH_SOURCE" "$SCRIPT_PATH" prepare
+  (( server_built )) || T3CODE_FORK_REPO="$WATCH_SOURCE" "$SCRIPT_PATH" prepare-server
 }
 
 # Moves the running build back into its branch's slot, so the update menu can
