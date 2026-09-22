@@ -35,11 +35,12 @@ can be in flight without disturbing the build the user works in all day.
   the record of what the user has been running.
 - Only merge a feature the user asked to go live. Ask when in doubt — an
   unfinished branch in `fork` is a broken app for the rest of the day.
-- Upstream reaches `fork` by itself: every morning at 06:00 the
-  `fork-upstream-sync` workflow has a Copilot agent merge upstream's `main`
-  into `fork`, resolve conflicts, typecheck and push. What it cannot resolve
-  becomes an issue labelled `upstream-sync`. Rebase feature branches onto
-  `fork` to pick upstream up.
+- Upstream reaches `fork` by itself: every morning at 06:00 the "Upstream-Sync"
+  Copilot automation (repo → Agents → Automations) merges upstream's `main`,
+  resolves conflicts, typechecks and opens a PR into `fork`, and
+  `fork-copilot-automerge.yml` merges it when its title says it is green.
+  What Copilot cannot resolve stays open as a PR that mentions Paul. Rebase
+  feature branches onto `fork` to pick upstream up.
 
 ## Staying mergeable with upstream
 

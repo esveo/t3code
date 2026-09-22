@@ -1,0 +1,61 @@
+# Fork-only: merges the pull request the daily "Upstream-Sync" Copilot
+# automation opens into `fork`, once Copilot reports it green by its title
+# ("chore: merge upstream …", not a draft). A PR titled otherwise stays open for
+# the maintainer. See FORK.md.
+#
+# Needs the repo secret SYNC_MERGE_TOKEN: a fine-grained token for esveo/t3code
+# with Contents, Pull requests and Workflows read/write (upstream merges touch
+# .github/workflows, which the Actions token may not merge). It never sees PR
+# code: nothing here checks out the pull request.
+name: Fork Copilot automerge
+
+on:
+  pull_request_target:
+    types: [opened, reopened, edited, ready_for_review, synchronize]
+    branches: [fork]
+
+concurrency:
+  group: fork-copilot-automerge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: write
+
+env:
+  MAINTAINER: Pawl-Patrol
+  PR: ${{ github.event.pull_request.number }}
+  GH_REPO: ${{ github.repository }}
+
+jobs:
+  merge:
+    if: >-
+      !github.event.pull_request.draft &&
+      startsWith(github.event.pull_request.head.ref, 'copilot/') &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      startsWith(github.event.pull_request.title, 'chore: merge upstream') &&
+      contains(fromJSON('["Copilot", "copilot-swe-agent[bot]"]'), github.event.pull_request.user.login)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge into fork
+        env:
+          GH_TOKEN: ${{ secrets.SYNC_MERGE_TOKEN }}
+        run: gh pr merge "$PR" --merge
+
+      # The fork runs none of upstream's workflows; switch off any the merge added.
+      - name: Disable workflows upstream added
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow list --json path,state --jq '.[] | select(.state == "active") | .path' |
+            grep '^\.github/workflows/' |
+            grep -vx -e .github/workflows/copilot-setup-steps.yml -e .github/workflows/fork-copilot-automerge.yml |
+            while read -r path; do gh workflow disable "$(basename "$path")"; done
+
+      - name: Report a failed merge
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr comment "$PR" --body "@$MAINTAINER Automerge failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
