@@ -3,7 +3,7 @@ import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router"
 import { useEffect, useEffectEvent } from "react";
 
 import { useServerConfigs } from "../state/entities";
-import { GitGraphView } from "../gitGraph/GitGraphView";
+import { GitGraphView } from "../components/gitGraph/GitGraphView";
 
 export interface GitGraphSearch {
   readonly environmentId?: EnvironmentId;

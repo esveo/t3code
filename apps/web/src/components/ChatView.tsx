@@ -230,9 +230,9 @@ import {
   foldSubagentActivities,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import { BranchToolbar, type BranchToolbarHandle } from "./BranchToolbar";
-import { nextGitGraphPanelStep } from "../gitGraph/gitGraphPanelLadder";
-import { AgentStagePanel } from "../agentStage/AgentStagePanel";
-import { useAgentStageEnabled } from "../agentStage/agentStageStore";
+import { nextGitGraphPanelStep } from "./gitGraph/gitGraphPanelLadder";
+import { AgentStagePanel } from "./agentStage/AgentStagePanel";
+import { useAgentStageEnabled } from "./agentStage/agentStageStore";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import { isEditableFocused } from "../lib/editableFocus";
 import { undoLatestThreadAction } from "../hooks/showUndoToast";
@@ -622,7 +622,7 @@ const PreviewPanel = lazy(() =>
 );
 const DiffPanel = lazy(() => import("./DiffPanel"));
 const GitGraphView = lazy(() =>
-  import("../gitGraph/GitGraphView").then((module) => ({ default: module.GitGraphView })),
+  import("./gitGraph/GitGraphView").then((module) => ({ default: module.GitGraphView })),
 );
 const selectAutoShowFloatingPreview = (settings: { browserAutoShowFloatingPreview: boolean }) =>
   settings.browserAutoShowFloatingPreview;

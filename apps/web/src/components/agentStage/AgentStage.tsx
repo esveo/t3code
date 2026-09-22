@@ -33,8 +33,8 @@ import {
 
 import { cn } from "~/lib/utils";
 
-import { ComposerPendingApprovalActions } from "../components/chat/ComposerPendingApprovalActions";
-import { ProjectFavicon } from "../components/ProjectFavicon";
+import { ComposerPendingApprovalActions } from "../chat/ComposerPendingApprovalActions";
+import { ProjectFavicon } from "../ProjectFavicon";
 import {
   deriveStageRecap,
   stageElapsedMs,

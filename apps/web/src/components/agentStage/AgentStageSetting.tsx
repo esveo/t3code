@@ -1,5 +1,5 @@
-import { SettingsRow } from "../components/settings/settingsLayout";
-import { Switch } from "../components/ui/switch";
+import { SettingsRow } from "../settings/settingsLayout";
+import { Switch } from "../ui/switch";
 import { useAgentStageStore } from "./agentStageStore";
 
 /** The setting that puts the stage toggle into the chat header. Stored in this browser. */

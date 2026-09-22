@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
-import { resolveStorage } from "../lib/storage";
+import { resolveStorage } from "../../lib/storage";
 
 /** Whether the stage shows the open thread alone or every thread with live work. */
 export type AgentStageMode = "thread" | "everything";

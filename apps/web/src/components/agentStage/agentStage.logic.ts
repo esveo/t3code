@@ -22,8 +22,8 @@ import type {
   OrchestrationThreadActivity,
 } from "@t3tools/contracts";
 
-import { liveWorkEntryLabel } from "../components/chat/MessagesTimeline.logic";
-import { deriveWorkLogEntries, type WorkLogEntry } from "../session-logic";
+import { liveWorkEntryLabel } from "../chat/MessagesTimeline.logic";
+import { deriveWorkLogEntries, type WorkLogEntry } from "../../session-logic";
 
 /**
  * The stage reduces a thread to one question per agent: where is it right

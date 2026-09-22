@@ -7,10 +7,10 @@ import type {
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
 
-import { useProject, useProjects, useThread, useThreadShells } from "../state/entities";
-import { threadEnvironment } from "../state/threads";
-import { useAtomCommand } from "../state/use-atom-command";
-import { buildThreadRouteParams } from "../threadRoutes";
+import { useProject, useProjects, useThread, useThreadShells } from "../../state/entities";
+import { threadEnvironment } from "../../state/threads";
+import { useAtomCommand } from "../../state/use-atom-command";
+import { buildThreadRouteParams } from "../../threadRoutes";
 import { AgentStage } from "./AgentStage";
 import { applyStageVisibility, deriveStageModel, MAIN_AGENT_ID } from "./agentStage.logic";
 import { deriveFleetStageModel, type FleetThread } from "./agentStageFleet.logic";

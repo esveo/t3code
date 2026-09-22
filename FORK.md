@@ -2,7 +2,7 @@
 
 **This checkout is not the T3 Code project itself but Paul's private fork of
 `pingdotgg/t3code`.** It exists to add features Paul wants for himself (for
-example the split view in `apps/web/src/components/SplitThreadLayout.tsx`) on
+example the agent stage in `apps/web/src/components/agentStage/`) on
 top of upstream, which is rebased in regularly. `AGENTS.md` is upstream's
 guide for its maintainers; follow it for code and architecture, but these
 rules win wherever they differ.
@@ -51,6 +51,10 @@ write changes with that merge in mind, not just with the current diff in mind.
 - Prefer a new file over editing an existing one. A fork-only component, hook,
   or module costs nothing at merge time; twenty lines spread through an
   upstream file cost a conflict every time upstream touches it.
+- A fork feature in the web app gets its own folder under
+  `apps/web/src/components/<feature>/` holding its views, logic, tests and
+  store (`agentStage/`, `gitGraph/`, `split/`). Only its mount points live in
+  upstream folders.
 - When an upstream file has to change, make the edit as small and as local as
   possible: one import plus one call site beats an inline block, and a wrapper
   around upstream's code beats a rewrite of it.
