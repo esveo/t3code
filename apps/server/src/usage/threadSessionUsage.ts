@@ -8,7 +8,7 @@
  *
  * @module threadSessionUsage
  */
-import type { UsageProviderKind, UsageTokenTotals } from "@t3tools/contracts";
+import type { UsagePricing, UsageProviderKind, UsageTokenTotals } from "@t3tools/contracts";
 
 import type { UsageRecord } from "./usageTranscripts.ts";
 import { cacheSavingsUsd, priceUsage, type RateTable } from "./usagePricing.ts";
@@ -173,5 +173,39 @@ export function summarizeSessionRecords(input: {
     records,
     firstRecordAtMs,
     lastRecordAtMs,
+  };
+}
+
+/** What `UsageService.readSessionUsage` is asked for. */
+export interface SessionUsageInput {
+  readonly provider: UsageProviderKind;
+  readonly sessionIds: readonly string[];
+  /** Epoch ms of the session's last known activity; see `readSessionUsage`. */
+  readonly sinceMs: number;
+}
+
+export interface SessionUsageReport extends ThreadSessionUsage {
+  readonly pricing: UsagePricing;
+  readonly scanDurationMs: number;
+}
+
+/** The report of a session that wrote nothing, for test and stub layers. */
+export function emptySessionUsageReport(pricing: UsagePricing): SessionUsageReport {
+  return {
+    models: [],
+    totals: {
+      uncachedInputTokens: 0,
+      cachedInputTokens: 0,
+      cacheCreationTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+    },
+    costUsd: 0,
+    cacheSavingsUsd: 0,
+    records: 0,
+    firstRecordAtMs: null,
+    lastRecordAtMs: null,
+    pricing,
+    scanDurationMs: 0,
   };
 }

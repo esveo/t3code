@@ -49,7 +49,12 @@ import { resolveCodexHomeLayout } from "../provider/Drivers/CodexHomeLayout.ts";
 import { mergeProviderInstanceEnvironment } from "../provider/ProviderInstanceEnvironment.ts";
 import { UsageAggregator } from "./usageAggregation.ts";
 import { createOverrideRateTable, parseRateTable, type RateTable } from "./usagePricing.ts";
-import { summarizeSessionRecords, type ThreadSessionUsage } from "./threadSessionUsage.ts";
+import {
+  emptySessionUsageReport,
+  summarizeSessionRecords,
+  type SessionUsageInput,
+  type SessionUsageReport,
+} from "./threadSessionUsage.ts";
 import {
   listTranscriptFiles,
   readDirectoryVolumeId,
@@ -108,18 +113,6 @@ const decodeCachedSources = Schema.decodeUnknownOption(
   Schema.Struct({ sources: Schema.Record(Schema.String, CachedSource) }),
 );
 
-export interface SessionUsageInput {
-  readonly provider: UsageProviderKind;
-  readonly sessionIds: readonly string[];
-  /** Epoch ms of the session's last known activity; see `readSessionUsage`. */
-  readonly sinceMs: number;
-}
-
-export interface SessionUsageReport extends ThreadSessionUsage {
-  readonly pricing: UsagePricing;
-  readonly scanDurationMs: number;
-}
-
 export class UsageService extends Context.Service<
   UsageService,
   {
@@ -157,24 +150,7 @@ export const layerTest = Layer.succeed(
         scanDurationMs: 0,
       }),
     refreshRates: Effect.succeed(EMPTY_PRICING),
-    readSessionUsage: () =>
-      Effect.succeed({
-        models: [],
-        totals: {
-          uncachedInputTokens: 0,
-          cachedInputTokens: 0,
-          cacheCreationTokens: 0,
-          outputTokens: 0,
-          reasoningTokens: 0,
-        },
-        costUsd: 0,
-        cacheSavingsUsd: 0,
-        records: 0,
-        firstRecordAtMs: null,
-        lastRecordAtMs: null,
-        pricing: EMPTY_PRICING,
-        scanDurationMs: 0,
-      }),
+    readSessionUsage: () => Effect.succeed(emptySessionUsageReport(EMPTY_PRICING)),
   }),
 );
 
