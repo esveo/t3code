@@ -495,6 +495,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["project thread tree old flat list"],
   },
   {
+    id: "two-line-thread-cards",
+    title: "Two-line thread cards",
+    to: "/settings/general",
+    searchTerms: ["sidebar compact row height branch provider icon diff pull request"],
+  },
+  {
     id: "keybindings",
     title: "Keybindings",
     to: "/settings/keybindings",

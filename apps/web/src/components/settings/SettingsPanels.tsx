@@ -554,6 +554,9 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.proactivePanelsEnabled !== DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled
         ? ["Proactive panels"]
         : []),
+      ...(settings.twoLineThreadCards !== DEFAULT_UNIFIED_SETTINGS.twoLineThreadCards
+        ? ["Two-line thread cards"]
+        : []),
       ...(settings.showSkillsInSlashMenu !== DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu
         ? ["Show skills in slash menu"]
         : []),
@@ -644,6 +647,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.diffIgnoreWhitespace,
       settings.diffLayout,
       settings.proactivePanelsEnabled,
+      settings.twoLineThreadCards,
       settings.environmentIdentificationMode,
       settings.contextWindowMeterEnabled,
       settings.contextWindowControlEnabled,
@@ -749,6 +753,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
       diffLayout: DEFAULT_UNIFIED_SETTINGS.diffLayout,
       proactivePanelsEnabled: DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled,
+      twoLineThreadCards: DEFAULT_UNIFIED_SETTINGS.twoLineThreadCards,
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
       composerCollapseOnScroll: DEFAULT_UNIFIED_SETTINGS.composerCollapseOnScroll,
       composerRichTextEnabled: DEFAULT_UNIFIED_SETTINGS.composerRichTextEnabled,
@@ -2524,6 +2529,33 @@ export function GeneralSettingsPanel() {
                 </SelectItem>
               </SelectPopup>
             </Select>
+          }
+        />
+
+        {/* Fork: two-line thread cards. */}
+        <SettingsRow
+          {...searchableSetting("two-line-thread-cards")}
+          description="Trail the provider icon behind the thread title instead of giving it a line of its own. The line it saves also carried the branch, pull request badge and diff counts."
+          resetAction={
+            settings.twoLineThreadCards !== DEFAULT_UNIFIED_SETTINGS.twoLineThreadCards ? (
+              <SettingResetButton
+                label="two-line thread cards"
+                onClick={() =>
+                  updateSettings({
+                    twoLineThreadCards: DEFAULT_UNIFIED_SETTINGS.twoLineThreadCards,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.twoLineThreadCards}
+              onCheckedChange={(checked) =>
+                updateSettings({ twoLineThreadCards: Boolean(checked) })
+              }
+              aria-label="Two-line thread cards"
+            />
           }
         />
 
