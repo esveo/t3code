@@ -291,6 +291,8 @@ export interface DesktopUpdateState {
   canRetry: boolean;
   /** Private fork: the t3 service's own update, present only in fork builds. */
   forkService?: DesktopForkServiceState | undefined;
+  /** Private fork: the newest prepared build of each branch, waiting to be switched to. */
+  forkBuilds?: ReadonlyArray<DesktopForkBuild> | undefined;
 }
 
 export interface DesktopForkServiceState {
@@ -306,6 +308,46 @@ export const DesktopForkServiceStateSchema = Schema.Struct({
   runningVersion: Schema.NullOr(Schema.String),
   pendingVersion: Schema.NullOr(Schema.String),
   blockedReason: Schema.NullOr(Schema.String),
+});
+
+export interface DesktopForkBuild {
+  /** The branch the build came from. */
+  branch: string;
+  /** The slot the build waits in; what install and delete name it by. */
+  slug: string;
+  label: string;
+  commit: string;
+  builtAt: string;
+  /** Whether the build includes uncommitted changes. */
+  dirty: boolean;
+  /** What the build takes on disk, once measured. */
+  sizeBytes: number | null;
+  /** The server the service would switch to with this build, when it differs from the running one. */
+  serverVersion: string | null;
+  /** Why that server cannot be switched to by a restart. */
+  serverBlocked: string | null;
+}
+
+export const DesktopForkBuildSchema = Schema.Struct({
+  branch: Schema.String,
+  slug: Schema.String,
+  label: Schema.String,
+  commit: Schema.String,
+  builtAt: Schema.String,
+  dirty: Schema.Boolean,
+  sizeBytes: Schema.NullOr(Schema.Number),
+  serverVersion: Schema.NullOr(Schema.String),
+  serverBlocked: Schema.NullOr(Schema.String),
+});
+
+export interface DesktopForkBuildAction {
+  kind: "install" | "delete";
+  slug: string;
+}
+
+export const DesktopForkBuildActionSchema = Schema.Struct({
+  kind: Schema.Literals(["install", "delete"]),
+  slug: Schema.String,
 });
 
 export interface DesktopUpdateReleaseNote {
@@ -338,6 +380,7 @@ export const DesktopUpdateStateSchema = Schema.Struct({
   errorContext: Schema.NullOr(Schema.Literals(["check", "download", "install"])),
   canRetry: Schema.Boolean,
   forkService: Schema.optional(DesktopForkServiceStateSchema),
+  forkBuilds: Schema.optional(Schema.Array(DesktopForkBuildSchema)),
 });
 
 export interface DesktopUpdateActionResult {
@@ -1259,6 +1302,8 @@ export interface DesktopBridge {
   checkForUpdate: () => Promise<DesktopUpdateCheckResult>;
   downloadUpdate: () => Promise<DesktopUpdateActionResult>;
   installUpdate: () => Promise<DesktopUpdateActionResult>;
+  /** Private fork: installs or deletes one branch's prepared build. */
+  forkBuildAction?: (action: DesktopForkBuildAction) => Promise<DesktopUpdateActionResult>;
   onUpdateState: (listener: (state: DesktopUpdateState) => void) => () => void;
   /** Present when the desktop shell accepts `t3 app` activation requests. */
   appActivation?: {

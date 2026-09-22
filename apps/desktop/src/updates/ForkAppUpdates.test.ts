@@ -1,31 +1,24 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { resolveForkServiceVersions, resolveForkUpdateLabel } from "./ForkAppUpdates.ts";
+import {
+  resolveForkBuildServer,
+  resolveForkServiceVersions,
+  resolveForkUpdateOffer,
+  sortForkBuilds,
+} from "./ForkAppUpdates.ts";
 
-const running = "0.0.43-fork.origin-fork.aaaaaaa";
-const built = "0.0.44-fork.origin-fork.bbbbbbb";
+const running = "0.0.43-fork.fork.aaaaaaa";
+const built = "0.0.44-fork.fork.bbbbbbb";
 
 describe("resolveForkServiceVersions", () => {
-  it("has nothing pending when the service runs the newest server", () => {
+  it("has nothing pending when the service runs what it was switched to", () => {
     expect(
       resolveForkServiceVersions({
         activeVersion: running,
         previousVersion: null,
         restartPending: false,
-        builtVersion: running,
       }),
     ).toEqual({ runningVersion: running, pendingVersion: null });
-  });
-
-  it("offers a newer server the service does not run yet", () => {
-    expect(
-      resolveForkServiceVersions({
-        activeVersion: running,
-        previousVersion: null,
-        restartPending: false,
-        builtVersion: built,
-      }),
-    ).toEqual({ runningVersion: running, pendingVersion: built });
   });
 
   it("keeps offering a switch whose restart has not happened", () => {
@@ -34,51 +27,117 @@ describe("resolveForkServiceVersions", () => {
         activeVersion: built,
         previousVersion: running,
         restartPending: true,
-        builtVersion: built,
       }),
     ).toEqual({ runningVersion: running, pendingVersion: built });
   });
+});
 
-  it("has nothing pending before the first fork server is built", () => {
+describe("resolveForkBuildServer", () => {
+  it("brings no server when the branch built none or the service runs it already", () => {
     expect(
-      resolveForkServiceVersions({
-        activeVersion: "0.0.42",
-        previousVersion: null,
-        restartPending: false,
+      resolveForkBuildServer({
         builtVersion: null,
+        blockedReason: null,
+        activeVersion: running,
+        restartPending: false,
       }),
-    ).toEqual({ runningVersion: "0.0.42", pendingVersion: null });
+    ).toEqual({ serverVersion: null, serverBlocked: null });
+    expect(
+      resolveForkBuildServer({
+        builtVersion: running,
+        blockedReason: null,
+        activeVersion: running,
+        restartPending: false,
+      }),
+    ).toEqual({ serverVersion: null, serverBlocked: null });
+  });
+
+  it("brings the branch's server when the service does not run it yet", () => {
+    expect(
+      resolveForkBuildServer({
+        builtVersion: built,
+        blockedReason: null,
+        activeVersion: running,
+        restartPending: false,
+      }),
+    ).toEqual({ serverVersion: built, serverBlocked: null });
+  });
+
+  it("brings the server again while its restart is still pending", () => {
+    expect(
+      resolveForkBuildServer({
+        builtVersion: built,
+        blockedReason: null,
+        activeVersion: built,
+        restartPending: true,
+      }),
+    ).toEqual({ serverVersion: built, serverBlocked: null });
+  });
+
+  it("reports a blocked server instead of switching to it", () => {
+    expect(
+      resolveForkBuildServer({
+        builtVersion: built,
+        blockedReason: "needs a newer launcher",
+        activeVersion: running,
+        restartPending: false,
+      }),
+    ).toEqual({ serverVersion: null, serverBlocked: "needs a newer launcher" });
   });
 });
 
-describe("resolveForkUpdateLabel", () => {
+const build = (slug: string, builtAt: string) => ({
+  slug,
+  branch: slug,
+  label: `${slug}@1234567 10:00`,
+  commit: "1234567",
+  builtAt,
+  dirty: false,
+  sizeBytes: null,
+  serverVersion: null,
+  serverBlocked: null,
+});
+
+describe("sortForkBuilds", () => {
+  it("leads with the fork branch, then newest first", () => {
+    const sorted = sortForkBuilds([
+      build("feat-old", "2026-09-20T10:00:00Z"),
+      build("feat-new", "2026-09-22T10:00:00Z"),
+      build("fork", "2026-09-21T10:00:00Z"),
+    ]);
+    expect(sorted.map((entry) => entry.slug)).toEqual(["fork", "feat-new", "feat-old"]);
+  });
+});
+
+describe("resolveForkUpdateOffer", () => {
   const idleService = { pendingVersion: null, blockedReason: null };
 
-  it("offers the prepared app, which the update installs with any pending server", () => {
+  it("offers the leading build", () => {
+    const fork = build("fork", "2026-09-21T10:00:00Z");
     expect(
-      resolveForkUpdateLabel({
-        preparedApp: "fork@ccccccc",
-        service: { pendingVersion: built, blockedReason: null },
+      resolveForkUpdateOffer({
+        builds: [build("feat-new", "2026-09-22T10:00:00Z"), fork],
+        service: idleService,
       }),
-    ).toBe("fork@ccccccc");
+    ).toEqual({ label: fork.label, build: fork });
   });
 
-  it("offers a pending server on its own", () => {
+  it("offers a pending service restart when no build waits", () => {
     expect(
-      resolveForkUpdateLabel({
-        preparedApp: null,
+      resolveForkUpdateOffer({
+        builds: [],
         service: { pendingVersion: built, blockedReason: null },
       }),
-    ).toBe(built);
+    ).toEqual({ label: built, build: null });
   });
 
   it("offers nothing for a blocked server or when nothing waits", () => {
     expect(
-      resolveForkUpdateLabel({
-        preparedApp: null,
+      resolveForkUpdateOffer({
+        builds: [],
         service: { pendingVersion: built, blockedReason: "needs a newer launcher" },
       }),
     ).toBeNull();
-    expect(resolveForkUpdateLabel({ preparedApp: null, service: idleService })).toBeNull();
+    expect(resolveForkUpdateOffer({ builds: [], service: idleService })).toBeNull();
   });
 });

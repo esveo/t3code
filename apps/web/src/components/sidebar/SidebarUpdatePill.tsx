@@ -28,7 +28,7 @@ import {
   shouldShowDesktopUpdateCheckIcon,
 } from "./DesktopUpdateStatusIcon";
 import { SidebarUpdateReleaseNotes } from "./SidebarUpdateReleaseNotes";
-import { getForkUpdateTooltip, isForkUpdateState } from "./forkUpdate";
+import { ForkUpdatePill } from "../forkUpdate/ForkUpdatePill";
 
 type SidebarUpdatePopoverChangeDetails = Parameters<
   NonNullable<ComponentProps<typeof Popover>["onOpenChange"]>
@@ -108,7 +108,7 @@ function SidebarUpdateArchitectureWarningContent() {
 }
 
 export function SidebarUpdatePill() {
-  return isElectron ? <SidebarUpdateControl /> : null;
+  return isElectron ? <ForkUpdatePill fallback={<SidebarUpdateControl />} /> : null;
 }
 
 function SidebarUpdateControl() {
@@ -142,12 +142,9 @@ function SidebarUpdateControl() {
     isDownloading,
     showCheckIcon,
   });
-  const isForkAppInstall = action === "install" && isForkUpdateState(state);
   const tooltip = showUpdateDetails
     ? state
-      ? isForkAppInstall
-        ? getForkUpdateTooltip(state)
-        : getDesktopUpdateButtonTooltip(state)
+      ? getDesktopUpdateButtonTooltip(state)
       : "Update available"
     : showCheckIcon
       ? "Checking for updates…"
