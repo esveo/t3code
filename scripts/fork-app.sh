@@ -137,6 +137,12 @@ slug_of() {
   echo "$1" | tr -c '[:alnum:]-' '-' | sed 's/-\{2,\}/-/g; s/^-//; s/-$//'
 }
 
+# Rejects a slug that slug_of could not have made, so a name like `..` never
+# turns a slot path into the app root.
+require_slug() {
+  [[ "$1" =~ '^[A-Za-z0-9-]+$' ]] || { echo "Not a branch slug: $1" >&2; exit 2; }
+}
+
 # The branch a build in a slot belongs to. Builds before slots were per branch
 # carry only a label, which starts with the branch.
 build_slug() {
@@ -518,6 +524,12 @@ watch_once() {
   git -C "$SCRIPT_REPO" merge-base --is-ancestor "$remote" \
     "$(json_field "$SERVERS_DIR/$slug.json" commit)" 2>/dev/null && server_built=1
   (( app_built && server_built )) && return 0
+  # A commit that failed to build waits half an hour before the next try,
+  # instead of a full install and build every minute until the next push.
+  local failed="$LOG_DIR/.watch-failed-$slug"
+  if [[ "$(cat "$failed" 2>/dev/null)" == "$remote" && -n "$(find "$failed" -mmin -30)" ]]; then
+    return 0
+  fi
   if [[ ! -e "$WATCH_SOURCE/.git" ]]; then
     rm -rf "$WATCH_SOURCE"
     git -C "$SCRIPT_REPO" worktree add --detach "$WATCH_SOURCE" "$remote" >/dev/null
@@ -527,8 +539,14 @@ watch_once() {
   git -C "$WATCH_SOURCE" checkout --detach --force "$remote" >/dev/null 2>&1
   echo "$(date '+%F %T') origin/$WATCH_BRANCH is at ${remote[1,7]}; preparing …"
   export T3CODE_FORK_REPO="$WATCH_SOURCE" T3CODE_FORK_BUILD_BRANCH="$WATCH_BRANCH"
-  (( app_built )) || "$SCRIPT_PATH" prepare
-  (( server_built )) || "$SCRIPT_PATH" prepare-server
+  if { (( app_built )) || "$SCRIPT_PATH" prepare; } &&
+    { (( server_built )) || "$SCRIPT_PATH" prepare-server; }; then
+    rm -f "$failed"
+  else
+    echo "$remote" >"$failed"
+    echo "$(date '+%F %T') preparing ${remote[1,7]} failed; next try in 30 minutes" >&2
+    return 1
+  fi
 }
 
 # Moves the running build back into its branch's slot, so the update menu can
@@ -552,6 +570,7 @@ restart() {
   trap 'release_lock swap' EXIT
   local build=""
   if [[ -n "$slug" ]]; then
+    require_slug "$slug"
     build="$BUILDS_DIR/$slug"
     [[ -f "$build/.fork-build.json" ]] || { echo "No build for $slug in $BUILDS_DIR." >&2; return 1; }
   elif [[ -f "$ROOT/next/.fork-build.json" ]]; then
@@ -569,6 +588,7 @@ restart() {
 delete_build() {
   local slug="${1:-}"
   [[ -n "$slug" ]] || { echo "usage: delete <branch>" >&2; return 2; }
+  require_slug "$slug"
   acquire_lock swap
   trap 'release_lock swap' EXIT
   local removed=0

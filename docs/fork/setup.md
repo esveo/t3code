@@ -47,7 +47,7 @@ A git worktree needs its own `npx pnpm@11.10.0 install`.
 
 ```bash
 scripts/fork-app.sh prepare
-scripts/fork-app.sh restart
+scripts/fork-app.sh restart fork
 ```
 
 `prepare` builds the checkout — including uncommitted changes — into a staging

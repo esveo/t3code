@@ -50,7 +50,9 @@ import { forkParked } from "./serverActivation.ts";
 import {
   BACKGROUND_TASKS_KEY,
   buildBackgroundWorkContinuationPrompt,
-  readBackgroundTasks,
+  clearedPendingBackgroundTasks,
+  PENDING_BACKGROUND_TASKS_KEY,
+  readInterruptedBackgroundTasks,
 } from "./orchestration/BackgroundWorkLedger.ts";
 import * as ServiceLauncherClient from "./cloud/serviceLauncherClient.ts";
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
@@ -470,6 +472,7 @@ const clearContinuationMarkers = (
                   ...readRuntimePayload(binding.runtimePayload),
                   [SERVER_UPDATE_CONTINUATION_KEY]: null,
                   continueAfterServerUpdatePrepared: null,
+                  ...clearedPendingBackgroundTasks(binding.runtimePayload),
                 },
               }),
           }),
@@ -542,7 +545,7 @@ export const reconcileProviderSessions = Effect.gen(function* () {
   // A settled turn can leave subagents, workflows and watch loops running.
   const backgroundThreadIds = new Set(
     listedBindings
-      .filter((binding) => readBackgroundTasks(binding.runtimePayload).length > 0)
+      .filter((binding) => readInterruptedBackgroundTasks(binding.runtimePayload).length > 0)
       .map((binding) => binding.threadId),
   );
   const hasOrphanedTurn = (
@@ -604,7 +607,7 @@ export const reconcileProviderSessions = Effect.gen(function* () {
       binding.value.status === "running" &&
       binding.value.resumeCursor != null;
     const backgroundTasks = Option.isSome(binding)
-      ? readBackgroundTasks(binding.value.runtimePayload)
+      ? readInterruptedBackgroundTasks(binding.value.runtimePayload)
       : [];
     const interruptedBackground =
       continueAfterRestartFor(thread.projectId) && backgroundTasks.length > 0;
@@ -618,7 +621,9 @@ export const reconcileProviderSessions = Effect.gen(function* () {
               runtimePayload: {
                 ...readRuntimePayload(binding.value.runtimePayload),
                 activeTurnId: null,
-                ...(backgroundTasks.length > 0 ? { [BACKGROUND_TASKS_KEY]: null } : {}),
+                ...(backgroundTasks.length > 0
+                  ? { [BACKGROUND_TASKS_KEY]: null, [PENDING_BACKGROUND_TASKS_KEY]: null }
+                  : {}),
                 ...(continuationMarkerPresent || interruptedByRestart
                   ? {
                       [SERVER_UPDATE_CONTINUATION_KEY]: null,
@@ -688,9 +693,11 @@ export const reconcileProviderSessions = Effect.gen(function* () {
             [SERVER_UPDATE_CONTINUATION_KEY]: session.activeTurnId ?? continuationTurnId,
             continueAfterServerUpdatePrepared: true,
             activeTurnId: null,
-            // The prompt carries the list from here; the resumed session
-            // records its own background work again.
-            ...(backgroundTasks.length > 0 ? { [BACKGROUND_TASKS_KEY]: null } : {}),
+            // The resumed session records its own background work again;
+            // the interrupted list waits aside until the prompt is sent.
+            ...(backgroundTasks.length > 0
+              ? { [BACKGROUND_TASKS_KEY]: null, [PENDING_BACKGROUND_TASKS_KEY]: backgroundTasks }
+              : {}),
           },
         });
         const resumedAt = DateTime.formatIso(yield* DateTime.now);
@@ -775,7 +782,7 @@ export const reconcileProviderSessions = Effect.gen(function* () {
           .upsert({
             threadId: thread.id,
             provider: binding.value.provider,
-            runtimePayload: { [BACKGROUND_TASKS_KEY]: null },
+            runtimePayload: { [BACKGROUND_TASKS_KEY]: null, [PENDING_BACKGROUND_TASKS_KEY]: null },
           })
           .pipe(
             Effect.catchCause((cause) =>

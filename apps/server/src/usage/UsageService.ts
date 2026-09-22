@@ -676,8 +676,8 @@ export const make = Effect.gen(function* () {
    * Usage for one provider session, priced exactly as the daily summary
    * prices it.
    *
-   * `sinceMs` is the session's last known activity: a transcript's mtime can
-   * only be at or after it, so the walk skips every unrelated file instead of
+   * `sinceMs` is a lower bound on the session's last write: a transcript's
+   * mtime can only be at or after it, so the walk skips every unrelated file instead of
    * parsing the whole history to answer for one thread.
    */
   const readSessionUsage = Effect.fn("UsageService.readSessionUsage")(function* (

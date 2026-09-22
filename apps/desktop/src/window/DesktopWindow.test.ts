@@ -1364,6 +1364,55 @@ describe("DesktopWindow", () => {
     }),
   );
 
+  it.effect("gives thread popouts the main window's open and navigation guards", () =>
+    Effect.gen(function* () {
+      const host = makeFakeBrowserWindow();
+      const popout = makeFakeBrowserWindow();
+      const openedExternalUrls: unknown[] = [];
+      const layer = makeTestLayer({
+        window: host.window,
+        createCount: yield* Ref.make(0),
+        mainWindow: yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none()),
+        openedExternalUrls,
+      });
+
+      yield* Effect.gen(function* () {
+        const desktopWindow = yield* DesktopWindow.DesktopWindow;
+        yield* desktopWindow.handleBackendReady(new URL("http://127.0.0.1:3773"));
+        const hostOpen = vi.mocked(host.window.webContents.setWindowOpenHandler).mock.calls[0]?.[0];
+        const didCreateWindow = host.webContentsListeners.get("did-create-window");
+        assert.isDefined(hostOpen);
+        assert.isDefined(didCreateWindow);
+        const popoutUrl = [
+          "t3code://app/#/popout/env-1/thread-1",
+          "t3code-dev://app/#/popout/env-1/thread-1",
+        ].find(
+          (url) => hostOpen({ url, features: "" } as Electron.HandlerDetails).action === "allow",
+        );
+        assert.isDefined(popoutUrl);
+
+        didCreateWindow(popout.window, { url: popoutUrl });
+
+        const popoutOpen = vi.mocked(popout.window.webContents.setWindowOpenHandler).mock
+          .calls[0]?.[0];
+        assert.isDefined(popoutOpen);
+        const foreign = popoutOpen({
+          url: "https://example.com/",
+          features: "",
+        } as Electron.HandlerDetails);
+        assert.strictEqual(foreign.action, "deny");
+
+        const willNavigate = popout.webContentsListeners.get("will-navigate");
+        assert.isDefined(willNavigate);
+        const preventDefault = vi.fn();
+        willNavigate({ preventDefault }, "https://example.org/");
+        yield* Effect.promise(() => Promise.resolve());
+        assert.equal(preventDefault.mock.calls.length, 1);
+        assert.deepEqual(openedExternalUrls, ["https://example.com/", "https://example.org/"]);
+      }).pipe(Effect.provide(layer));
+    }),
+  );
+
   it.effect(
     "retries opening the real main on activate when a failed post-readiness open left only the splash",
     () =>

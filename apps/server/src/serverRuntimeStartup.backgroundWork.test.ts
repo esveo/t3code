@@ -55,18 +55,20 @@ const makeThread = (
 const reconcile = (input: {
   readonly thread: ReturnType<typeof makeThread>;
   readonly continueAfterRestart: boolean;
+  readonly runtimePayload?: Record<string, unknown>;
 }) =>
   Effect.gen(function* () {
     const sent = yield* Deferred.make<void>();
     const sends: ProviderSendTurnInput[] = [];
     const dispatched: OrchestrationCommand[] = [];
+    let payloadAtSend: unknown = null;
     const binding: ProviderSessionDirectory.ProviderRuntimeBinding = {
       threadId: input.thread.id,
       provider: ProviderDriverKind.make("codex"),
       providerInstanceId,
       status: input.thread.session.status === "running" ? "running" : "stopped",
       resumeCursor: { threadId: input.thread.id },
-      runtimePayload: {
+      runtimePayload: input.runtimePayload ?? {
         activeTurnId: input.thread.session.activeTurnId,
         liveBackgroundTasks,
       },
@@ -83,7 +85,10 @@ const reconcile = (input: {
         getCapabilities: () =>
           Effect.succeed({ sessionModelSwitch: "in-session", promptlessTurnContinuation: true }),
         sendTurn: (turn: ProviderSendTurnInput) =>
-          Effect.sync(() => sends.push(turn)).pipe(
+          Effect.sync(() => {
+            sends.push(turn);
+            payloadAtSend = current.runtimePayload;
+          }).pipe(
             Effect.andThen(Deferred.succeed(sent, undefined)),
             Effect.as({ threadId: turn.threadId, turnId: TurnId.make("continued") }),
           ),
@@ -132,7 +137,7 @@ const reconcile = (input: {
     if (input.continueAfterRestart) {
       yield* Deferred.await(sent);
     }
-    return { sends, dispatched, binding: () => current };
+    return { sends, dispatched, binding: () => current, payloadAtSend: () => payloadAtSend };
   });
 
 it.effect("resumes background work that outlived its settled turn", () =>
@@ -153,6 +158,37 @@ it.effect("resumes background work that outlived its settled turn", () =>
     assert.include(input, 'SendMessage to "a1"');
     assert.include(input, 'resumeFromRunId "wf_123"');
     assert.deepStrictEqual(readBackgroundTasks(result.binding().runtimePayload), []);
+    // Until the prompt is sent, a crash must still find the list.
+    assert.deepStrictEqual(
+      (result.payloadAtSend() as Record<string, unknown>).continuationBackgroundTasks,
+      liveBackgroundTasks,
+    );
+  }),
+);
+
+it.effect("resumes background work prepared by a process that exited before sending", () =>
+  Effect.gen(function* () {
+    const result = yield* reconcile({
+      thread: makeThread("thread-prepared", "starting", null),
+      continueAfterRestart: true,
+      // What the prepare step leaves behind for a settled turn.
+      runtimePayload: {
+        activeTurnId: null,
+        liveBackgroundTasks: null,
+        continuationBackgroundTasks: liveBackgroundTasks,
+        continueAfterServerUpdate: null,
+        continueAfterServerUpdatePrepared: true,
+      },
+    });
+
+    assert.strictEqual(result.sends.length, 1);
+    assert.include(result.sends[0]?.input ?? "", 'resumeFromRunId "wf_123"');
+    assert.deepStrictEqual(
+      result.dispatched.map((command) =>
+        command.type === "thread.session.set" ? command.session.status : command.type,
+      ),
+      ["starting"],
+    );
   }),
 );
 

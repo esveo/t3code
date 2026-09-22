@@ -180,7 +180,7 @@ export function summarizeSessionRecords(input: {
 export interface SessionUsageInput {
   readonly provider: UsageProviderKind;
   readonly sessionIds: readonly string[];
-  /** Epoch ms of the session's last known activity; see `readSessionUsage`. */
+  /** Epoch ms no later than the session's last write; see `readSessionUsage`. */
   readonly sinceMs: number;
 }
 

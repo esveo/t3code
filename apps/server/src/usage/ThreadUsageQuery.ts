@@ -88,14 +88,15 @@ export const readThreadUsage = Effect.fn("readThreadUsage")(function* (input: Th
     providerName: string | null;
     resumeCursor: string | null;
     runtimePayload: string | null;
-    lastSeenAt: string | null;
+    threadCreatedAt: string | null;
   }>`
-      SELECT provider_name AS "providerName",
-        resume_cursor_json AS "resumeCursor",
-        runtime_payload_json AS "runtimePayload",
-        last_seen_at AS "lastSeenAt"
-      FROM provider_session_runtime
-      WHERE thread_id = ${input.threadId}
+      SELECT runtime.provider_name AS "providerName",
+        runtime.resume_cursor_json AS "resumeCursor",
+        runtime.runtime_payload_json AS "runtimePayload",
+        thread.created_at AS "threadCreatedAt"
+      FROM provider_session_runtime AS runtime
+      LEFT JOIN projection_threads AS thread ON thread.thread_id = runtime.thread_id
+      WHERE runtime.thread_id = ${input.threadId}
     `.pipe(
     Effect.mapError(
       (cause) =>
@@ -114,17 +115,19 @@ export const readThreadUsage = Effect.fn("readThreadUsage")(function* (input: Th
   const provider = usageProviderForDriver(row.providerName);
   if (provider === null) return unmatched(readAt, UNAVAILABLE_PRICING);
 
-  const sessionIds = [
-    ...resumeSessionIds(parseJson(row.resumeCursor), provider),
-    ...importedSessionIds(parseJson(row.runtimePayload)),
-  ];
+  const importedIds = importedSessionIds(parseJson(row.runtimePayload));
+  const sessionIds = [...resumeSessionIds(parseJson(row.resumeCursor), provider), ...importedIds];
   if (sessionIds.length === 0) return unmatched(readAt, UNAVAILABLE_PRICING);
 
-  const lastSeenMs = row.lastSeenAt === null ? Number.NaN : Date.parse(row.lastSeenAt);
+  // A session the thread ran writes its transcript after the thread was
+  // created, so that bounds the walk. `last_seen_at` does not: every shutdown
+  // bumps it, which hid older threads' transcripts. An imported transcript
+  // predates the thread, so it gets no bound at all.
+  const createdMs = row.threadCreatedAt === null ? Number.NaN : Date.parse(row.threadCreatedAt);
   const report = yield* usage.readSessionUsage({
     provider,
     sessionIds,
-    sinceMs: Number.isFinite(lastSeenMs) ? lastSeenMs : 0,
+    sinceMs: importedIds.length === 0 && Number.isFinite(createdMs) ? createdMs : 0,
   });
 
   return {
