@@ -3,20 +3,28 @@
 # ("chore: merge upstream …", not a draft). A PR titled otherwise stays open for
 # the maintainer. See FORK.md.
 #
+# Runs on a schedule after the automation: workflows triggered by pushes from a
+# Copilot automation always wait for a human's approval, scheduled ones do not.
+# The pull_request_target trigger covers a maintainer who fixes a "needs help"
+# PR and marks it ready; nothing here checks out pull request code.
+#
 # Needs the repo secret SYNC_MERGE_TOKEN: a fine-grained token for esveo/t3code
 # with Contents, Pull requests and Workflows read/write (upstream merges touch
-# .github/workflows, which the Actions token may not merge). It never sees PR
-# code: nothing here checks out the pull request.
+# .github/workflows, which the Actions token may not merge).
 name: Fork Copilot automerge
 
 on:
+  schedule:
+    - cron: "*/15 6-8 * * *"
+      timezone: Europe/Berlin
   pull_request_target:
-    types: [opened, reopened, edited, ready_for_review, synchronize]
+    types: [ready_for_review, edited]
     branches: [fork]
+  workflow_dispatch:
 
 concurrency:
-  group: fork-copilot-automerge-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
+  group: fork-copilot-automerge
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -25,37 +33,48 @@ permissions:
 
 env:
   MAINTAINER: Pawl-Patrol
-  PR: ${{ github.event.pull_request.number }}
   GH_REPO: ${{ github.repository }}
 
 jobs:
   merge:
-    if: >-
-      !github.event.pull_request.draft &&
-      startsWith(github.event.pull_request.head.ref, 'copilot/') &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      startsWith(github.event.pull_request.title, 'chore: merge upstream') &&
-      contains(fromJSON('["Copilot", "copilot-swe-agent[bot]"]'), github.event.pull_request.user.login)
     runs-on: ubuntu-latest
     steps:
+      - name: Find green sync PRs
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prs=$(gh pr list --base fork --state open --json number,title,isDraft,headRefName,author --jq '
+            [.[] | select(.isDraft | not)
+                 | select(.headRefName | startswith("copilot/"))
+                 | select(.title | startswith("chore: merge upstream"))
+                 | select(.author.login == "app/copilot-swe-agent")
+                 | .number] | join(" ")')
+          echo "Green sync PRs: ${prs:-none}"
+          echo "prs=$prs" >> "$GITHUB_OUTPUT"
+
       - name: Merge into fork
+        if: steps.find.outputs.prs != ''
         env:
           GH_TOKEN: ${{ secrets.SYNC_MERGE_TOKEN }}
-        run: gh pr merge "$PR" --merge
+        run: for pr in ${{ steps.find.outputs.prs }}; do gh pr merge "$pr" --merge; done
 
       # The fork runs none of upstream's workflows; switch off any the merge added.
       - name: Disable workflows upstream added
+        if: steps.find.outputs.prs != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh workflow list --json path,state --jq '.[] | select(.state == "active") | .path' |
+          added=$(gh workflow list --json path,state --jq '.[] | select(.state == "active") | .path' |
             grep '^\.github/workflows/' |
-            grep -vx -e .github/workflows/copilot-setup-steps.yml -e .github/workflows/fork-copilot-automerge.yml |
-            while read -r path; do gh workflow disable "$(basename "$path")"; done
+            grep -vx -e .github/workflows/copilot-setup-steps.yml -e .github/workflows/fork-copilot-automerge.yml || true)
+          for path in $added; do gh workflow disable "$(basename "$path")"; done
 
       - name: Report a failed merge
-        if: failure()
+        if: failure() && steps.find.outputs.prs != ''
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh pr comment "$PR" --body "@$MAINTAINER Automerge failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          for pr in ${{ steps.find.outputs.prs }}; do
+            gh pr comment "$pr" --body "@$MAINTAINER Automerge failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          done
