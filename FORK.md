@@ -35,8 +35,11 @@ can be in flight without disturbing the build the user works in all day.
   the record of what the user has been running.
 - Only merge a feature the user asked to go live. Ask when in doubt — an
   unfinished branch in `fork` is a broken app for the rest of the day.
-- Upstream is rebased into the feature branches, not into `fork`; `fork` takes
-  it through the merges like anything else.
+- Upstream reaches `fork` by itself: every morning at 06:00 the
+  `fork-upstream-sync` workflow has a Copilot agent merge upstream's `main`
+  into `fork`, resolve conflicts, typecheck and push. What it cannot resolve
+  becomes an issue labelled `upstream-sync`. Rebase feature branches onto
+  `fork` to pick upstream up.
 
 ## Staying mergeable with upstream
 
