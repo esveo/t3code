@@ -12,6 +12,7 @@ const build: DesktopForkBuild = {
   commit: "abcdef0123456789",
   builtAt: "2026-09-22T08:00:00",
   dirty: false,
+  sizeBytes: 4_100_000_000,
   serverVersion: null,
   serverBlocked: null,
 };
@@ -36,6 +37,8 @@ describe("describeForkBuild", () => {
   it("names the short commit, uncommitted changes and the server it brings", () => {
     expect(describeForkBuild(build, now)).toMatch(/^abcdef0 · /);
     expect(describeForkBuild({ ...build, dirty: true }, now)).toMatch(/^abcdef0\+changes · /);
+    expect(describeForkBuild(build, now)).toContain(" · 4.1 GB");
+    expect(describeForkBuild({ ...build, sizeBytes: null }, now)).not.toContain("GB");
     expect(
       describeForkBuild({ ...build, serverVersion: "0.0.44-fork.feat-x.abcdef0" }, now),
     ).toMatch(/ · with server$/);
@@ -52,10 +55,15 @@ describe("getForkUpdateTooltip", () => {
 
   it("counts the waiting builds", () => {
     expect(getForkUpdateTooltip({ ...base, forkBuilds: [] } as never)).toBe("Check for updates");
-    expect(getForkUpdateTooltip({ ...base, forkBuilds: [build] } as never)).toBe("1 build ready");
-    expect(getForkUpdateTooltip({ ...base, forkBuilds: [build, build] } as never)).toBe(
-      "2 builds ready",
+    expect(getForkUpdateTooltip({ ...base, forkBuilds: [build] } as never)).toBe(
+      "1 build ready · 4.1 GB on disk",
     );
+    expect(getForkUpdateTooltip({ ...base, forkBuilds: [build, build] } as never)).toBe(
+      "2 builds ready · 8.2 GB on disk",
+    );
+    expect(
+      getForkUpdateTooltip({ ...base, forkBuilds: [{ ...build, sizeBytes: null }] } as never),
+    ).toBe("1 build ready");
   });
 
   it("names a service restart that is still pending", () => {

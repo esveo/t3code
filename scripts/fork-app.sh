@@ -203,6 +203,22 @@ build_contains() {
   [[ -n "$built" ]] && git -C "$SCRIPT_REPO" merge-base --is-ancestor "$2" "$built" 2>/dev/null
 }
 
+# What a slot takes on disk, in bytes. Its node_modules is most of it, and
+# pnpm clones that from its store, so deleting the slot frees somewhat less.
+size_of() {
+  echo $(( $(du -sk "$1" | cut -f1) * 1024 ))
+}
+
+# Builds from before sizes were recorded get theirs on the next watch pass.
+measure_builds() {
+  local slot
+  for slot in "$BUILDS_DIR"/*(N/); do
+    [[ -f "$slot/.fork-build.json" ]] || continue
+    grep -q '"sizeBytes"' "$slot/.fork-build.json" && continue
+    sed -i '' "s/}\$/, \"sizeBytes\": $(size_of "$slot")}/" "$slot/.fork-build.json"
+  done
+}
+
 # Moves a finished directory out of the way without waiting for its removal.
 discard() {
   local trash="$ROOT/.trash-$$-$RANDOM"
@@ -238,9 +254,9 @@ prepare() {
   echo "Building $label …"
   (cd "$staging" && T3CODE_COMMIT_HASH="$sha" npx vp run build:desktop)
 
-  printf '{"label": "%s", "branch": "%s", "commit": "%s", "dirty": %s, "source": "%s", "builtAt": "%s"}\n' \
+  printf '{"label": "%s", "branch": "%s", "commit": "%s", "dirty": %s, "source": "%s", "builtAt": "%s", "sizeBytes": %s}\n' \
     "$label" "$branch" "$sha" "$([[ -n "$dirty" ]] && echo true || echo false)" \
-    "$source_repo" "$(date -u +%FT%TZ)" > "$staging/.fork-build.json"
+    "$source_repo" "$(date -u +%FT%TZ)" "$(size_of "$staging")" > "$staging/.fork-build.json"
 
   # The branch's older build becomes the next staging area and keeps its
   # node_modules; the swap is what the update menu sees, so it is atomic-ish.
@@ -487,6 +503,7 @@ watch_once() {
     echo "$(date '+%F %T') fetch failed; trying again next pass" >&2
     return 0
   }
+  measure_builds
   local remote slug app_built=0 server_built=0
   remote="$(git -C "$SCRIPT_REPO" rev-parse "origin/$WATCH_BRANCH")"
   slug="$(slug_of "$WATCH_BRANCH")"

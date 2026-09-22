@@ -93,6 +93,7 @@ const build = (slug: string, builtAt: string) => ({
   commit: "1234567",
   builtAt,
   dirty: false,
+  sizeBytes: null,
   serverVersion: null,
   serverBlocked: null,
 });

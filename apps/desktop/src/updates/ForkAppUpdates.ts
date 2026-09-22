@@ -89,6 +89,7 @@ interface ForkBuildInfo {
   readonly commit: string;
   readonly builtAt: string;
   readonly dirty: boolean;
+  readonly sizeBytes: number | null;
 }
 
 /** Builds before slots were per branch carry only a label, which starts with the branch. */
@@ -102,6 +103,7 @@ function readBuildInfo(slotDir: string): ForkBuildInfo | null {
     commit: stringField(json, "commit") ?? "",
     builtAt: stringField(json, "builtAt") ?? "",
     dirty: json?.dirty === true,
+    sizeBytes: typeof json?.sizeBytes === "number" ? json.sizeBytes : null,
   };
 }
 

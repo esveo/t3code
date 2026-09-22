@@ -320,6 +320,8 @@ export interface DesktopForkBuild {
   builtAt: string;
   /** Whether the build includes uncommitted changes. */
   dirty: boolean;
+  /** What the build takes on disk, once measured. */
+  sizeBytes: number | null;
   /** The server the service would switch to with this build, when it differs from the running one. */
   serverVersion: string | null;
   /** Why that server cannot be switched to by a restart. */
@@ -333,6 +335,7 @@ export const DesktopForkBuildSchema = Schema.Struct({
   commit: Schema.String,
   builtAt: Schema.String,
   dirty: Schema.Boolean,
+  sizeBytes: Schema.NullOr(Schema.Number),
   serverVersion: Schema.NullOr(Schema.String),
   serverBlocked: Schema.NullOr(Schema.String),
 });

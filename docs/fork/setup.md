@@ -71,7 +71,8 @@ Everything lives outside the checkout, under `$T3CODE_FORK_APP_ROOT`
 `scripts/fork-app.sh status` prints which build is where. Each branch keeps
 one waiting build — a second `prepare` from the same branch replaces it —
 and `scripts/fork-app.sh delete <branch>` removes a branch's build and
-server. A build is 6 GB, so delete the ones you are done with.
+server. A build takes several gigabytes; the menu shows each one's size and
+the icon's tooltip their sum, so delete the ones you are done with.
 
 While it runs, the app checks `origin/fork` every minute
 (`fork-app.sh watch`, logged to `logs/fork-watch.log`) and prepares new commits
