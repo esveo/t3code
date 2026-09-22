@@ -391,6 +391,15 @@ export function useTwoLineThreadCards(): boolean {
   return useClientSettings((settings) => settings.twoLineThreadCards);
 }
 
+/**
+ * Fork: whether the sidebar gathers threads into per-project runs
+ * (Settings → Appearance). Read like the card layout above, without the
+ * hydration gate: the worst a pre-hydration read costs is one repaint.
+ */
+export function useGroupSidebarThreadsByProject(): boolean {
+  return useClientSettings((settings) => settings.groupSidebarThreadsByProject);
+}
+
 /** Read current settings for one environment, merged with client-local preferences. */
 export function useEnvironmentSettings<T = UnifiedSettings>(
   environmentId: EnvironmentId,

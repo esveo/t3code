@@ -557,6 +557,10 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.twoLineThreadCards !== DEFAULT_UNIFIED_SETTINGS.twoLineThreadCards
         ? ["Two-line thread cards"]
         : []),
+      ...(settings.groupSidebarThreadsByProject !==
+      DEFAULT_UNIFIED_SETTINGS.groupSidebarThreadsByProject
+        ? ["Group threads by project"]
+        : []),
       ...(settings.showSkillsInSlashMenu !== DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu
         ? ["Show skills in slash menu"]
         : []),
@@ -648,6 +652,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.diffLayout,
       settings.proactivePanelsEnabled,
       settings.twoLineThreadCards,
+      settings.groupSidebarThreadsByProject,
       settings.environmentIdentificationMode,
       settings.contextWindowMeterEnabled,
       settings.contextWindowControlEnabled,
@@ -754,6 +759,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       diffLayout: DEFAULT_UNIFIED_SETTINGS.diffLayout,
       proactivePanelsEnabled: DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled,
       twoLineThreadCards: DEFAULT_UNIFIED_SETTINGS.twoLineThreadCards,
+      groupSidebarThreadsByProject: DEFAULT_UNIFIED_SETTINGS.groupSidebarThreadsByProject,
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
       composerCollapseOnScroll: DEFAULT_UNIFIED_SETTINGS.composerCollapseOnScroll,
       composerRichTextEnabled: DEFAULT_UNIFIED_SETTINGS.composerRichTextEnabled,
@@ -1356,6 +1362,35 @@ export function AppearanceSettingsPanel() {
                 updateSettings({ twoLineThreadCards: Boolean(checked) })
               }
               aria-label="Two-line thread cards"
+            />
+          }
+        />
+
+        {/* Fork: per-project runs in the sidebar. */}
+        <SettingsRow
+          {...searchableSetting("group-sidebar-threads-by-project")}
+          description="Keep each project's threads together in the sidebar, under a header that folds the project away. Ordering stays by recency: the project with the newest thread leads."
+          resetAction={
+            settings.groupSidebarThreadsByProject !==
+            DEFAULT_UNIFIED_SETTINGS.groupSidebarThreadsByProject ? (
+              <SettingResetButton
+                label="project grouping"
+                onClick={() =>
+                  updateSettings({
+                    groupSidebarThreadsByProject:
+                      DEFAULT_UNIFIED_SETTINGS.groupSidebarThreadsByProject,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.groupSidebarThreadsByProject}
+              onCheckedChange={(checked) =>
+                updateSettings({ groupSidebarThreadsByProject: Boolean(checked) })
+              }
+              aria-label="Group sidebar threads by project"
             />
           }
         />

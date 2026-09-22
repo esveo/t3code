@@ -210,6 +210,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["sidebar compact row height branch provider icon diff pull request"],
   },
   {
+    id: "group-sidebar-threads-by-project",
+    title: "Group threads by project",
+    to: "/settings/appearance",
+    searchTerms: ["sidebar project folder runs grouping collapse header repository"],
+  },
+  {
     id: "diff-color-scheme",
     title: "Diff colors",
     to: "/settings/appearance",
