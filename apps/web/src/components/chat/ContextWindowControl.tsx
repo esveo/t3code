@@ -1,10 +1,6 @@
 import { Minimize2Icon } from "lucide-react";
-import { useState } from "react";
-
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 
 import { cn } from "~/lib/utils";
-import { ThreadCostPanel } from "~/threadUsage/ThreadCostPanel";
 import { type ContextWindowSnapshot, formatContextWindowTokens } from "~/lib/contextWindow";
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
@@ -12,9 +8,7 @@ import { ComposerControl, type ComposerControlSize } from "./ComposerControl";
 import { useComposerMenuProps } from "./composerEventScope";
 import { useComposerMenuState } from "./useComposerMenuState";
 import { formatContextWindowCompactionMessage } from "./ContextWindowMeter.logic";
-import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import {
-  contextWindowRows,
   formatContextWindowPercentage,
   hasContextWindowFill,
   resolveContextWindowLimitPercentage,
@@ -43,13 +37,8 @@ const toneLabelClassName: Record<ContextWindowTone, string> = {
  * access controls rather than beside the send button, because it belongs to
  * the same "what is this turn going to be" reading.
  */
-type ContextWindowTab = "context" | "cost";
-
 export function ContextWindowControl(props: {
   usage: ContextWindowSnapshot;
-  /** Fork: the thread whose cost the second tab reports. */
-  environmentId: EnvironmentId;
-  threadId: ThreadId | null;
   modelDisplayName?: string | null;
   size?: ComposerControlSize;
   /** Measured but out of flow: close the popup rather than orphaning it. */
@@ -62,9 +51,6 @@ export function ContextWindowControl(props: {
   const size = props.size ?? "sm";
   const composerFloatingLayerProps = useComposerMenuProps();
   const [open, setOpen] = useComposerMenuState(props.hidden);
-  // Deliberately not remembered across openings: the cost tab scans
-  // transcripts, and a hover should never be enough to start one.
-  const [tab, setTab] = useState<ContextWindowTab>("context");
 
   const tone = resolveContextWindowTone(usage);
   const showsFill = hasContextWindowFill(usage);
@@ -72,6 +58,8 @@ export function ContextWindowControl(props: {
   const limitPercentage = resolveContextWindowLimitPercentage(usage);
   const percentageLabel = formatContextWindowPercentage(usage.usedPercentage);
   const tokensLabel = formatContextWindowTokens(usage.usedTokens);
+  const totalProcessedTokens = usage.totalProcessedTokens ?? null;
+  const remainingTokens = usage.remainingTokens ?? null;
 
   const triggerLabel = showsFill
     ? `Context window ${percentageLabel} used, ${tokensLabel} of ${formatContextWindowTokens(usage.maxTokens ?? null)} tokens`
@@ -137,35 +125,12 @@ export function ContextWindowControl(props: {
         side="top"
         align="start"
         viewportClassName="p-0"
-        className="w-72 max-w-none text-left whitespace-normal"
+        className="w-64 max-w-none text-left whitespace-normal"
       >
-        <div
-          className="flex flex-col gap-2 p-[var(--floating-content-inset)]"
-          onMouseDown={(event) => {
-            // Keep a tab click from reaching the composer behind the popup.
-            event.stopPropagation();
-          }}
-        >
+        <div className="flex flex-col gap-2 p-[var(--floating-content-inset)]">
           <div className="flex items-center justify-between gap-3">
-            <ToggleGroup
-              aria-label="Usage view"
-              variant="segmented"
-              className="h-auto"
-              value={[tab]}
-              onValueChange={(next) => {
-                const selected = next[0];
-                if (selected === "context" || selected === "cost") setTab(selected);
-              }}
-            >
-              <Toggle value="context">Context</Toggle>
-              <Toggle value="cost">Cost</Toggle>
-            </ToggleGroup>
-            <div
-              className={cn(
-                "text-secondary-label text-[11px] tabular-nums",
-                tab === "cost" && "hidden",
-              )}
-            >
+            <div className="font-medium text-muted-foreground text-xs">Context Window</div>
+            <div className="text-secondary-label text-[11px] tabular-nums">
               {showsFill ? (
                 <>
                   <span>{percentageLabel}</span>
@@ -179,77 +144,64 @@ export function ContextWindowControl(props: {
               )}
             </div>
           </div>
-          {tab === "cost" ? (
-            <ThreadCostPanel environmentId={props.environmentId} threadId={props.threadId} />
-          ) : (
+          {showsFill ? (
+            <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-muted/60">
+              <div
+                className={cn(
+                  "h-full rounded-full transition-[width,background-color] duration-500 ease-out motion-reduce:transition-none",
+                  toneFillClassName[tone],
+                )}
+                style={{ width: `${fillPercentage}%` }}
+              />
+              {limitPercentage !== null ? (
+                <span
+                  aria-hidden="true"
+                  className="absolute inset-y-0 w-px bg-background/80"
+                  style={{ left: `${limitPercentage}%` }}
+                />
+              ) : null}
+            </div>
+          ) : null}
+          {remainingTokens !== null ? (
+            <div className="flex items-center justify-between gap-3 text-[11px] leading-4">
+              <span className="text-secondary-label">Remaining</span>
+              <span className="font-medium tabular-nums text-secondary-label">
+                {formatContextWindowTokens(remainingTokens)}
+              </span>
+            </div>
+          ) : null}
+          {totalProcessedTokens !== null && totalProcessedTokens > 0 ? (
+            <div className="flex items-center justify-between gap-3 text-[11px] leading-4">
+              <span className="text-secondary-label">Total processed</span>
+              <span className="font-medium tabular-nums text-secondary-label">
+                {formatContextWindowTokens(totalProcessedTokens)}
+              </span>
+            </div>
+          ) : null}
+          {usage.compactsAutomatically ? (
+            <div className="mt-1 text-pretty font-medium text-secondary-label text-[11px]">
+              {formatContextWindowCompactionMessage(modelDisplayName, usage.autoCompactThreshold)}
+            </div>
+          ) : null}
+          {onCompact ? (
             <>
-              {showsFill ? (
-                <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-muted/60">
-                  <div
-                    className={cn(
-                      "h-full rounded-full transition-[width,background-color] duration-500 ease-out motion-reduce:transition-none",
-                      toneFillClassName[tone],
-                    )}
-                    style={{ width: `${fillPercentage}%` }}
-                  />
-                  {limitPercentage !== null ? (
-                    <span
-                      aria-hidden="true"
-                      className="absolute inset-y-0 w-px bg-background/80"
-                      style={{ left: `${limitPercentage}%` }}
-                    />
-                  ) : null}
+              <Button
+                size="xs"
+                variant="outline"
+                className="mt-1 w-full justify-center"
+                disabled={compactDisabled}
+                onClick={onCompact}
+              >
+                <Minimize2Icon aria-hidden="true" />
+                Compact context
+              </Button>
+              {compactDisabled && compactDisabledReason ? (
+                <div className="text-pretty text-secondary-label text-[11px]">
+                  {compactDisabledReason}
                 </div>
-              ) : null}
-              <div className="flex flex-col gap-1">
-                {contextWindowRows(usage).map((row) => (
-                  <div
-                    key={row.key}
-                    className="flex items-center justify-between gap-3 text-[11px] leading-4"
-                  >
-                    <span
-                      className={cn(
-                        "text-secondary-label",
-                        row.key === "reasoning" && "ps-2 opacity-80",
-                      )}
-                    >
-                      {row.label}
-                    </span>
-                    <span className="font-medium tabular-nums text-secondary-label">
-                      {formatContextWindowTokens(row.tokens)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              {usage.compactsAutomatically ? (
-                <div className="mt-1 text-pretty font-medium text-secondary-label text-[11px]">
-                  {formatContextWindowCompactionMessage(
-                    modelDisplayName,
-                    usage.autoCompactThreshold,
-                  )}
-                </div>
-              ) : null}
-              {onCompact ? (
-                <>
-                  <Button
-                    size="xs"
-                    variant="outline"
-                    className="mt-1 w-full justify-center"
-                    disabled={compactDisabled}
-                    onClick={onCompact}
-                  >
-                    <Minimize2Icon aria-hidden="true" />
-                    Compact context
-                  </Button>
-                  {compactDisabled && compactDisabledReason ? (
-                    <div className="text-pretty text-secondary-label text-[11px]">
-                      {compactDisabledReason}
-                    </div>
-                  ) : null}
-                </>
               ) : null}
             </>
-          )}
+          ) : null}
         </div>
       </PopoverPopup>
     </Popover>

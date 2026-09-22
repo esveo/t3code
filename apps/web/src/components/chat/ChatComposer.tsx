@@ -276,7 +276,7 @@ import {
   renderProviderTraitsPicker,
 } from "./composerProviderState";
 import { ContextWindowMeter, ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
-import { ContextWindowControl } from "./ContextWindowControl";
+import { ThreadUsageControl } from "~/threadUsage/ThreadUsageControl";
 import { PromptCacheControl } from "./PromptCacheControl";
 import {
   providerSupportsManualCompaction,
@@ -5002,7 +5002,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
             content: (
               <>
                 <ComposerControlSeparator size={composerControlsInStrip ? "xs" : "sm"} />
-                <ContextWindowControl
+                <ThreadUsageControl
                   usage={contextWindowControl}
                   environmentId={environmentId}
                   threadId={activeThreadId}
