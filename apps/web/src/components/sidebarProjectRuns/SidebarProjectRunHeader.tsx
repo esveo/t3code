@@ -28,9 +28,9 @@ export const SidebarProjectRunHeader = memo(function SidebarProjectRunHeader(pro
           `${header.threadCount} thread${header.threadCount === 1 ? "" : "s"}`,
           ...(header.attentionCount > 0 ? [`${header.attentionCount} waiting on you`] : []),
         ].join(", ")}
-        className="flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-left text-xs transition-colors hover:bg-sidebar-row-hover"
+        className="flex h-7 w-full cursor-pointer items-center gap-2 rounded-md px-1.5 text-left text-xs transition-colors hover:bg-sidebar-row-hover"
       >
-        {project ? <ProjectFavicon project={project} className="size-3.5 shrink-0" /> : null}
+        {project ? <ProjectFavicon project={project} className="size-4 shrink-0" /> : null}
         <span className="min-w-0 shrink truncate font-medium text-sidebar-foreground/75">
           {label}
         </span>

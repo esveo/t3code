@@ -219,6 +219,7 @@ import { resolveSnoozePresets, snoozeWakeLabel, type SnoozePreset } from "./Side
 import { ProjectFavicon, type ProjectFaviconProject } from "./ProjectFavicon";
 // Fork: per-project runs in the thread list.
 import { SidebarProjectRunHeader } from "./sidebarProjectRuns/SidebarProjectRunHeader";
+import { SidebarProjectRunRowLead } from "./sidebarProjectRuns/SidebarProjectRunRowLead";
 import {
   resolveProjectRunAccent,
   sidebarProjectRunRowClassName,
@@ -1814,7 +1815,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         // Matches the content box; the py-0.5 padding is added on top.
         "list-none py-0.5 [content-visibility:auto]",
         twoLineThreadCards
-          ? "[contain-intrinsic-size:auto_64px]"
+          ? projectRunPlacement === null
+            ? "[contain-intrinsic-size:auto_64px]"
+            : "[contain-intrinsic-size:auto_56px]"
           : "[contain-intrinsic-size:auto_78px]",
         projectRunClassName,
         sortable?.isDragging && "relative z-20",
@@ -1841,10 +1844,23 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             className={cn(
               "relative z-10 px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]",
               twoLineThreadCards ? "h-[3.75rem]" : "h-[4.875rem]",
+              // Fork: inside a run the project line is gone, so the card gives
+              // back the height and padding that line used to justify.
+              projectRunPlacement !== null &&
+                twoLineThreadCards &&
+                "h-[3.25rem] py-[calc(var(--sidebar-content-inset)-0.125rem)]",
             )}
           >
-            <div className="flex h-5 min-w-0 items-center gap-1.5">
+            <div
+              className={cn(
+                "flex min-w-0 items-center gap-1.5",
+                projectRunPlacement === null || !twoLineThreadCards ? "h-5" : "h-4",
+              )}
+            >
               {draftIndicator}
+              {/* Fork: a run's rows hand this line to the branch — their
+                  project sits in the run header above them. */}
+              {projectRunPlacement !== null ? <SidebarProjectRunRowLead thread={thread} /> : null}
               {props.project && projectRunPlacement === null ? (
                 <ProjectFavicon project={props.project} className="size-4 shrink-0" />
               ) : null}
@@ -1857,9 +1873,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 >
                   {props.projectDisplayName}
                 </span>
-              ) : (
+              ) : projectRunPlacement === null ? (
                 <span className="flex-1" />
-              )}
+              ) : null}
               {pinIndicator}
               {/* The visible state owns this slot's width: status at rest,
                   actions on hover/keyboard focus or while the popover is open. Keeping
@@ -1999,7 +2015,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             </div>
             {/* Fork: with two-line cards the environment and provider icons
                 trail the title, and the third line below goes with them. */}
-            <div className={cn("mt-1 flex min-w-0", twoLineThreadCards && "items-center gap-1.5")}>
+            <div
+              className={cn(
+                "flex min-w-0",
+                twoLineThreadCards && "items-center gap-1.5",
+                projectRunPlacement !== null && twoLineThreadCards ? "mt-0.5" : "mt-1",
+              )}
+            >
               {title}
               {isRegeneratingTitle ? (
                 <span role="status" className="sr-only">
