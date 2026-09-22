@@ -1333,6 +1333,33 @@ export function AppearanceSettingsPanel() {
             }
           />
         ) : null}
+        {/* Fork: two-line thread cards. */}
+        <SettingsRow
+          {...searchableSetting("two-line-thread-cards")}
+          description="Trail the provider icon behind the thread title instead of giving it a line of its own. The line it saves also carried the branch, pull request badge and diff counts."
+          resetAction={
+            settings.twoLineThreadCards !== DEFAULT_UNIFIED_SETTINGS.twoLineThreadCards ? (
+              <SettingResetButton
+                label="two-line thread cards"
+                onClick={() =>
+                  updateSettings({
+                    twoLineThreadCards: DEFAULT_UNIFIED_SETTINGS.twoLineThreadCards,
+                  })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Switch
+              checked={settings.twoLineThreadCards}
+              onCheckedChange={(checked) =>
+                updateSettings({ twoLineThreadCards: Boolean(checked) })
+              }
+              aria-label="Two-line thread cards"
+            />
+          }
+        />
+
         <SettingsRow
           {...searchableSetting("diff-color-scheme")}
           description="Choose colors for additions and deletions, including change counts."
@@ -2529,33 +2556,6 @@ export function GeneralSettingsPanel() {
                 </SelectItem>
               </SelectPopup>
             </Select>
-          }
-        />
-
-        {/* Fork: two-line thread cards. */}
-        <SettingsRow
-          {...searchableSetting("two-line-thread-cards")}
-          description="Trail the provider icon behind the thread title instead of giving it a line of its own. The line it saves also carried the branch, pull request badge and diff counts."
-          resetAction={
-            settings.twoLineThreadCards !== DEFAULT_UNIFIED_SETTINGS.twoLineThreadCards ? (
-              <SettingResetButton
-                label="two-line thread cards"
-                onClick={() =>
-                  updateSettings({
-                    twoLineThreadCards: DEFAULT_UNIFIED_SETTINGS.twoLineThreadCards,
-                  })
-                }
-              />
-            ) : null
-          }
-          control={
-            <Switch
-              checked={settings.twoLineThreadCards}
-              onCheckedChange={(checked) =>
-                updateSettings({ twoLineThreadCards: Boolean(checked) })
-              }
-              aria-label="Two-line thread cards"
-            />
           }
         />
 

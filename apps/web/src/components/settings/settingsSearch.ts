@@ -204,6 +204,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["transparent transparency solid menus dialogs composer"],
   },
   {
+    id: "two-line-thread-cards",
+    title: "Two-line thread cards",
+    to: "/settings/appearance",
+    searchTerms: ["sidebar compact row height branch provider icon diff pull request"],
+  },
+  {
     id: "diff-color-scheme",
     title: "Diff colors",
     to: "/settings/appearance",
@@ -493,12 +499,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Sidebar (legacy)",
     to: "/settings/general",
     searchTerms: ["project thread tree old flat list"],
-  },
-  {
-    id: "two-line-thread-cards",
-    title: "Two-line thread cards",
-    to: "/settings/general",
-    searchTerms: ["sidebar compact row height branch provider icon diff pull request"],
   },
   {
     id: "keybindings",
