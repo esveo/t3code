@@ -14,6 +14,7 @@ import {
   workEntryDisplayIndicatesToolFailure,
   workLogEntryIsToolLike,
 } from "@t3tools/client-runtime/work-log/presentation";
+import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type {
   OrchestrationLatestTurn,
   OrchestrationMessage,
@@ -94,12 +95,22 @@ export interface StageAttention {
   readonly since: string;
 }
 
+/** What decides a project's icon; the same slice the sidebar's favicon reads. */
+export type StageProject = Pick<
+  EnvironmentProject,
+  "environmentId" | "workspaceRoot" | "title" | "faviconPath" | "projectIcon"
+>;
+
 export interface StageAgent {
   readonly id: string;
   /** "thread" is another thread's stand-in, read from its shell alone. */
   readonly kind: "main" | "subagent" | "thread";
   readonly label: string;
   readonly role: string | null;
+  /** The thread's project, whose icon the sprite wears; null for subagents. */
+  readonly project: StageProject | null;
+  /** Two letters from the thread title, badged next to the project icon. */
+  readonly initials: string | null;
   readonly station: StageStation;
   /** Still working; settled agents rest at idle, dimmed. */
   readonly live: boolean;
@@ -138,6 +149,9 @@ export interface StageInput {
   readonly session: OrchestrationSession | null;
   readonly latestTurn: OrchestrationLatestTurn | null;
   readonly workspaceRoot?: string | undefined;
+  /** The thread's title and project, for the main agent's sprite. */
+  readonly threadTitle?: string | undefined;
+  readonly project?: StageProject | null | undefined;
 }
 
 const RECENT_LIMIT = 5;
@@ -273,6 +287,8 @@ function deriveMainAgent(
     kind: "main" as const,
     label: "Main agent",
     role: null,
+    project: input.project ?? null,
+    initials: input.threadTitle === undefined ? null : stageInitials(input.threadTitle),
     recent,
     thought: latestThought(input.messages, turnId),
     stationTimes: sortStationTimes(timing.times),
@@ -709,6 +725,8 @@ function deriveSubagent(agent: RuntimeSubagent, work: AttributedWork | null): St
     kind: "subagent" as const,
     label: subagentLabel(agent),
     role: agent.role,
+    project: null,
+    initials: null,
     recent: agent.recentActivity.slice(-RECENT_LIMIT).map((entry) => entry.summary),
     thought: agent.progress,
     stationTimes: timing === null ? [] : sortStationTimes(timing.times),
@@ -900,4 +918,18 @@ export function deriveStageRecap(agent: StageAgent): StageRecap | null {
     steps: agent.steps,
     failedSteps: agent.failedSteps,
   };
+}
+
+/**
+ * Two letters that stand for a thread: the first of its first two words, or
+ * the first two of a single word. Sessions of one project share an icon, so
+ * this is what tells their sprites apart.
+ */
+export function stageInitials(title: string): string {
+  const words = title.normalize("NFKC").match(/[\p{L}\p{N}]+/gu) ?? [];
+  const first = words[0];
+  if (first === undefined) return "";
+  const glyphs = Array.from(first);
+  const second = words.length > 1 ? Array.from(words[1]!)[0] : glyphs[1];
+  return `${glyphs[0] ?? ""}${second ?? ""}`.toUpperCase();
 }

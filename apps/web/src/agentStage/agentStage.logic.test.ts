@@ -17,6 +17,7 @@ import {
   deriveStageRecap,
   MAIN_AGENT_ID,
   stageElapsedMs,
+  stageInitials,
   stageIsStuck,
   stageStationTimes,
   stationForToolName,
@@ -711,5 +712,15 @@ describe("stationForToolName", () => {
     expect(stationForToolName("preview_click")).toBe("browser");
     expect(stationForToolName("mcp__notion__search", "browser")).toBe("browser");
     expect(stationForToolName("SomethingElse")).toBe("tool");
+  });
+});
+
+describe("stageInitials", () => {
+  it("takes the first letter of the first two words, or two of a single word", () => {
+    expect(stageInitials("Fix the login bug")).toBe("FT");
+    expect(stageInitials("agent-stage everything")).toBe("AS");
+    expect(stageInitials("Refactor")).toBe("RE");
+    expect(stageInitials("v2 release")).toBe("VR");
+    expect(stageInitials("   ")).toBe("");
   });
 });

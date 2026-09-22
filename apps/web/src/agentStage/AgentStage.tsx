@@ -33,6 +33,7 @@ import {
 import { cn } from "~/lib/utils";
 
 import { ComposerPendingApprovalActions } from "../components/chat/ComposerPendingApprovalActions";
+import { ProjectFavicon } from "../components/ProjectFavicon";
 import {
   deriveStageRecap,
   stageElapsedMs,
@@ -382,8 +383,10 @@ export const AgentStage = memo(function AgentStage({
                           aria-pressed={isSelected}
                           onClick={() => onSelect(agent.id)}
                           className={cn(
-                            "absolute top-0 left-0 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-xs font-semibold text-white shadow-md transition-[scale,opacity] duration-300",
+                            "absolute top-0 left-0 flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full text-xs font-semibold shadow-md transition-[scale,opacity] duration-300",
                             "ring-offset-2 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                            // A session wears its project's icon on a plain face; a subagent is a coloured dot.
+                            agent.project !== null ? "border-2 bg-background" : "text-white",
                             isSelected && "ring-2 ring-foreground",
                             !agent.live && "opacity-50",
                             needsUser.has(agent.id) && "ring-2 ring-warning",
@@ -393,14 +396,27 @@ export const AgentStage = memo(function AgentStage({
                             height: SPRITE,
                             rotate: `${-slotDeg}deg`,
                             scale: isSelected ? "1.15" : "1",
-                            backgroundColor: spriteColor(agent, index - 1),
+                            ...(agent.project !== null
+                              ? { borderColor: spriteColor(agent, index - 1) }
+                              : { backgroundColor: spriteColor(agent, index - 1) }),
                           }}
                         >
-                          {agent.kind === "main" ? (
+                          {agent.project !== null ? (
+                            <ProjectFavicon project={agent.project} className="size-4" />
+                          ) : agent.kind === "main" ? (
                             <Bot className="size-4" />
                           ) : (
                             agent.label.trim().charAt(0).toUpperCase() || "A"
                           )}
+                          {agent.initials ? (
+                            <span
+                              aria-hidden
+                              className="absolute -right-1.5 -bottom-1 rounded-full border border-background px-1 text-[8px] leading-[12px] font-semibold text-white"
+                              style={{ backgroundColor: spriteColor(agent, index - 1) }}
+                            >
+                              {agent.initials}
+                            </span>
+                          ) : null}
                           {agent.alerts.length > 0 ? (
                             <span
                               aria-hidden
@@ -436,11 +452,20 @@ export const AgentStage = memo(function AgentStage({
               aria-pressed={agent.id === selected.id}
               className="flex min-w-0 items-center gap-1.5 py-0.5 pl-2 pr-1.5 hover:text-foreground"
             >
-              <span
-                aria-hidden
-                className="size-2 shrink-0 rounded-full"
-                style={{ backgroundColor: spriteColor(agent, index - 1) }}
-              />
+              {agent.project !== null ? (
+                <ProjectFavicon project={agent.project} className="size-3" />
+              ) : (
+                <span
+                  aria-hidden
+                  className="size-2 shrink-0 rounded-full"
+                  style={{ backgroundColor: spriteColor(agent, index - 1) }}
+                />
+              )}
+              {agent.initials ? (
+                <span className="shrink-0 font-semibold tabular-nums opacity-70">
+                  {agent.initials}
+                </span>
+              ) : null}
               <span className="truncate">{agent.label}</span>
             </button>
             {/* The first agent anchors the stage and cannot be hidden. */}
@@ -775,7 +800,9 @@ function SelectedAgentCard({ agent, width }: { agent: StageAgent; width: number 
       style={{ width }}
     >
       <div className="flex min-w-0 items-center gap-1.5">
-        {agent.kind === "main" ? (
+        {agent.project !== null ? (
+          <ProjectFavicon project={agent.project} className="size-3.5" />
+        ) : agent.kind === "main" ? (
           <Bot className="size-3.5 shrink-0 text-primary" />
         ) : agent.kind === "thread" ? (
           <MessagesSquare className="size-3.5 shrink-0 text-primary" />

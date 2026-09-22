@@ -1,7 +1,13 @@
-import { ProjectId, ThreadId, TurnId, type OrchestrationLatestTurn } from "@t3tools/contracts";
+import {
+  EnvironmentId,
+  ProjectId,
+  ThreadId,
+  TurnId,
+  type OrchestrationLatestTurn,
+} from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { StageModel } from "./agentStage.logic";
+import type { StageModel, StageProject } from "./agentStage.logic";
 import {
   deriveFleetStageModel,
   shellHasLiveWork,
@@ -17,6 +23,14 @@ const turn = (state: OrchestrationLatestTurn["state"]): OrchestrationLatestTurn 
   completedAt: state === "running" ? null : "2026-09-21T10:01:00.000Z",
   assistantMessageId: null,
 });
+
+const project: StageProject = {
+  environmentId: EnvironmentId.make("env-1"),
+  workspaceRoot: "/repo",
+  title: "Project",
+  faviconPath: null,
+  projectIcon: null,
+};
 
 function thread(
   key: string,
@@ -36,7 +50,7 @@ function thread(
     createdAt: `2026-09-21T09:0${key.length}:00.000Z`,
     ...overrides,
   };
-  return { key, shell, project: { title: "Project" } };
+  return { key, shell, project };
 }
 
 const running = (key: string, extra: Partial<FleetThreadShell> = {}) =>
@@ -73,6 +87,8 @@ const loadedModel: StageModel = {
       kind: "main",
       label: "Main agent",
       role: null,
+      project: null,
+      initials: null,
       station: "command",
       live: true,
       headline: "Running npm test",
@@ -112,6 +128,8 @@ describe("deriveFleetStageModel", () => {
       expect.objectContaining({
         label: "Thread a",
         role: "Project",
+        project,
+        initials: "TA",
         detail: "npm test",
         stationTimes: [{ station: "read", ms: 4_000 }],
         recent: ["Read a.ts"],

@@ -7,7 +7,7 @@ import type {
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
 
-import { useProjects, useThread, useThreadShells } from "../state/entities";
+import { useProject, useProjects, useThread, useThreadShells } from "../state/entities";
 import { threadEnvironment } from "../state/threads";
 import { useAtomCommand } from "../state/use-atom-command";
 import { buildThreadRouteParams } from "../threadRoutes";
@@ -47,6 +47,12 @@ function ThreadAgentStage({
   const messages = thread?.messages ?? EMPTY;
   const session = thread?.session ?? null;
   const latestTurn = thread?.latestTurn ?? null;
+  const threadTitle = thread?.title;
+  const project = useProject(
+    thread === null
+      ? null
+      : { environmentId: threadRef.environmentId, projectId: thread.projectId },
+  );
   const threadModel = useMemo(
     () =>
       deriveStageModel({
@@ -55,8 +61,10 @@ function ThreadAgentStage({
         session,
         latestTurn,
         workspaceRoot: workspaceRoot ?? undefined,
+        threadTitle,
+        project,
       }),
-    [activities, latestTurn, messages, session, workspaceRoot],
+    [activities, latestTurn, messages, project, session, threadTitle, workspaceRoot],
   );
   const mode = useAgentStageStore((state) => state.mode);
   const setMode = useAgentStageStore((state) => state.setMode);
@@ -135,15 +143,14 @@ function useFleetStageModel(
   return useMemo(() => {
     const refs = new Map<string, ScopedThreadRef>();
     if (!active) return { model: loadedModel, refs };
-    const projectTitles = new Map(
-      projects.map((project) => [`${project.environmentId}:${project.id}`, project.title] as const),
+    const byId = new Map(
+      projects.map((project) => [`${project.environmentId}:${project.id}`, project] as const),
     );
     const threads: FleetThread[] = shells.map((shell) => {
       const ref = { environmentId: shell.environmentId, threadId: shell.id };
       const key = scopedThreadKey(ref);
       refs.set(key, ref);
-      const title = projectTitles.get(`${shell.environmentId}:${shell.projectId}`);
-      return { key, shell, project: title === undefined ? null : { title } };
+      return { key, shell, project: byId.get(`${shell.environmentId}:${shell.projectId}`) ?? null };
     });
     return {
       model: deriveFleetStageModel({ threads, loaded: { key: loadedKey, model: loadedModel } }),

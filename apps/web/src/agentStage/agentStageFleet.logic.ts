@@ -1,6 +1,12 @@
-import type { OrchestrationProjectShell, OrchestrationThreadShell } from "@t3tools/contracts";
+import type { OrchestrationThreadShell } from "@t3tools/contracts";
 
-import type { StageAgent, StageAttention, StageModel } from "./agentStage.logic";
+import {
+  stageInitials,
+  type StageAgent,
+  type StageAttention,
+  type StageModel,
+  type StageProject,
+} from "./agentStage.logic";
 
 /**
  * The stage for every thread at once. It reads nothing but the thread shells
@@ -29,7 +35,7 @@ export interface FleetThread {
   /** The scoped thread key; doubles as the sprite's id. */
   readonly key: string;
   readonly shell: FleetThreadShell;
-  readonly project: Pick<OrchestrationProjectShell, "title"> | null;
+  readonly project: StageProject | null;
 }
 
 export interface FleetInput {
@@ -60,6 +66,8 @@ export function deriveFleetStageModel(input: FleetInput): StageModel {
         kind: "thread",
         label: thread?.shell.title ?? main.label,
         role: thread?.project?.title ?? null,
+        project: thread?.project ?? main.project,
+        initials: thread === undefined ? main.initials : stageInitials(thread.shell.title),
       });
       // Its requests keep the request behind them, so they stay answerable.
       for (const item of loaded.model.attention) {
@@ -98,6 +106,8 @@ function deriveShellAgent(thread: FleetThread): StageAgent {
     kind: "thread" as const,
     label: shell.title,
     role: thread.project?.title ?? null,
+    project: thread.project,
+    initials: stageInitials(shell.title),
     recent: [],
     thought: null,
     stationTimes: [],
