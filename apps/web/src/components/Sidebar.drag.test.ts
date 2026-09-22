@@ -640,6 +640,24 @@ describe("sidebar drag projection", () => {
     expect(result.get(sidebarMarkerId("active-placeholder"))?.y).toBe(62.5);
   });
 
+  it("derives missing card geometry from the fork's shorter two-line cards", () => {
+    const items = [
+      pinnedHeader,
+      divider,
+      marker("active-placeholder"),
+      settledHeader,
+      thread("s", "settled"),
+    ];
+    const result = preview(
+      { items, settledOrder: [], settledExpanded: true, baseCardHeight: 64 },
+      "s",
+      sidebarMarkerId("pinned-header"),
+      0.75,
+    );
+    expect(result.get(sidebarMarkerId("pinned-divider"))?.y).toBe(49);
+    expect(result.get(sidebarMarkerId("active-placeholder"))?.y).toBe(49);
+  });
+
   it("updates the projection when the target or measured geometry changes", () => {
     const strategy = createSidebarSortingStrategy({
       items: pinned,

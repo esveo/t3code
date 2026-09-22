@@ -103,6 +103,9 @@ export function createSidebarSortingStrategy(input: {
   snoozedThreadCount?: number;
   cardHeight?: number;
   slimHeight?: number;
+  /** Fork: the card's own height, used only when no card is measured. Two-line
+   * thread cards are shorter, so the caller passes their height instead. */
+  baseCardHeight?: number;
   /** Space each pinned boundary opens for its label while dragging. The
    * markers stay zero height at rest, so nothing is reserved until pickup. */
   boundaryLabelHeight?: number;
@@ -140,10 +143,14 @@ export function createSidebarSortingStrategy(input: {
       else slimHeight ??= rects[index]?.height;
       if (item.key !== active.key) groups[item.section].push(item);
     }
-    // Cards are 4.875rem + 0.25rem padding; slim rows/placeholders are h-9.
+    // Cards are 4.875rem + 0.25rem padding (3.75rem + 0.25rem with the fork's
+    // two-line cards); slim rows/placeholders are h-9.
+    const baseCardHeight = input.baseCardHeight ?? 82;
     const scale =
-      slimHeight !== undefined ? slimHeight / 36 : (headerScale ?? (cardHeight ?? 82) / 82);
-    cardHeight ??= 82 * scale;
+      slimHeight !== undefined
+        ? slimHeight / 36
+        : (headerScale ?? (cardHeight ?? baseCardHeight) / baseCardHeight);
+    cardHeight ??= baseCardHeight * scale;
     slimHeight ??= 36 * scale;
     const labelHeight = (input.boundaryLabelHeight ?? 0) * scale;
     const group = groups[target.section];

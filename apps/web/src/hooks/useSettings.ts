@@ -379,6 +379,18 @@ export function useLegacySidebarEnabled(): boolean {
   return settingsHydrated && legacySidebarEnabled;
 }
 
+/**
+ * Fork: whether sidebar thread cards are two lines (Settings → General).
+ *
+ * Read without the hydration gate `useLegacySidebarEnabled` needs: this only
+ * picks a card layout, never a different sidebar, so the worst a pre-hydration
+ * read costs an opt-out is one repaint — while gating it would repaint for
+ * everyone who left it on.
+ */
+export function useTwoLineThreadCards(): boolean {
+  return useClientSettings((settings) => settings.twoLineThreadCards);
+}
+
 /** Read current settings for one environment, merged with client-local preferences. */
 export function useEnvironmentSettings<T = UnifiedSettings>(
   environmentId: EnvironmentId,
