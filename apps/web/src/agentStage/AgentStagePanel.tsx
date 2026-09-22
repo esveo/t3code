@@ -4,14 +4,17 @@ import type {
   ProviderApprovalDecision,
   ScopedThreadRef,
 } from "@t3tools/contracts";
-import { useMemo, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { useCallback, useMemo, useState } from "react";
 
-import { useThread } from "../state/entities";
+import { useProjects, useThread, useThreadShells } from "../state/entities";
 import { threadEnvironment } from "../state/threads";
 import { useAtomCommand } from "../state/use-atom-command";
+import { buildThreadRouteParams } from "../threadRoutes";
 import { AgentStage } from "./AgentStage";
-import { deriveStageModel, MAIN_AGENT_ID } from "./agentStage.logic";
-import { useAgentStageStore } from "./agentStageStore";
+import { applyStageVisibility, deriveStageModel, MAIN_AGENT_ID } from "./agentStage.logic";
+import { deriveFleetStageModel, type FleetThread } from "./agentStageFleet.logic";
+import { AGENT_STAGE_EVERYTHING_KEY, useAgentStageStore } from "./agentStageStore";
 
 const EMPTY: ReadonlyArray<never> = [];
 
@@ -44,7 +47,7 @@ function ThreadAgentStage({
   const messages = thread?.messages ?? EMPTY;
   const session = thread?.session ?? null;
   const latestTurn = thread?.latestTurn ?? null;
-  const model = useMemo(
+  const threadModel = useMemo(
     () =>
       deriveStageModel({
         activities,
@@ -55,21 +58,98 @@ function ThreadAgentStage({
       }),
     [activities, latestTurn, messages, session, workspaceRoot],
   );
+  const mode = useAgentStageStore((state) => state.mode);
+  const setMode = useAgentStageStore((state) => state.setMode);
+  const everything = mode === "everything";
+  const fleet = useFleetStageModel(everything, threadKey, threadModel);
+  const fullModel = everything ? fleet.model : threadModel;
+
+  // Hidden agents are filed per thread; the everything view has a key of its own.
+  const visibilityKey = everything ? AGENT_STAGE_EVERYTHING_KEY : threadKey;
+  const hiddenIds = useAgentStageStore((state) => state.hiddenByThread[visibilityKey]) ?? EMPTY;
+  const { model, hidden } = useMemo(
+    () => applyStageVisibility(fullModel, hiddenIds),
+    [fullModel, hiddenIds],
+  );
+  const hide = useAgentStageStore((state) => state.hide);
+  const show = useAgentStageStore((state) => state.show);
+  const showAll = useAgentStageStore((state) => state.showAll);
+
   const storedSelection = useAgentStageStore((state) => state.selectedByThread[threadKey]);
-  const selectedId = model.agents.some((agent) => agent.id === storedSelection)
-    ? storedSelection!
-    : MAIN_AGENT_ID;
+  const selectedId = everything
+    ? threadKey
+    : model.agents.some((agent) => agent.id === storedSelection)
+      ? storedSelection!
+      : MAIN_AGENT_ID;
   const select = useAgentStageStore((state) => state.select);
+  const navigate = useNavigate();
+  const onSelect = useCallback(
+    (agentId: string) => {
+      if (everything) {
+        // In the everything view a sprite is a thread: picking it opens it.
+        const target = fleet.refs.get(agentId);
+        if (target !== undefined && agentId !== threadKey) {
+          void navigate({
+            to: "/$environmentId/$threadId",
+            params: buildThreadRouteParams(target),
+          });
+        }
+        return;
+      }
+      // Pointing at a hidden agent (from a request, say) brings it back.
+      if (hiddenIds.includes(agentId)) show(threadKey, agentId);
+      select(threadKey, agentId);
+    },
+    [everything, fleet.refs, hiddenIds, navigate, select, show, threadKey],
+  );
   const approvals = useStageApprovals(threadRef);
 
   return (
     <AgentStage
       model={model}
       selectedId={selectedId}
-      onSelect={(agentId) => select(threadKey, agentId)}
+      onSelect={onSelect}
       approvals={approvals}
+      mode={mode}
+      onModeChange={setMode}
+      hidden={hidden}
+      onHide={(agentId) => hide(visibilityKey, agentId)}
+      onShow={(agentId) => show(visibilityKey, agentId)}
+      onShowAll={() => showAll(visibilityKey)}
     />
   );
+}
+
+/**
+ * Every thread with live work, from the shells the sidebar already holds.
+ * Nothing is loaded for it: the fold runs only while the everything view is
+ * open, and reruns when a shell changes.
+ */
+function useFleetStageModel(
+  active: boolean,
+  loadedKey: string,
+  loadedModel: ReturnType<typeof deriveStageModel>,
+) {
+  const shells = useThreadShells();
+  const projects = useProjects();
+  return useMemo(() => {
+    const refs = new Map<string, ScopedThreadRef>();
+    if (!active) return { model: loadedModel, refs };
+    const projectTitles = new Map(
+      projects.map((project) => [`${project.environmentId}:${project.id}`, project.title] as const),
+    );
+    const threads: FleetThread[] = shells.map((shell) => {
+      const ref = { environmentId: shell.environmentId, threadId: shell.id };
+      const key = scopedThreadKey(ref);
+      refs.set(key, ref);
+      const title = projectTitles.get(`${shell.environmentId}:${shell.projectId}`);
+      return { key, shell, project: title === undefined ? null : { title } };
+    });
+    return {
+      model: deriveFleetStageModel({ threads, loaded: { key: loadedKey, model: loadedModel } }),
+      refs,
+    };
+  }, [active, loadedKey, loadedModel, projects, shells]);
 }
 
 /**

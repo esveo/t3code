@@ -6,9 +6,12 @@ import {
   Brain,
   Clock,
   Coffee,
+  Eye,
+  EyeOff,
   Globe,
   Hand,
   MessageSquare,
+  MessagesSquare,
   PencilLine,
   Search,
   Terminal,
@@ -31,6 +34,7 @@ import { cn } from "~/lib/utils";
 
 import { ComposerPendingApprovalActions } from "../components/chat/ComposerPendingApprovalActions";
 import {
+  deriveStageRecap,
   stageElapsedMs,
   stageStationTimes,
   stageStuckAfterMs,
@@ -40,6 +44,7 @@ import {
   type StageModel,
   type StageStation,
 } from "./agentStage.logic";
+import type { AgentStageMode } from "./agentStageStore";
 
 export interface StageApprovalHandlers {
   readonly respondingRequestIds: ReadonlyArray<ApprovalRequestId>;
@@ -74,6 +79,7 @@ const DWELL_MS = 1600;
 const MOVE_MS = 700;
 const ORBIT_PERIOD_S = 10;
 const SUBAGENT_HUES = [205, 285, 25, 145, 335, 55, 175, 255];
+const NO_AGENTS: ReadonlyArray<StageAgent> = [];
 
 /**
  * Sprites circle their station while they work there. Transform-only
@@ -102,8 +108,9 @@ function ringPoint(angle: number, half: number, radius: number): Point {
   return { x: half + Math.cos(angle) * radius, y: half + Math.sin(angle) * radius };
 }
 
+/** The first sprite (main agent, or the open thread) wears the primary colour. */
 function spriteColor(agent: StageAgent, index: number): string {
-  if (agent.kind === "main") return "var(--primary)";
+  if (agent.kind === "main" || index < 0) return "var(--primary)";
   return `hsl(${SUBAGENT_HUES[index % SUBAGENT_HUES.length]} 55% 48%)`;
 }
 
@@ -249,12 +256,26 @@ export const AgentStage = memo(function AgentStage({
   selectedId,
   onSelect,
   approvals = null,
+  mode = "thread",
+  onModeChange = null,
+  hidden = NO_AGENTS,
+  onHide = null,
+  onShow = null,
+  onShowAll = null,
 }: {
   model: StageModel;
   selectedId: string;
   onSelect: (agentId: string) => void;
   /** Present when the stage may answer approvals itself. */
   approvals?: StageApprovalHandlers | null;
+  mode?: AgentStageMode;
+  /** Present when the stage offers the everything view. */
+  onModeChange?: ((mode: AgentStageMode) => void) | null;
+  /** Agents the user took off the stage; they still work, and the roster brings them back. */
+  hidden?: ReadonlyArray<StageAgent>;
+  onHide?: ((agentId: string) => void) | null;
+  onShow?: ((agentId: string) => void) | null;
+  onShowAll?: (() => void) | null;
 }) {
   const sceneRef = useRef<HTMLDivElement | null>(null);
   const [side, setSide] = useState(0);
@@ -294,15 +315,19 @@ export const AgentStage = memo(function AgentStage({
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-foreground" data-agent-stage>
       <style>{ORBIT_STYLE}</style>
+      <div className="flex h-9 shrink-0 items-center gap-2 px-3">
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+          {mode === "everything"
+            ? `${model.agents.filter((agent) => agent.live).length} ${model.agents.filter((agent) => agent.live).length === 1 ? "thread" : "threads"} working`
+            : model.running
+              ? "Working"
+              : "Resting"}
+        </span>
+        {onModeChange !== null ? <StageModeToggle mode={mode} onChange={onModeChange} /> : null}
+      </div>
       {model.attention.length > 0 ? (
         <StageAttentionBar items={model.attention} approvals={approvals} onSelect={onSelect} />
-      ) : (
-        <div className="flex h-10 shrink-0 items-center gap-2 px-3">
-          <span className="text-xs text-muted-foreground">
-            {model.running ? "Working" : "Resting"}
-          </span>
-        </div>
-      )}
+      ) : null}
 
       <div ref={sceneRef} className="flex min-h-0 flex-1 items-center justify-center p-3">
         {side > 0 ? (
@@ -376,6 +401,12 @@ export const AgentStage = memo(function AgentStage({
                           ) : (
                             agent.label.trim().charAt(0).toUpperCase() || "A"
                           )}
+                          {agent.alerts.length > 0 ? (
+                            <span
+                              aria-hidden
+                              className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full border border-background bg-warning"
+                            />
+                          ) : null}
                         </button>
                       </div>
                     </div>
@@ -389,31 +420,102 @@ export const AgentStage = memo(function AgentStage({
 
       <div className="flex h-9 shrink-0 items-center gap-1.5 overflow-x-auto px-3 pb-2 [scrollbar-width:none]">
         {model.agents.map((agent, index) => (
-          <button
+          <div
             key={agent.id}
-            type="button"
-            onClick={() => onSelect(agent.id)}
-            aria-pressed={agent.id === selected.id}
             className={cn(
-              "flex max-w-48 shrink-0 items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] transition-colors",
+              "flex max-w-52 shrink-0 items-center rounded-full border text-[11px] transition-colors",
               agent.id === selected.id
                 ? "border-foreground/40 bg-accent text-foreground"
-                : "border-border text-muted-foreground hover:text-foreground",
+                : "border-border text-muted-foreground",
               !agent.live && "opacity-70",
             )}
           >
-            <span
-              aria-hidden
-              className="size-2 shrink-0 rounded-full"
-              style={{ backgroundColor: spriteColor(agent, index - 1) }}
-            />
+            <button
+              type="button"
+              onClick={() => onSelect(agent.id)}
+              aria-pressed={agent.id === selected.id}
+              className="flex min-w-0 items-center gap-1.5 py-0.5 pl-2 pr-1.5 hover:text-foreground"
+            >
+              <span
+                aria-hidden
+                className="size-2 shrink-0 rounded-full"
+                style={{ backgroundColor: spriteColor(agent, index - 1) }}
+              />
+              <span className="truncate">{agent.label}</span>
+            </button>
+            {/* The first agent anchors the stage and cannot be hidden. */}
+            {onHide !== null && index > 0 ? (
+              <button
+                type="button"
+                aria-label={`Hide ${agent.label} from the stage`}
+                onClick={() => onHide(agent.id)}
+                className="flex shrink-0 items-center pr-1.5 pl-0.5 text-muted-foreground/60 hover:text-foreground"
+              >
+                <EyeOff className="size-3" />
+              </button>
+            ) : null}
+          </div>
+        ))}
+        {hidden.map((agent) => (
+          <button
+            key={agent.id}
+            type="button"
+            aria-label={`Show ${agent.label} on the stage`}
+            onClick={() => onShow?.(agent.id)}
+            className="flex max-w-40 shrink-0 items-center gap-1.5 rounded-full border border-dashed border-border px-2 py-0.5 text-[11px] text-muted-foreground/60 hover:text-foreground"
+          >
+            <Eye className="size-3 shrink-0" />
             <span className="truncate">{agent.label}</span>
           </button>
         ))}
+        {hidden.length > 0 && onShowAll !== null ? (
+          <button
+            type="button"
+            onClick={onShowAll}
+            className="shrink-0 rounded-full px-2 py-0.5 text-[11px] text-primary hover:underline"
+          >
+            Show all
+          </button>
+        ) : null}
       </div>
     </div>
   );
 });
+
+/** This thread alone, or every thread with live work. */
+function StageModeToggle({
+  mode,
+  onChange,
+}: {
+  mode: AgentStageMode;
+  onChange: (mode: AgentStageMode) => void;
+}) {
+  const option = (value: AgentStageMode, label: string) => (
+    <button
+      type="button"
+      aria-pressed={mode === value}
+      onClick={() => onChange(value)}
+      className={cn(
+        "rounded-full px-2 py-0.5 text-[11px] transition-colors",
+        mode === value
+          ? "bg-accent text-foreground"
+          : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {label}
+    </button>
+  );
+  return (
+    <div
+      role="group"
+      aria-label="Stage scope"
+      className="flex shrink-0 items-center gap-0.5 rounded-full border border-border p-0.5"
+    >
+      {option("thread", "This thread")}
+      {option("everything", "Everything")}
+    </div>
+  );
+}
 
 /**
  * The ring: the stations, and how the selected agent's turn divides between
@@ -626,6 +728,36 @@ function StationElapsed({ agent }: { agent: StageAgent }) {
   );
 }
 
+/**
+ * What the turn came to, once the agent rests: how long, how many steps, how
+ * many broke, and where the time went. The arcs already say the last part
+ * in shape; this says it in numbers.
+ */
+function StageRecapLine({ agent }: { agent: StageAgent }) {
+  const recap = deriveStageRecap(agent);
+  if (recap === null) return null;
+  const breakdown = recap.stationTimes
+    .filter((entry) => entry.ms >= 1_000)
+    .slice(0, 3)
+    .map((entry) => `${stationLabel(entry.station)} ${formatDuration(entry.ms)}`)
+    .join(" · ");
+  return (
+    <div className="flex flex-col gap-0.5 text-[11px] text-muted-foreground">
+      <div className="flex items-center gap-1.5">
+        <Clock className="size-3 shrink-0" />
+        <span className="truncate tabular-nums">
+          {recap.totalMs >= 1_000 ? `${formatDuration(recap.totalMs)} · ` : ""}
+          {recap.steps} {recap.steps === 1 ? "step" : "steps"}
+          {recap.failedSteps > 0 ? (
+            <span className="text-warning-foreground">, {recap.failedSteps} failed</span>
+          ) : null}
+        </span>
+      </div>
+      {breakdown.length > 0 ? <span className="truncate tabular-nums">{breakdown}</span> : null}
+    </div>
+  );
+}
+
 function SelectedAgentCard({ agent, width }: { agent: StageAgent; width: number }) {
   const Icon = STATION_ICONS[agent.station];
   const monospace =
@@ -645,6 +777,8 @@ function SelectedAgentCard({ agent, width }: { agent: StageAgent; width: number 
       <div className="flex min-w-0 items-center gap-1.5">
         {agent.kind === "main" ? (
           <Bot className="size-3.5 shrink-0 text-primary" />
+        ) : agent.kind === "thread" ? (
+          <MessagesSquare className="size-3.5 shrink-0 text-primary" />
         ) : (
           <Users className="size-3.5 shrink-0 text-muted-foreground" />
         )}
@@ -672,6 +806,7 @@ function SelectedAgentCard({ agent, width }: { agent: StageAgent; width: number 
         </p>
       ) : null}
       <StationElapsed agent={agent} />
+      <StageRecapLine agent={agent} />
       {agent.alerts.map((alert) => (
         <div
           key={alert.kind}

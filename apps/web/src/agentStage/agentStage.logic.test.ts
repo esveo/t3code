@@ -12,7 +12,9 @@ import {
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  applyStageVisibility,
   deriveStageModel,
+  deriveStageRecap,
   MAIN_AGENT_ID,
   stageElapsedMs,
   stageIsStuck,
@@ -510,6 +512,192 @@ describe("stage alerts", () => {
     expect(subagent.alerts).toEqual([
       expect.objectContaining({ kind: "failed", text: "Ran out of context" }),
     ]);
+  });
+});
+
+const subagentStep = (index: number, status: "completed" | "failed", detail = "src/a.ts") =>
+  activity({
+    kind: "tool.completed",
+    createdAt: at(`0:${String(30 + index).padStart(2, "0")}`),
+    payload: {
+      itemType: "dynamic_tool_call",
+      status,
+      title: "Read",
+      detail,
+      agentId: "task-1",
+      toolCallId: `sub-${index}`,
+    },
+  });
+
+const spawn = () =>
+  activity({
+    kind: "task.started",
+    createdAt: at("0:29"),
+    payload: { taskId: "task-1", taskType: "local_agent", title: "Audit" },
+  });
+
+describe("subagent alerts", () => {
+  it("calls out a step a subagent keeps repeating", () => {
+    const model = deriveStageModel({
+      activities: [
+        spawn(),
+        subagentStep(0, "completed"),
+        subagentStep(1, "completed"),
+        subagentStep(2, "completed"),
+      ],
+      messages: [],
+      session: session("running"),
+      latestTurn: latestTurn("running"),
+    });
+    expect(model.agents[0]!.alerts).toEqual([]);
+    expect(model.agents[1]!.alerts).toEqual([
+      expect.objectContaining({ kind: "repeating", text: "Read src/a.ts 3 times over" }),
+    ]);
+  });
+
+  it("calls out a subagent's failing steps and counts them for the recap", () => {
+    const model = deriveStageModel({
+      activities: [
+        spawn(),
+        subagentStep(0, "failed", "a"),
+        subagentStep(1, "failed", "b"),
+        subagentStep(2, "completed", "c"),
+      ],
+      messages: [],
+      session: session("running"),
+      latestTurn: latestTurn("running"),
+    });
+    const subagent = model.agents[1]!;
+    expect(subagent.alerts).toEqual([
+      expect.objectContaining({ kind: "failing", text: "2 of the last 3 steps failed" }),
+    ]);
+    expect(subagent.steps).toBe(3);
+    expect(subagent.failedSteps).toBe(2);
+  });
+
+  it("reads repeats from progress lines when no tool rows are attributed", () => {
+    // Identical consecutive lines collapse in the fold; a loop shows as alternation.
+    const progress = (index: number, summary: string) =>
+      activity({
+        kind: "task.progress",
+        createdAt: at(`0:${String(30 + index).padStart(2, "0")}`),
+        summary,
+        payload: { taskId: "task-1", summary },
+      });
+    const model = deriveStageModel({
+      activities: [
+        spawn(),
+        progress(0, "Running the tests"),
+        progress(1, "Editing"),
+        progress(2, "Running the tests"),
+        progress(3, "Editing"),
+        progress(4, "Running the tests"),
+      ],
+      messages: [],
+      session: session("running"),
+      latestTurn: latestTurn("running"),
+    });
+    expect(model.agents[1]!.alerts).toEqual([
+      expect.objectContaining({ kind: "repeating", text: "Running the tests 3 times over" }),
+    ]);
+  });
+});
+
+describe("stage recap", () => {
+  it("says nothing while the agent still works", () => {
+    const model = deriveStageModel({
+      activities: [readRow(0)],
+      messages: [],
+      session: session("running"),
+      latestTurn: latestTurn("running"),
+    });
+    expect(deriveStageRecap(model.agents[0]!)).toBeNull();
+  });
+
+  it("sums the settled turn: steps, failures, and the answer at the end", () => {
+    // Rows order by sequence, so the read is created before the failure.
+    const read = readRow(0);
+    const failed = activity({
+      kind: "tool.completed",
+      tone: "error",
+      createdAt: at("0:20"),
+      summary: "Failed step",
+      payload: {
+        itemType: "command_execution",
+        status: "failed",
+        toolCallId: "fail-1",
+        title: "Run command",
+        data: { command: "npm test" },
+      },
+    });
+    const model = deriveStageModel({
+      activities: [read, failed],
+      messages: [message("assistant", "Done.", false)],
+      session: session("ready"),
+      latestTurn: latestTurn("completed"),
+    });
+    const recap = deriveStageRecap(model.agents[0]!);
+    expect(recap).toEqual({
+      totalMs: 60_000,
+      steps: 2,
+      failedSteps: 1,
+      stationTimes: [
+        { station: "writing", ms: 40_000 },
+        { station: "read", ms: 10_000 },
+        { station: "command", ms: 10_000 },
+      ],
+    });
+  });
+
+  it("charges the tail of a failed turn to thinking, not to the answer", () => {
+    const model = deriveStageModel({
+      activities: [readRow(0)],
+      messages: [],
+      session: session("error"),
+      latestTurn: latestTurn("error"),
+    });
+    expect(deriveStageRecap(model.agents[0]!)?.stationTimes).toEqual([
+      { station: "thinking", ms: 50_000 },
+      { station: "read", ms: 10_000 },
+    ]);
+  });
+
+  it("stays quiet for a thread that never did anything", () => {
+    const model = deriveStageModel({
+      activities: [],
+      messages: [],
+      session: null,
+      latestTurn: null,
+    });
+    expect(deriveStageRecap(model.agents[0]!)).toBeNull();
+  });
+});
+
+describe("applyStageVisibility", () => {
+  const model = deriveStageModel({
+    activities: [
+      spawn(),
+      activity({
+        kind: "task.started",
+        createdAt: at("0:30"),
+        payload: { taskId: "task-2", taskType: "local_agent", title: "Review" },
+      }),
+    ],
+    messages: [],
+    session: session("running"),
+    latestTurn: latestTurn("running"),
+  });
+
+  it("takes hidden agents off the stage and hands them back for the roster", () => {
+    const result = applyStageVisibility(model, ["task-1"]);
+    expect(result.model.agents.map((agent) => agent.id)).toEqual([MAIN_AGENT_ID, "task-2"]);
+    expect(result.hidden.map((agent) => agent.id)).toEqual(["task-1"]);
+    expect(result.model.attention).toBe(model.attention);
+  });
+
+  it("never hides the first agent and returns the model untouched when nothing applies", () => {
+    expect(applyStageVisibility(model, [MAIN_AGENT_ID, "nobody"]).model).toBe(model);
+    expect(applyStageVisibility(model, []).model).toBe(model);
   });
 });
 

@@ -96,7 +96,8 @@ export interface StageAttention {
 
 export interface StageAgent {
   readonly id: string;
-  readonly kind: "main" | "subagent";
+  /** "thread" is another thread's stand-in, read from its shell alone. */
+  readonly kind: "main" | "subagent" | "thread";
   readonly label: string;
   readonly role: string | null;
   readonly station: StageStation;
@@ -116,6 +117,9 @@ export interface StageAgent {
    * the model stays a pure function of the thread.
    */
   readonly stationTimes: ReadonlyArray<StageStationTime>;
+  /** Tool calls this turn, and how many of them failed: the recap's numbers. */
+  readonly steps: number;
+  readonly failedSteps: number;
   /** When the agent arrived where it stands; null once it rests. */
   readonly since: string | null;
   readonly alerts: ReadonlyArray<StageAlert>;
@@ -250,11 +254,20 @@ function deriveMainAgent(
   const steps = entries.filter(
     (entry) => entry.agentSpawn !== undefined || workLogEntryIsToolLike(entry),
   );
-  const recent = entries
+  const toolSteps = entries
     .filter((entry) => workLogEntryIsToolLike(entry))
-    .slice(-RECENT_LIMIT)
-    .map((entry) => liveWorkEntryLabel(entry, input.workspaceRoot, false));
-  const timing = deriveMainTiming(steps, turnStartedAt);
+    .map((entry) => ({
+      label: liveWorkEntryLabel(entry, input.workspaceRoot, false),
+      failed: workEntryDisplayIndicatesToolFailure(entry),
+    }));
+  const recent = toolSteps.slice(-RECENT_LIMIT).map((step) => step.label);
+  const turnState = input.latestTurn?.state;
+  const timing = deriveMainTiming(steps, turnStartedAt, {
+    // Once the turn is over, the tail after the last step was the answer,
+    // unless the turn broke off, in which case nobody was answering.
+    settledAt: running ? null : (input.latestTurn?.completedAt ?? null),
+    tailStation: turnState === "completed" ? "writing" : "thinking",
+  });
   const base = {
     id: MAIN_AGENT_ID,
     kind: "main" as const,
@@ -263,7 +276,9 @@ function deriveMainAgent(
     recent,
     thought: latestThought(input.messages, turnId),
     stationTimes: sortStationTimes(timing.times),
-    alerts: deriveMainAlerts(entries, input.workspaceRoot),
+    steps: toolSteps.length,
+    failedSteps: toolSteps.filter((step) => step.failed).length,
+    alerts: deriveStepAlerts(toolSteps),
   };
   const restingAt = running ? (timing.boundary ?? turnStartedAt) : null;
 
@@ -347,7 +362,6 @@ function deriveMainAgent(
     };
   }
 
-  const turnState = input.latestTurn?.state;
   return {
     ...base,
     station: "idle",
@@ -382,6 +396,7 @@ interface StationTiming {
 function deriveMainTiming(
   steps: ReadonlyArray<WorkLogEntry>,
   turnStartedAt: string | null,
+  tail: { settledAt: string | null; tailStation: StageStation },
 ): StationTiming {
   const times = new Map<StageStation, number>();
   let boundary = turnStartedAt;
@@ -399,24 +414,34 @@ function deriveMainTiming(
     boundary = entry.createdAt;
     activeSince = running ? entry.createdAt : null;
   }
+  if (tail.settledAt !== null && boundary !== null && activeSince === null) {
+    addStationTime(times, tail.tailStation, boundary, tail.settledAt);
+    boundary = tail.settledAt;
+  }
   return { times, boundary, activeSince };
+}
+
+/** One finished tool call, as the alerts read it: what it was, and whether it broke. */
+interface StageStep {
+  readonly label: string;
+  readonly failed: boolean;
 }
 
 /** How many of the latest steps a repeat or a run of failures is read from. */
 const ALERT_WINDOW = 6;
 const REPEAT_LIMIT = 3;
 
-function deriveMainAlerts(
-  entries: ReadonlyArray<WorkLogEntry>,
-  workspaceRoot: string | undefined,
-): ReadonlyArray<StageAlert> {
-  const window = entries.filter((entry) => workLogEntryIsToolLike(entry)).slice(-ALERT_WINDOW);
+/**
+ * A step the agent keeps taking, or steps that keep breaking. Main agent and
+ * subagents feed this the same shape, so both get the same warnings.
+ */
+function deriveStepAlerts(steps: ReadonlyArray<StageStep>): ReadonlyArray<StageAlert> {
+  const window = steps.slice(-ALERT_WINDOW);
   if (window.length === 0) return [];
   const alerts: StageAlert[] = [];
   const counts = new Map<string, number>();
-  for (const entry of window) {
-    const label = liveWorkEntryLabel(entry, workspaceRoot, false);
-    counts.set(label, (counts.get(label) ?? 0) + 1);
+  for (const step of window) {
+    counts.set(step.label, (counts.get(step.label) ?? 0) + 1);
   }
   const repeated = [...counts]
     .filter(([, count]) => count >= REPEAT_LIMIT)
@@ -424,7 +449,7 @@ function deriveMainAlerts(
   if (repeated !== undefined) {
     alerts.push({ kind: "repeating", text: `${repeated[0]} ${repeated[1]} times over` });
   }
-  const failures = window.filter((entry) => workEntryDisplayIndicatesToolFailure(entry)).length;
+  const failures = window.filter((step) => step.failed).length;
   if (failures >= 2) {
     alerts.push({ kind: "failing", text: `${failures} of the last ${window.length} steps failed` });
   }
@@ -551,6 +576,8 @@ interface AttributedTool {
 interface AttributedWork {
   readonly tool: AttributedTool;
   readonly timing: StationTiming;
+  /** Every finished call, oldest first: the alerts read the tail, the recap counts all. */
+  readonly steps: ReadonlyArray<StageStep>;
 }
 
 /**
@@ -569,6 +596,7 @@ function collectAttributedTools(
       times: Map<StageStation, number>;
       boundary: string | null;
       activeSince: string | null;
+      steps: Array<StageStep & { toolCallId: string | null }>;
     }
   >();
   for (const activity of activities) {
@@ -598,8 +626,23 @@ function collectAttributedTools(
       status,
     };
     const times = previous?.times ?? new Map<StageStation, number>();
+    const steps = previous?.steps ?? [];
     let boundary = previous?.boundary ?? null;
     let activeSince = previous?.activeSince ?? null;
+    if (status !== "inProgress") {
+      // A call ends once; a second terminal row for it restates, not repeats.
+      const step = {
+        toolCallId,
+        label: [tool.title, tool.command ?? tool.detail].filter(Boolean).join(" "),
+        failed: status === "failed",
+      };
+      const last = steps[steps.length - 1];
+      if (last !== undefined && toolCallId !== null && last.toolCallId === toolCallId) {
+        steps[steps.length - 1] = step;
+      } else {
+        steps.push(step);
+      }
+    }
     if (status === "inProgress") {
       // Progress rows repeat for one call; only its first row starts the clock.
       if (previous === undefined || previous.toolCallId !== toolCallId || activeSince === null) {
@@ -620,13 +663,14 @@ function collectAttributedTools(
       boundary = activity.createdAt;
       activeSince = null;
     }
-    latest.set(agentId, { toolCallId, tool, times, boundary, activeSince });
+    latest.set(agentId, { toolCallId, tool, times, boundary, activeSince, steps });
   }
   const result = new Map<string, AttributedWork>();
   for (const [agentId, entry] of latest) {
     result.set(agentId, {
       tool: entry.tool,
       timing: { times: entry.times, boundary: entry.boundary, activeSince: entry.activeSince },
+      steps: entry.steps.map(({ label, failed }) => ({ label, failed })),
     });
   }
   return result;
@@ -652,6 +696,14 @@ function deriveSubagent(agent: RuntimeSubagent, work: AttributedWork | null): St
   const tool = work?.tool ?? null;
   const timing = work?.timing ?? null;
   const started = agent.startedAt ?? agent.firstSeenAt;
+  const steps = work?.steps ?? [];
+  // Providers that attribute no tool rows still report progress lines; a
+  // line that keeps coming back is the same loop, read from the other side.
+  const stepAlerts = deriveStepAlerts(
+    steps.length > 0
+      ? steps
+      : agent.recentActivity.map((entry) => ({ label: entry.summary, failed: false })),
+  );
   const base = {
     id: agent.id,
     kind: "subagent" as const,
@@ -660,10 +712,12 @@ function deriveSubagent(agent: RuntimeSubagent, work: AttributedWork | null): St
     recent: agent.recentActivity.slice(-RECENT_LIMIT).map((entry) => entry.summary),
     thought: agent.progress,
     stationTimes: timing === null ? [] : sortStationTimes(timing.times),
+    steps: steps.length,
+    failedSteps: steps.filter((step) => step.failed).length,
     alerts:
       agent.status === "failed"
-        ? [{ kind: "failed" as const, text: agent.error ?? "The subagent failed" }]
-        : [],
+        ? [{ kind: "failed" as const, text: agent.error ?? "The subagent failed" }, ...stepAlerts]
+        : stepAlerts,
   };
   if (agent.status === "running") {
     if (tool !== null && tool.status === "inProgress") {
@@ -801,4 +855,49 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 
 function asString(value: unknown): string | null {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+
+/**
+ * The stage after the user has hidden some agents. Hiding is a way of
+ * looking, not a way of stopping: the first agent (the main agent, or the
+ * open thread in the everything view) always stays, so the stage is never
+ * empty, and open requests are kept whoever they belong to.
+ */
+export function applyStageVisibility(
+  model: StageModel,
+  hiddenIds: ReadonlyArray<string>,
+): { readonly model: StageModel; readonly hidden: ReadonlyArray<StageAgent> } {
+  if (hiddenIds.length === 0) return { model, hidden: [] };
+  const hiddenSet = new Set(hiddenIds);
+  const hidden = model.agents.filter((agent, index) => index > 0 && hiddenSet.has(agent.id));
+  if (hidden.length === 0) return { model, hidden: [] };
+  const hiddenNow = new Set(hidden.map((agent) => agent.id));
+  return {
+    model: { ...model, agents: model.agents.filter((agent) => !hiddenNow.has(agent.id)) },
+    hidden,
+  };
+}
+
+export interface StageRecap {
+  readonly totalMs: number;
+  /** Busiest first, as on the agent. */
+  readonly stationTimes: ReadonlyArray<StageStationTime>;
+  readonly steps: number;
+  readonly failedSteps: number;
+}
+
+/**
+ * What the turn amounted to, once the agent rests. Nothing while it still
+ * works, and nothing for an agent that never did anything, so a fresh
+ * thread's card stays quiet.
+ */
+export function deriveStageRecap(agent: StageAgent): StageRecap | null {
+  if (agent.live) return null;
+  if (agent.steps === 0 && agent.stationTimes.length === 0) return null;
+  return {
+    totalMs: agent.stationTimes.reduce((sum, entry) => sum + entry.ms, 0),
+    stationTimes: agent.stationTimes,
+    steps: agent.steps,
+    failedSteps: agent.failedSteps,
+  };
 }
