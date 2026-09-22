@@ -255,7 +255,7 @@ function runScript(script: string, args: readonly string[], logPath: string) {
   });
 }
 
-const makeForkUpdates = (input: { readonly root: string; readonly script: string }) =>
+export const makeForkUpdates = (input: { readonly root: string; readonly script: string }) =>
   Effect.gen(function* () {
     const electronWindow = yield* ElectronWindow.ElectronWindow;
     const environment = yield* DesktopEnvironment.DesktopEnvironment;
