@@ -38,7 +38,8 @@ can be in flight without disturbing the build the user works in all day.
 - Upstream reaches `fork` by itself: every morning at 06:00 the "Upstream-Sync"
   Copilot automation (repo → Agents → Automations) merges upstream's `main`,
   resolves conflicts, typechecks and opens a PR into `fork`, and
-  `fork-copilot-automerge.yml` merges it when its title says it is green.
+  `fork-copilot-automerge.yml` merges it on its next check (every 15 minutes
+  until 09:00) when its title says it is green.
   What Copilot cannot resolve stays open as a PR that mentions Paul. Rebase
   feature branches onto `fork` to pick upstream up.
 
