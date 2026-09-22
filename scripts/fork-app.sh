@@ -3,30 +3,34 @@
 # installation and no dev server. Builds live outside the checkout in
 # $T3CODE_FORK_APP_ROOT (default ~/Documents/private/t3code-app):
 #
-#   current/      the build the running app uses
-#   next/         a prepared build, waiting for a restart
-#   staging/      where `prepare` builds; recycled from the previous `current`
-#   home/         app state (T3CODE_HOME): settings and the saved service connection
-#   server.json   the newest fork server built for the t3 service
+#   current/          the build the running app uses
+#   builds/<branch>/  the newest build of each branch, waiting to be switched to
+#   staging/          where `prepare` builds; recycled from a replaced build
+#   home/             app state (T3CODE_HOME): settings and the saved service connection
+#   servers/<branch>.json  the newest fork server built from each branch
 #
 # The app keeps its local environment off and talks to the machine's t3
 # background service, so restarting it never stops agents.
 #
-#   scripts/fork-app.sh prepare   build this checkout (including uncommitted
-#                                 changes) into next/ — agents run this
-#   scripts/fork-app.sh restart   switch to next/ if one is prepared, then
-#                                 relaunch — the app's update button runs this,
-#                                 beside restart-service when a server waits
+#   scripts/fork-app.sh prepare           build this checkout (including uncommitted
+#                                         changes) into builds/<branch>/, replacing
+#                                         that branch's older build — agents run this
+#   scripts/fork-app.sh restart <branch>  switch to that branch's build and relaunch;
+#                                         the app's update menu runs this, beside
+#                                         restart-service when the branch's server
+#                                         differs from the one the service runs
+#   scripts/fork-app.sh delete <branch>   remove a branch's build and server
 #   scripts/fork-app.sh start | stop | status
 #
 # Features with a server side need the fork's server too, because the app only
 # ever talks to the machine's t3 service:
 #
-#   scripts/fork-app.sh prepare-server    when the server changed since the last
-#                                         one built, build this checkout into a
+#   scripts/fork-app.sh prepare-server    when the server changed since the branch's
+#                                         last one built, build this checkout into a
 #                                         t3 runtime and install it beside the
 #                                         others; the service keeps running
-#   scripts/fork-app.sh restart-service   switch the service to that runtime
+#   scripts/fork-app.sh restart-service <version>
+#                                         switch the service to that runtime
 #                                         and restart it; running threads,
 #                                         subagents and workflows continue after
 #                                         it (Continue threads after restarts)
@@ -50,16 +54,18 @@ SCRIPT_REPO="${T3CODE_FORK_REPO:-${0:A:h:h}}"
 ROOT="${T3CODE_FORK_APP_ROOT:-$HOME/Documents/private/t3code-app}"
 HOME_DIR="$ROOT/home"
 LOG_DIR="$ROOT/logs"
+BUILDS_DIR="$ROOT/builds"
+SERVERS_DIR="$ROOT/servers"
 NODE_MAJOR=26
 PNPM="pnpm@11.10.0"
 
-mkdir -p "$ROOT" "$HOME_DIR/userdata" "$LOG_DIR"
+mkdir -p "$ROOT" "$HOME_DIR/userdata" "$LOG_DIR" "$BUILDS_DIR" "$SERVERS_DIR"
 
 # A restart without a terminal comes from the app's update button or the
 # Finder launcher; nobody sees its output, so keep a log.
 if [[ ! -t 1 && "${1:-}" == restart ]]; then
   exec >>"$LOG_DIR/fork-app.log" 2>&1
-  echo "--- $(date '+%F %T') fork-app.sh ${1:-} (pid $$, parent $PPID)"
+  echo "--- $(date '+%F %T') fork-app.sh ${*:-} (pid $$, parent $PPID)"
 fi
 
 use_node() {
@@ -110,8 +116,32 @@ stop() {
   kill -9 ${(f)"$(app_pids)"} 2>/dev/null || true
 }
 
+# A flat string field of a JSON file, or nothing.
+json_field() {
+  sed -n "s/.*\"$2\": *\"\\([^\"]*\\)\".*/\\1/p" "$1" 2>/dev/null | head -1 || true
+}
+
 label_of() {
-  sed -n 's/.*"label": *"\([^"]*\)".*/\1/p' "$1/.fork-build.json" 2>/dev/null
+  json_field "$1/.fork-build.json" label
+}
+
+commit_of() {
+  json_field "$1/.fork-build.json" commit
+}
+
+# The directory name a branch's build and server go by. Doubles as the semver
+# prerelease identifier of the server, which allows [0-9A-Za-z-] only.
+slug_of() {
+  echo "$1" | tr -c '[:alnum:]-' '-' | sed 's/-\{2,\}/-/g; s/^-//; s/-$//'
+}
+
+# The branch a build in a slot belongs to. Builds before slots were per branch
+# carry only a label, which starts with the branch.
+build_slug() {
+  local branch
+  branch="$(json_field "$1/.fork-build.json" branch)"
+  [[ -n "$branch" ]] || branch="${$(label_of "$1")%%@*}"
+  slug_of "${${branch:-unknown}#origin/}"
 }
 
 start() {
@@ -161,18 +191,23 @@ branch_of() {
   if [[ "$branch" == HEAD ]]; then
     branch="$(git -C "$repo" for-each-ref --points-at HEAD --count 1 \
       --format='%(refname:short)' refs/remotes/origin refs/heads)"
+    branch="${branch#origin/}"
   fi
   echo "${branch:-detached}"
 }
 
-commit_of() {
-  sed -n 's/.*"commit": *"\([^"]*\)".*/\1/p' "$1/.fork-build.json" 2>/dev/null
-}
 # Whether the build in a slot is at, or past, the given commit.
 build_contains() {
   local built
   built="$(commit_of "$1")"
   [[ -n "$built" ]] && git -C "$SCRIPT_REPO" merge-base --is-ancestor "$2" "$built" 2>/dev/null
+}
+
+# Moves a finished directory out of the way without waiting for its removal.
+discard() {
+  local trash="$ROOT/.trash-$$-$RANDOM"
+  mv "$1" "$trash"
+  (rm -rf "$trash" &!)
 }
 
 prepare() {
@@ -190,8 +225,9 @@ prepare() {
   rsync -a --delete --exclude=.git --exclude=.fork-build.json \
     --filter=':- .gitignore' "$source_repo/" "$staging/"
 
-  local branch commit sha dirty=""
+  local branch slug commit sha dirty=""
   branch="$(branch_of "$source_repo")"
+  slug="$(slug_of "$branch")"
   sha="$(git -C "$source_repo" rev-parse HEAD)"
   commit="${sha[1,7]}"
   [[ -n "$(git -C "$source_repo" status --porcelain)" ]] && dirty="+changes"
@@ -202,19 +238,23 @@ prepare() {
   echo "Building $label …"
   (cd "$staging" && T3CODE_COMMIT_HASH="$sha" npx vp run build:desktop)
 
-  printf '{"label": "%s", "commit": "%s", "source": "%s", "builtAt": "%s"}\n' \
-    "$label" "$sha" "$source_repo" "$(date -u +%FT%TZ)" > "$staging/.fork-build.json"
+  printf '{"label": "%s", "branch": "%s", "commit": "%s", "dirty": %s, "source": "%s", "builtAt": "%s"}\n' \
+    "$label" "$branch" "$sha" "$([[ -n "$dirty" ]] && echo true || echo false)" \
+    "$source_repo" "$(date -u +%FT%TZ)" > "$staging/.fork-build.json"
 
+  # The branch's older build becomes the next staging area and keeps its
+  # node_modules; the swap is what the update menu sees, so it is atomic-ish.
   acquire_lock swap
-  if [[ -d "$ROOT/next" ]]; then
-    mv "$ROOT/next" "$ROOT/staging.recycle"
-    mv "$staging" "$ROOT/next"
+  local slot="$BUILDS_DIR/$slug"
+  if [[ -d "$slot" ]]; then
+    mv "$slot" "$ROOT/staging.recycle"
+    mv "$staging" "$slot"
     mv "$ROOT/staging.recycle" "$staging"
   else
-    mv "$staging" "$ROOT/next"
+    mv "$staging" "$slot"
   fi
   release_lock swap
-  echo "Prepared $label. The app's update button now offers it."
+  echo "Prepared $label into builds/$slug. The app's update menu now offers it."
 }
 
 # Builds a t3 runtime from this checkout and makes it the service's active
@@ -226,13 +266,7 @@ SERVICE_STATE="$RUNTIME_DIR/service-state.json"
 # Written by the t3 CLI too; the launcher removes it when it starts, so it
 # marks a switched version that the service has not picked up yet.
 RESTART_PENDING="$RUNTIME_DIR/.restart-pending"
-SERVER_INFO="$ROOT/server.json"
 SERVER_STAGING="$ROOT/server-staging"
-
-# A flat string field of a JSON file, or nothing.
-json_field() {
-  sed -n "s/.*\"$2\": *\"\\([^\"]*\\)\".*/\\1/p" "$1" 2>/dev/null | head -1 || true
-}
 
 active_server_version() {
   json_field "$SERVICE_STATE" activeVersion
@@ -250,9 +284,10 @@ SERVER_PATHS=(
 )
 
 # Builds this checkout into a t3 runtime when its server differs from the
-# newest one built (or, before the first, from the one the service runs), and
-# records the result in server.json. Never switches the service: that is
-# restart-service, which the user triggers through the app's update button.
+# branch's last one built (or, before the first, from the one the service
+# runs), and records the result in servers/<branch>.json. Never switches the
+# service: that is restart-service, which the user triggers through the app's
+# update menu.
 prepare_server() {
   local source_repo="$SCRIPT_REPO"
   acquire_lock prepare-server
@@ -260,15 +295,18 @@ prepare_server() {
   use_node
   [[ -f "$SERVICE_STATE" ]] || { echo "No t3 service state at $SERVICE_STATE." >&2; return 1; }
 
-  local branch sha commit
+  local branch slug sha commit
   branch="$(branch_of "$source_repo")"
+  slug="$(slug_of "$branch")"
   sha="$(git -C "$source_repo" rev-parse HEAD)"
   commit="${sha[1,7]}"
+  local server_info="$SERVERS_DIR/$slug.json"
 
-  # The baseline is the server a restart would run: the newest fork server
-  # built, or the service's own version. Fork versions end in their commit.
+  # The baseline is the server a switch to this branch would run: the
+  # branch's newest server built, or the service's own version. Fork versions
+  # end in their commit.
   local base_version base_commit
-  base_version="$(json_field "$SERVER_INFO" version)"
+  base_version="$(json_field "$server_info" version)"
   [[ -n "$base_version" && -x "$RUNTIME_DIR/versions/$base_version/t3" ]] ||
     base_version="$(active_server_version)"
   base_commit=""
@@ -277,7 +315,7 @@ prepare_server() {
     git -C "$source_repo" rev-parse --verify --quiet "$base_commit^{commit}" >/dev/null &&
     git -C "$source_repo" diff --quiet "$base_commit" -- "${SERVER_PATHS[@]}"
   then
-    write_server_info "$base_version" "$sha" ""
+    write_server_info "$server_info" "$branch" "$base_version" "$sha" ""
     echo "The server is unchanged since $base_version; nothing to build."
     return
   fi
@@ -290,21 +328,18 @@ prepare_server() {
     "$source_repo/apps/server/src/cloud/serviceProtocol.ts")"
   running_protocol="$(sed -n 's/.*"protocol": *\([0-9]*\).*/\1/p' "$SERVICE_STATE")"
   if [[ "$protocol" != "$running_protocol" ]]; then
-    write_server_info "$base_version" "$sha" \
+    write_server_info "$server_info" "$branch" "$base_version" "$sha" \
       "The service launcher protocol changed ($running_protocol → $protocol). Move the launcher by hand as in docs/fork/setup.md, step 4."
     echo "Launcher protocol changed ($running_protocol → $protocol); not building the server." >&2
     return
   fi
 
-  local slug version
-  # Semver prerelease identifiers allow [0-9A-Za-z-] only.
-  slug="$(echo "$branch" | tr -c '[:alnum:]-' '-' | sed 's/-\{2,\}/-/g; s/^-//; s/-$//')"
   # The base is one patch above the checkout's server version, so the fork
   # outranks the release it came from and a later official release outranks
   # the fork. The service refuses to start a child whose own version differs
   # from the directory it was started from, so this string has to be baked
   # into the build.
-  local base
+  local base version
   base="$(node -e "const v=require('$source_repo/apps/server/package.json').version.split('.');console.log([v[0],v[1],Number(v[2])+1].join('.'))")"
   version="$base-fork.$slug.$commit"
 
@@ -384,27 +419,30 @@ prepare_server() {
   [[ -x "$target/t3" ]] || { echo "Extracted runtime has no t3 executable." >&2; rm -rf "$target"; return 1; }
   printf '%s\n' "$version" > "$target/.install-complete"
 
-  write_server_info "$version" "$sha" ""
+  write_server_info "$server_info" "$branch" "$version" "$sha" ""
   prune_server_versions
   echo "Installed $version ($branch@$commit). The service keeps running"
   echo "$(active_server_version) until restart-service switches it."
 }
 
 write_server_info() {
-  local version="$1" sha="$2" blocked="$3"
-  printf '{"version": "%s", "commit": "%s", "blocked": "%s", "builtAt": "%s"}\n' \
-    "$version" "$sha" "$blocked" "$(date -u +%FT%TZ)" > "$SERVER_INFO.tmp"
-  mv "$SERVER_INFO.tmp" "$SERVER_INFO"
+  local file="$1" branch="$2" version="$3" sha="$4" blocked="$5"
+  printf '{"version": "%s", "branch": "%s", "commit": "%s", "blocked": "%s", "builtAt": "%s"}\n' \
+    "$version" "$branch" "$sha" "$blocked" "$(date -u +%FT%TZ)" > "$file.tmp"
+  mv "$file.tmp" "$file"
 }
 
 # Each runtime is ~200 MB. Keeps release versions, the one the service runs,
-# the one it ran before, the newest built, and the launcher's own.
+# the one it ran before, every branch's newest, and the launcher's own.
 prune_server_versions() {
   local keep=(
     "$(active_server_version)"
     "$(cat "$RUNTIME_DIR/.fork-previous-version" 2>/dev/null || true)"
-    "$(json_field "$SERVER_INFO" version)"
   )
+  local info
+  for info in "$SERVERS_DIR"/*.json(N); do
+    keep+=("$(json_field "$info" version)")
+  done
   local plist="$HOME/Library/LaunchAgents/com.t3tools.t3code.service.plist"
   keep+=(${(f)"$(sed -n 's|.*/runtime/versions/\([^/<]*\)/.*|\1|p' "$plist" 2>/dev/null)"})
   local dir
@@ -415,12 +453,11 @@ prune_server_versions() {
   done
 }
 
-# Switches the service to the newest fork server and restarts it. Ends every
-# running agent session; only the user starts this, from the app.
+# Switches the service to an installed fork server and restarts it. Running
+# threads continue; only the user starts this, from the app's update menu.
 restart_service() {
-  local version
-  version="$(json_field "$SERVER_INFO" version)"
-  [[ -n "$version" ]] || { echo "No fork server prepared; run prepare-server." >&2; return 1; }
+  local version="${1:-}"
+  [[ -n "$version" ]] || { echo "usage: restart-service <version>" >&2; return 2; }
   [[ -x "$RUNTIME_DIR/versions/$version/t3" ]] ||
     { echo "Server $version is not installed; run prepare-server." >&2; return 1; }
   local previous
@@ -450,15 +487,15 @@ watch_once() {
     echo "$(date '+%F %T') fetch failed; trying again next pass" >&2
     return 0
   }
-  local remote app_built=0 server_built=0
+  local remote slug app_built=0 server_built=0
   remote="$(git -C "$SCRIPT_REPO" rev-parse "origin/$WATCH_BRANCH")"
-  # A build that already contains the branch's commit (a feature branch
-  # merged from it, say) is not behind it, so the waiting slot is left alone
-  # while the user tries such a build.
-  { build_contains "$ROOT/next" "$remote" || build_contains "$ROOT/current" "$remote"; } &&
+  slug="$(slug_of "$WATCH_BRANCH")"
+  # The running build may already contain the branch's commit (a feature
+  # branch merged from it, say); then the branch's own slot stays as it is.
+  { build_contains "$BUILDS_DIR/$slug" "$remote" || build_contains "$ROOT/current" "$remote"; } &&
     app_built=1
   git -C "$SCRIPT_REPO" merge-base --is-ancestor "$remote" \
-    "$(json_field "$SERVER_INFO" commit)" 2>/dev/null && server_built=1
+    "$(json_field "$SERVERS_DIR/$slug.json" commit)" 2>/dev/null && server_built=1
   (( app_built && server_built )) && return 0
   if [[ ! -e "$WATCH_SOURCE/.git" ]]; then
     rm -rf "$WATCH_SOURCE"
@@ -474,44 +511,86 @@ watch_once() {
   (( server_built )) || env -u T3CODE_FORK_REPO "$WATCH_SOURCE/scripts/fork-app.sh" prepare-server
 }
 
+# Moves the running build back into its branch's slot, so the update menu can
+# return to it, unless that branch has a newer build waiting; then the old one
+# becomes the next staging area (keeping node_modules) or is thrown away.
+retire_current() {
+  [[ -d "$ROOT/current" ]] || return 0
+  local slot="$BUILDS_DIR/$(build_slug "$ROOT/current")"
+  if [[ -f "$ROOT/current/.fork-build.json" && ! -d "$slot" ]]; then
+    mv "$ROOT/current" "$slot"
+  elif [[ -d "$ROOT/staging" ]]; then
+    discard "$ROOT/current"
+  else
+    mv "$ROOT/current" "$ROOT/staging"
+  fi
+}
+
 restart() {
+  local slug="${1:-}"
   acquire_lock swap
   trap 'release_lock swap' EXIT
+  local build=""
+  if [[ -n "$slug" ]]; then
+    build="$BUILDS_DIR/$slug"
+    [[ -f "$build/.fork-build.json" ]] || { echo "No build for $slug in $BUILDS_DIR." >&2; return 1; }
+  elif [[ -f "$ROOT/next/.fork-build.json" ]]; then
+    # An app from before builds were per branch still installs next/.
+    build="$ROOT/next"
+  fi
   stop
-  if [[ -f "$ROOT/next/.fork-build.json" ]]; then
-    if [[ -d "$ROOT/current" ]]; then
-      if [[ -d "$ROOT/staging" ]]; then
-        local trash="$ROOT/.trash-$$"
-        mv "$ROOT/current" "$trash"
-        (rm -rf "$trash" &!)
-      else
-        # The old build becomes the next staging area and keeps node_modules.
-        mv "$ROOT/current" "$ROOT/staging"
-      fi
-    fi
-    mv "$ROOT/next" "$ROOT/current"
+  if [[ -n "$build" ]]; then
+    retire_current
+    mv "$build" "$ROOT/current"
   fi
   start
+}
+
+delete_build() {
+  local slug="${1:-}"
+  [[ -n "$slug" ]] || { echo "usage: delete <branch>" >&2; return 2; }
+  acquire_lock swap
+  trap 'release_lock swap' EXIT
+  local removed=0
+  if [[ -d "$BUILDS_DIR/$slug" ]]; then
+    discard "$BUILDS_DIR/$slug"
+    removed=1
+  fi
+  if [[ -f "$SERVERS_DIR/$slug.json" ]]; then
+    rm -f "$SERVERS_DIR/$slug.json"
+    prune_server_versions
+    removed=1
+  fi
+  (( removed )) && echo "Removed the build of $slug." || echo "No build of $slug to remove."
+}
+
+status() {
+  echo "app:     $([[ -n "$(app_pids)" ]] && echo running || echo stopped)"
+  echo "current: $([[ -d "$ROOT/current" ]] && label_of "$ROOT/current" || echo none)"
+  local slot
+  for slot in "$BUILDS_DIR"/*(N/); do
+    echo "build:   ${slot:t}: $(label_of "$slot")"
+  done
+  echo "service: $(active_server_version)$([[ -f "$RESTART_PENDING" ]] && echo ", restart pending")"
+  local info
+  for info in "$SERVERS_DIR"/*.json(N); do
+    echo "server:  ${${info:t}%.json}: $(json_field "$info" version)$([[ -n "$(json_field "$info" blocked)" ]] && echo " (blocked)")"
+  done
 }
 
 case "${1:-}" in
   prepare) prepare ;;
   prepare-server) prepare_server ;;
-  restart-service) restart_service ;;
+  restart-service) restart_service "${2:-}" ;;
   watch) watch_once ;;
-  restart) restart ;;
+  restart) restart "${2:-}" ;;
+  delete) delete_build "${2:-}" ;;
   start) stop && start ;;
   stop) stop ;;
-  status)
-    echo "app:     $([[ -n "$(app_pids)" ]] && echo running || echo stopped)"
-    echo "current: $([[ -d "$ROOT/current" ]] && label_of "$ROOT/current" || echo none)"
-    echo "next:    $([[ -d "$ROOT/next" ]] && label_of "$ROOT/next" || echo none)"
-    echo "service: $(active_server_version)$([[ -f "$RESTART_PENDING" ]] && echo ", restart pending")"
-    echo "server:  $(json_field "$SERVER_INFO" version)"
-    ;;
+  status) status ;;
   *)
-    echo "usage: $0 prepare|restart|start|stop|status|watch" >&2
-    echo "       $0 prepare-server|restart-service" >&2
+    echo "usage: $0 prepare|restart [branch]|delete <branch>|start|stop|status|watch" >&2
+    echo "       $0 prepare-server|restart-service <version>" >&2
     exit 2
     ;;
 esac

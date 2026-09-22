@@ -51,30 +51,36 @@ scripts/fork-app.sh restart
 ```
 
 `prepare` builds the checkout — including uncommitted changes — into a staging
-slot and promotes it to `next/`. `restart` swaps `next/` into `current/` and
-relaunches. From then on the app's own update button runs `restart` for you, so
-the usual loop is: `prepare`, then click update in the app.
+slot and promotes it to `builds/<branch>/`, replacing that branch's older
+build. `restart <branch>` swaps that build into `current/` and relaunches, and
+moves the build it replaces back into its own branch's slot, so you can return
+to it. From then on the app's own update menu runs `restart` for you, so the
+usual loop is: `prepare`, then pick the branch in the app.
 
 Everything lives outside the checkout, under `$T3CODE_FORK_APP_ROOT`
 (default `~/Documents/private/t3code-app`):
 
-| Slot          | What it holds                                                          |
-| ------------- | ---------------------------------------------------------------------- |
-| `current/`    | the build the running app uses                                         |
-| `next/`       | a prepared build waiting for a restart                                 |
-| `staging/`    | where `prepare` builds; recycled from the previous `current`           |
-| `home/`       | the app's own `T3CODE_HOME`: settings and the saved service connection |
-| `server.json` | the newest fork server `prepare-server` built for the service          |
+| Slot                    | What it holds                                                          |
+| ----------------------- | ---------------------------------------------------------------------- |
+| `current/`              | the build the running app uses                                         |
+| `builds/<branch>/`      | the newest prepared build of each branch, waiting to be switched to    |
+| `staging/`              | where `prepare` builds; recycled from a replaced build                 |
+| `home/`                 | the app's own `T3CODE_HOME`: settings and the saved service connection |
+| `servers/<branch>.json` | the newest fork server `prepare-server` built from each branch         |
 
-`scripts/fork-app.sh status` prints which build is where. Only one prepared
-build waits at a time — a second `prepare` replaces it.
+`scripts/fork-app.sh status` prints which build is where. Each branch keeps
+one waiting build — a second `prepare` from the same branch replaces it —
+and `scripts/fork-app.sh delete <branch>` removes a branch's build and
+server. A build is 6 GB, so delete the ones you are done with.
 
 While it runs, the app checks `origin/fork` every minute
 (`fork-app.sh watch`, logged to `logs/fork-watch.log`) and prepares new commits
-from its own worktree: the app always, the server only when something it is
-built from changed. The sidebar's update icon (and **Check for updates** when
-nothing waits) installs both at once: it runs `fork-app.sh restart-service`
-and `fork-app.sh restart` side by side. With
+from its own worktree into the `fork` slot: the app always, the server only
+when something it is built from changed. The sidebar's update icon opens a
+menu listing every branch's build with its own update and delete buttons.
+Updating a branch runs `fork-app.sh restart <branch>` and, when the branch's
+server differs from the one the service runs,
+`fork-app.sh restart-service <version>` side by side. With
 **Settings → General → Continue threads after restarts** on (the default),
 running threads, subagents and workflows continue after the service restart.
 
@@ -92,13 +98,14 @@ This mirrors the release pipeline — single executable, web client, resource
 monitor — and installs the result into
 `~/.t3/runtime/versions/<version>`, where `<version>` is one patch above the
 checkout's server version plus a branch-and-commit prerelease tag, for example
-`0.0.43-fork.feat-git-graph.2763366`, and records it in `server.json` beside
-the app slots. When the server is unchanged since the last one built, it builds
-nothing.
+`0.0.43-fork.feat-git-graph.2763366`, and records it in
+`servers/<branch>.json` beside the app slots. When the server is unchanged
+since the branch's last one built (or, before that, since the one the service
+runs), it builds nothing and records that version for the branch.
 
 It deliberately does not switch or restart anything: that is
-`scripts/fork-app.sh restart-service`, which the app's update button runs once
-the service is set up.
+`scripts/fork-app.sh restart-service <version>`, which the app's update menu
+runs once the service is set up.
 
 **On its own, this is not enough.** Two further steps are needed, and skipping
 either one leaves you with a service that crash-loops or a server that cannot
@@ -150,11 +157,13 @@ copying them from anywhere else.
 
 ### Doing both
 
-`FORK` is the version `prepare-server` just built, and `PROTOCOL` is read from
-the source the fork was built from, so the two always agree:
+`FORK` is the version `prepare-server` just built for your branch (replace
+`fork` with its name as `scripts/fork-app.sh status` prints it), and
+`PROTOCOL` is read from the source the fork was built from, so the two always
+agree:
 
 ```bash
-FORK=$(python3 -c "import json;print(json.load(open('$HOME/Documents/private/t3code-app/server.json'))['version'])")
+FORK=$(python3 -c "import json;print(json.load(open('$HOME/Documents/private/t3code-app/servers/fork.json'))['version'])")
 PROTOCOL=$(sed -n 's/.*SERVICE_LAUNCHER_PROTOCOL = \([0-9]*\).*/\1/p' apps/server/src/cloud/serviceProtocol.ts)
 RELEASE=<your installed release version, e.g. 0.0.42>
 PLIST="$HOME/Library/LaunchAgents/com.t3tools.t3code.service.plist"
@@ -248,13 +257,14 @@ For the app, `scripts/fork-app.sh stop` is enough; the official
 
 ## Rebuilding later
 
-For the app: `scripts/fork-app.sh prepare`, then the update button.
+For the app: `scripts/fork-app.sh prepare`, then the branch in the update
+menu.
 
-For the server: `scripts/fork-app.sh prepare-server`, then the same update
-button. Both happen on their own for commits pushed to `origin/fork`. The plist
+For the server: `scripts/fork-app.sh prepare-server`, then the same menu
+entry. Both happen on their own for commits pushed to `origin/fork`. The plist
 and the cloud environment variables stay valid and do not need redoing —
 unless a rebase brings a `SERVICE_LAUNCHER_PROTOCOL` bump, in which case step 4
 has to be repeated, because the plist would still name a launcher speaking the
 old protocol. `prepare-server` notices that bump, builds nothing, and records
-why in `server.json`; the update button then offers only the app, and
-`logs/fork-watch.log` points here.
+why in `servers/<branch>.json`; the update menu then marks the branch's server
+as blocked and installs only the app, and `logs/fork-watch.log` points here.

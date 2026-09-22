@@ -70,7 +70,7 @@ write changes with that merge in mind, not just with the current diff in mind.
 ## Finishing a feature
 
 The user runs the fork's desktop app as a prebuilt build and switches to a new
-one with the app's update button. Your job ends with that build prepared.
+one with the app's update menu. Your job ends with that build prepared.
 
 1. Commit your work on its feature branch (or leave it uncommitted if the user
    prefers; `prepare` includes uncommitted changes of the checkout it runs in).
@@ -84,36 +84,39 @@ one with the app's update button. Your job ends with that build prepared.
    asked to ship stays on its branch, and `prepare` from that branch is fine
    for trying it out — just say which branch the prepared build came from.
 4. Run `scripts/fork-app.sh prepare` from the checkout or worktree that holds
-   what should be built. It builds into `~/Documents/private/t3code-app/next`
-   without touching the running app and takes one to two minutes. If it fails,
-   fix the cause and run it again.
+   what should be built. It builds into
+   `~/Documents/private/t3code-app/builds/<branch>`, replacing that branch's
+   older build and touching neither the running app nor other branches'
+   builds. It takes one to two minutes. If it fails, fix the cause and run it
+   again.
 5. End with a short message: what changed, branch and commit, what you
-   verified, and that the build is prepared, so the update button offers it.
+   verified, and that the build is prepared, so the update menu offers it
+   under its branch.
 
 ### Staying current with `fork`
 
 While the app runs, it runs `scripts/fork-app.sh watch` every minute: that
 fetches `origin/fork` and, when the branch moved, prepares the new commit —
-the app into the waiting slot, and the server with `prepare-server` when
-anything the server is built from changed. The app's update icon then offers
-both in one click: it restarts the service on the new server and the app side
-by side, and running threads, subagents and workflows continue after the
-service restart. The log is
+the app into the `fork` slot, and the server with `prepare-server` when
+anything the server is built from changed. The app's update menu then offers
+the branch in one click: it restarts the service on the new server and the
+app side by side, and running threads, subagents and workflows continue after
+the service restart. The log is
 `~/Documents/private/t3code-app/logs/fork-watch.log`.
 
 It builds from its own detached worktree in
 `~/Documents/private/t3code-app/source`, never from a working checkout, so
 uncommitted work is neither built nor disturbed. It prepares only — switching
-stays the user's click, for the app and for the service alike. Note that it competes for the one waiting slot: a build
-an agent prepared from a feature branch is replaced by the next commit on
-`fork`, so let the user try such a build before pushing to `fork`.
+stays the user's click, for the app and for the service alike. Every branch
+has a slot of its own, so a build prepared from a feature branch stays on
+offer until the user installs it or deletes it from the menu.
 
 - **Never run `scripts/fork-app.sh restart`, `restart-service`, `start`, or
   `stop`**, never run
   `vp run start:desktop`, and never kill the app's Electron processes. The user
   decides when to switch.
-- Only one prepared build waits at a time; a later `prepare` from another agent
-  replaces it. Mention in your message if you know another agent is preparing.
+- A branch holds one waiting build; a later `prepare` from the same branch
+  replaces it. Builds of other branches are never touched.
 
 ## Other rules
 
