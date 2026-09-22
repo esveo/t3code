@@ -7590,6 +7590,15 @@ export default function ChatView(props: ChatViewProps) {
       }
 
       if (command === "chat.find") {
+        // The file editor has its own find, a modal owns the keyboard while
+        // open, and a maximized panel hides the timeline the bar would search.
+        if (
+          rightPanelMaximized ||
+          (event.target instanceof Element &&
+            event.target.closest(".file-preview-virtualizer, [role=dialog]") !== null)
+        ) {
+          return;
+        }
         event.preventDefault();
         event.stopPropagation();
         if (!event.repeat) useChatFindStore.getState().show();
@@ -7704,6 +7713,7 @@ export default function ChatView(props: ChatViewProps) {
     onInterrupt,
     onToggleDiff,
     pinThread,
+    rightPanelMaximized,
     settleThread,
     supportsPinning,
     supportsSettlement,
