@@ -1,3 +1,5 @@
+Feature-Requests tracken wir [hier](https://github.com/orgs/esveo/projects/3).
+
 Fork of [T3 Code](https://github.com/pingdotgg/t3code) with features and fixes:
 
 - Split view: threads side by side, arranged by drag and drop ([2187e3f](https://github.com/esveo/t3code/commit/2187e3f3806fbcde1ff88f46996463c5b75fe0c6), [5cb5bdb](https://github.com/esveo/t3code/commit/5cb5bdb6624ab3914b0d208c78fce88f97fec1ce), [7cdf86e](https://github.com/esveo/t3code/commit/7cdf86eabd53d9957a465091d845d19ce120c5fa), [263c6b2](https://github.com/esveo/t3code/commit/263c6b2a7abe3af8962a6096358e0d58193244cb), [4429f8a](https://github.com/esveo/t3code/commit/4429f8abc4cf1b99b8d3e1fdf16f471ea90a25b5))
