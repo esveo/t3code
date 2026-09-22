@@ -23,17 +23,27 @@ export const SidebarProjectRunHeader = memo(function SidebarProjectRunHeader(pro
         type="button"
         onClick={() => props.onToggle(header.projectKey)}
         aria-expanded={!header.collapsed}
-        aria-label={`${label}, ${header.threadCount} thread${header.threadCount === 1 ? "" : "s"}`}
+        aria-label={[
+          label,
+          `${header.threadCount} thread${header.threadCount === 1 ? "" : "s"}`,
+          ...(header.attentionCount > 0 ? [`${header.attentionCount} waiting on you`] : []),
+        ].join(", ")}
         className="flex h-6 w-full cursor-pointer items-center gap-1.5 rounded-md px-1.5 text-left text-xs transition-colors hover:bg-sidebar-row-hover"
       >
         {project ? <ProjectFavicon project={project} className="size-3.5 shrink-0" /> : null}
         <span className="min-w-0 shrink truncate font-medium text-sidebar-foreground/75">
           {label}
         </span>
-        {header.runningCount > 0 ? (
+        {/* Amber when the run waits on an answer, blue while it only works. */}
+        {header.attentionCount > 0 || header.runningCount > 0 ? (
           <span
             aria-hidden
-            className="size-1.5 shrink-0 rounded-full bg-amber-500 dark:bg-amber-400"
+            className={cn(
+              "size-1.5 shrink-0 rounded-full",
+              header.attentionCount > 0
+                ? "bg-amber-500 dark:bg-amber-400"
+                : "bg-blue-500/70 dark:bg-blue-400/70",
+            )}
           />
         ) : null}
         <span aria-hidden className="h-px min-w-2 flex-1 bg-sidebar-border/60" />

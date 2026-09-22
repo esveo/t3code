@@ -4,6 +4,7 @@ import { useCallback, useMemo } from "react";
 import * as Schema from "effect/Schema";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { useGroupSidebarThreadsByProject } from "../../hooks/useSettings";
+import { resolveSidebarThreadStatus } from "../Sidebar.logic";
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
 import { buildSidebarProjectRunPlan, type SidebarProjectRunPlan } from "./sidebarProjectRuns.logic";
 
@@ -75,6 +76,11 @@ export function useSidebarProjectRuns(input: {
         isCollapsed: (projectKey) => collapsed.has(`${section}:${projectKey}`),
         isRunning: (thread) =>
           thread.session?.status === "running" && thread.session.activeTurnId != null,
+        // The states that wait on a person rather than on the agent.
+        needsAttention: (thread) => {
+          const status = resolveSidebarThreadStatus(thread);
+          return status === "input" || status === "approval" || status === "failed";
+        },
         isProtected: (thread) =>
           scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
       }),
