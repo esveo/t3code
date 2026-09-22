@@ -11,14 +11,12 @@ import { useEnvironmentQuery } from "~/state/query";
 import { gitGraphEnvironment } from "~/state/gitGraph";
 import { vcsEnvironment } from "~/state/vcs";
 
-import { layoutCommitGraph, type CommitGraphEdge } from "./commitGraphLayout";
+import { layoutCommitGraph } from "./commitGraphLayout";
+import { edgePath, LANE_PADDING, LANE_WIDTH, ROW_HEIGHT } from "./edgePath";
 import { GitGraphDiff } from "./GitGraphDiff";
 import { gitGraphIsFresh, gitGraphStatusKey } from "./gitGraphRefresh.logic";
 import { gitGraphDiffRange, nextGitGraphSelection, WORKTREE_ID } from "./gitGraphSelection";
 
-const ROW_HEIGHT = 28;
-const LANE_WIDTH = 14;
-const LANE_PADDING = 10;
 const DOT_RADIUS = 3.5;
 const INITIAL_LIMIT = 200;
 const LIMIT_STEP = 300;
@@ -43,35 +41,6 @@ function relativeTime(iso: string): string {
   if (days < 14) return `${days}d`;
   const weeks = Math.round(days / 7);
   return weeks < 9 ? `${weeks}w` : `${Math.round(days / 30)}mo`;
-}
-
-/**
- * Child lane -> carrier lane -> parent lane, bending once at each change. A
- * merge parent bends late (just above its parent) and a branch tip bends early,
- * which is what makes a merge read as joining rather than crossing.
- */
-function edgePath(edge: CommitGraphEdge): string {
-  const x = (lane: number) => LANE_PADDING + lane * LANE_WIDTH;
-  const y = (row: number) => row * ROW_HEIGHT + ROW_HEIGHT / 2;
-  const startX = x(edge.startLane);
-  const startY = y(edge.startRow);
-  const carrierX = x(edge.lane);
-  const endX = x(edge.endLane);
-  const endY = edge.open ? edge.endRow * ROW_HEIGHT : y(edge.endRow);
-
-  let path = `M${startX} ${startY}`;
-  if (carrierX !== startX) {
-    path +=
-      ` L${startX} ${startY + ROW_HEIGHT * 0.3}` +
-      ` C${startX} ${startY + ROW_HEIGHT * 0.75} ${carrierX} ${startY + ROW_HEIGHT * 0.5}` +
-      ` ${carrierX} ${startY + ROW_HEIGHT}`;
-  }
-  const straightUntil = endX === carrierX ? endY : endY - ROW_HEIGHT;
-  path += ` L${carrierX} ${Math.max(straightUntil, startY)}`;
-  if (endX !== carrierX) {
-    path += ` C${carrierX} ${endY - ROW_HEIGHT * 0.45} ${endX} ${endY - ROW_HEIGHT * 0.7} ${endX} ${endY}`;
-  }
-  return path;
 }
 
 const REF_BADGE_CLASS: Record<VcsCommitGraphRef["kind"], string> = {
