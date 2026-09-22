@@ -217,6 +217,18 @@ import {
 } from "./ThreadStatusIndicators";
 import { resolveSnoozePresets, snoozeWakeLabel, type SnoozePreset } from "./Sidebar.snooze";
 import { ProjectFavicon, type ProjectFaviconProject } from "./ProjectFavicon";
+// Fork: per-project runs in the thread list.
+import { SidebarProjectRunHeader } from "./sidebarProjectRuns/SidebarProjectRunHeader";
+import { SidebarProjectRunRowLead } from "./sidebarProjectRuns/SidebarProjectRunRowLead";
+import {
+  resolveProjectRunAccent,
+  sidebarProjectRunRowClassName,
+} from "./sidebarProjectRuns/sidebarProjectRunAccent";
+import type {
+  SidebarProjectRunHeader as SidebarProjectRunHeaderInfo,
+  SidebarProjectRunPlacement,
+} from "./sidebarProjectRuns/sidebarProjectRuns.logic";
+import { useSidebarProjectRuns } from "./sidebarProjectRuns/useSidebarProjectRuns";
 import { ThreadSearchMatchExcerpt } from "./ThreadSearchMatch";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
@@ -1040,6 +1052,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
    * composer. Absent when the sidebar cannot open server threads.
    */
   onFileDropThreads?: ((threadRef: ScopedThreadRef, files: File[]) => void) | undefined;
+  /**
+   * Fork: where this row sits in its project run, or null when the sidebar
+   * does not gather threads by project. A row in a run draws the run's rail
+   * and drops the project label its run header already carries.
+   */
+  projectRunPlacement?: SidebarProjectRunPlacement | null | undefined;
 }) {
   const {
     isRenaming,
@@ -1070,6 +1088,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   const threadKey = scopedThreadKey(threadRef);
   const { leaseLiveStatus, rowRef } = useSidebarRowSubscriptionLease(props.isActive);
   const twoLineThreadCards = useTwoLineThreadCards();
+  // Fork: run chrome. Its own project run carries the icon and name.
+  const projectRunPlacement = props.projectRunPlacement ?? null;
+  const projectRunClassName = sidebarProjectRunRowClassName({
+    placement: projectRunPlacement,
+    accent: resolveProjectRunAccent(props.project),
+  });
   const isRegeneratingTitle = thread.titleRegeneration != null;
   const lastVisitedAt = useUiStateStore((state) => state.threadLastVisitedAtById[threadKey]);
   const isSelected = useThreadSelectionStore((state) => state.selectedThreadKeys.has(threadKey));
@@ -1600,6 +1624,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         className={cn(
           // Matches the h-9 row so unrendered rows never shift the list when they paint.
           "list-none [content-visibility:auto] [contain-intrinsic-size:auto_36px]",
+          projectRunClassName,
           sortable?.isDragging && "relative z-20",
         )}
       >
@@ -1629,7 +1654,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                   "opacity-40 grayscale group-focus-within/sidebar-row:opacity-100 group-focus-within/sidebar-row:grayscale-0 group-hover/sidebar-row:opacity-100 group-hover/sidebar-row:grayscale-0",
               )}
             >
-              {props.project ? <ProjectFavicon project={props.project} className="size-4" /> : null}
+              {props.project && projectRunPlacement === null ? (
+                <ProjectFavicon project={props.project} className="size-4" />
+              ) : null}
             </span>
             {draftIndicator}
             {title}
@@ -1788,8 +1815,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         // Matches the content box; the py-0.5 padding is added on top.
         "list-none py-0.5 [content-visibility:auto]",
         twoLineThreadCards
-          ? "[contain-intrinsic-size:auto_64px]"
+          ? projectRunPlacement === null
+            ? "[contain-intrinsic-size:auto_64px]"
+            : "[contain-intrinsic-size:auto_56px]"
           : "[contain-intrinsic-size:auto_78px]",
+        projectRunClassName,
         sortable?.isDragging && "relative z-20",
       )}
     >
@@ -1814,14 +1844,27 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             className={cn(
               "relative z-10 px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]",
               twoLineThreadCards ? "h-[3.75rem]" : "h-[4.875rem]",
+              // Fork: inside a run the project line is gone, so the card gives
+              // back the height and padding that line used to justify.
+              projectRunPlacement !== null &&
+                twoLineThreadCards &&
+                "h-[3.25rem] py-[calc(var(--sidebar-content-inset)-0.125rem)]",
             )}
           >
-            <div className="flex h-5 min-w-0 items-center gap-1.5">
+            <div
+              className={cn(
+                "flex min-w-0 items-center gap-1.5",
+                projectRunPlacement === null || !twoLineThreadCards ? "h-5" : "h-4",
+              )}
+            >
               {draftIndicator}
-              {props.project ? (
+              {/* Fork: a run's rows hand this line to the branch — their
+                  project sits in the run header above them. */}
+              {projectRunPlacement !== null ? <SidebarProjectRunRowLead thread={thread} /> : null}
+              {props.project && projectRunPlacement === null ? (
                 <ProjectFavicon project={props.project} className="size-4 shrink-0" />
               ) : null}
-              {props.projectDisplayName ? (
+              {props.projectDisplayName && projectRunPlacement === null ? (
                 <span
                   className={cn(
                     "min-w-0 flex-1 truncate text-secondary-label text-xs",
@@ -1830,9 +1873,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 >
                   {props.projectDisplayName}
                 </span>
-              ) : (
+              ) : projectRunPlacement === null ? (
                 <span className="flex-1" />
-              )}
+              ) : null}
               {pinIndicator}
               {/* The visible state owns this slot's width: status at rest,
                   actions on hover/keyboard focus or while the popover is open. Keeping
@@ -1972,7 +2015,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
             </div>
             {/* Fork: with two-line cards the environment and provider icons
                 trail the title, and the third line below goes with them. */}
-            <div className={cn("mt-1 flex min-w-0", twoLineThreadCards && "items-center gap-1.5")}>
+            <div
+              className={cn(
+                "flex min-w-0",
+                twoLineThreadCards && "items-center gap-1.5",
+                projectRunPlacement !== null && twoLineThreadCards ? "mt-0.5" : "mt-1",
+              )}
+            >
               {title}
               {isRegeneratingTitle ? (
                 <span role="status" className="sr-only">
@@ -2376,6 +2425,18 @@ export default function Sidebar() {
     () => new Map(projects.map((project) => [`${project.environmentId}:${project.id}`, project])),
     [projects],
   );
+  // Fork: the logical project group behind each thread, for the run headers.
+  const projectGroupByThreadProjectKey = useMemo(
+    () =>
+      new Map(
+        projectGroups.flatMap((group) =>
+          group.memberProjects.map(
+            (project) => [`${project.environmentId}:${project.id}`, group] as const,
+          ),
+        ),
+      ),
+    [projectGroups],
+  );
   const projectDisplayNameByKey = useMemo(
     () =>
       new Map(
@@ -2565,7 +2626,7 @@ export default function Sidebar() {
     pinnedThreads,
     draggableThreadKeys,
     activeReorderableThreadKeys,
-    activeThreads,
+    activeThreads: ungroupedActiveThreads,
     snoozedThreads,
     settledThreads,
     snoozeNow,
@@ -2668,13 +2729,25 @@ export default function Sidebar() {
     };
   }, [nowMinute, optimisticDrop, scopedProjectKeys, serverConfigs, snoozeWakeTick, threads]);
 
+  // Fork: the active section, gathered into per-project runs. Everything
+  // downstream — ordering, jump hints, drag, multi-select — reads the
+  // gathered list, so a folded run is genuinely out of the way.
+  const activeRuns = useSidebarProjectRuns({
+    section: "active",
+    threads: ungroupedActiveThreads,
+    projectGroupByThreadProjectKey,
+    routeThreadKey,
+  });
+  const activeThreads = activeRuns.plan.threads;
+
   const threadSearchInputRef = useRef<HTMLInputElement>(null);
   const [threadSearchQuery, setThreadSearchQuery] = useState("");
   const [activeSearchResultIndex, setActiveSearchResultIndex] = useState(0);
   const isSearchingThreads = threadSearchQuery.trim().length > 0;
   const searchableThreads = useMemo(
-    () => [...pinnedThreads, ...activeThreads, ...snoozedThreads, ...settledThreads],
-    [activeThreads, pinnedThreads, settledThreads, snoozedThreads],
+    // Fork: the ungathered list — search must still reach a folded run.
+    () => [...pinnedThreads, ...ungroupedActiveThreads, ...snoozedThreads, ...settledThreads],
+    [ungroupedActiveThreads, pinnedThreads, settledThreads, snoozedThreads],
   );
   const searchEnvironmentIds = useMemo(
     () =>
@@ -2774,7 +2847,7 @@ export default function Sidebar() {
     () => setSettledShelfExpanded((value) => !value),
     [setSettledShelfExpanded],
   );
-  const renderedSettledThreads = useMemo(() => {
+  const shelfSettledThreads = useMemo(() => {
     if (settledShelfExpanded) return visibleSettledThreads;
     if (routeThreadKey === null) return EMPTY_THREADS;
     const routeThread = visibleSettledThreads.find(
@@ -2783,6 +2856,14 @@ export default function Sidebar() {
     );
     return routeThread === undefined ? EMPTY_THREADS : [routeThread];
   }, [routeThreadKey, settledShelfExpanded, visibleSettledThreads]);
+  // Fork: the settled shelf gathers into runs too, after its own paging.
+  const settledRuns = useSidebarProjectRuns({
+    section: "settled",
+    threads: shelfSettledThreads,
+    projectGroupByThreadProjectKey,
+    routeThreadKey,
+  });
+  const renderedSettledThreads = settledRuns.plan.threads;
 
   // The snoozed shelf is collapsed by default: out of the way, never gone.
   // Collapsed threads don't render (and so don't participate in jump
@@ -4845,6 +4926,14 @@ export default function Sidebar() {
                             onUnpin={attemptUnpin}
                             onAcknowledgeWoke={acknowledgeWoke}
                             onFileDropThreads={handleThreadFileDrop}
+                            projectRunPlacement={
+                              (section === "active"
+                                ? activeRuns
+                                : section === "settled"
+                                  ? settledRuns
+                                  : null
+                              )?.plan.placementByThreadKey.get(threadKey) ?? null
+                            }
                           />
                         );
                       };
@@ -4867,6 +4956,31 @@ export default function Sidebar() {
                           </SortableThreadRow>
                         );
                       };
+                      // Fork: the header above each project run.
+                      const pushRunHeaders = (
+                        section: "active" | "settled",
+                        headers: readonly SidebarProjectRunHeaderInfo[],
+                      ) => {
+                        const runs = section === "active" ? activeRuns : settledRuns;
+                        for (const header of headers) {
+                          items.push(
+                            <SidebarProjectRunHeader
+                              key={`run-header:${section}:${header.projectKey}`}
+                              header={header}
+                              project={runs.projectByRunKey.get(header.projectKey) ?? null}
+                              onToggle={runs.toggleRun}
+                            />,
+                          );
+                        }
+                      };
+                      // Runs folded away at the end of the active section have
+                      // no row left to hang their header on.
+                      let activeTrailingFlushed = false;
+                      const flushActiveTrailingRunHeaders = () => {
+                        if (activeTrailingFlushed) return;
+                        activeTrailingFlushed = true;
+                        pushRunHeaders("active", activeRuns.plan.trailingHeaders);
+                      };
                       const from = dragState?.activeSection ?? null;
                       const items: ReactNode[] = [
                         <SidebarDraftBlock
@@ -4880,8 +4994,18 @@ export default function Sidebar() {
                       ];
                       for (const item of sidebarListItems) {
                         if (item.kind === "thread") {
+                          if (item.section === "active" || item.section === "settled") {
+                            const runs = item.section === "active" ? activeRuns : settledRuns;
+                            pushRunHeaders(
+                              item.section,
+                              runs.plan.headersBeforeThreadKey.get(item.key) ?? [],
+                            );
+                          }
                           items.push(renderThreadRow(threadByKey.get(item.key)!, item.section));
                           continue;
+                        }
+                        if (item.marker === "snoozed-header" || item.marker === "settled-header") {
+                          flushActiveTrailingRunHeaders();
                         }
                         switch (item.marker) {
                           case "pinned-header":
@@ -4982,6 +5106,8 @@ export default function Sidebar() {
                             break;
                         }
                       }
+                      flushActiveTrailingRunHeaders();
+                      pushRunHeaders("settled", settledRuns.plan.trailingHeaders);
                       return items;
                     })()}
                     {settledShelfExpanded && hiddenSettledCount > 0 ? (

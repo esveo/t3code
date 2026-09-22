@@ -461,6 +461,11 @@ export const ClientSettingsSchema = Schema.Struct({
   // title instead of holding a third line of their own, which also drops that
   // line's branch, worktree, terminal, PR and diff slots.
   twoLineThreadCards: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  // Fork: gather the sidebar's threads into per-project runs, each under its
+  // own project header, instead of one recency-sorted list.
+  groupSidebarThreadsByProject: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
   sidebarProjectGroupingMode: SidebarProjectGroupingMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_PROJECT_GROUPING_MODE)),
   ),
@@ -1602,6 +1607,7 @@ export const ClientSettingsPatch = Schema.Struct({
   showSkillsInSlashMenu: Schema.optionalKey(Schema.Boolean),
   legacySidebarEnabled: Schema.optionalKey(Schema.Boolean),
   twoLineThreadCards: Schema.optionalKey(Schema.Boolean),
+  groupSidebarThreadsByProject: Schema.optionalKey(Schema.Boolean),
   sidebarProjectGroupingMode: Schema.optionalKey(SidebarProjectGroupingMode),
   sidebarProjectGroupingOverrides: Schema.optionalKey(
     Schema.Record(TrimmedNonEmptyString, SidebarProjectGroupingMode),
