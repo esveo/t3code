@@ -186,9 +186,11 @@ start() {
 }
 
 # The name a build carries. `watch` builds from a detached worktree, where
-# HEAD has no branch of its own; the ref it was checked out from names it.
+# HEAD has no branch of its own, and says which branch it is building; a ref
+# lookup alone loses the name when the branch moves on during the build.
 branch_of() {
   local repo="$1" branch
+  [[ -n "${T3CODE_FORK_BUILD_BRANCH:-}" ]] && { echo "$T3CODE_FORK_BUILD_BRANCH"; return; }
   branch="$(git -C "$repo" rev-parse --abbrev-ref HEAD)"
   if [[ "$branch" == HEAD ]]; then
     branch="$(git -C "$repo" for-each-ref --points-at HEAD --count 1 \
@@ -524,8 +526,9 @@ watch_once() {
   # gives way to the commit being built.
   git -C "$WATCH_SOURCE" checkout --detach --force "$remote" >/dev/null 2>&1
   echo "$(date '+%F %T') origin/$WATCH_BRANCH is at ${remote[1,7]}; preparing …"
-  (( app_built )) || T3CODE_FORK_REPO="$WATCH_SOURCE" "$SCRIPT_PATH" prepare
-  (( server_built )) || T3CODE_FORK_REPO="$WATCH_SOURCE" "$SCRIPT_PATH" prepare-server
+  export T3CODE_FORK_REPO="$WATCH_SOURCE" T3CODE_FORK_BUILD_BRANCH="$WATCH_BRANCH"
+  (( app_built )) || "$SCRIPT_PATH" prepare
+  (( server_built )) || "$SCRIPT_PATH" prepare-server
 }
 
 # Moves the running build back into its branch's slot, so the update menu can
