@@ -168,6 +168,12 @@ branch_of() {
 commit_of() {
   sed -n 's/.*"commit": *"\([^"]*\)".*/\1/p' "$1/.fork-build.json" 2>/dev/null
 }
+# Whether the build in a slot is at, or past, the given commit.
+build_contains() {
+  local built
+  built="$(commit_of "$1")"
+  [[ -n "$built" ]] && git -C "$SCRIPT_REPO" merge-base --is-ancestor "$2" "$built" 2>/dev/null
+}
 
 prepare() {
   local source_repo="$SCRIPT_REPO"
@@ -446,9 +452,13 @@ watch_once() {
   }
   local remote app_built=0 server_built=0
   remote="$(git -C "$SCRIPT_REPO" rev-parse "origin/$WATCH_BRANCH")"
-  [[ "$remote" == "$(commit_of "$ROOT/next")" || "$remote" == "$(commit_of "$ROOT/current")" ]] &&
+  # A build that already contains the branch's commit (a feature branch
+  # merged from it, say) is not behind it, so the waiting slot is left alone
+  # while the user tries such a build.
+  { build_contains "$ROOT/next" "$remote" || build_contains "$ROOT/current" "$remote"; } &&
     app_built=1
-  [[ "$remote" == "$(json_field "$SERVER_INFO" commit)" ]] && server_built=1
+  git -C "$SCRIPT_REPO" merge-base --is-ancestor "$remote" \
+    "$(json_field "$SERVER_INFO" commit)" 2>/dev/null && server_built=1
   (( app_built && server_built )) && return 0
   if [[ ! -e "$WATCH_SOURCE/.git" ]]; then
     rm -rf "$WATCH_SOURCE"

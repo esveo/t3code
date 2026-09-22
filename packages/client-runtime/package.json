@@ -23,6 +23,10 @@
       "types": "./src/projectFaviconCache.ts",
       "default": "./src/projectFaviconCache.ts"
     },
+    "./state/thread-usage": {
+      "types": "./src/state/threadUsage.ts",
+      "default": "./src/state/threadUsage.ts"
+    },
     "./pending-requests": {
       "types": "./src/pendingRequests.ts",
       "default": "./src/pendingRequests.ts"

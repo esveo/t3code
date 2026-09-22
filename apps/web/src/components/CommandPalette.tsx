@@ -125,7 +125,7 @@ import {
   selectActiveRightPanel,
   useRightPanelStore,
 } from "../rightPanelStore";
-import { useAgentStageStore } from "../agentStage/agentStageStore";
+import { useAgentStageStore } from "./agentStage/agentStageStore";
 import { getLatestThreadForProject, sortThreads } from "../lib/threadSort";
 import {
   cn,
