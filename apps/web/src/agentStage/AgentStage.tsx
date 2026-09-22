@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import {
   memo,
+  type ReactNode,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -74,6 +75,8 @@ const LABEL_MARGIN = 72;
 const LABEL_WIDTH = 72;
 /** Sprites circle their station on this radius, in px. */
 const ORBIT = 28;
+/** Room between neighbours sharing a station, in px, badge included. */
+const ORBIT_GAP = 10;
 const SPRITE = 30;
 /** How long a sprite stays put before it may move on, so a quick tool call is still seen. */
 const DWELL_MS = 1600;
@@ -94,6 +97,25 @@ const ORBIT_STYLE = `
 [data-agent-stage-spin][data-paused="true"] { animation-play-state: paused; }
 @media (prefers-reduced-motion: reduce) { [data-agent-stage-spin] { animation: none; } }
 `;
+
+/**
+ * Every spinner is phased against one clock, so sprites sharing a station
+ * keep their slots apart instead of each starting its own lap on mount.
+ * A negative delay puts a fresh spinner where the others already are.
+ */
+function useOrbitPhase(): string {
+  const [phase] = useState(() => `-${Date.now() % (ORBIT_PERIOD_S * 1000)}ms`);
+  return phase;
+}
+
+/**
+ * The radius sprites circle their station on. Crowded stations widen the
+ * circle until neighbours no longer touch; a lone sprite keeps the small one.
+ */
+function orbitRadius(count: number): number {
+  if (count < 2) return ORBIT;
+  return Math.max(ORBIT, (SPRITE + ORBIT_GAP) / (2 * Math.sin(Math.PI / count)));
+}
 
 interface Point {
   readonly x: number;
@@ -363,20 +385,14 @@ export const AgentStage = memo(function AgentStage({
                     zIndex: isSelected ? 3 : 2,
                   }}
                 >
-                  <div
-                    className={pivot}
-                    data-agent-stage-spin
-                    data-paused={agent.live ? "false" : "true"}
-                  >
+                  <OrbitSpin live={agent.live}>
                     <div
                       className={cn(pivot, motion)}
-                      style={{ transform: `rotate(${slotDeg}deg) translate(${ORBIT}px)` }}
+                      style={{
+                        transform: `rotate(${slotDeg}deg) translate(${orbitRadius(count)}px)`,
+                      }}
                     >
-                      <div
-                        className={pivot}
-                        data-agent-stage-spin="reverse"
-                        data-paused={agent.live ? "false" : "true"}
-                      >
+                      <OrbitSpin live={agent.live} reverse>
                         <button
                           type="button"
                           aria-label={`${agent.label}, ${agent.headline}`}
@@ -424,9 +440,9 @@ export const AgentStage = memo(function AgentStage({
                             />
                           ) : null}
                         </button>
-                      </div>
+                      </OrbitSpin>
                     </div>
-                  </div>
+                  </OrbitSpin>
                 </div>
               );
             })}
@@ -506,6 +522,48 @@ export const AgentStage = memo(function AgentStage({
     </div>
   );
 });
+
+/**
+ * One lap around the station, in phase with every other spinner. Remounted
+ * when the agent starts or stops so a paused lap does not drift out of phase.
+ */
+function OrbitSpin({
+  live,
+  reverse = false,
+  children,
+}: {
+  live: boolean;
+  reverse?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <OrbitSpinLap key={live ? "live" : "still"} live={live} reverse={reverse}>
+      {children}
+    </OrbitSpinLap>
+  );
+}
+
+function OrbitSpinLap({
+  live,
+  reverse,
+  children,
+}: {
+  live: boolean;
+  reverse: boolean;
+  children: ReactNode;
+}) {
+  const phase = useOrbitPhase();
+  return (
+    <div
+      className="absolute top-0 left-0 size-0 [transform-origin:0_0]"
+      data-agent-stage-spin={reverse ? "reverse" : "true"}
+      data-paused={live ? "false" : "true"}
+      style={{ animationDelay: phase }}
+    >
+      {children}
+    </div>
+  );
+}
 
 /** This thread alone, or every thread with live work. */
 function StageModeToggle({
