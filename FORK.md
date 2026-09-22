@@ -7,7 +7,7 @@ top of upstream, which is rebased in regularly. `AGENTS.md` is upstream's
 guide for its maintainers; follow it for code and architecture, but these
 rules win wherever they differ.
 
-- Remotes: `origin` = `github.com/Pawl-Patrol/t3code` (private), `upstream` =
+- Remotes: `origin` = `github.com/esveo/t3code` (private), `upstream` =
   `github.com/pingdotgg/t3code` (read-only; pushing is disabled). `gh` defaults
   to the fork. Never open issues, PRs, discussions, or comments on `upstream`,
   and never push there.
@@ -68,7 +68,7 @@ one with the app's update button. Your job ends with that build prepared.
 2. When the feature should go live, list it in `README.md` first: a separate
    last commit on the feature branch (after any rebase, so the hashes stay)
    that adds one bullet of a single short sentence, followed by the feature's
-   commits as links (`[abc1234](https://github.com/Pawl-Patrol/t3code/commit/<full sha>)`).
+   commits as links (`[abc1234](https://github.com/esveo/t3code/commit/<full sha>)`).
    Prefix bug fixes with `Fix:`. A fix to a feature already listed adds its
    commit to that feature's bullet instead of a new one.
 3. Merge the feature into `fork` and prepare from there. Work the user has not
