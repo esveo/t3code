@@ -142,7 +142,7 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
       }),
       Effect.provide(dependencies),
     );
-  /** The worktree runs after create_thread returns; its mocks resolve within a few yields. */
+  /** The worktree runs after start_thread returns; its mocks resolve within a few yields. */
   const settle = Effect.repeat(Effect.yieldNow, { times: 20 });
   return { commands, call, settle };
 });
@@ -153,7 +153,7 @@ describe("threads toolkit", () => {
   it.effect("starts a thread in the coordinator's checkout", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness();
-      const result = yield* harness.call("create_thread", {
+      const result = yield* harness.call("start_thread", {
         title: "Fix cold start",
         prompt: "Measure the cold start.",
         worktree: false,
@@ -182,7 +182,7 @@ describe("threads toolkit", () => {
   it.effect("prepares its own worktree and then starts the turn", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness();
-      const result = yield* harness.call("create_thread", {
+      const result = yield* harness.call("start_thread", {
         title: "Harden checkout",
         prompt: "Trace the retries.",
       });
@@ -224,7 +224,7 @@ describe("threads toolkit", () => {
         caller: makeThread({ id: CHILD_ID, parentThreadId: COORDINATOR_ID }),
       });
       const error = yield* harness
-        .call("create_thread", { title: "Nested", prompt: "Nope." })
+        .call("start_thread", { title: "Nested", prompt: "Nope." })
         .pipe(Effect.flip);
       expect(error).toMatchObject({ _tag: "ThreadOrchestrationNestedError" });
     }),

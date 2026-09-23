@@ -152,7 +152,7 @@ const make = Effect.gen(function* () {
   /**
    * Checks out the worktree, records it on the thread, runs the project's
    * setup script and then starts the first turn, as a new thread from the
-   * composer does. It runs after create_thread has returned: a checkout can
+   * composer does. It runs after start_thread has returned: a checkout can
    * take a while and the coordinator should not wait for it. A failure marks
    * the thread's session as failed, which reaches the coordinator as an update.
    */
@@ -236,7 +236,7 @@ const make = Effect.gen(function* () {
     }).pipe(Effect.ignoreCause({ log: true }));
 
   return ThreadsToolkit.of({
-    create_thread: (input) =>
+    start_thread: (input) =>
       Effect.gen(function* () {
         const coordinator = yield* requireCoordinator;
         const project = yield* snapshots

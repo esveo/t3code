@@ -168,7 +168,7 @@ export const ReadThreadResult = Schema.Struct({
 });
 export type ReadThreadResult = typeof ReadThreadResult.Type;
 
-const CreateThreadTool = Tool.make("create_thread", {
+const CreateThreadTool = Tool.make("start_thread", {
   description: `Start a new thread that works on a task in parallel, as a child of this one. ${WHEN_TO_USE} It gets its own session, sidebar entry and (by default) git worktree and branch. You do not need to poll: when it finishes, fails or waits on the user, you receive a message about it. ${LINKING}`,
   parameters: CreateThreadInput,
   success: CreateThreadResult,
