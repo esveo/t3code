@@ -20,6 +20,8 @@ export function SidebarChildThreads(props: {
   parentKey: string;
   children: ReadonlyArray<EnvironmentThreadShell>;
   openThreadKey: string | null;
+  /** Set while the run this group sits in is folded: the group folds with it. */
+  onUnfoldRun?: () => void;
   renderRow: (thread: EnvironmentThreadShell) => ReactNode;
 }) {
   const [collapsedKeys, setCollapsedKeys] = useLocalStorage(
@@ -27,7 +29,8 @@ export function SidebarChildThreads(props: {
     NO_COLLAPSED,
     collapsedSchema,
   );
-  const collapsed = collapsedKeys.includes(props.parentKey);
+  const foldedByRun = props.onUnfoldRun !== undefined;
+  const collapsed = foldedByRun || collapsedKeys.includes(props.parentKey);
   const toggle = useCallback(
     () =>
       setCollapsedKeys((keys) =>
@@ -50,7 +53,9 @@ export function SidebarChildThreads(props: {
       <div className="relative ms-3 before:pointer-events-none before:absolute before:inset-y-1 before:left-[0.375rem] before:w-px before:bg-sidebar-border before:content-['']">
         <button
           type="button"
-          onClick={toggle}
+          // Unfolding a group inside a folded run unfolds the run, which is
+          // what hides it; its own fold is left as it was.
+          onClick={props.onUnfoldRun ?? toggle}
           aria-expanded={!collapsed}
           aria-label={[
             label,

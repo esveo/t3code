@@ -5025,12 +5025,35 @@ export default function Sidebar() {
                           const childThreads = childThreadGroups.childrenByParentKey.get(item.key);
                           if (childThreads) {
                             const section = item.section;
+                            // A folded run keeps the open coordinator visible;
+                            // its children fold with the run.
+                            const coordinator = threadByKey.get(item.key)!;
+                            const runs =
+                              section === "active"
+                                ? activeRuns
+                                : section === "settled"
+                                  ? settledRuns
+                                  : null;
+                            const runKey =
+                              crossProjectRunKeys.get(item.key) ??
+                              projectGroupByThreadProjectKey.get(
+                                `${coordinator.environmentId}:${coordinator.projectId}`,
+                              )?.projectKey;
+                            const runFolded =
+                              runs !== null &&
+                              runKey !== undefined &&
+                              runs.plan.runs.some(
+                                (run) => run.projectKey === runKey && run.collapsed,
+                              );
                             items.push(
                               <SidebarChildThreads
                                 key={`child-threads:${item.key}`}
                                 parentKey={item.key}
                                 children={childThreads}
                                 openThreadKey={routeThreadKey}
+                                {...(runFolded && runs && runKey
+                                  ? { onUnfoldRun: () => runs.toggleRun(runKey) }
+                                  : {})}
                                 renderRow={(child) => renderThreadRowInner(child, section)}
                               />,
                             );
