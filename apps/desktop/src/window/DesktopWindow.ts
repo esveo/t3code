@@ -30,6 +30,7 @@ import * as DesktopClientSettings from "../settings/DesktopClientSettings.ts";
 import * as ElectronApp from "../electron/ElectronApp.ts";
 import { makeQuitShortcutHandler } from "./QuitHold.ts";
 import { isThreadPopoutUrl, resolvePopoutWindowOptions } from "./popoutWindow.ts";
+import { readForkNormalBounds } from "./forkWindowDisplay.ts";
 
 const TITLEBAR_HEIGHT = 40;
 // Matches --workspace-topbar-height in apps/web/src/index.css. Native macOS
@@ -443,7 +444,7 @@ export const make = Effect.gen(function* () {
       }
       const bounds =
         window.isFullScreen() || window.isMaximized() || window.isMinimized()
-          ? window.getNormalBounds()
+          ? readForkNormalBounds(window)
           : window.getBounds();
       return DesktopAppSettings.normalizeMainWindowBounds({
         x: Math.round(bounds.x),
