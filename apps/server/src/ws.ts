@@ -46,6 +46,7 @@ import {
   OrchestrationSearchThreadsError,
   OrchestrationGetTurnDiffError,
   ORCHESTRATION_WS_METHODS,
+  SUBAGENT_CHAT_WS_METHODS,
   ProjectId,
   type ProjectEntriesFailure,
   type ProjectFileFailure,
@@ -133,6 +134,7 @@ import * as PortScanner from "./preview/PortScanner.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration/workflowScriptQuery.ts";
+import * as SubagentChat from "./subagentChat/SubagentChat.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
@@ -3796,6 +3798,17 @@ const makeWsRpcLayer = (
             ),
             { "rpc.aggregate": "server" },
           ),
+        // Fork: subagent chat view.
+        [SUBAGENT_CHAT_WS_METHODS.subscribeTranscript]: (input) =>
+          observeRpcStream(
+            SUBAGENT_CHAT_WS_METHODS.subscribeTranscript,
+            SubagentChat.subscribeSubagentTranscript(input),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [SUBAGENT_CHAT_WS_METHODS.stop]: (input) =>
+          observeRpcEffect(SUBAGENT_CHAT_WS_METHODS.stop, SubagentChat.stopSubagent(input), {
+            "rpc.aggregate": "orchestration",
+          }),
       });
     }),
   );

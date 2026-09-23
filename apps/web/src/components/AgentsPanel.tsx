@@ -28,6 +28,11 @@ import { cn } from "~/lib/utils";
 import { orchestrationEnvironment } from "~/state/orchestration";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
+// Fork: agents open as chats.
+import { SubagentChatView } from "~/components/subagentChat/SubagentChatView";
+import { SubagentChatLink } from "~/components/subagentChat/SubagentChatLink";
+import { canOpenSubagentChat } from "~/components/subagentChat/subagentChat.logic";
+import { useSubagentChatSupport } from "~/components/subagentChat/useSubagentChatSupport";
 
 /**
  * In-flight states all present as Working (one steady state, per the
@@ -530,6 +535,23 @@ export function AgentsPanel({
   environmentId?: EnvironmentId | null;
   threadId?: ThreadId | null;
 }) {
+  const [openAgentId, setOpenAgentId] = useState<string | null>(null);
+  const chatSupported = useSubagentChatSupport(environmentId, threadId);
+  const openAgent = openAgentId
+    ? model.directAgents.find((agent) => agent.id === openAgentId)
+    : undefined;
+  if (openAgent && environmentId !== null && threadId !== null) {
+    return (
+      <SubagentChatView
+        key={openAgent.id}
+        agent={openAgent}
+        environmentId={environmentId}
+        threadId={threadId}
+        onBack={() => setOpenAgentId(null)}
+      />
+    );
+  }
+
   if (!model.hasAgents) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
@@ -560,9 +582,15 @@ export function AgentsPanel({
               <div className="px-1.5 pt-1 text-[.65rem] font-medium uppercase tracking-wider text-muted-foreground">
                 Direct spawns
               </div>
-              {model.directAgents.map((agent) => (
-                <AgentRow key={agent.id} agent={agent} />
-              ))}
+              {model.directAgents.map((agent) =>
+                chatSupported && canOpenSubagentChat(agent) ? (
+                  <SubagentChatLink key={agent.id} onOpen={() => setOpenAgentId(agent.id)}>
+                    <AgentRow agent={agent} />
+                  </SubagentChatLink>
+                ) : (
+                  <AgentRow key={agent.id} agent={agent} />
+                ),
+              )}
             </section>
           ) : null}
         </div>

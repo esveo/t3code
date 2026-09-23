@@ -45,3 +45,4 @@ export * from "./usage.ts";
 export * from "./threadUsage.ts";
 export * from "./rpc.ts";
 export * from "./worktreeSetup.ts";
+export * from "./subagentChat.ts";

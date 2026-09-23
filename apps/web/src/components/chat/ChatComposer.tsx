@@ -1484,6 +1484,8 @@ export interface ChatComposerProps {
   setThreadError: (threadId: ThreadId | null, error: string | null) => void;
   onExpandImage: (preview: ExpandedImagePreview) => void;
   onFileOpen: (attachment: ChatFileAttachment) => void;
+  /** Fork: the subagent chat has no model, mode or context of its own to control. */
+  hideThreadControls?: boolean;
 }
 
 // --------------------------------------------------------------------------
@@ -5052,7 +5054,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const hiddenRestingBlockIds = restingBlockDefs
     .slice(restingBlockDefs.length - restingHiddenBlockCount)
     .map((def) => def.id);
-  const composerControls = showProviderUnavailable ? (
+  const composerControls = props.hideThreadControls ? null : showProviderUnavailable ? (
     <Button
       type="button"
       size="sm"

@@ -68,6 +68,15 @@ export interface ProviderServiceShape {
   ) => Effect.Effect<void, ProviderServiceError>;
 
   /**
+   * Fork: stop one subagent of a thread's session, for the subagent chat view.
+   * Optional so service doubles need not implement it.
+   */
+  readonly stopSubagent?: (input: {
+    readonly threadId: ThreadId;
+    readonly agentId: string;
+  }) => Effect.Effect<void, ProviderServiceError>;
+
+  /**
    * Respond to a provider approval request.
    */
   readonly respondToRequest: (

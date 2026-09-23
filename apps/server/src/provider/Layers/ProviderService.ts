@@ -1953,6 +1953,24 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     },
   );
 
+  // Fork: subagent chat view.
+  const stopSubagent: NonNullable<ProviderServiceMethod<"stopSubagent">> = Effect.fn(
+    "stopSubagent",
+  )(function* (input) {
+    const routed = yield* resolveRoutableSession({
+      threadId: input.threadId,
+      operation: "ProviderService.stopSubagent",
+      allowRecovery: false,
+    });
+    if (routed.adapter.stopSubagent === undefined) {
+      return yield* new ProviderValidationError({
+        operation: "ProviderService.stopSubagent",
+        issue: `Provider '${routed.adapter.provider}' cannot stop subagents.`,
+      });
+    }
+    yield* routed.adapter.stopSubagent(routed.threadId, input.agentId);
+  });
+
   const respondToRequest: ProviderServiceMethod<"respondToRequest"> = Effect.fn("respondToRequest")(
     function* (rawInput) {
       const input = yield* decodeInputOrValidationError({
@@ -2403,6 +2421,7 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     sendTurn,
     compactThread,
     interruptTurn,
+    stopSubagent,
     respondToRequest,
     respondToUserInput,
     stopSession,
