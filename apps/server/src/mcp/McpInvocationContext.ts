@@ -8,7 +8,9 @@ import {
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 
-// Fork: "threads" is thread orchestration, "decisions" its Inbox of decisions.
+// Fork: "threads" is thread orchestration, "decisions" its Inbox of decisions. They
+// only pick the instructions a session starts with; the tools follow the
+// Settings switches live (McpOrchestrationTools.ts).
 export type McpCapability = "preview" | "device" | "pull-requests" | "threads" | "decisions";
 
 export interface McpInvocationScope {

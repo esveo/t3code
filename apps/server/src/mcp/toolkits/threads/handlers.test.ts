@@ -105,7 +105,7 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
     readonly threads?: ReadonlyArray<OrchestrationThreadShell>;
     readonly messages?: Readonly<Record<string, ReadonlyArray<OrchestrationMessage>>>;
     readonly branches?: ReadonlyArray<{ name: string; isRemote?: boolean; remoteName?: string }>;
-    readonly capabilities?: ReadonlyArray<McpInvocationContext.McpCapability>;
+    readonly decisions?: boolean;
   } = {},
 ) {
   const commands = yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]);
@@ -113,6 +113,14 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
   const threads = [caller, ...(options.threads ?? [])];
   const dispatch: OrchestrationEngineShape["dispatch"] = (command) =>
     Ref.update(commands, (recorded) => [...recorded, command]).pipe(Effect.as({ sequence: 1 }));
+  // Built once, so a switch flipped by a test holds for the calls after it.
+  const settingsContext = yield* Layer.build(
+    ServerSettings.layerTest({
+      enableThreadOrchestration: options.enabled ?? true,
+      enableThreadDecisions: options.decisions ?? true,
+    }),
+  );
+  const settings = Context.get(settingsContext, ServerSettings.ServerSettingsService);
   // The config layer comes first so the test crypto below replaces the real one.
   const base = Layer.mergeAll(
     configLayer,
@@ -163,7 +171,7 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
     Layer.mock(ProjectSetupScriptRunner)({
       runForThread: () => Effect.succeed({ status: "no-script" as const }),
     }),
-    ServerSettings.layerTest({ enableThreadOrchestration: options.enabled ?? true }),
+    Layer.succeedContext(settingsContext),
     Layer.succeed(Crypto.Crypto, {
       ...testCrypto,
       randomUUIDv4: Effect.sync(() => `uuid-${++uuidCounter}`),
@@ -195,9 +203,8 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
         threadId: caller.id,
         providerSessionId: "session-1",
         providerInstanceId: ProviderInstanceId.make("claudeAgent"),
-        capabilities: new Set<McpInvocationContext.McpCapability>(
-          options.capabilities ?? ["pull-requests", "threads", "decisions"],
-        ),
+        // Without "threads" or "decisions": the tools read the switches live.
+        capabilities: new Set<McpInvocationContext.McpCapability>(["pull-requests"]),
         issuedAt: 1,
       }),
       Effect.provide(dependencies),
@@ -205,7 +212,7 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
   /** The worktree runs after start_thread returns; its mocks resolve within a few yields. */
   const settle = Effect.repeat(Effect.yieldNow, { times: 20 });
   const { attachmentsDir } = yield* ServerConfig.ServerConfig.pipe(Effect.provide(configLayer));
-  return { commands, call, settle, attachmentsDir, decisions };
+  return { commands, call, settle, attachmentsDir, decisions, settings };
 });
 
 function userMessage(overrides: Partial<OrchestrationMessage>): OrchestrationMessage {
@@ -722,11 +729,18 @@ describe("threads toolkit", () => {
       }),
     );
 
-    it.effect("refuses decisions while the user has them turned off", () =>
+    it.effect("refuses decisions while turned off and follows the switch live", () =>
       Effect.gen(function* () {
-        const harness = yield* makeHarness({ capabilities: ["pull-requests", "threads"] });
+        const harness = yield* makeHarness({ decisions: false });
         const error = yield* harness.call("list_decisions", {}).pipe(Effect.flip);
         expect(String(error)).toMatch(/Decisions are turned off/);
+        // Read on every call: turning them on reaches the running session.
+        yield* harness.settings.updateSettings({ enableThreadDecisions: true });
+        expect(yield* harness.call("list_decisions", {})).toEqual({ decisions: [] });
+        yield* harness.settings.updateSettings({ enableThreadOrchestration: false });
+        expect(yield* harness.call("list_decisions", {}).pipe(Effect.flip)).toMatchObject({
+          _tag: "ThreadOrchestrationDisabledError",
+        });
       }),
     );
 

@@ -198,13 +198,20 @@ const make = Effect.gen(function* () {
     detail: string,
   ) => engine.dispatch(command).pipe(Effect.catchCause(failWith(detail)));
 
+  // Both switches are read live, not from the session's credential, so a
+  // change in Settings reaches running sessions (see McpOrchestrationTools).
+  const readSwitches = serverSettings.getSettings.pipe(
+    Effect.map((settings) => ({
+      threads: settings.enableThreadOrchestration,
+      decisions: settings.enableThreadDecisions,
+    })),
+    Effect.orElseSucceed(() => ({ threads: false, decisions: false })),
+  );
+
   /** The calling thread, when orchestration is on and the thread may coordinate. */
   const requireCoordinator = Effect.gen(function* () {
-    const scope = yield* McpInvocationContext.requireMcpCapability("threads");
-    const enabled = yield* serverSettings.getSettings.pipe(
-      Effect.map((settings) => settings.enableThreadOrchestration),
-      Effect.orElseSucceed(() => false),
-    );
+    const scope = yield* McpInvocationContext.McpInvocationContext;
+    const enabled = (yield* readSwitches).threads;
     if (!enabled) return yield* new ThreadOrchestrationDisabledError({});
     const thread = yield* snapshots
       .getThreadShellById(scope.threadId)
@@ -219,13 +226,11 @@ const make = Effect.gen(function* () {
   /** The calling coordinator, when the user also turned on decisions (Settings). */
   const requireDecisions = Effect.gen(function* () {
     const coordinator = yield* requireCoordinator;
-    yield* McpInvocationContext.requireMcpCapability("decisions").pipe(
-      Effect.mapError(() =>
-        failure(
-          "Decisions are turned off, so ask the user in chat instead. The user can turn them on in Settings.",
-        ),
-      ),
-    );
+    if (!(yield* readSwitches).decisions) {
+      return yield* failure(
+        "Decisions are turned off, so ask the user in chat instead. The user can turn them on in Settings.",
+      );
+    }
     return coordinator;
   });
 

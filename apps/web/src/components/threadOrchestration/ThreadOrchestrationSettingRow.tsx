@@ -17,7 +17,7 @@ export function ThreadOrchestrationSettingRow() {
       {...searchableSetting("thread-orchestration")}
       serverScoped
       settingKeys={["enableThreadOrchestration"]}
-      description="Let an agent start and coordinate threads of its own, each on its own branch, grouped under the thread that started them. New sessions pick up a change."
+      description="Let an agent start and coordinate threads of its own, each on its own branch, grouped under the thread that started them. Running sessions pick up a change."
       resetAction={
         settings.enableThreadOrchestration !==
         DEFAULT_UNIFIED_SETTINGS.enableThreadOrchestration ? (

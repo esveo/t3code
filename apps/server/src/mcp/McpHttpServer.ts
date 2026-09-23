@@ -18,6 +18,8 @@ import packageJson from "../../package.json" with { type: "json" };
 import * as ServerConfig from "../config.ts";
 import * as DeviceService from "../device/DeviceService.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
+// Fork: orchestration tools follow their Settings switches live.
+import * as McpOrchestrationTools from "./McpOrchestrationTools.ts";
 import * as McpSessionRegistry from "./McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "./PreviewAutomationBroker.ts";
 import {
@@ -84,8 +86,11 @@ export const normalizeMcpHttpResponse = (
     : response;
 };
 
-const makeMcpAuthMiddleware = McpSessionRegistry.McpSessionRegistry.pipe(
-  Effect.map((registry): McpAuthMiddleware =>
+const makeMcpAuthMiddleware = Effect.all([
+  McpSessionRegistry.McpSessionRegistry,
+  McpOrchestrationTools.McpOrchestrationTools,
+]).pipe(
+  Effect.map(([registry, orchestrationTools]): McpAuthMiddleware =>
     Effect.fn("McpHttpServer.authenticateRequest")(function* (httpEffect) {
       const request = yield* HttpServerRequest.HttpServerRequest;
       const authorization = request.headers.authorization;
@@ -103,6 +108,7 @@ const makeMcpAuthMiddleware = McpSessionRegistry.McpSessionRegistry.pipe(
         });
         return unauthorized;
       }
+      if (request.method === "GET") return yield* orchestrationTools.openNotificationStream;
       return yield* httpEffect.pipe(
         Effect.provideService(McpInvocationContext.McpInvocationContext, invocation),
         Effect.map(normalizeMcpHttpResponse),
@@ -628,12 +634,12 @@ export const DeviceToolkitRegistrationLive = Layer.mergeAll(
   DeviceScreenshotRegistrationLive,
 );
 
-const McpTransportLive = McpServer.layerHttp({
+export const McpTransportLive = McpServer.layerHttp({
   name: "T3 Code",
   version: packageJson.version,
   path: "/mcp",
   protocols: [McpProtocol.v2025_06_18],
-}).pipe(Layer.provide(McpAuthMiddlewareLive));
+}).pipe(Layer.provide(McpAuthMiddlewareLive), Layer.provide(McpOrchestrationTools.layer));
 
 export const layer = Layer.mergeAll(
   PreviewToolkitRegistrationLive,
