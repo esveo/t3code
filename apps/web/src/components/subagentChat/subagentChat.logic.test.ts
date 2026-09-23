@@ -69,9 +69,9 @@ describe("applySubagentTranscriptChunk", () => {
 });
 
 describe("buildSubagentRelayMessage", () => {
-  it("addresses the agent by id and keeps the text verbatim", () => {
+  it("names the agent by id and quotes the user's text", () => {
     const text = buildSubagentRelayMessage({ id: "a123", title: "Review" }, "  Check tests too \n");
-    expect(text).toContain('to: "a123"');
+    expect(text).toContain('"Review" (id: a123)');
     expect(text).toContain("<message>\nCheck tests too\n</message>");
   });
 });
