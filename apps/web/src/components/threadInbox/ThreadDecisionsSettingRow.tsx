@@ -17,7 +17,7 @@ export function ThreadDecisionsSettingRow() {
       {...searchableSetting("thread-decisions")}
       serverScoped
       settingKeys={["enableThreadDecisions"]}
-      description="Coordinators put the questions they need you to decide into an Inbox tab beside the chat, instead of numbering them in their messages. Needs thread orchestration. New sessions pick up a change."
+      description="Coordinators put the questions they need you to decide into an Inbox tab beside the chat, instead of numbering them in their messages. Needs thread orchestration. Running sessions pick up a change."
       resetAction={
         settings.enableThreadDecisions !== DEFAULT_UNIFIED_SETTINGS.enableThreadDecisions ? (
           <SettingResetButton

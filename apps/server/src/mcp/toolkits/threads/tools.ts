@@ -10,10 +10,12 @@ import {
   TrimmedNonEmptyString,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import * as McpSchema from "effect/unstable/ai/McpSchema";
 import * as Tool from "effect/unstable/ai/Tool";
 import * as Toolkit from "effect/unstable/ai/Toolkit";
 
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import { isOrchestrationToolOn } from "../../McpOrchestrationTools.ts";
 import * as OrchestrationEngine from "../../../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
 
@@ -22,6 +24,10 @@ const dependencies = [
   OrchestrationEngine.OrchestrationEngineService,
   ProjectionSnapshotQuery.ProjectionSnapshotQuery,
 ];
+
+// Offered in tools/list, and callable, only while the user has the switch on (Settings).
+const whileThreadsOn = () => isOrchestrationToolOn("threads");
+const whileDecisionsOn = () => isOrchestrationToolOn("decisions");
 
 const WHEN_TO_USE =
   "Use a thread for a self-contained piece of work with its own result (a branch, a pull request, a document) that the user may want to watch, steer or review on its own; keep quick lookups and checks in subagents.";
@@ -306,7 +312,8 @@ const CreateThreadTool = Tool.make("start_thread", {
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, false)
-  .annotate(Tool.OpenWorld, false);
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, whileThreadsOn);
 
 const SendToThreadTool = Tool.make("send_to_thread", {
   description:
@@ -320,7 +327,8 @@ const SendToThreadTool = Tool.make("send_to_thread", {
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, false)
-  .annotate(Tool.OpenWorld, false);
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, whileThreadsOn);
 
 export const ProjectSummary = Schema.Struct({
   projectId: Schema.String,
@@ -341,7 +349,8 @@ const ListProjectsTool = Tool.make("list_projects", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
-  .annotate(Tool.OpenWorld, false);
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, whileThreadsOn);
 
 const ListThreadsTool = Tool.make("list_threads", {
   description: `List your threads (the ones you started or the user assigned to you) with their state, what they are doing, todo progress, branch and pull requests. With scope "all" it finds any thread of this environment, by title or project, to read it with read_thread. ${LINKING}`,
@@ -354,7 +363,8 @@ const ListThreadsTool = Tool.make("list_threads", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
-  .annotate(Tool.OpenWorld, false);
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, whileThreadsOn);
 
 const ReadThreadTool = Tool.make("read_thread", {
   description:
@@ -368,7 +378,8 @@ const ReadThreadTool = Tool.make("read_thread", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
-  .annotate(Tool.OpenWorld, false);
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, whileThreadsOn);
 
 const StopThreadTool = Tool.make("stop_thread", {
   description:
@@ -382,7 +393,8 @@ const StopThreadTool = Tool.make("stop_thread", {
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, true)
   .annotate(Tool.Idempotent, true)
-  .annotate(Tool.OpenWorld, false);
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, whileThreadsOn);
 
 const SettleThreadTool = Tool.make("settle_thread", {
   description:
@@ -396,7 +408,8 @@ const SettleThreadTool = Tool.make("settle_thread", {
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
-  .annotate(Tool.OpenWorld, false);
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, whileThreadsOn);
 
 const DecisionOptionInput = Schema.Struct({
   id: TrimmedNonEmptyString.annotate({ description: "Short id, unique within the decision." }),
@@ -494,7 +507,8 @@ const UpsertDecisionTool = Tool.make("upsert_decision", {
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
-  .annotate(Tool.OpenWorld, false);
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, whileDecisionsOn);
 
 const ResolveDecisionTool = Tool.make("resolve_decision", {
   description:
@@ -513,7 +527,8 @@ const ResolveDecisionTool = Tool.make("resolve_decision", {
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
-  .annotate(Tool.OpenWorld, false);
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, whileDecisionsOn);
 
 const ListDecisionsTool = Tool.make("list_decisions", {
   description:
@@ -533,7 +548,8 @@ const ListDecisionsTool = Tool.make("list_decisions", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
-  .annotate(Tool.OpenWorld, false);
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, whileDecisionsOn);
 
 export const ThreadsToolkit = Toolkit.make(
   ListProjectsTool,
