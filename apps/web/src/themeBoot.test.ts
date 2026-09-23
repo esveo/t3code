@@ -17,7 +17,7 @@ import {
   THEME_FOLLOW_SYSTEM_STORAGE_KEY,
   toCanonicalThemeColor,
 } from "./themePalette";
-import { ESVEO_THEME } from "@t3tools/shared/themePalettes";
+import { ESVEO_MIDNIGHT_THEME, ESVEO_THEME } from "@t3tools/shared/themePalettes";
 
 const THEME_STORAGE_KEY = "t3code:theme";
 // A custom theme that omits chrome falls back to the runtime default, so the
@@ -350,6 +350,7 @@ describe("index.html boot script", () => {
       EMBER_THEME,
       IRIS_THEME,
       ESVEO_THEME,
+      ESVEO_MIDNIGHT_THEME,
     ]) {
       // The boot script resolves every built-in from a light base appearance.
       expect(theme.appearance).toBe("light");
