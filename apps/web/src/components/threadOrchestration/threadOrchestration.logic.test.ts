@@ -47,7 +47,7 @@ describe("groupChildThreads", () => {
 
   it("stops treating a thread as coordinator once its last child is detached", () => {
     const coordinator = thread("coord");
-    const detached = thread("c1", { parentThreadId: null });
+    const detached = thread("c1", { parentThreadId: undefined });
 
     const groups = groupChildThreads([coordinator, detached]);
     expect(groups.childrenByParentKey.has(key("coord"))).toBe(false);
