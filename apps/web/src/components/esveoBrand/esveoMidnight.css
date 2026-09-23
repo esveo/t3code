@@ -10,36 +10,46 @@
  * flat colors; esveoMidnight.test.ts guards against that. This file is
  * unlayered, so it wins over Tailwind's layered utilities.
  *
- * Settled messages get a calm tile with a faint ring. The message whose turn
- * is running (marked by LiveUserMessageMarker) gets a brighter tile and a
- * light that circles its edge at an uneven pace. The circling layer only
- * rotates, which the compositor handles without repainting, and it exists
- * only while a turn runs.
+ * Every user message gets the same tile and hairline ring. On the message
+ * whose turn is running (marked by LiveUserMessageMarker) a light circles
+ * that ring at an uneven pace; the tile inside stays as it is. The circling
+ * layer only rotates, which the compositor handles without repainting, and it
+ * exists only while a turn runs.
  */
 
 html[data-theme-id="esveo-midnight"].dark {
   --esveo-sky: #03a8ff;
   --esveo-sky-sea: #35c6ef;
   --esveo-sea: #68e5de;
-  --esveo-tile: linear-gradient(160deg, oklch(0.275 0.055 258) 0%, oklch(0.315 0.07 244) 100%);
-  --esveo-tile-live:
+  /* Kachel Sky, toned down: Space navy into Sky ink, which keeps the
+     white text readable in the bright corner. */
+  --esveo-tile:
     radial-gradient(120% 90% at 100% 0%, rgb(104 229 222 / 0.1), transparent 55%),
-    linear-gradient(160deg, oklch(0.265 0.06 262) 0%, oklch(0.335 0.09 243) 100%);
+    radial-gradient(90% 90% at 0% 100%, rgb(3 168 255 / 0.07), transparent 60%),
+    linear-gradient(
+      160deg,
+      oklch(0.25 0.055 268) 0%,
+      oklch(0.33 0.085 250) 60%,
+      oklch(0.42 0.11 243) 100%
+    );
   --esveo-ring: linear-gradient(
     215deg,
-    rgb(104 229 222 / 0.3) 0%,
-    rgb(3 168 255 / 0.2) 40%,
-    rgb(255 255 255 / 0.04) 100%
+    rgb(104 229 222 / 0.6) 0%,
+    rgb(3 168 255 / 0.45) 35%,
+    rgb(3 168 255 / 0.15) 70%,
+    rgb(53 198 239 / 0.12) 100%
   );
 
-  /* Settled bubbles and the pinned prompt pill: a calm tile, faint ring. */
+  /* Bubbles and the pinned prompt pill: the tile inside a hairline ring. */
   & .bg-message,
   & [data-pinned-user-message] button {
     border: 1px solid transparent;
     background:
       var(--esveo-tile) padding-box,
       var(--esveo-ring) border-box;
-    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.05);
+    box-shadow:
+      0 10px 32px -18px rgb(3 168 255 / 0.3),
+      inset 0 1px 0 rgb(255 255 255 / 0.06);
   }
 
   & .bg-message {
@@ -58,11 +68,11 @@ html[data-theme-id="esveo-midnight"].dark {
   }
 
   & .bg-message-action:not(:disabled) {
-    filter: drop-shadow(0 3px 8px rgb(3 168 255 / 0.3));
+    filter: drop-shadow(0 4px 9px rgb(3 168 255 / 0.38));
   }
 
   & .bg-message-action:not(:disabled):hover {
-    filter: brightness(1.06) drop-shadow(0 4px 12px rgb(3 168 255 / 0.45));
+    filter: brightness(1.07) drop-shadow(0 5px 13px rgb(3 168 255 / 0.52));
   }
 
   /* Implement and its menu chevron read as one pill, so the gradient runs
@@ -76,16 +86,17 @@ html[data-theme-id="esveo-midnight"].dark {
   }
 }
 
-/* The running turn's message. The border gives way to a 1.5px ring cut from
-   a rotating conic light (::before) by the tile laid over it (::after); the
-   tile lets a trace of the light through, so the whole bubble glints. */
+/* The running turn's message. Only the ring moves: the border gives way to a
+   1px edge where the static ring (the bubble's own background) shows under
+   a rotating conic light (::before), and the same tile as every other bubble
+   is laid over the rest (::after), fully opaque. */
 @container style(--live-user-message: 1) {
   html[data-theme-id="esveo-midnight"].dark :is(.bg-message, [data-pinned-user-message] button) {
     position: relative;
     isolation: isolate;
     overflow: hidden;
     border-width: 0;
-    box-shadow: 0 10px 30px -18px rgb(3 168 255 / 0.5);
+    background: var(--esveo-ring);
   }
 
   html[data-theme-id="esveo-midnight"].dark .bg-message {
@@ -126,11 +137,10 @@ html[data-theme-id="esveo-midnight"].dark {
     content: "";
     position: absolute;
     z-index: -1;
-    inset: 1.5px;
-    border-radius: calc(1rem - 1.5px);
+    inset: 1px;
+    border-radius: calc(1rem - 1px);
     pointer-events: none;
-    background: var(--esveo-tile-live);
-    opacity: 0.93;
+    background: var(--esveo-tile);
   }
 }
 
