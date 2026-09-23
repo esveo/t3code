@@ -560,6 +560,104 @@ describe("threads toolkit", () => {
     }),
   );
 
+  it.effect("settles only its own finished threads, one result each", () =>
+    Effect.gen(function* () {
+      const child = (id: string, overrides: Partial<OrchestrationThreadShell> = {}) =>
+        makeThread({
+          id: ThreadId.make(id),
+          title: id,
+          parentThreadId: COORDINATOR_ID,
+          ...overrides,
+        });
+      const session = (status: "running" | "ready") =>
+        ({ status, updatedAt: "2026-09-23T10:00:00.000Z" }) as OrchestrationThreadShell["session"];
+      const harness = yield* makeHarness({
+        threads: [
+          child("finished", { session: session("ready") }),
+          // Assigned by the user (thread.parent.set) looks the same as started.
+          child("assigned"),
+          makeThread({ id: ThreadId.make("foreign"), title: "foreign" }),
+          makeThread({
+            id: ThreadId.make("other-coordinators"),
+            title: "other",
+            parentThreadId: ThreadId.make("other-coordinator"),
+          }),
+          child("working", { session: session("running") }),
+          child("background", { session: session("ready"), backgroundLiveness: "working" }),
+          child("approval", { hasPendingApprovals: true }),
+          child("question", { hasPendingUserInput: true }),
+          child("plan", { hasActionableProposedPlan: true }),
+          child("settled", { settledOverride: "settled", settledAt: "2026-09-23T11:00:00.000Z" }),
+        ],
+      });
+
+      const { results } = yield* harness.call("settle_thread", {
+        threadIds: [
+          "finished",
+          "assigned",
+          "foreign",
+          "other-coordinators",
+          "working",
+          "background",
+          "approval",
+          "question",
+          "plan",
+          "settled",
+        ],
+      });
+      expect(results.map((result) => [result.threadId, result.outcome])).toEqual([
+        ["finished", "settled"],
+        ["assigned", "settled"],
+        ["foreign", "not_yours"],
+        ["other-coordinators", "not_yours"],
+        ["working", "blocked"],
+        ["background", "blocked"],
+        ["approval", "blocked"],
+        ["question", "blocked"],
+        ["plan", "blocked"],
+        ["settled", "already_settled"],
+      ]);
+      expect(results.find((result) => result.threadId === "background")?.detail).toContain(
+        "background tasks",
+      );
+      // The same command as the sidebar's settle, only for the threads that may settle.
+      const settles = (yield* Ref.get(harness.commands)).filter(
+        (command) => command.type === "thread.settle",
+      );
+      expect(settles.map((command) => command.threadId)).toEqual(["finished", "assigned"]);
+    }),
+  );
+
+  it.effect("lists each thread's settle state and filters by it", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        threads: [
+          makeThread({
+            id: ThreadId.make("active"),
+            title: "active",
+            parentThreadId: COORDINATOR_ID,
+          }),
+          makeThread({
+            id: ThreadId.make("done"),
+            title: "done",
+            parentThreadId: COORDINATOR_ID,
+            settledOverride: "settled",
+            settledAt: "2026-09-23T11:00:00.000Z",
+          }),
+        ],
+      });
+      const all = yield* harness.call("list_threads", {});
+      expect(all.threads.map((thread) => [thread.threadId, thread.settledAt])).toEqual([
+        ["active", null],
+        ["done", "2026-09-23T11:00:00.000Z"],
+      ]);
+      const active = yield* harness.call("list_threads", { settled: false });
+      expect(active.threads.map((thread) => thread.threadId)).toEqual(["active"]);
+      const settled = yield* harness.call("list_threads", { settled: true });
+      expect(settled.threads.map((thread) => thread.threadId)).toEqual(["done"]);
+    }),
+  );
+
   it.effect("caps a search over all threads", () =>
     Effect.gen(function* () {
       const many = Array.from({ length: 55 }, (_, index) =>

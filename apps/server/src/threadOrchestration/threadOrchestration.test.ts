@@ -9,6 +9,7 @@ import {
 } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import { resolveChildThreadState } from "@t3tools/shared/threadOrchestration";
+import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -607,6 +608,162 @@ engineLayer("thread orchestration", (it) => {
       assert.include(reported[0]!.text, 'state="done"');
       assert.include(reported[0]!.text, `thread_id="${threadId}"`);
     }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("a finished child is reported once across settling and server restarts", () =>
+    Effect.gen(function* () {
+      const engine = yield* OrchestrationEngineService;
+      const snapshots = yield* ProjectionSnapshotQuery;
+      yield* TestClock.setTime(Date.parse("2026-09-23T14:00:00.000Z"));
+      const createdAt = "2026-09-23T13:00:00.000Z";
+      const projectId = ProjectId.make("project-restart");
+      const coordinatorId = ThreadId.make("restart-coordinator");
+      const childId = ThreadId.make("restart-child");
+      const modelSelection = { instanceId: ProviderInstanceId.make("claudeAgent"), model: "opus" };
+      yield* engine.dispatch({
+        type: "project.create",
+        commandId: CommandId.make("cmd-restart-project"),
+        projectId,
+        title: "Restart",
+        workspaceRoot: "/tmp/project-restart",
+        defaultModelSelection: modelSelection,
+        createdAt,
+      });
+      for (const [threadId, parentThreadId] of [
+        [coordinatorId, undefined],
+        [childId, coordinatorId],
+      ] as const) {
+        yield* engine.dispatch({
+          type: "thread.create",
+          commandId: CommandId.make(`cmd-restart-create-${threadId}`),
+          threadId,
+          projectId,
+          ...(parentThreadId ? { parentThreadId } : {}),
+          title: threadId,
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdAt,
+        });
+      }
+      const answer = (id: string, at: string) =>
+        Effect.gen(function* () {
+          yield* engine.dispatch({
+            type: "thread.message.assistant.delta",
+            commandId: CommandId.make(`cmd-restart-delta-${id}`),
+            threadId: childId,
+            messageId: MessageId.make(id),
+            delta: `Answer ${id}.`,
+            createdAt: at,
+          });
+          yield* engine.dispatch({
+            type: "thread.message.assistant.complete",
+            commandId: CommandId.make(`cmd-restart-complete-${id}`),
+            threadId: childId,
+            messageId: MessageId.make(id),
+            createdAt: at,
+          });
+        });
+      const sessionWrite = (status: "ready" | "stopped", tag: string) =>
+        engine.dispatch({
+          type: "thread.session.set",
+          commandId: CommandId.make(`cmd-restart-session-${tag}`),
+          threadId: childId,
+          session: {
+            threadId: childId,
+            status,
+            providerName: "claudeAgent",
+            providerInstanceId: modelSelection.instanceId,
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt: createdAt,
+          },
+          createdAt,
+        });
+      const updates = snapshots
+        .getThreadDetailById(coordinatorId)
+        .pipe(
+          Effect.map(
+            (detail) =>
+              Option.getOrThrow(detail).messages.filter((message) =>
+                message.text.includes("t3_thread_update"),
+              ).length,
+          ),
+        );
+      const child = snapshots
+        .getThreadShellById(childId)
+        .pipe(Effect.map((thread) => Option.getOrThrow(thread)));
+      // Each server start builds a reactor with an empty memory of sent updates.
+      const withFreshReactor = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const context = yield* Layer.build(Layer.fresh(ThreadOrchestrationReactor.layer));
+            const reactor = Context.get(
+              context,
+              ThreadOrchestrationReactor.ThreadOrchestrationReactor,
+            );
+            yield* reactor.start();
+            const result = yield* effect;
+            yield* reactor.drain;
+            return result;
+          }),
+        );
+
+      yield* answer("restart-answer-1", createdAt);
+      yield* withFreshReactor(sessionWrite("ready", "ready"));
+      assert.strictEqual(yield* updates, 1);
+
+      // After a restart, a later session write finds the update in the coordinator.
+      yield* withFreshReactor(sessionWrite("stopped", "stopped-after-restart"));
+      assert.strictEqual(yield* updates, 1);
+
+      // Settling stops the child's session (ProviderCommandReactor); that is no news either.
+      yield* withFreshReactor(
+        Effect.gen(function* () {
+          yield* engine.dispatch({
+            type: "thread.settle",
+            commandId: CommandId.make("cmd-restart-settle"),
+            threadId: childId,
+          });
+          yield* sessionWrite("stopped", "stopped-after-settle");
+        }),
+      );
+      assert.strictEqual(yield* updates, 1);
+      const settled = yield* child;
+      assert.strictEqual(settled.settledOverride, "settled");
+      assert.notStrictEqual(settled.settledAt, null);
+
+      // A message to the settled child, as send_to_thread sends it, brings it back,
+      // and its next finish is reported.
+      yield* TestClock.setTime(Date.parse("2026-09-23T15:00:00.000Z"));
+      yield* withFreshReactor(
+        Effect.gen(function* () {
+          yield* engine.dispatch({
+            type: "thread.turn.start",
+            commandId: CommandId.make("cmd-restart-send"),
+            threadId: childId,
+            message: {
+              messageId: MessageId.make("restart-follow-up"),
+              role: "user",
+              text: "One more thing.",
+              attachments: [],
+            },
+            modelSelection,
+            runtimeMode: "full-access",
+            interactionMode: "default",
+            createdAt: "2026-09-23T14:30:00.000Z",
+          });
+          const resumed = yield* child;
+          assert.strictEqual(resumed.settledAt, null);
+          yield* answer("restart-answer-2", "2026-09-23T14:31:00.000Z");
+          yield* sessionWrite("ready", "ready-again");
+        }),
+      );
+      assert.strictEqual(yield* updates, 2);
+    }),
   );
 
   it.effect("the fork schema step is safe to run again", () =>

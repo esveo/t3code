@@ -68,8 +68,41 @@ export function summarizeChildThread(
     worktreePath: thread.worktreePath,
     pullRequests: thread.pullRequests.map((link) => link.url),
     updatedAt: thread.updatedAt,
+    settledAt: thread.settledAt,
     child: thread.parentThreadId === coordinatorId,
   };
+}
+
+/**
+ * Why a coordinator may not settle this thread yet, or null when nothing is
+ * open. Stricter than the settle the user has in the sidebar: a question for
+ * the user or a plan still waits on them, so the coordinator leaves it.
+ */
+export function settleBlocker(
+  thread: Pick<
+    OrchestrationThreadShell,
+    | "session"
+    | "latestTurn"
+    | "backgroundLiveness"
+    | "hasPendingApprovals"
+    | "hasPendingUserInput"
+    | "hasActionableProposedPlan"
+  >,
+): string | null {
+  if (thread.hasPendingApprovals) return "It waits on an approval from the user.";
+  if (thread.hasPendingUserInput) return "It has a question for the user.";
+  if (
+    thread.session?.status === "starting" ||
+    thread.session?.status === "running" ||
+    thread.latestTurn?.state === "running"
+  ) {
+    return "It is still working.";
+  }
+  if (thread.backgroundLiveness != null) {
+    return "Its background tasks (subagents, commands, monitors) still run.";
+  }
+  if (thread.hasActionableProposedPlan) return "Its plan waits on the user to implement it.";
+  return null;
 }
 
 /**
@@ -85,6 +118,7 @@ export function selectListedThreads(
     readonly title?: string | undefined;
     readonly projectId?: string | undefined;
     readonly includeArchived?: boolean | undefined;
+    readonly settled?: boolean | undefined;
   },
 ): { readonly threads: ReadonlyArray<OrchestrationThreadShell>; readonly omitted: number } {
   const title = input.title?.toLowerCase();
@@ -93,6 +127,7 @@ export function selectListedThreads(
       thread.id !== input.coordinatorId &&
       (input.scope === "all" || thread.parentThreadId === input.coordinatorId) &&
       (input.includeArchived === true || thread.archivedAt === null) &&
+      (input.settled === undefined || (thread.settledAt !== null) === input.settled) &&
       (title === undefined || thread.title.toLowerCase().includes(title)) &&
       (input.projectId === undefined || thread.projectId === input.projectId),
   );
@@ -572,6 +607,7 @@ const make = Effect.gen(function* () {
           title: input.title,
           projectId: project?.id,
           includeArchived: input.includeArchived,
+          settled: input.settled,
         });
         return {
           threads: listed.threads.map((thread) => summarizeChildThread(thread, coordinator.id)),
@@ -621,6 +657,49 @@ const make = Effect.gen(function* () {
           "Could not stop the thread",
         );
         return { stopped: true };
+      }),
+
+    // Same command as the sidebar's settle; each thread is settled on its own.
+    settle_thread: (input) =>
+      Effect.gen(function* () {
+        const coordinator = yield* requireCoordinator;
+        const settleOne = Effect.fn("ThreadsToolkit.settleOne")(function* (threadId: string) {
+          const found = yield* requireChild(coordinator, threadId).pipe(
+            Effect.map(Option.some),
+            Effect.catchTag("ChildThreadNotFoundError", () => Effect.succeedNone),
+          );
+          if (Option.isNone(found)) {
+            return {
+              threadId,
+              outcome: "not_yours" as const,
+              detail: new ChildThreadNotFoundError({ threadId }).message,
+            };
+          }
+          const child = found.value;
+          if (child.archivedAt !== null) {
+            return { threadId, outcome: "blocked" as const, detail: "It is archived." };
+          }
+          if (child.settledAt !== null) {
+            return {
+              threadId,
+              outcome: "already_settled" as const,
+              detail: "It was settled already.",
+            };
+          }
+          const blocker = settleBlocker(child);
+          if (blocker !== null) return { threadId, outcome: "blocked" as const, detail: blocker };
+          return yield* dispatch(
+            { type: "thread.settle", commandId: yield* commandId("settle"), threadId: child.id },
+            "Could not settle the thread",
+          ).pipe(
+            Effect.as({ threadId, outcome: "settled" as const, detail: "Settled." }),
+            Effect.catchTag("ThreadOrchestrationFailedError", (error) =>
+              Effect.succeed({ threadId, outcome: "blocked" as const, detail: error.detail }),
+            ),
+          );
+        });
+        const results = yield* Effect.forEach(input.threadIds, settleOne);
+        return { results };
       }),
   });
 });
