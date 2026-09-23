@@ -1,0 +1,88 @@
+/*
+ * Fork: esveo Midnight's brand gradients, taken from esveo.com's own tokens
+ * (--gradient-kachel-sky, --gradient-spektrum-kuehl). Dark mode only; light
+ * Midnight keeps esveo's flat palette.
+ *
+ * It hooks onto the utility classes upstream already renders (.bg-message on
+ * the user's bubble, .bg-message-action on the composer's send buttons), so no
+ * upstream file carries a fork edit. If upstream renames them, the selectors
+ * stop matching and the theme falls back to its flat colors;
+ * esveoMidnight.test.ts guards against that. This file is unlayered, so it
+ * wins over Tailwind's layered utilities without extra specificity.
+ *
+ * Glows use filter: drop-shadow rather than box-shadow on buttons, because
+ * Tailwind composes focus rings into box-shadow. Nothing animates at rest.
+ */
+
+html[data-theme-id="esveo-midnight"].dark {
+  --esveo-space: #171a34;
+  --esveo-sky: #03a8ff;
+  --esveo-sky-ink: #0075b3;
+  --esveo-sea: #68e5de;
+  --esveo-teal: #2ebcb4;
+  --esveo-lime: #73e086;
+  /* Spektrum kühl: Sky, Sea, Teal, Lime. */
+  --esveo-spektrum: linear-gradient(
+    135deg,
+    var(--esveo-sky) 0%,
+    var(--esveo-sea) 35%,
+    var(--esveo-teal) 65%,
+    var(--esveo-lime) 100%
+  );
+
+  /* The user's bubble: a Kachel Sky tile (Space navy deepening into Sky),
+     lit by a Sea glow at the top right, framed by a hairline Spektrum ring
+     that fades out toward the bottom left. The tile ends at Sky ink rather
+     than Sky, so the white text keeps its contrast in the bright corner. */
+  & .bg-message {
+    border: 1px solid transparent;
+    padding: calc(0.75rem - 1px);
+    background:
+      radial-gradient(120% 90% at 100% 0%, rgb(104 229 222 / 0.2), transparent 55%) padding-box,
+      radial-gradient(90% 90% at 0% 100%, rgb(3 168 255 / 0.14), transparent 60%) padding-box,
+      linear-gradient(160deg, var(--esveo-space) 0%, #0b4e86 62%, var(--esveo-sky-ink) 100%)
+        padding-box,
+      linear-gradient(
+          215deg,
+          var(--esveo-sea) 0%,
+          var(--esveo-sky) 35%,
+          rgb(3 168 255 / 0.25) 70%,
+          rgb(115 224 134 / 0.35) 100%
+        )
+        border-box;
+    box-shadow:
+      0 12px 36px -16px rgb(3 168 255 / 0.55),
+      inset 0 1px 0 rgb(255 255 255 / 0.08);
+  }
+
+  /* Send, Refine, Implement and the collapsed composer's action: Spektrum
+     kühl with a Sky and Lime glow while enabled. */
+  & .bg-message-action {
+    background-image: var(--esveo-spektrum);
+  }
+
+  & .bg-message-action:not(:disabled) {
+    filter: drop-shadow(0 4px 10px rgb(3 168 255 / 0.45))
+      drop-shadow(0 2px 6px rgb(115 224 134 / 0.25));
+  }
+
+  & .bg-message-action:not(:disabled):hover {
+    filter: brightness(1.08) saturate(1.1) drop-shadow(0 6px 14px rgb(3 168 255 / 0.6))
+      drop-shadow(0 2px 8px rgb(115 224 134 / 0.35));
+  }
+
+  /* Implement and its menu chevron read as one pill, so the spectrum runs
+     across both halves instead of starting over in the chevron. */
+  & [data-chat-composer-implement-actions] > :first-child.bg-message-action {
+    background-image: linear-gradient(
+      135deg,
+      var(--esveo-sky) 0%,
+      var(--esveo-sea) 50%,
+      var(--esveo-teal) 100%
+    );
+  }
+
+  & [data-chat-composer-implement-actions] > :last-child.bg-message-action {
+    background-image: linear-gradient(135deg, var(--esveo-teal) 0%, var(--esveo-lime) 100%);
+  }
+}
