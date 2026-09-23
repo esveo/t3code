@@ -90,6 +90,7 @@ import * as StorageCleanup from "./storageCleanup.ts";
 import * as PullRequestSyncReactor from "./orchestration/PullRequestSyncReactor.ts";
 import * as ThreadPullRequestReactor from "./orchestration/ThreadPullRequestReactor.ts";
 import * as ThreadOrchestrationReactor from "./threadOrchestration/ThreadOrchestrationReactor.ts";
+import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry.ts";
@@ -257,6 +258,8 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(ThreadPullRequestReactor.layer),
   // Fork: thread orchestration updates for coordinator threads.
   Layer.provideMerge(ThreadOrchestrationReactor.startedLayer),
+  // Fork: decisions a coordinator asks the user for (Inbox panel, MCP tools).
+  Layer.provideMerge(ThreadDecisions.layer),
   Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),
   Layer.provideMerge(RuntimeReceiptBusLive),
 );

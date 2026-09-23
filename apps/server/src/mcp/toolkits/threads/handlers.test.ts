@@ -17,6 +17,7 @@ import {
 } from "@t3tools/contracts";
 import { parseTaggedThreadMessage } from "@t3tools/shared/threadOrchestration";
 import { describe, expect, it } from "@effect/vitest";
+import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -32,8 +33,10 @@ import {
   type OrchestrationEngineShape,
 } from "../../../orchestration/Services/OrchestrationEngine.ts";
 import { ProjectionSnapshotQuery } from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { SqlitePersistenceMemory } from "../../../persistence/Layers/Sqlite.ts";
 import { ProjectSetupScriptRunner } from "../../../project/ProjectSetupScriptRunner.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
+import * as ThreadDecisions from "../../../threadDecisions/ThreadDecisions.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { ThreadsToolkitHandlersLive } from "./handlers.ts";
 import { ThreadsToolkit } from "./tools.ts";
@@ -110,7 +113,7 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
   const dispatch: OrchestrationEngineShape["dispatch"] = (command) =>
     Ref.update(commands, (recorded) => [...recorded, command]).pipe(Effect.as({ sequence: 1 }));
   // The config layer comes first so the test crypto below replaces the real one.
-  const dependencies = Layer.mergeAll(
+  const base = Layer.mergeAll(
     configLayer,
     Layer.mock(ProjectionSnapshotQuery)({
       getThreadShellById: (threadId) =>
@@ -165,6 +168,14 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
       randomUUIDv4: Effect.sync(() => `uuid-${++uuidCounter}`),
     } satisfies typeof testCrypto),
   );
+  // Built once, so the decisions' in-memory database lives as long as the harness.
+  const decisionsContext = yield* Layer.build(
+    ThreadDecisions.layer.pipe(
+      Layer.provide(Layer.mergeAll(base, Layer.fresh(SqlitePersistenceMemory))),
+    ),
+  );
+  const dependencies = Layer.mergeAll(base, Layer.succeedContext(decisionsContext));
+  const decisions = Context.get(decisionsContext, ThreadDecisions.ThreadDecisions);
   const toolkit = yield* ThreadsToolkit.pipe(
     Effect.provide(ThreadsToolkitHandlersLive.pipe(Layer.provide(dependencies))),
   );
@@ -191,7 +202,7 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
   /** The worktree runs after start_thread returns; its mocks resolve within a few yields. */
   const settle = Effect.repeat(Effect.yieldNow, { times: 20 });
   const { attachmentsDir } = yield* ServerConfig.ServerConfig.pipe(Effect.provide(configLayer));
-  return { commands, call, settle, attachmentsDir };
+  return { commands, call, settle, attachmentsDir, decisions };
 });
 
 function userMessage(overrides: Partial<OrchestrationMessage>): OrchestrationMessage {
@@ -669,4 +680,109 @@ describe("threads toolkit", () => {
       expect(listed.omitted).toBe(5);
     }),
   );
+
+  describe("decisions", () => {
+    const child = makeThread({ id: CHILD_ID, title: "FF2 Dev-DB", parentThreadId: COORDINATOR_ID });
+    const kodierung = {
+      id: "kodierung",
+      title: "Kodierung reparieren",
+      question: "Vor dem Weekly reparieren?",
+      options: [
+        { id: "yes", label: "Ja" },
+        { id: "no", label: "Nein" },
+      ],
+      recommended: { optionId: "yes" },
+      sourceThreadId: CHILD_ID,
+      routeToThreadId: CHILD_ID,
+    } as const;
+
+    it.effect("keeps asked decisions and lists the open ones", () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({ threads: [child] });
+        const first = yield* harness.call("upsert_decision", kodierung);
+        expect(first).toEqual({ decisionId: "kodierung", open: 1 });
+        yield* harness.call("upsert_decision", {
+          id: "stichtag",
+          title: "Stichtag",
+          question: "Volle Historie?",
+          options: [{ id: "full", label: "Volle Historie" }],
+          dependsOn: ["kodierung"],
+        });
+        yield* harness.call("resolve_decision", { id: "stichtag", reason: "Hat sich erledigt." });
+        const listed = yield* harness.call("list_decisions", {});
+        expect(listed.decisions.map((decision) => decision.id)).toEqual(["kodierung"]);
+        const all = yield* harness.call("list_decisions", { status: "all" });
+        expect(all.decisions.find((decision) => decision.id === "stichtag")).toMatchObject({
+          status: "resolved",
+          resolvedReason: "Hat sich erledigt.",
+        });
+      }),
+    );
+
+    it.effect("refuses a route to a thread that is not the coordinator's", () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness();
+        const error = yield* harness
+          .call("upsert_decision", { ...kodierung, sourceThreadId: undefined })
+          .pipe(Effect.flip);
+        expect(String(error)).toMatch(/not one of your threads/);
+      }),
+    );
+
+    it.effect("sends the user's replies to the coordinator as one message", () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({ threads: [child] });
+        yield* harness.call("upsert_decision", kodierung);
+        yield* harness.decisions.act({
+          type: "submit",
+          threadId: COORDINATOR_ID,
+          replies: [{ decisionId: "kodierung", optionId: "yes", text: "vor dem Weekly" }],
+        });
+        const commands = yield* Ref.get(harness.commands);
+        const turn = commands.at(-1) as Extract<
+          OrchestrationCommand,
+          { type: "thread.turn.start" }
+        >;
+        expect(turn).toMatchObject({ type: "thread.turn.start", threadId: COORDINATOR_ID });
+        expect(turn.message.text).toContain("Answer: Ja (yes). vor dem Weekly");
+        expect(turn.message.text).toContain("For [FF2 Dev-DB](t3-thread:child): pass it on.");
+        const listed = yield* harness.call("list_decisions", { status: "answered" });
+        expect(listed.decisions).toMatchObject([
+          { id: "kodierung", answer: "Ja – vor dem Weekly" },
+        ]);
+        const again = yield* harness.decisions
+          .act({
+            type: "submit",
+            threadId: COORDINATOR_ID,
+            replies: [{ decisionId: "kodierung", optionId: "no" }],
+          })
+          .pipe(Effect.flip);
+        expect(again.message).toMatch(/no longer open/);
+      }),
+    );
+
+    it.effect("wakes snoozed decisions when the coordinator changes one", () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({ threads: [child] });
+        yield* harness.call("upsert_decision", kodierung);
+        yield* harness.decisions.act({
+          type: "snooze",
+          threadId: COORDINATOR_ID,
+          decisionId: "kodierung",
+        });
+        let listed = yield* harness.call("list_decisions", {});
+        expect(listed.decisions[0]?.snoozed).toBe(true);
+        yield* harness.call("upsert_decision", {
+          id: "backup",
+          title: "Backup",
+          question: "Snapshot?",
+          options: [{ id: "yes", label: "Ja" }],
+        });
+        listed = yield* harness.call("list_decisions", {});
+        expect(listed.decisions.find((decision) => decision.id === "kodierung")?.snoozed).toBe(
+          false,
+        );
+      }),
+    );
+  });
 });

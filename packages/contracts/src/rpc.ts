@@ -3,6 +3,7 @@ import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { WsSubagentChatStopRpc, WsSubagentChatSubscribeTranscriptRpc } from "./subagentChat.ts";
+import { WsThreadDecisionsActRpc, WsThreadDecisionsSubscribeRpc } from "./threadDecisions.ts";
 import {
   ProviderAuthCancelInput,
   ProviderAuthCompleteInput,
@@ -1560,4 +1561,7 @@ export const WsRpcGroup = RpcGroup.make(
   // Fork: subagent chat view.
   WsSubagentChatSubscribeTranscriptRpc,
   WsSubagentChatStopRpc,
+  // Fork: decisions a coordinator asks the user for.
+  WsThreadDecisionsSubscribeRpc,
+  WsThreadDecisionsActRpc,
 );

@@ -19,4 +19,14 @@ export const ensureForkSchema = Effect.gen(function* () {
   if (!threadColumns.some((column) => column.name === "parent_thread_id")) {
     yield* sql`ALTER TABLE projection_threads ADD COLUMN parent_thread_id TEXT`;
   }
+  // Coordinator decisions: one row per decision, the decision itself as JSON.
+  yield* sql`
+    CREATE TABLE IF NOT EXISTS fork_thread_decisions (
+      coordinator_thread_id TEXT NOT NULL,
+      decision_id TEXT NOT NULL,
+      decision_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (coordinator_thread_id, decision_id)
+    )
+  `;
 }).pipe(Effect.withSpan("ensureForkSchema"));

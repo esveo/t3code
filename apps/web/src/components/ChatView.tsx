@@ -234,6 +234,8 @@ import { nextGitGraphPanelStep } from "./gitGraph/gitGraphPanelLadder";
 import { AgentStagePanel } from "./agentStage/AgentStagePanel";
 import { ThreadOverviewPanel } from "./threadOrchestration/ThreadOverviewPanel";
 import { useThreadOverviewSurface } from "./threadOrchestration/useThreadOverviewSurface";
+import { ThreadInboxPanel } from "./threadInbox/ThreadInboxPanel";
+import { useThreadInboxSurface } from "./threadInbox/useThreadInboxSurface";
 import { useAgentStageEnabled } from "./agentStage/agentStageStore";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import { isEditableFocused } from "../lib/editableFocus";
@@ -4622,6 +4624,7 @@ export default function ChatView(props: ChatViewProps) {
   const agentStageEnabled = useAgentStageEnabled();
   // Fork: the threads this one started.
   const threadOverview = useThreadOverviewSurface(activeThreadRef);
+  const threadInbox = useThreadInboxSurface(activeThreadRef);
   const addAgentStageSurface = useCallback(() => {
     if (!activeThreadRef || !agentStageEnabled) return;
     useRightPanelStore.getState().open(activeThreadRef, "agent-stage");
@@ -9767,6 +9770,8 @@ export default function ChatView(props: ChatViewProps) {
       <AgentStagePanel threadRef={activeThreadRef} workspaceRoot={activeWorkspaceRoot} />
     ) : renderedRightPanelSurface?.kind === "thread-overview" ? (
       <ThreadOverviewPanel threadRef={activeThreadRef} />
+    ) : renderedRightPanelSurface?.kind === "thread-inbox" ? (
+      <ThreadInboxPanel threadRef={activeThreadRef} cwd={activeWorkspaceRoot} />
     ) : renderedRightPanelSurface?.kind === "diff" ? (
       <Suspense fallback={null}>
         <DiffPanel
@@ -10521,6 +10526,7 @@ export default function ChatView(props: ChatViewProps) {
           agentStageAvailable={agentStageEnabled}
           threadOverviewAvailable={threadOverview.available}
           threadsWaitingCount={threadOverview.waitingCount}
+          threadInbox={threadInbox}
           deviceAvailable={activeThreadRef !== null}
           liveAgentCount={agentPanelModel.liveCount}
         >
@@ -10586,6 +10592,7 @@ export default function ChatView(props: ChatViewProps) {
             agentStageAvailable={agentStageEnabled}
             threadOverviewAvailable={threadOverview.available}
             threadsWaitingCount={threadOverview.waitingCount}
+            threadInbox={threadInbox}
             deviceAvailable={activeThreadRef !== null}
             liveAgentCount={agentPanelModel.liveCount}
           >

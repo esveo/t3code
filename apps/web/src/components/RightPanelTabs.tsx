@@ -15,6 +15,7 @@ import type {
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import {
   Bot,
+  InboxIcon,
   NetworkIcon,
   OrbitIcon,
   Smartphone,
@@ -145,8 +146,23 @@ interface RightPanelTabsProps {
   liveAgentCount: number;
   /** Fork: child threads waiting on the user; badges the Threads card. */
   threadsWaitingCount?: number;
+  /** Fork: a coordinator's decisions; absent where there is no thread. */
+  threadInbox?: ThreadInboxSurfaceProps;
   children: ReactNode;
 }
+
+/** Fork: the Inbox surface's opener, availability and badge in one prop. */
+interface ThreadInboxSurfaceProps {
+  readonly available: boolean;
+  readonly waitingCount: number;
+  readonly open: () => void;
+}
+
+const UNAVAILABLE_THREAD_INBOX: ThreadInboxSurfaceProps = {
+  available: false,
+  waitingCount: 0,
+  open: () => {},
+};
 
 export interface PullRequestTabStatus {
   projectId: string;
@@ -177,6 +193,7 @@ const SURFACE_DISABLED_REASONS = {
   agents: "Agents are only available from a thread.",
   agentStage: "Enable the agent stage in Settings > General.",
   threadOverview: "Turn on thread orchestration in Settings > General.",
+  threadInbox: "Turn on thread orchestration in Settings > General.",
   device: "Devices are only available from a thread.",
 } as const;
 
@@ -204,6 +221,7 @@ const SURFACE_UNAVAILABLE_HINTS = {
   agents: "Available from a thread.",
   agentStage: "Enable it in Settings > General.",
   threadOverview: "Turn on thread orchestration in Settings.",
+  threadInbox: "Available from a coordinator thread.",
   device: "Available from a thread.",
 } as const;
 
@@ -362,6 +380,7 @@ function RightPanelEmptyState(props: {
   deviceAvailable: boolean;
   liveAgentCount: number;
   threadsWaitingCount: number;
+  threadInbox: ThreadInboxSurfaceProps;
 }) {
   // -1 means no highlight: it only appears on hover or arrow use.
   const [highlight, setHighlight] = useState(-1);
@@ -457,6 +476,16 @@ function RightPanelEmptyState(props: {
       disabledReason: SURFACE_UNAVAILABLE_HINTS.threadOverview,
       onClick: props.onAddThreadOverview,
       badgeCount: props.threadsWaitingCount,
+    },
+    {
+      label: "Inbox",
+      description: "Decisions the coordinator asks you for.",
+      icon: InboxIcon,
+      shortcut: "O",
+      available: props.threadInbox.available,
+      disabledReason: SURFACE_UNAVAILABLE_HINTS.threadInbox,
+      onClick: props.threadInbox.open,
+      badgeCount: props.threadInbox.waitingCount,
     },
     {
       label: "Device",
@@ -691,6 +720,8 @@ function surfaceTitle(
       return "Stage";
     case "thread-overview":
       return "Threads";
+    case "thread-inbox":
+      return "Inbox";
     case "device":
       return surface.title ?? surface.target?.name ?? "Device";
     case "preview": {
@@ -782,6 +813,8 @@ function SurfaceIcon({
       return <OrbitIcon className="size-3 shrink-0" />;
     case "thread-overview":
       return <NetworkIcon className="size-3 shrink-0" />;
+    case "thread-inbox":
+      return <InboxIcon className="size-3 shrink-0" />;
     case "device":
       return surface.target?.platform === "ios" ? (
         <AppleIcon className="size-3 shrink-0" />
@@ -1015,6 +1048,14 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       available: props.threadOverviewAvailable ?? false,
       disabledReason: SURFACE_DISABLED_REASONS.threadOverview,
       onClick: props.onAddThreadOverview ?? noopThreadOverview,
+    },
+    {
+      label: "Inbox",
+      icon: InboxIcon,
+      shortcut: "O",
+      available: props.threadInbox?.available ?? false,
+      disabledReason: SURFACE_DISABLED_REASONS.threadInbox,
+      onClick: (props.threadInbox ?? UNAVAILABLE_THREAD_INBOX).open,
     },
     {
       label: "Device",
@@ -1512,6 +1553,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             deviceAvailable={props.deviceAvailable}
             liveAgentCount={props.liveAgentCount}
             threadsWaitingCount={props.threadsWaitingCount ?? 0}
+            threadInbox={props.threadInbox ?? UNAVAILABLE_THREAD_INBOX}
           />
         ) : (
           props.children
