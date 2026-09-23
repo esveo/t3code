@@ -67,6 +67,37 @@ write changes with that merge in mind, not just with the current diff in mind.
 - Mention in the handover when a change had to touch upstream files in a way
   that will likely conflict, so the next rebase is not a surprise.
 
+## The board
+
+Work on the fork is tracked on the project board
+[esveo/projects/3](https://github.com/orgs/esveo/projects/3/views/1). Every
+item is an issue in `esveo/t3code`, with the status `Ideen`, `In Arbeit` or
+`Done`. Keep it current as you work, without being asked:
+
+- **Starting a feature or fix:** find its issue on the board. If there is none,
+  create one (German title, a sentence or two of body, like the existing ones)
+  and add it to the board. Set it to `In Arbeit`.
+- **Feature live:** once it is merged into `fork`, set it to `Done` and close
+  the issue. A build prepared from a feature branch alone is not done.
+- **Abandoned or paused:** move it back to `Ideen` with a comment on the issue
+  saying why and which branch holds the work.
+- **Ideas on the side:** when the user mentions something for later, add it as
+  an issue in `Ideen` instead of losing it.
+- Touch only the items of your own work, and only the primary agent updates
+  the board, not its subagents. Name the issue in the handover.
+
+```bash
+# Create an issue and put it on the board (prints the item id)
+gh issue create -R esveo/t3code --title "…" --body "…"
+gh project item-add 3 --owner esveo --url <issue url> --format json --jq .id
+# Item id of an existing issue
+gh project item-list 3 --owner esveo --format json \
+  --jq '.items[] | select(.content.number == <N>) | .id'
+# Set the status: Ideen 8bc1201f, In Arbeit 312ea0df, Done 02ced7e8
+gh project item-edit --project-id PVT_kwDOAmJGXc4BkTTD --id <item id> \
+  --field-id PVTSSF_lADOAmJGXc4BkTTDzhjEWVE --single-select-option-id <option>
+```
+
 ## Finishing a feature
 
 The user runs the fork's desktop app as a prebuilt build and switches to a new
@@ -89,7 +120,8 @@ one with the app's update menu. Your job ends with that build prepared.
    older build and touching neither the running app nor other branches'
    builds. It takes one to two minutes. If it fails, fix the cause and run it
    again.
-5. End with a short message: what changed, branch and commit, what you
+5. Update the feature's board item (see [The board](#the-board)).
+6. End with a short message: what changed, branch and commit, what you
    verified, and that the build is prepared, so the update menu offers it
    under its branch.
 
