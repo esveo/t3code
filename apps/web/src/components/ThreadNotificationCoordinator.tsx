@@ -188,7 +188,7 @@ function EnvironmentNotifications({
           description: thread.title,
           data: {
             hideCopyButton: true,
-            secondaryActionProps: openBeside.props,
+            ...openBeside.data,
             leadingIcon:
               kind === "completion" ? (
                 <CircleCheckIcon

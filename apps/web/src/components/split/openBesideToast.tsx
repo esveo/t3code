@@ -2,6 +2,7 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 
 import { isMacPlatform } from "../../lib/utils";
 import { Kbd } from "../ui/kbd";
+import type { ThreadToastData } from "../ui/toast";
 import { openThreadBeside } from "./splitPanes";
 
 /**
@@ -54,15 +55,20 @@ export function openBesideToastAction(thread: ScopedThreadRef, closeToast: () =>
     window.addEventListener("keydown", onKeyDown, { capture: true });
   }
   return {
-    props: {
-      children: (
-        <>
-          Open beside
-          <Kbd>{shortcutLabel()}</Kbd>
-        </>
-      ),
-      onClick: entry.open,
-    },
+    /** Spread into the toast's `data`. Two buttons leave the text too little
+     * room beside them, so they move to a row of their own. */
+    data: {
+      actionLayout: "stacked-end",
+      secondaryActionProps: {
+        children: (
+          <>
+            Open beside
+            <Kbd>{shortcutLabel()}</Kbd>
+          </>
+        ),
+        onClick: entry.open,
+      },
+    } satisfies ThreadToastData,
     disarm: () => {
       const index = armed.indexOf(entry);
       if (index !== -1) armed.splice(index, 1);
