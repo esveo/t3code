@@ -24,6 +24,8 @@ export interface T3CodeToolAvailability {
   readonly device: boolean;
   /** Fork: thread orchestration tools. */
   readonly threads?: boolean;
+  /** Fork: the coordinator's decision tools. */
+  readonly decisions?: boolean;
 }
 
 const normalizeAvailability = (
@@ -220,5 +222,7 @@ ${buildRuntimeInstructions({
   ...runtime,
   threadOrchestration:
     typeof browserToolsAvailable === "object" && browserToolsAvailable.threads === true,
+  threadDecisions:
+    typeof browserToolsAvailable === "object" && browserToolsAvailable.decisions === true,
 })}`;
 }

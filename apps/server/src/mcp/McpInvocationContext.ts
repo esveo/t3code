@@ -8,8 +8,8 @@ import {
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 
-// Fork: "threads" is thread orchestration.
-export type McpCapability = "preview" | "device" | "pull-requests" | "threads";
+// Fork: "threads" is thread orchestration, "decisions" its Inbox of decisions.
+export type McpCapability = "preview" | "device" | "pull-requests" | "threads" | "decisions";
 
 export interface McpInvocationScope {
   readonly environmentId: EnvironmentId;

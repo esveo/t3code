@@ -7,6 +7,11 @@ const THREAD_ORCHESTRATION_INSTRUCTIONS = `<thread_orchestration>
 The t3-code MCP server lets you coordinate other threads: start_thread starts a child thread that works on its own task in parallel, usually in its own git worktree and branch, and shows up for the user under this thread. It can also work in another project of this environment (list_projects). When a request splits into independent pieces of work with their own results (a branch, a pull request, a document), start a thread per piece, group work that belongs together into one thread, and keep quick lookups and checks in subagents. Give each thread everything it needs in its prompt, since it starts without your context. You receive a message when a thread finishes, fails or waits on the user; follow up with send_to_thread, read results with read_thread, and combine them for the user. To pick up earlier work, find any thread of this environment with list_threads (scope "all", filter by title) and read it with read_thread; you can message or stop only your own threads, so ask the user to assign an existing one to you when you need to continue it. Once you have passed a thread's result on to the user and nothing is left open there, settle it with settle_thread so it leaves the user's sidebar; leave it unsettled while the user still has a decision to make in it. Mention threads to the user as Markdown links [title](t3-thread:THREAD_ID). If this thread was itself started by a coordinator (its task arrived in a t3_from_coordinator message), do not start threads: use subagents.
 </thread_orchestration>`;
 
+// Fork: the coordinator's Inbox, only for sessions granted the "decisions" MCP capability.
+const THREAD_DECISIONS_INSTRUCTIONS = `<thread_decisions>
+When you need the user to decide or approve something, record each question with upsert_decision instead of numbering questions in a chat message: it stays in the user's Inbox beside this thread until answered, however many updates arrive, and the answers come back together in one t3_decisions message. Withdraw a question that settled itself with resolve_decision, and check what is still open with list_decisions instead of repeating it in chat.
+</thread_decisions>`;
+
 /** Shared runtime context; omit model and effort when the harness manages them dynamically. */
 export function buildRuntimeInstructions(runtime: {
   readonly harness: string;
@@ -14,13 +19,15 @@ export function buildRuntimeInstructions(runtime: {
   readonly reasoningEffort?: string | undefined;
   /** Fork: the session may start and follow child threads. */
   readonly threadOrchestration?: boolean | undefined;
+  /** Fork: the session asks for decisions through the Inbox. */
+  readonly threadDecisions?: boolean | undefined;
 }): string {
   const harness = toSingleLine(runtime.harness);
   const model = toSingleLine(runtime.model ?? "");
   const effort = toSingleLine(runtime.reasoningEffort ?? "");
   const modelInfo = model && model !== "auto" && model !== "default" ? `, as ${model}` : "";
   const effortInfo = effort ? ` with ${effort} reasoning effort` : "";
-  return `<runtime_info>In case you're asked: you are running in T3 Code through the ${harness} harness${modelInfo}${effortInfo}. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths.</runtime_info>\n\n${PULL_REQUEST_LINKING_INSTRUCTIONS}${runtime.threadOrchestration ? `\n\n${THREAD_ORCHESTRATION_INSTRUCTIONS}` : ""}`;
+  return `<runtime_info>In case you're asked: you are running in T3 Code through the ${harness} harness${modelInfo}${effortInfo}. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths.</runtime_info>\n\n${PULL_REQUEST_LINKING_INSTRUCTIONS}${runtime.threadOrchestration ? `\n\n${THREAD_ORCHESTRATION_INSTRUCTIONS}` : ""}${runtime.threadDecisions ? `\n\n${THREAD_DECISIONS_INSTRUCTIONS}` : ""}`;
 }
 
 function toSingleLine(value: string): string {

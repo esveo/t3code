@@ -1,6 +1,7 @@
 import {
   type ChatAttachment,
   CommandId,
+  type ThreadDecision,
   MessageId,
   ThreadId,
   type ModelSelection,
@@ -27,12 +28,14 @@ import * as OrchestrationEngine from "../../../orchestration/Services/Orchestrat
 import * as ProjectionSnapshotQuery from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ProjectSetupScriptRunner from "../../../project/ProjectSetupScriptRunner.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
+import * as ThreadDecisions from "../../../threadDecisions/ThreadDecisions.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { describeMessageAttachments, makeThreadAttachments } from "./attachments.ts";
 import { suggestBranches } from "./branchSuggestions.ts";
 import {
   ChildThreadNotFoundError,
   type ChildThreadSummary,
+  type DecisionSummary,
   ThreadOrchestrationDisabledError,
   ThreadOrchestrationFailedError,
   ThreadOrchestrationNestedError,
@@ -139,6 +142,24 @@ export function selectListedThreads(
   };
 }
 
+/** A decision as list_decisions reports it: the answer in words, not ids. */
+export function summarizeDecision(decision: ThreadDecision): DecisionSummary {
+  const option = decision.options.find((candidate) => candidate.id === decision.answer?.optionId);
+  const answer = decision.answer
+    ? [option?.label, decision.answer.text].filter((part) => part).join(" – ") || null
+    : null;
+  return {
+    id: decision.id,
+    title: decision.title,
+    status: decision.status,
+    urgency: decision.urgency,
+    answer,
+    resolvedReason: decision.resolvedReason,
+    snoozed: decision.snoozedAt !== null,
+    askedBack: decision.askedBackAt !== null,
+  };
+}
+
 function clampAnswer(text: string): string {
   return text.length > ANSWER_MAX_LENGTH
     ? `${text.slice(0, ANSWER_MAX_LENGTH)}\n… (${text.length - ANSWER_MAX_LENGTH} more characters)`
@@ -193,6 +214,19 @@ const make = Effect.gen(function* () {
     }
     if (thread.value.parentThreadId) return yield* new ThreadOrchestrationNestedError({});
     return thread.value;
+  });
+
+  /** The calling coordinator, when the user also turned on decisions (Settings). */
+  const requireDecisions = Effect.gen(function* () {
+    const coordinator = yield* requireCoordinator;
+    yield* McpInvocationContext.requireMcpCapability("decisions").pipe(
+      Effect.mapError(() =>
+        failure(
+          "Decisions are turned off, so ask the user in chat instead. The user can turn them on in Settings.",
+        ),
+      ),
+    );
+    return coordinator;
   });
 
   const requireChild = Effect.fn("ThreadsToolkit.requireChild")(function* (
@@ -700,6 +734,54 @@ const make = Effect.gen(function* () {
         });
         const results = yield* Effect.forEach(input.threadIds, settleOne);
         return { results };
+      }),
+
+    upsert_decision: (input) =>
+      Effect.gen(function* () {
+        const coordinator = yield* requireDecisions;
+        const source = input.sourceThreadId
+          ? yield* requireChild(coordinator, input.sourceThreadId)
+          : null;
+        const route = input.routeToThreadId
+          ? yield* requireChild(coordinator, input.routeToThreadId)
+          : null;
+        const { decision, all } = yield* ThreadDecisions.withService((decisions) =>
+          Effect.gen(function* () {
+            const decision = yield* decisions.upsert(coordinator.id, {
+              ...input,
+              sourceThreadId: source?.id,
+              routeToThreadId: route?.id,
+            });
+            return { decision, all: yield* decisions.list(coordinator.id) };
+          }),
+        ).pipe(Effect.mapError((error) => failure(error.message)));
+        return {
+          decisionId: decision.id,
+          open: all.filter((candidate) => candidate.status === "open").length,
+        };
+      }),
+
+    resolve_decision: (input) =>
+      Effect.gen(function* () {
+        const coordinator = yield* requireDecisions;
+        yield* ThreadDecisions.withService((decisions) =>
+          decisions.resolve(coordinator.id, input.id, input.reason),
+        ).pipe(Effect.mapError((error) => failure(error.message)));
+        return { resolved: true };
+      }),
+
+    list_decisions: (input) =>
+      Effect.gen(function* () {
+        const coordinator = yield* requireDecisions;
+        const status = input.status ?? "open";
+        const all = yield* ThreadDecisions.withService((decisions) =>
+          decisions.list(coordinator.id),
+        ).pipe(Effect.mapError((error) => failure(error.message)));
+        return {
+          decisions: all
+            .filter((decision) => status === "all" || decision.status === status)
+            .map(summarizeDecision),
+        };
       }),
   });
 });

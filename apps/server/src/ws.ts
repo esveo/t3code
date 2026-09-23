@@ -47,6 +47,7 @@ import {
   OrchestrationGetTurnDiffError,
   ORCHESTRATION_WS_METHODS,
   SUBAGENT_CHAT_WS_METHODS,
+  THREAD_DECISIONS_WS_METHODS,
   ProjectId,
   type ProjectEntriesFailure,
   type ProjectFileFailure,
@@ -135,6 +136,7 @@ import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration/workflowScriptQuery.ts";
 import * as SubagentChat from "./subagentChat/SubagentChat.ts";
+import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
@@ -3807,6 +3809,17 @@ const makeWsRpcLayer = (
           ),
         [SUBAGENT_CHAT_WS_METHODS.stop]: (input) =>
           observeRpcEffect(SUBAGENT_CHAT_WS_METHODS.stop, SubagentChat.stopSubagent(input), {
+            "rpc.aggregate": "orchestration",
+          }),
+        // Fork: decisions a coordinator asks the user for.
+        [THREAD_DECISIONS_WS_METHODS.subscribe]: (input) =>
+          observeRpcStream(
+            THREAD_DECISIONS_WS_METHODS.subscribe,
+            ThreadDecisions.subscribeRpc(input),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [THREAD_DECISIONS_WS_METHODS.act]: (input) =>
+          observeRpcEffect(THREAD_DECISIONS_WS_METHODS.act, ThreadDecisions.actRpc(input), {
             "rpc.aggregate": "orchestration",
           }),
       });

@@ -414,6 +414,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["coordinator child threads orchestrate parallel agents overview subthreads"],
   },
   {
+    id: "thread-decisions",
+    title: "Coordinator decisions",
+    to: "/settings/general",
+    searchTerms: ["inbox questions answers decide approve coordinator open items"],
+  },
+  {
     id: "continue-threads-after-server-update",
     title: "Continue threads after restarts",
     to: "/settings/general",

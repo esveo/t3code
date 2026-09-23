@@ -39,6 +39,10 @@
       "types": "./src/threadOrchestration.ts",
       "import": "./src/threadOrchestration.ts"
     },
+    "./threadDecisions": {
+      "types": "./src/threadDecisions.ts",
+      "import": "./src/threadDecisions.ts"
+    },
     "./agentAwareness": {
       "types": "./src/agentAwareness.ts",
       "import": "./src/agentAwareness.ts"

@@ -9,6 +9,7 @@ import {
   AuthTerminalOperateScope,
   ORCHESTRATION_WS_METHODS,
   SUBAGENT_CHAT_WS_METHODS,
+  THREAD_DECISIONS_WS_METHODS,
   type AuthEnvironmentScope,
   WS_METHODS,
   WsRpcGroup,
@@ -176,6 +177,9 @@ export const RPC_REQUIRED_SCOPES = {
   // Fork: subagent chat view.
   [SUBAGENT_CHAT_WS_METHODS.subscribeTranscript]: AuthOrchestrationReadScope,
   [SUBAGENT_CHAT_WS_METHODS.stop]: AuthOrchestrationOperateScope,
+  // Fork: coordinator decisions.
+  [THREAD_DECISIONS_WS_METHODS.subscribe]: AuthOrchestrationReadScope,
+  [THREAD_DECISIONS_WS_METHODS.act]: AuthOrchestrationOperateScope,
 } as const satisfies Readonly<Record<WsRpcMethod, AuthEnvironmentScope>>;
 
 export function requiredScopeForRpcMethod(method: string): AuthEnvironmentScope {

@@ -108,6 +108,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   commitGraph: Schema.optionalKey(Schema.Boolean),
   /** Fork: server streams subagent transcripts and stops subagents for the Agents panel. */
   subagentChat: Schema.optionalKey(Schema.Boolean),
+  /** Fork: server keeps a coordinator's open decisions for the Inbox panel. */
+  threadDecisions: Schema.optionalKey(Schema.Boolean),
   /** Server understands canonical inline context links plus their message context records.
       Absent on servers from before inline context shipped, which drop the records and forward
       the links as literal text -- so a client must serialize context the legacy way for them. */

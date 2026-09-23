@@ -398,6 +398,143 @@ const SettleThreadTool = Tool.make("settle_thread", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const DecisionOptionInput = Schema.Struct({
+  id: TrimmedNonEmptyString.annotate({ description: "Short id, unique within the decision." }),
+  label: TrimmedNonEmptyString.annotate({
+    description: "The answer in a few words, as the user clicks it (for example: Volle Historie).",
+  }),
+  detail: Schema.optional(
+    Schema.String.annotate({ description: "One short line under the label, if needed." }),
+  ),
+  pros: Schema.optional(Schema.Array(Schema.String)),
+  cons: Schema.optional(Schema.Array(Schema.String)),
+});
+
+export const UpsertDecisionInput = Schema.Struct({
+  id: TrimmedNonEmptyString.annotate({
+    description:
+      "Stable id you choose (for example stichtag). Calling upsert_decision again with it updates the decision; for one that was answered or resolved it asks again.",
+  }),
+  title: TrimmedNonEmptyString.annotate({
+    description: "A few words naming what is to decide; the row the user sees in the Inbox.",
+  }),
+  question: TrimmedNonEmptyString.annotate({
+    description: "The question itself in one or two sentences, in the user's language.",
+  }),
+  context: Schema.optional(
+    Schema.String.annotate({
+      description:
+        "Markdown the user needs to decide and nothing more: facts, risks, numbers, a draft to approve.",
+    }),
+  ),
+  options: Schema.NonEmptyArray(DecisionOptionInput).annotate({
+    description:
+      "The answers to choose from; for a yes/no question both. The user can always answer in their own words instead.",
+  }),
+  recommended: Schema.optional(
+    Schema.Struct({
+      optionId: TrimmedNonEmptyString,
+      reason: Schema.optional(Schema.String.annotate({ description: "Why, in one sentence." })),
+    }),
+  ),
+  urgency: Schema.optional(
+    Schema.Literals(["now", "today", "later"]).annotate({
+      description: "now: blocks work; today (default); later: can wait.",
+    }),
+  ),
+  sourceThreadId: Schema.optional(
+    TrimmedNonEmptyString.annotate({
+      description: "Your thread the question comes from, when it is not your own.",
+    }),
+  ),
+  routeToThreadId: Schema.optional(
+    TrimmedNonEmptyString.annotate({
+      description:
+        "Your thread the answer is for. The answer still reaches you; pass it on with send_to_thread.",
+    }),
+  ),
+  dependsOn: Schema.optional(
+    Schema.Array(TrimmedNonEmptyString).annotate({
+      description: "Ids of decisions this one depends on; the Inbox asks those first.",
+    }),
+  ),
+});
+export type UpsertDecisionInput = typeof UpsertDecisionInput.Type;
+
+export const DecisionSummary = Schema.Struct({
+  id: Schema.String,
+  title: Schema.String,
+  status: Schema.Literals(["open", "answered", "resolved"]),
+  urgency: Schema.Literals(["now", "today", "later"]),
+  answer: Schema.NullOr(Schema.String),
+  resolvedReason: Schema.NullOr(Schema.String),
+  snoozed: Schema.Boolean.annotate({
+    description: "The user put it aside until your next change.",
+  }),
+  askedBack: Schema.Boolean.annotate({
+    description: "The user asked for pros and cons instead of answering.",
+  }),
+});
+export type DecisionSummary = typeof DecisionSummary.Type;
+
+const DECISIONS_USE =
+  "Use decisions whenever you need the user to decide or approve something, instead of numbering questions in a chat message: they stay visible in the user's Inbox until answered, however many updates arrive in between.";
+
+const UpsertDecisionTool = Tool.make("upsert_decision", {
+  description: `Ask the user for a decision, or update one you asked before. ${DECISIONS_USE} It shows in the Inbox tab beside this thread with its options, your recommendation and context. The user's answers arrive as one message tagged t3_decisions; answers for one of your threads name it, so pass them on. Mention in chat only briefly that something waits in the Inbox.`,
+  parameters: UpsertDecisionInput,
+  success: Schema.Struct({
+    decisionId: Schema.String,
+    open: Schema.Int.annotate({ description: "Your decisions still open after this one." }),
+  }),
+  failure: ThreadsToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Ask for a decision")
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+const ResolveDecisionTool = Tool.make("resolve_decision", {
+  description:
+    "Withdraw an open decision that no longer needs the user, for example because another result settled it. It leaves the Inbox with your reason.",
+  parameters: Schema.Struct({
+    id: TrimmedNonEmptyString,
+    reason: TrimmedNonEmptyString.annotate({
+      description: "Why it is settled, in one sentence the user reads.",
+    }),
+  }),
+  success: Schema.Struct({ resolved: Schema.Boolean }),
+  failure: ThreadsToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Withdraw a decision")
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
+const ListDecisionsTool = Tool.make("list_decisions", {
+  description:
+    "List your decisions and what the user answered, instead of repeating open questions in chat.",
+  parameters: Schema.Struct({
+    status: Schema.optional(
+      Schema.Literals(["open", "answered", "resolved", "all"]).annotate({
+        description: "Defaults to open.",
+      }),
+    ),
+  }),
+  success: Schema.Struct({ decisions: Schema.Array(DecisionSummary) }),
+  failure: ThreadsToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "List decisions")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 export const ThreadsToolkit = Toolkit.make(
   ListProjectsTool,
   CreateThreadTool,
@@ -406,4 +543,7 @@ export const ThreadsToolkit = Toolkit.make(
   ReadThreadTool,
   StopThreadTool,
   SettleThreadTool,
+  UpsertDecisionTool,
+  ResolveDecisionTool,
+  ListDecisionsTool,
 );
