@@ -1,10 +1,11 @@
-import { ChevronDownIcon, PlusIcon } from "lucide-react";
+import { ChevronDownIcon, NetworkIcon, PlusIcon } from "lucide-react";
 import { memo } from "react";
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import type { SidebarProjectRunHeader as SidebarProjectRunHeaderInfo } from "./sidebarProjectRuns.logic";
 import { cn } from "~/lib/utils";
+import { CROSS_PROJECT_RUN_KEY } from "../threadOrchestration/childThreads.logic";
 
 /**
  * Fork: the label above one project's run of threads. It carries the identity
@@ -18,7 +19,9 @@ export const SidebarProjectRunHeader = memo(function SidebarProjectRunHeader(pro
   onNewThread: (project: SidebarProjectSnapshot) => void;
 }) {
   const { header, project } = props;
-  const label = project?.displayName ?? "Project";
+  // Fork (thread orchestration): the group of coordinators whose work spans projects.
+  const crossProject = header.projectKey === CROSS_PROJECT_RUN_KEY;
+  const label = crossProject ? "Cross-project" : (project?.displayName ?? "Project");
   return (
     <li className="mx-0.5 list-none pt-2 first:pt-0.5" data-thread-selection-safe>
       {/* The toggle is an overlay rather than a wrapper so the new-thread
@@ -35,7 +38,11 @@ export const SidebarProjectRunHeader = memo(function SidebarProjectRunHeader(pro
           ].join(", ")}
           className="absolute inset-0 cursor-pointer rounded-md"
         />
-        {project ? <ProjectFavicon project={project} className="size-4 shrink-0" /> : null}
+        {crossProject ? (
+          <NetworkIcon aria-hidden className="size-4 shrink-0 text-sidebar-muted-foreground" />
+        ) : project ? (
+          <ProjectFavicon project={project} className="size-4 shrink-0" />
+        ) : null}
         <span className="min-w-0 shrink truncate font-medium text-sidebar-foreground/75">
           {label}
         </span>

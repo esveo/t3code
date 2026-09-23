@@ -29,6 +29,8 @@ import type { ProjectionRepositoryError } from "../Errors.ts";
 export const ProjectionThread = Schema.Struct({
   threadId: ThreadId,
   projectId: ProjectId,
+  /** Fork: written on create only; later upserts keep it (see the repository). */
+  parentThreadId: Schema.optional(Schema.NullOr(ThreadId)),
   title: Schema.String,
   titleState: Schema.optional(Schema.NullOr(ThreadTitleState)),
   modelSelection: ModelSelection,

@@ -15,6 +15,7 @@ import type {
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import {
   Bot,
+  NetworkIcon,
   OrbitIcon,
   Smartphone,
   ChevronDown,
@@ -125,6 +126,8 @@ interface RightPanelTabsProps {
   onAddPullRequests: () => void;
   onAddAgents: () => void;
   onAddAgentStage: () => void;
+  /** Fork: the threads a coordinator started; absent where there is no thread. */
+  onAddThreadOverview?: () => void;
   onAddDevice: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
@@ -135,10 +138,13 @@ interface RightPanelTabsProps {
   pullRequestsAvailable: boolean;
   agentsAvailable: boolean;
   agentStageAvailable: boolean;
+  threadOverviewAvailable?: boolean;
   deviceAvailable: boolean;
   pullRequestStatusSeeds?: Readonly<Record<string, PullRequestTabStatusSeed>>;
   /** Running + waiting subagents; badges the Agents card in the empty state. */
   liveAgentCount: number;
+  /** Fork: child threads waiting on the user; badges the Threads card. */
+  threadsWaitingCount?: number;
   children: ReactNode;
 }
 
@@ -158,6 +164,8 @@ export function shouldOpenDefaultBrowserProfileFromMenuClick(
   return pointerType !== "touch";
 }
 
+const noopThreadOverview = () => {};
+
 const SURFACE_DISABLED_REASONS = {
   browser: "Browser previews are only available in the T3 Code desktop app.",
   terminal: "Terminal surfaces are only available from a project thread.",
@@ -168,6 +176,7 @@ const SURFACE_DISABLED_REASONS = {
   pullRequests: "No linked pull requests are available for this thread.",
   agents: "Agents are only available from a thread.",
   agentStage: "Enable the agent stage in Settings > General.",
+  threadOverview: "Turn on thread orchestration in Settings > General.",
   device: "Devices are only available from a thread.",
 } as const;
 
@@ -194,6 +203,7 @@ const SURFACE_UNAVAILABLE_HINTS = {
   pullRequests: "No linked pull requests available.",
   agents: "Available from a thread.",
   agentStage: "Enable it in Settings > General.",
+  threadOverview: "Turn on thread orchestration in Settings.",
   device: "Available from a thread.",
 } as const;
 
@@ -336,6 +346,8 @@ function RightPanelEmptyState(props: {
   onAddPullRequests: () => void;
   onAddAgents: () => void;
   onAddAgentStage: () => void;
+  /** Fork: the threads a coordinator started. */
+  onAddThreadOverview: () => void;
   onAddDevice: () => void;
   browserAvailable: boolean;
   terminalAvailable: boolean;
@@ -346,8 +358,10 @@ function RightPanelEmptyState(props: {
   pullRequestsAvailable: boolean;
   agentsAvailable: boolean;
   agentStageAvailable: boolean;
+  threadOverviewAvailable: boolean;
   deviceAvailable: boolean;
   liveAgentCount: number;
+  threadsWaitingCount: number;
 }) {
   // -1 means no highlight: it only appears on hover or arrow use.
   const [highlight, setHighlight] = useState(-1);
@@ -433,6 +447,16 @@ function RightPanelEmptyState(props: {
       disabledReason: SURFACE_UNAVAILABLE_HINTS.agentStage,
       onClick: props.onAddAgentStage,
       badgeCount: 0,
+    },
+    {
+      label: "Threads",
+      description: "Threads this one started, and which need you.",
+      icon: NetworkIcon,
+      shortcut: "H",
+      available: props.threadOverviewAvailable,
+      disabledReason: SURFACE_UNAVAILABLE_HINTS.threadOverview,
+      onClick: props.onAddThreadOverview,
+      badgeCount: props.threadsWaitingCount,
     },
     {
       label: "Device",
@@ -665,6 +689,8 @@ function surfaceTitle(
       return "Agents";
     case "agent-stage":
       return "Stage";
+    case "thread-overview":
+      return "Threads";
     case "device":
       return surface.title ?? surface.target?.name ?? "Device";
     case "preview": {
@@ -754,6 +780,8 @@ function SurfaceIcon({
       return <Bot className="size-3 shrink-0" />;
     case "agent-stage":
       return <OrbitIcon className="size-3 shrink-0" />;
+    case "thread-overview":
+      return <NetworkIcon className="size-3 shrink-0" />;
     case "device":
       return surface.target?.platform === "ios" ? (
         <AppleIcon className="size-3 shrink-0" />
@@ -979,6 +1007,14 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       available: props.agentStageAvailable,
       disabledReason: SURFACE_DISABLED_REASONS.agentStage,
       onClick: props.onAddAgentStage,
+    },
+    {
+      label: "Threads",
+      icon: NetworkIcon,
+      shortcut: "H",
+      available: props.threadOverviewAvailable ?? false,
+      disabledReason: SURFACE_DISABLED_REASONS.threadOverview,
+      onClick: props.onAddThreadOverview ?? noopThreadOverview,
     },
     {
       label: "Device",
@@ -1461,6 +1497,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddPullRequests={props.onAddPullRequests}
             onAddAgents={props.onAddAgents}
             onAddAgentStage={props.onAddAgentStage}
+            onAddThreadOverview={props.onAddThreadOverview ?? noopThreadOverview}
             onAddDevice={props.onAddDevice}
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}
@@ -1471,8 +1508,10 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             pullRequestsAvailable={props.pullRequestsAvailable}
             agentsAvailable={props.agentsAvailable}
             agentStageAvailable={props.agentStageAvailable}
+            threadOverviewAvailable={props.threadOverviewAvailable ?? false}
             deviceAvailable={props.deviceAvailable}
             liveAgentCount={props.liveAgentCount}
+            threadsWaitingCount={props.threadsWaitingCount ?? 0}
           />
         ) : (
           props.children

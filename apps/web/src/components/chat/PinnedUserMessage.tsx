@@ -1,3 +1,4 @@
+import { plainTextOfThreadMessage } from "@t3tools/shared/threadOrchestration";
 import { ArrowUpIcon } from "lucide-react";
 import { cn } from "~/lib/utils";
 
@@ -33,7 +34,8 @@ export function resolvePinnedUserMessageIndex(input: {
 
 /** Collapses a prompt to the single flowing line the header has room for. */
 export function compactPinnedUserMessageText(text: string | null | undefined): string | null {
-  const compact = text?.replace(/\s+/g, " ").trim() ?? "";
+  // Thread orchestration messages carry tags the preview must not show.
+  const compact = text ? plainTextOfThreadMessage(text).replace(/\s+/g, " ").trim() : "";
   return compact.length > 0 ? compact : null;
 }
 

@@ -22,6 +22,8 @@ The \`t3-code\` MCP server also exposes \`device_*\` tools for iOS Simulators an
 export interface T3CodeToolAvailability {
   readonly browser: boolean;
   readonly device: boolean;
+  /** Fork: thread orchestration tools. */
+  readonly threads?: boolean;
 }
 
 const normalizeAvailability = (
@@ -213,5 +215,10 @@ export function buildCodexDeveloperInstructions(
       : codexDefaultModeDeveloperInstructions(browserToolsAvailable);
   return `${base}
 
-${buildRuntimeInstructions({ harness: "Codex", ...runtime })}`;
+${buildRuntimeInstructions({
+  harness: "Codex",
+  ...runtime,
+  threadOrchestration:
+    typeof browserToolsAvailable === "object" && browserToolsAvailable.threads === true,
+})}`;
 }

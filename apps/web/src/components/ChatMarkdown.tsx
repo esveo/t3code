@@ -1,4 +1,6 @@
 import { usePullRequestLinking } from "~/hooks/usePullRequestLinking";
+import { parseThreadLinkHref } from "@t3tools/shared/threadOrchestration";
+import { ThreadLinkChip } from "./threadOrchestration/ThreadLinkChip";
 import { useAtomValue } from "@effect/atom-react";
 import {
   COMPOSER_CONTEXT_CLIPBOARD_MIME,
@@ -479,7 +481,14 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
   },
   protocols: {
     ...defaultSchema.protocols,
-    href: [...(defaultSchema.protocols?.href ?? []), "file", "t3-citation", "t3-context"],
+    // Fork: t3-thread links are thread chips.
+    href: [
+      ...(defaultSchema.protocols?.href ?? []),
+      "file",
+      "t3-citation",
+      "t3-context",
+      "t3-thread",
+    ],
     src: [...(defaultSchema.protocols?.src ?? []), "file", "t3-context"],
   },
 } satisfies Parameters<typeof rehypeSanitize>[0];
@@ -2375,7 +2384,7 @@ function useChatMarkdownState({
       NonNullable<ReturnType<typeof resolveMarkdownFileLinkMeta>>
     >();
     for (const href of extractMarkdownLinkHrefs(renderCodexFileCitationsAsMarkdown(text))) {
-      if (parseComposerContextHref(href)) continue;
+      if (parseComposerContextHref(href) || parseThreadLinkHref(href)) continue;
       const normalizedHref = normalizeMarkdownLinkHrefKey(href);
       if (metaByHref.has(normalizedHref)) continue;
       const meta = resolveMarkdownFileLinkMeta(normalizedHref, cwd, imageBaseDir ?? cwd);
@@ -2405,7 +2414,7 @@ function useChatMarkdownState({
   }, [inlineCodeFileLinkMetaByText, markdownFileLinkMetaByHref]);
   const markdownUrlTransform = useCallback((href: string) => {
     if (parseAssistantCitationHref(href)) return href;
-    if (parseComposerContextHref(href)) return href;
+    if (parseComposerContextHref(href) || parseThreadLinkHref(href)) return href;
     if (isWindowsDrivePathHref(href)) return href;
     return rewriteMarkdownFileUriHref(href) ?? defaultUrlTransform(href);
   }, []);
@@ -2857,6 +2866,18 @@ const CHAT_MARKDOWN_COMPONENTS = {
     } = use(ChatMarkdownRendererContext);
     const citation = href ? parseAssistantCitationHref(href) : null;
     if (citation) return <AssistantCitationChip citation={citation} />;
+    // Fork: thread orchestration chips.
+    const linkedThreadId = href ? parseThreadLinkHref(href) : null;
+    const chipEnvironmentId = threadRef?.environmentId ?? environmentId;
+    if (linkedThreadId && chipEnvironmentId) {
+      return (
+        <ThreadLinkChip
+          environmentId={chipEnvironmentId}
+          threadId={linkedThreadId}
+          label={hastPlainTextDeep(node) || "Thread"}
+        />
+      );
+    }
     const contextReference = href ? parseComposerContextHref(href) : null;
     if (contextReference) {
       const label = hastPlainTextDeep(node) || contextReference.contextId;

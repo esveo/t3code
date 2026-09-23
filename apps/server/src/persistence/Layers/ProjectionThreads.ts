@@ -60,7 +60,8 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           pending_approval_count,
           pending_user_input_count,
           has_actionable_proposed_plan,
-          deleted_at
+          deleted_at,
+          parent_thread_id
         )
         VALUES (
           ${row.threadId},
@@ -92,7 +93,8 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           ${row.pendingApprovalCount},
           ${row.pendingUserInputCount},
           ${row.hasActionableProposedPlan},
-          ${row.deletedAt}
+          ${row.deletedAt},
+          ${row.parentThreadId ?? null}
         )
         ON CONFLICT (thread_id)
         DO UPDATE SET
@@ -124,7 +126,9 @@ const makeProjectionThreadRepository = Effect.gen(function* () {
           pending_approval_count = excluded.pending_approval_count,
           pending_user_input_count = excluded.pending_user_input_count,
           has_actionable_proposed_plan = excluded.has_actionable_proposed_plan,
-          deleted_at = excluded.deleted_at
+          deleted_at = excluded.deleted_at,
+          -- Fork: only thread.created carries the parent; every other upsert keeps it.
+          parent_thread_id = COALESCE(excluded.parent_thread_id, projection_threads.parent_thread_id)
       `,
   });
 
