@@ -6,7 +6,7 @@ import type { ThreadToastData } from "../ui/toast";
 import { openThreadBeside } from "./splitPanes";
 
 /**
- * "Open beside" on thread notification toasts: a second toast button, plus
+ * "Open in new pane" on thread notification toasts: a second toast button, plus
  * ⌥⌘O / Ctrl+Alt+O while the toast is visible, that opens the thread in a pane
  * next to the focused one. With several toasts up the shortcut acts on the
  * newest.
@@ -39,7 +39,7 @@ function shortcutLabel(): string {
 }
 
 /**
- * Builds the toast's "Open beside" button and arms the shortcut for it. Pass
+ * Builds the toast's "Open in new pane" button and arms the shortcut for it. Pass
  * `disarm` as the toast's `onClose`, so the shortcut ends with the toast.
  */
 export function openBesideToastAction(thread: ScopedThreadRef, closeToast: () => void) {
@@ -62,7 +62,7 @@ export function openBesideToastAction(thread: ScopedThreadRef, closeToast: () =>
       secondaryActionProps: {
         children: (
           <>
-            Open beside
+            Open in new pane
             <Kbd>{shortcutLabel()}</Kbd>
           </>
         ),
