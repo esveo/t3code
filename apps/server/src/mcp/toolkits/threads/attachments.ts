@@ -154,7 +154,7 @@ export const makeThreadAttachments = Effect.gen(function* () {
         const stored = yield* findStored(entry.attachmentId);
         if (!stored || !isKnownAttachment(stored)) {
           return yield* failure(
-            `No attachment ${entry.attachmentId} was found in this thread or the threads you started. Pass its path instead.`,
+            `No attachment ${entry.attachmentId} was found in the thread it names, this thread or the threads you started. Pass its path instead.`,
           );
         }
         const sourcePath = resolveAttachmentPath({ attachmentsDir, attachment: stored });

@@ -36,6 +36,7 @@ import {
   type UnarchiveThreadInput,
   type UnlinkThreadPullRequestInput,
   type UnpinThreadInput,
+  type SetThreadParentInput,
   type UnsettleThreadInput,
   type UnsnoozeThreadInput,
   type UpdateThreadMetadataInput,
@@ -53,6 +54,7 @@ import {
   pinThread,
   reorderPinnedThread,
   reorderActiveThread,
+  setThreadParent,
   settleThread,
   snoozeThread,
   startThreadTurn,
@@ -161,6 +163,13 @@ export function createThreadEnvironmentAtoms<R, E>(
     unpin: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:unpin",
       execute: (input: UnpinThreadInput) => unpinThread(input),
+      scheduler,
+      concurrency,
+    }),
+    // Fork: thread orchestration.
+    setParent: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:set-parent",
+      execute: (input: SetThreadParentInput) => setThreadParent(input),
       scheduler,
       concurrency,
     }),

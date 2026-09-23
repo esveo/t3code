@@ -1213,6 +1213,17 @@ const ThreadUnpinCommand = Schema.Struct({
   threadId: ThreadId,
 });
 
+/**
+ * Fork: thread orchestration. Puts an existing thread under a coordinator
+ * thread (`parentThreadId`), or takes it out again with null.
+ */
+const ThreadParentSetCommand = Schema.Struct({
+  type: Schema.Literal("thread.parent.set"),
+  commandId: CommandId,
+  threadId: ThreadId,
+  parentThreadId: Schema.NullOr(ThreadId),
+});
+
 const ThreadPinReorderCommand = Schema.Struct({
   type: Schema.Literal("thread.pin.reorder"),
   commandId: CommandId,
@@ -1431,6 +1442,7 @@ const DispatchableClientOrchestrationCommand = Schema.Union([
   ThreadUnsnoozeCommand,
   ThreadPinCommand,
   ThreadUnpinCommand,
+  ThreadParentSetCommand,
   ThreadPinReorderCommand,
   ThreadActiveReorderCommand,
   ThreadMetaUpdateCommand,
@@ -1464,6 +1476,7 @@ export const ClientOrchestrationCommand = Schema.Union([
   ThreadUnsnoozeCommand,
   ThreadPinCommand,
   ThreadUnpinCommand,
+  ThreadParentSetCommand,
   ThreadPinReorderCommand,
   ThreadActiveReorderCommand,
   ThreadMetaUpdateCommand,
@@ -1692,6 +1705,7 @@ export const OrchestrationEventType = Schema.Literals([
   "thread.unsnoozed",
   "thread.pinned",
   "thread.unpinned",
+  "thread.parent-set",
   "thread.pin-reordered",
   "thread.meta-updated",
   "thread.pull-request-linked",
@@ -1824,6 +1838,13 @@ export const ThreadPinnedPayload = Schema.Struct({
 
 export const ThreadUnpinnedPayload = Schema.Struct({
   threadId: ThreadId,
+  updatedAt: IsoDateTime,
+});
+
+/** Fork: thread orchestration (see ThreadParentSetCommand). */
+export const ThreadParentSetPayload = Schema.Struct({
+  threadId: ThreadId,
+  parentThreadId: Schema.NullOr(ThreadId),
   updatedAt: IsoDateTime,
 });
 
@@ -2091,6 +2112,11 @@ export const OrchestrationEvent = Schema.Union([
     ...EventBaseFields,
     type: Schema.Literal("thread.unpinned"),
     payload: ThreadUnpinnedPayload,
+  }),
+  Schema.Struct({
+    ...EventBaseFields,
+    type: Schema.Literal("thread.parent-set"),
+    payload: ThreadParentSetPayload,
   }),
   Schema.Struct({
     ...EventBaseFields,

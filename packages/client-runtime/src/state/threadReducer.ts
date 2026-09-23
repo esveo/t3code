@@ -240,6 +240,19 @@ export function applyThreadDetailEvent(
         },
       };
 
+    // Fork: thread orchestration. A thread was put under a coordinator or taken out.
+    case "thread.parent-set": {
+      const { parentThreadId: _previous, ...rest } = thread;
+      return {
+        kind: "updated",
+        thread: {
+          ...rest,
+          ...(event.payload.parentThreadId ? { parentThreadId: event.payload.parentThreadId } : {}),
+          updatedAt: event.payload.updatedAt,
+        },
+      };
+    }
+
     case "thread.pin-reordered":
       return {
         kind: "updated",

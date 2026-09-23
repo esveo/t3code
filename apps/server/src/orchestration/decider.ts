@@ -46,6 +46,7 @@ import {
 } from "./commandInvariants.ts";
 import { projectEvent } from "./projector.ts";
 import { threadHasQueuedTurnStart } from "./ThreadSettlementPolicy.ts";
+import { decideThreadParentSet } from "../threadOrchestration/threadParent.ts";
 
 const monogramSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
@@ -821,6 +822,22 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           threadId: command.threadId,
           updatedAt: alreadyUnpinned ? thread.updatedAt : occurredAt,
         },
+      };
+    }
+
+    // Fork: thread orchestration (see threadOrchestration/threadParent.ts).
+    case "thread.parent.set": {
+      const occurredAt = yield* nowIso;
+      const payload = yield* decideThreadParentSet({ readModel, command, occurredAt });
+      return {
+        ...(yield* withEventBase({
+          aggregateKind: "thread",
+          aggregateId: command.threadId,
+          occurredAt,
+          commandId: command.commandId,
+        })),
+        type: "thread.parent-set",
+        payload,
       };
     }
 

@@ -37,6 +37,7 @@ import {
   ThreadOrchestrationFailedError,
   ThreadOrchestrationNestedError,
   type ThreadAttachmentInput,
+  ThreadNotFoundError,
   ThreadsToolkit,
 } from "./tools.ts";
 
@@ -47,8 +48,14 @@ export function threadLink(thread: Pick<OrchestrationThreadShell, "id" | "title"
   return `[${thread.title.replaceAll("]", ")")}](${threadLinkHref(thread.id)})`;
 }
 
-/** What the tools report about a child; exported so the shape is testable without a layer. */
-export function summarizeChildThread(thread: OrchestrationThreadShell): ChildThreadSummary {
+/** Most threads list_threads returns with scope "all"; a search should not flood the context. */
+const LIST_ALL_MAX_THREADS = 50;
+
+/** What the tools report about a thread; exported so the shape is testable without a layer. */
+export function summarizeChildThread(
+  thread: OrchestrationThreadShell,
+  coordinatorId: ThreadId,
+): ChildThreadSummary {
   return {
     threadId: thread.id,
     title: thread.title,
@@ -61,6 +68,39 @@ export function summarizeChildThread(thread: OrchestrationThreadShell): ChildThr
     worktreePath: thread.worktreePath,
     pullRequests: thread.pullRequests.map((link) => link.url),
     updatedAt: thread.updatedAt,
+    child: thread.parentThreadId === coordinatorId,
+  };
+}
+
+/**
+ * The threads list_threads reports: the coordinator's own by default, or with
+ * scope "all" every other thread, newest first and capped. Archived threads
+ * only on request; deleted ones never reach the shell snapshot.
+ */
+export function selectListedThreads(
+  threads: ReadonlyArray<OrchestrationThreadShell>,
+  input: {
+    readonly coordinatorId: ThreadId;
+    readonly scope: "children" | "all";
+    readonly title?: string | undefined;
+    readonly projectId?: string | undefined;
+    readonly includeArchived?: boolean | undefined;
+  },
+): { readonly threads: ReadonlyArray<OrchestrationThreadShell>; readonly omitted: number } {
+  const title = input.title?.toLowerCase();
+  const matches = threads.filter(
+    (thread) =>
+      thread.id !== input.coordinatorId &&
+      (input.scope === "all" || thread.parentThreadId === input.coordinatorId) &&
+      (input.includeArchived === true || thread.archivedAt === null) &&
+      (title === undefined || thread.title.toLowerCase().includes(title)) &&
+      (input.projectId === undefined || thread.projectId === input.projectId),
+  );
+  if (input.scope === "children") return { threads: matches, omitted: 0 };
+  const newestFirst = matches.toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return {
+    threads: newestFirst.slice(0, LIST_ALL_MAX_THREADS),
+    omitted: Math.max(0, newestFirst.length - LIST_ALL_MAX_THREADS),
   };
 }
 
@@ -135,7 +175,8 @@ const make = Effect.gen(function* () {
 
   /**
    * Resolves the files a coordinator attaches, before anything is created.
-   * Ids are looked up in its own thread and the threads it started.
+   * An id is looked up in the thread it names, so any thread `read_thread`
+   * shows works, then in the coordinator's own thread and the threads it started.
    */
   const resolveAttachments = Effect.fn("ThreadsToolkit.resolveAttachments")(function* (
     coordinator: OrchestrationThreadShell,
@@ -516,25 +557,40 @@ const make = Effect.gen(function* () {
         };
       }),
 
-    list_threads: () =>
+    list_threads: (input) =>
       Effect.gen(function* () {
         const coordinator = yield* requireCoordinator;
+        const project = input.project
+          ? yield* resolveTargetProject(coordinator, input.project)
+          : null;
         const snapshot = yield* snapshots
           .getShellSnapshot()
           .pipe(Effect.catchCause(failWith("Could not list the threads")));
+        const listed = selectListedThreads(snapshot.threads, {
+          coordinatorId: coordinator.id,
+          scope: input.scope ?? "children",
+          title: input.title,
+          projectId: project?.id,
+          includeArchived: input.includeArchived,
+        });
         return {
-          threads: snapshot.threads
-            .filter(
-              (thread) => thread.parentThreadId === coordinator.id && thread.archivedAt === null,
-            )
-            .map(summarizeChildThread),
+          threads: listed.threads.map((thread) => summarizeChildThread(thread, coordinator.id)),
+          omitted: listed.omitted,
         };
       }),
 
+    // Reading reaches every thread of this environment, so a coordinator can
+    // pick up earlier work; messaging and stopping stay with its own threads.
     read_thread: (input) =>
       Effect.gen(function* () {
         const coordinator = yield* requireCoordinator;
-        const child = yield* requireChild(coordinator, input.threadId);
+        const found = yield* snapshots
+          .getThreadShellById(ThreadId.make(input.threadId))
+          .pipe(Effect.catchCause(failWith("Could not read the thread")));
+        if (Option.isNone(found)) {
+          return yield* new ThreadNotFoundError({ threadId: input.threadId });
+        }
+        const child = found.value;
         const detail = yield* snapshots
           .getThreadDetailById(child.id)
           .pipe(Effect.catchCause(failWith("Could not read the thread")));
@@ -544,7 +600,7 @@ const make = Effect.gen(function* () {
           .slice(-(input.messages ?? 1))
           .map((message) => clampAnswer(message.text));
         return {
-          thread: summarizeChildThread(child),
+          thread: summarizeChildThread(child, coordinator.id),
           latestAnswers: answers,
           attachments: describeMessageAttachments(messages, threadAttachments.attachmentsDir),
         };
