@@ -229,14 +229,18 @@ import {
   groupChildThreads,
 } from "./threadOrchestration/childThreads.logic";
 import { SidebarProjectRunHeader } from "./sidebarProjectRuns/SidebarProjectRunHeader";
-import { SidebarProjectRunRowLead } from "./sidebarProjectRuns/SidebarProjectRunRowLead";
+import {
+  SidebarCoordinatorIcon,
+  SidebarProjectRunRowLead,
+} from "./sidebarProjectRuns/SidebarProjectRunRowLead";
 import {
   resolveProjectRunAccent,
   sidebarProjectRunRowClassName,
 } from "./sidebarProjectRuns/sidebarProjectRunAccent";
-import type {
-  SidebarProjectRunHeader as SidebarProjectRunHeaderInfo,
-  SidebarProjectRunPlacement,
+import {
+  sidebarRowLead,
+  type SidebarProjectRunHeader as SidebarProjectRunHeaderInfo,
+  type SidebarProjectRunPlacement,
 } from "./sidebarProjectRuns/sidebarProjectRuns.logic";
 import { useSidebarProjectRuns } from "./sidebarProjectRuns/useSidebarProjectRuns";
 import { ThreadSearchMatchExcerpt } from "./ThreadSearchMatch";
@@ -1068,8 +1072,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
    * and drops the project label its run header already carries.
    */
   projectRunPlacement?: SidebarProjectRunPlacement | null | undefined;
-  /** Fork (thread orchestration): the row is a coordinator in the "Cross-project" run. */
-  crossProjectRun?: boolean | undefined;
+  /** Fork (thread orchestration): the row is a coordinator, a thread with children. */
+  coordinator?: boolean | undefined;
 }) {
   const {
     isRenaming,
@@ -1102,6 +1106,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   const twoLineThreadCards = useTwoLineThreadCards();
   // Fork: run chrome. Its own project run carries the icon and name.
   const projectRunPlacement = props.projectRunPlacement ?? null;
+  // Fork: what the first line leads with — project, run branch or "Cross-project".
+  const rowLead = sidebarRowLead({
+    coordinator: props.coordinator === true,
+    inProjectRun: projectRunPlacement !== null,
+  });
   const projectRunClassName = sidebarProjectRunRowClassName({
     placement: projectRunPlacement,
     accent: resolveProjectRunAccent(props.project),
@@ -1666,7 +1675,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                   "opacity-40 grayscale group-focus-within/sidebar-row:opacity-100 group-focus-within/sidebar-row:grayscale-0 group-hover/sidebar-row:opacity-100 group-hover/sidebar-row:grayscale-0",
               )}
             >
-              {props.project && projectRunPlacement === null ? (
+              {rowLead === "cross-project" ? (
+                <SidebarCoordinatorIcon />
+              ) : props.project && rowLead === "project" ? (
                 <ProjectFavicon project={props.project} className="size-4" />
               ) : null}
             </span>
@@ -1872,17 +1883,17 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               {draftIndicator}
               {/* Fork: a run's rows hand this line to the branch — their
                   project sits in the run header above them. */}
-              {projectRunPlacement !== null ? (
+              {rowLead !== "project" ? (
                 <SidebarProjectRunRowLead
                   thread={thread}
-                  crossProject={props.crossProjectRun === true}
+                  crossProject={rowLead === "cross-project"}
                   recede={shouldRecede}
                 />
               ) : null}
-              {props.project && projectRunPlacement === null ? (
+              {props.project && rowLead === "project" ? (
                 <ProjectFavicon project={props.project} className="size-4 shrink-0" />
               ) : null}
-              {props.projectDisplayName && projectRunPlacement === null ? (
+              {props.projectDisplayName && rowLead === "project" ? (
                 <span
                   className={cn(
                     "min-w-0 flex-1 truncate text-secondary-label text-xs",
@@ -1891,7 +1902,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 >
                   {props.projectDisplayName}
                 </span>
-              ) : projectRunPlacement === null ? (
+              ) : rowLead === "project" ? (
                 <span className="flex-1" />
               ) : null}
               {pinIndicator}
@@ -4960,7 +4971,7 @@ export default function Sidebar() {
                             onUnpin={attemptUnpin}
                             onAcknowledgeWoke={acknowledgeWoke}
                             onFileDropThreads={handleThreadFileDrop}
-                            crossProjectRun={crossProjectRunKeys.has(threadKey)}
+                            coordinator={childThreadGroups.childrenByParentKey.has(threadKey)}
                             projectRunPlacement={
                               (section === "active"
                                 ? activeRuns
