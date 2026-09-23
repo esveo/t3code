@@ -16,6 +16,7 @@ type ChildThreadShell = Pick<
   | "latestTurn"
   | "pullRequests"
   | "planProgress"
+  | "backgroundLiveness"
 >;
 
 /** Open pull requests of the thread, newest link first. */
@@ -28,6 +29,8 @@ function openPullRequests(thread: ChildThreadShell) {
 
 /**
  * Waiting beats everything: a question or approval blocks the thread. A thread
+ * whose turn ended while its subagents, background commands or monitors still
+ * run is working: the provider wakes the agent when they report back. A thread
  * with an open pull request and nothing running is ready for review.
  */
 export function resolveChildThreadState(thread: ChildThreadShell): ChildThreadState {
@@ -36,7 +39,8 @@ export function resolveChildThreadState(thread: ChildThreadShell): ChildThreadSt
   if (
     thread.session?.status === "starting" ||
     thread.session?.status === "running" ||
-    thread.latestTurn?.state === "running"
+    thread.latestTurn?.state === "running" ||
+    thread.backgroundLiveness != null
   ) {
     return "working";
   }
@@ -66,7 +70,12 @@ export function describeChildThread(thread: ChildThreadShell): string {
       return thread.session?.lastError?.split("\n")[0]?.slice(0, 160) ?? "The last turn failed";
     case "working":
       if (thread.planProgress) return thread.planProgress.step;
-      return thread.session?.status === "starting" ? "Setting up" : "Working";
+      if (thread.session?.status === "starting") return "Setting up";
+      if (thread.session?.status !== "running" && thread.latestTurn?.state !== "running") {
+        if (thread.backgroundLiveness === "working") return "Waiting on its subagents";
+        if (thread.backgroundLiveness === "monitoring") return "Waiting on background commands";
+      }
+      return "Working";
     case "review": {
       const pullRequest = openPullRequests(thread)[0]!;
       return pullRequest.snapshot?.isDraft

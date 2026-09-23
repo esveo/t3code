@@ -54,6 +54,22 @@ describe("resolveChildThreadState", () => {
     expect(resolveChildThreadState(shell({ session: session("error", "boom") }))).toBe("failed");
   });
 
+  it("keeps a thread working while its background tasks outlive the turn", () => {
+    const idleWithSubagents = shell({ session: session("ready"), backgroundLiveness: "working" });
+    expect(resolveChildThreadState(idleWithSubagents)).toBe("working");
+    expect(describeChildThread(idleWithSubagents)).toBe("Waiting on its subagents");
+    const idleWithMonitor = shell({
+      session: session("ready"),
+      pullRequests: [openPullRequest],
+      backgroundLiveness: "monitoring",
+    });
+    expect(resolveChildThreadState(idleWithMonitor)).toBe("working");
+    expect(describeChildThread(idleWithMonitor)).toBe("Waiting on background commands");
+    expect(
+      describeChildThread(shell({ session: session("running"), backgroundLiveness: "working" })),
+    ).toBe("Working");
+  });
+
   it("describes what the thread is doing or needs", () => {
     expect(
       describeChildThread(

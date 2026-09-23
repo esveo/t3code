@@ -41,6 +41,14 @@ export class ThreadOrchestrationReactor extends Context.Service<
   }
 >()("t3/threadOrchestration/ThreadOrchestrationReactor") {}
 
+/**
+ * A child's turn can end while its background tasks still run; it only counts
+ * as finished once they are gone. When the last one ends, the provider wakes
+ * the agent for a new turn, and that turn's end reports the child. Should no
+ * turn follow, the child is reported after this grace period instead.
+ */
+const BACKGROUND_SETTLE_GRACE = "30 seconds";
+
 /** The coordinator reads the child's answer from the update; long ones stay readable. */
 const UPDATE_ANSWER_MAX_LENGTH = 6_000;
 
@@ -109,6 +117,8 @@ const make = Effect.gen(function* () {
 
   /** Last update each child sent, so replays and repeated session writes stay quiet. */
   const reported = new Map<ThreadId, string>();
+  /** Threads with a background-settle check scheduled, so a burst of task ends schedules one. */
+  const settleChecks = new Set<ThreadId>();
 
   /**
    * Settling a coordinator settles its children, and bringing it back brings
@@ -221,6 +231,17 @@ const make = Effect.gen(function* () {
     ),
   );
 
+  const scheduleSettleCheck = (threadId: ThreadId) => {
+    if (settleChecks.has(threadId)) return Effect.void;
+    settleChecks.add(threadId);
+    return Effect.sleep(BACKGROUND_SETTLE_GRACE).pipe(
+      Effect.andThen(Effect.sync(() => settleChecks.delete(threadId))),
+      Effect.andThen(worker.enqueue({ kind: "report", threadId })),
+      Effect.forkScoped,
+      Effect.asVoid,
+    );
+  };
+
   const processEvent = (event: OrchestrationEvent) => {
     switch (event.type) {
       case "thread.session-set":
@@ -239,6 +260,9 @@ const make = Effect.gen(function* () {
             threadId: event.payload.threadId,
             requestActivityId: activity.id,
           });
+        }
+        if (activity.kind === "task.completed") {
+          return scheduleSettleCheck(event.payload.threadId);
         }
         break;
       }
