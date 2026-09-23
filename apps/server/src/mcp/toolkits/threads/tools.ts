@@ -107,6 +107,10 @@ export const ChildThreadSummary = Schema.Struct({
   worktreePath: Schema.NullOr(Schema.String),
   pullRequests: Schema.Array(Schema.String),
   updatedAt: Schema.String,
+  settledAt: Schema.NullOr(Schema.String).annotate({
+    description:
+      "When the thread was settled (marked as dealt with, out of the user's active list); null while it is active.",
+  }),
   child: Schema.Boolean.annotate({
     description:
       "True for your own threads, which you can message and stop. Others you can only read.",
@@ -212,6 +216,11 @@ export const ListThreadsInput = Schema.Struct({
   includeArchived: Schema.optional(
     Schema.Boolean.annotate({ description: "Also list archived threads. Defaults to false." }),
   ),
+  settled: Schema.optional(
+    Schema.Boolean.annotate({
+      description: "true: only settled threads. false: only active ones. Defaults to both.",
+    }),
+  ),
 });
 export type ListThreadsInput = typeof ListThreadsInput.Type;
 
@@ -268,6 +277,23 @@ export const ReadThreadResult = Schema.Struct({
   }),
 });
 export type ReadThreadResult = typeof ReadThreadResult.Type;
+
+export const SettleThreadsInput = Schema.Struct({
+  threadIds: Schema.NonEmptyArray(TrimmedNonEmptyString).annotate({
+    description: "Ids of your threads to settle, one or more.",
+  }),
+});
+export type SettleThreadsInput = typeof SettleThreadsInput.Type;
+
+export const SettleThreadResult = Schema.Struct({
+  threadId: Schema.String,
+  outcome: Schema.Literals(["settled", "already_settled", "blocked", "not_yours"]).annotate({
+    description:
+      "settled; already_settled: nothing changed; blocked: it still has open work, see detail; not_yours: not one of your threads.",
+  }),
+  detail: Schema.String,
+});
+export type SettleThreadResult = typeof SettleThreadResult.Type;
 
 const CreateThreadTool = Tool.make("start_thread", {
   description: `Start a new thread that works on a task in parallel, as a child of this one. ${WHEN_TO_USE} It gets its own session, sidebar entry and (by default) git worktree and branch, in your project or another one (see list_projects). Attach files the user gave you with attachments instead of pasting their paths. You do not need to poll: when it finishes, fails or waits on the user, you receive a message about it. ${LINKING}`,
@@ -358,6 +384,20 @@ const StopThreadTool = Tool.make("stop_thread", {
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
+const SettleThreadTool = Tool.make("settle_thread", {
+  description:
+    "Settle finished threads of yours: they leave the user's active list, as when the user settles them in the sidebar. Only a thread with nothing open settles: no running turn or background tasks, no approval, question or plan waiting on the user. Messaging a settled thread with send_to_thread makes it active again. Each thread gets its own result.",
+  parameters: SettleThreadsInput,
+  success: Schema.Struct({ results: Schema.Array(SettleThreadResult) }),
+  failure: ThreadsToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Settle threads")
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false);
+
 export const ThreadsToolkit = Toolkit.make(
   ListProjectsTool,
   CreateThreadTool,
@@ -365,4 +405,5 @@ export const ThreadsToolkit = Toolkit.make(
   ListThreadsTool,
   ReadThreadTool,
   StopThreadTool,
+  SettleThreadTool,
 );
