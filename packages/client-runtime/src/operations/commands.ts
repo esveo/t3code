@@ -41,6 +41,8 @@ export type SnoozeThreadInput = CommandInput<"thread.snooze">;
 export type UnsnoozeThreadInput = CommandInput<"thread.unsnooze">;
 export type PinThreadInput = CommandInput<"thread.pin">;
 export type UnpinThreadInput = CommandInput<"thread.unpin">;
+/** Fork: thread orchestration. */
+export type SetThreadParentInput = CommandInput<"thread.parent.set">;
 export type ReorderPinnedThreadInput = CommandInput<"thread.pin.reorder">;
 export type ReorderActiveThreadInput = CommandInput<"thread.active.reorder">;
 export type UpdateThreadMetadataInput = CommandInput<"thread.meta.update">;
@@ -222,6 +224,17 @@ export const unpinThread: (input: UnpinThreadInput) => CommandEffect = Effect.fn
   return yield* dispatch({
     ...input,
     type: "thread.unpin",
+    commandId: yield* commandId(input),
+  });
+});
+
+/** Fork: thread orchestration. Puts a thread under a coordinator thread, or null to take it out. */
+export const setThreadParent: (input: SetThreadParentInput) => CommandEffect = Effect.fn(
+  "EnvironmentCommands.setThreadParent",
+)(function* (input) {
+  return yield* dispatch({
+    ...input,
+    type: "thread.parent.set",
     commandId: yield* commandId(input),
   });
 });

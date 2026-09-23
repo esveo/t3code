@@ -220,6 +220,10 @@ import { ProjectFavicon, type ProjectFaviconProject } from "./ProjectFavicon";
 // Fork: per-project runs in the thread list.
 import { SidebarChildThreads } from "./threadOrchestration/SidebarChildThreads";
 import {
+  ThreadParentDialogHost,
+  useThreadParentActions,
+} from "./threadOrchestration/ThreadParentActions";
+import {
   CROSS_PROJECT_RUN_KEY,
   crossProjectCoordinatorKeys,
   groupChildThreads,
@@ -1064,6 +1068,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
    * and drops the project label its run header already carries.
    */
   projectRunPlacement?: SidebarProjectRunPlacement | null | undefined;
+  /** Fork (thread orchestration): the row is a coordinator in the "Cross-project" run. */
+  crossProjectRun?: boolean | undefined;
 }) {
   const {
     isRenaming,
@@ -1866,7 +1872,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               {draftIndicator}
               {/* Fork: a run's rows hand this line to the branch — their
                   project sits in the run header above them. */}
-              {projectRunPlacement !== null ? <SidebarProjectRunRowLead thread={thread} /> : null}
+              {projectRunPlacement !== null ? (
+                <SidebarProjectRunRowLead
+                  thread={thread}
+                  crossProject={props.crossProjectRun === true}
+                  recede={shouldRecede}
+                />
+              ) : null}
               {props.project && projectRunPlacement === null ? (
                 <ProjectFavicon project={props.project} className="size-4 shrink-0" />
               ) : null}
@@ -2238,6 +2250,7 @@ export default function Sidebar() {
   const threads = useThreadShells();
   // Fork: threads a coordinator started render under it, not as rows of their own.
   const childThreadGroups = useMemo(() => groupChildThreads(threads), [threads]);
+  const threadParentActions = useThreadParentActions();
   // Fork: coordinators whose work spans projects gather under "Cross-project".
   const crossProjectRunKeys = useMemo(
     () =>
@@ -4227,7 +4240,8 @@ export default function Sidebar() {
             ),
           ) ?? null;
         const clicked = await settlePromise(() =>
-          api.contextMenu.show(
+          // Fork: thread orchestration adds "Assign to coordinator…" and "Detach".
+          threadParentActions.showMenu(api, thread)(
             buildThreadActionMenuItems({
               branch: thread.branch ?? null,
               projectFilter: threadProjectGroup
@@ -4255,6 +4269,7 @@ export default function Sidebar() {
           ),
         );
         if (clicked._tag === "Failure") return;
+        if (await threadParentActions.handle(clicked.value, thread)) return;
         if (clicked.value?.startsWith("snooze:")) {
           const preset =
             clicked.value === "snooze:custom"
@@ -4443,6 +4458,7 @@ export default function Sidebar() {
       serverConfigs,
       setProjectScopeKey,
       startThreadRename,
+      threadParentActions,
       updateThreadMetadata,
       timestampFormat,
     ],
@@ -4573,6 +4589,8 @@ export default function Sidebar() {
   return (
     <>
       <SidebarChromeHeader isElectron={isElectron} />
+      {/* Fork: thread orchestration's coordinator picker. */}
+      <ThreadParentDialogHost />
       <SidebarContent
         className="min-h-full"
         fixedHeader={
@@ -4942,6 +4960,7 @@ export default function Sidebar() {
                             onUnpin={attemptUnpin}
                             onAcknowledgeWoke={acknowledgeWoke}
                             onFileDropThreads={handleThreadFileDrop}
+                            crossProjectRun={crossProjectRunKeys.has(threadKey)}
                             projectRunPlacement={
                               (section === "active"
                                 ? activeRuns

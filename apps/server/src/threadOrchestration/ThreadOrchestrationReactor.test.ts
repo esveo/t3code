@@ -56,6 +56,21 @@ describe("childUpdateFor", () => {
     expect(next?.key).not.toBe(first?.key);
   });
 
+  it("reports a child once, after its background tasks and the turn they wake", () => {
+    const update = (child: OrchestrationThreadShell, latestAnswerId: string) =>
+      childUpdateFor({ child, latestAnswerId, requestActivityId: undefined });
+    // The turn ends with an interim answer while eight subagents run on.
+    const turnEndedWithSubagents = shell({ ...settled, backgroundLiveness: "working" });
+    expect(update(turnEndedWithSubagents, "interim")).toBe(null);
+    // The last subagent reports back and wakes the agent for a new turn.
+    expect(update(running, "interim")).toBe(null);
+    // That turn ends with the report.
+    const finished = update(settled, "report");
+    expect(finished).toEqual({ key: "done:report", state: "done" });
+    // The grace-period check after the last task ended finds the same finish.
+    expect(update(settled, "report")?.key).toBe(finished?.key);
+  });
+
   it("reports a blocked child once per request it waits on", () => {
     const waiting = shell({ ...running, hasPendingUserInput: true });
     expect(

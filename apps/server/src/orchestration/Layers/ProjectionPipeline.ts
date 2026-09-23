@@ -53,6 +53,7 @@ import { ProjectionThreadSessionRepositoryLive } from "../../persistence/Layers/
 import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
 import { ProjectionThreadRepositoryLive } from "../../persistence/Layers/ProjectionThreads.ts";
 import { ServerConfig } from "../../config.ts";
+import { projectThreadParentSet } from "../../threadOrchestration/threadParent.ts";
 import {
   OrchestrationProjectionPipeline,
   type OrchestrationProjectionPipelineShape,
@@ -784,6 +785,11 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
           });
           return;
         }
+
+        // Fork: thread orchestration (see threadOrchestration/threadParent.ts).
+        case "thread.parent-set":
+          yield* projectThreadParentSet(sql, event.payload);
+          return;
 
         case "thread.pin-reordered": {
           const existingRow = yield* projectionThreadRepository.getById({

@@ -51,7 +51,16 @@ export class ChildThreadNotFoundError extends Schema.TaggedError<ChildThreadNotF
   { threadId: Schema.String },
 ) {
   override get message(): string {
-    return `Thread ${this.threadId} is not one of the threads you started. Call list_threads for their ids.`;
+    return `Thread ${this.threadId} is not one of your threads. read_thread can still read it; to message or stop it, ask the user to assign it to you (sidebar: right-click the thread, Assign to coordinator). Call list_threads for your threads' ids.`;
+  }
+}
+
+export class ThreadNotFoundError extends Schema.TaggedError<ThreadNotFoundError>()(
+  "ThreadNotFoundError",
+  { threadId: Schema.String },
+) {
+  override get message(): string {
+    return `Thread ${this.threadId} was not found. Call list_threads with scope "all" to find a thread by title.`;
   }
 }
 
@@ -69,6 +78,7 @@ export const ThreadsToolError = Schema.Union([
   ThreadOrchestrationDisabledError,
   ThreadOrchestrationNestedError,
   ChildThreadNotFoundError,
+  ThreadNotFoundError,
   ThreadOrchestrationFailedError,
 ]);
 export type ThreadsToolError = typeof ThreadsToolError.Type;
@@ -97,8 +107,39 @@ export const ChildThreadSummary = Schema.Struct({
   worktreePath: Schema.NullOr(Schema.String),
   pullRequests: Schema.Array(Schema.String),
   updatedAt: Schema.String,
+  child: Schema.Boolean.annotate({
+    description:
+      "True for your own threads, which you can message and stop. Others you can only read.",
+  }),
 });
 export type ChildThreadSummary = typeof ChildThreadSummary.Type;
+
+export const ThreadAttachmentInput = Schema.Struct({
+  path: Schema.optional(
+    TrimmedNonEmptyString.annotate({
+      description: "Absolute path of a local file on the machine T3 Code runs on.",
+    }),
+  ),
+  attachmentId: Schema.optional(
+    TrimmedNonEmptyString.annotate({
+      description:
+        "An attachment already in a thread: its attachmentId from read_thread, which works for any thread you can read, or the ref of a t3-context link (file_…) in this thread or one you started.",
+    }),
+  ),
+  name: Schema.optional(
+    TrimmedNonEmptyString.annotate({
+      description: "File name the thread sees. Defaults to the original name.",
+    }),
+  ),
+});
+export type ThreadAttachmentInput = typeof ThreadAttachmentInput.Type;
+
+const attachmentsParameter = Schema.optional(
+  Schema.Array(ThreadAttachmentInput).annotate({
+    description:
+      "Files to attach to the message, each by path or attachmentId. They arrive as if the user had attached them: images up to 10 MiB as images, anything else as files up to 50 MiB.",
+  }),
+);
 
 export const CreateThreadInput = Schema.Struct({
   title: TrimmedNonEmptyString.annotate({
@@ -117,7 +158,7 @@ export const CreateThreadInput = Schema.Struct({
   baseBranch: Schema.optional(
     TrimmedNonEmptyString.annotate({
       description:
-        "Branch or commit the new worktree starts from. Defaults to your current commit.",
+        "Branch or commit the new worktree starts from; origin/<branch> for a branch that only exists on the remote. Defaults to your current commit.",
     }),
   ),
   project: Schema.optional(
@@ -135,6 +176,7 @@ export const CreateThreadInput = Schema.Struct({
   model: Schema.optional(
     TrimmedNonEmptyString.annotate({ description: "Model id for the thread. Defaults to yours." }),
   ),
+  attachments: attachmentsParameter,
 });
 export type CreateThreadInput = typeof CreateThreadInput.Type;
 
@@ -147,8 +189,40 @@ export const CreateThreadResult = Schema.Struct({
 export type CreateThreadResult = typeof CreateThreadResult.Type;
 
 const ThreadTarget = {
-  threadId: TrimmedNonEmptyString.annotate({ description: "Id of a thread you started." }),
+  threadId: TrimmedNonEmptyString.annotate({ description: "Id of one of your threads." }),
 };
+
+export const ListThreadsInput = Schema.Struct({
+  scope: Schema.optional(
+    Schema.Literals(["children", "all"]).annotate({
+      description:
+        "children (default): your own threads. all: every thread of this environment, to find one you did not start, for example by title.",
+    }),
+  ),
+  title: Schema.optional(
+    TrimmedNonEmptyString.annotate({
+      description: "Only threads whose title contains this text, ignoring case.",
+    }),
+  ),
+  project: Schema.optional(
+    TrimmedNonEmptyString.annotate({
+      description: "Only threads of this project, by id or workspace path from list_projects.",
+    }),
+  ),
+  includeArchived: Schema.optional(
+    Schema.Boolean.annotate({ description: "Also list archived threads. Defaults to false." }),
+  ),
+});
+export type ListThreadsInput = typeof ListThreadsInput.Type;
+
+export const ListThreadsResult = Schema.Struct({
+  threads: Schema.Array(ChildThreadSummary),
+  omitted: Schema.Int.annotate({
+    description:
+      "Matching threads left out beyond the most recently updated ones; narrow the filter to see them.",
+  }),
+});
+export type ListThreadsResult = typeof ListThreadsResult.Type;
 
 export const SendToThreadInput = Schema.Struct({
   ...ThreadTarget,
@@ -156,11 +230,14 @@ export const SendToThreadInput = Schema.Struct({
     description:
       "What to tell the thread. It arrives as a message from you; a finished thread resumes.",
   }),
+  attachments: attachmentsParameter,
 });
 export type SendToThreadInput = typeof SendToThreadInput.Type;
 
 export const ReadThreadInput = Schema.Struct({
-  ...ThreadTarget,
+  threadId: TrimmedNonEmptyString.annotate({
+    description: "Id of any thread, yours or one found with list_threads scope all.",
+  }),
   messages: Schema.optional(
     PositiveInt.annotate({
       description: "How many of its latest answers to return. Defaults to 1.",
@@ -169,14 +246,31 @@ export const ReadThreadInput = Schema.Struct({
 });
 export type ReadThreadInput = typeof ReadThreadInput.Type;
 
+export const ThreadAttachmentSummary = Schema.Struct({
+  messageId: Schema.String,
+  role: Schema.String,
+  attachmentId: Schema.String.annotate({
+    description: "Pass it as attachmentId to start_thread or send_to_thread to hand the file on.",
+  }),
+  type: Schema.Literals(["image", "file"]),
+  name: Schema.String.annotate({ description: "The original file name." }),
+  mimeType: Schema.String,
+  sizeBytes: Schema.Int,
+  path: Schema.NullOr(Schema.String).annotate({ description: "Local path, to read the file." }),
+});
+export type ThreadAttachmentSummary = typeof ThreadAttachmentSummary.Type;
+
 export const ReadThreadResult = Schema.Struct({
   thread: ChildThreadSummary,
   latestAnswers: Schema.Array(Schema.String),
+  attachments: Schema.Array(ThreadAttachmentSummary).annotate({
+    description: "Every file attached to the thread's messages, oldest first.",
+  }),
 });
 export type ReadThreadResult = typeof ReadThreadResult.Type;
 
 const CreateThreadTool = Tool.make("start_thread", {
-  description: `Start a new thread that works on a task in parallel, as a child of this one. ${WHEN_TO_USE} It gets its own session, sidebar entry and (by default) git worktree and branch, in your project or another one (see list_projects). You do not need to poll: when it finishes, fails or waits on the user, you receive a message about it. ${LINKING}`,
+  description: `Start a new thread that works on a task in parallel, as a child of this one. ${WHEN_TO_USE} It gets its own session, sidebar entry and (by default) git worktree and branch, in your project or another one (see list_projects). Attach files the user gave you with attachments instead of pasting their paths. You do not need to poll: when it finishes, fails or waits on the user, you receive a message about it. ${LINKING}`,
   parameters: CreateThreadInput,
   success: CreateThreadResult,
   failure: ThreadsToolError,
@@ -190,7 +284,7 @@ const CreateThreadTool = Tool.make("start_thread", {
 
 const SendToThreadTool = Tool.make("send_to_thread", {
   description:
-    "Send a message to one of the threads you started: more instructions, a correction, an answer, or a request to continue. It is delivered at once, also while the thread is working.",
+    "Send a message to one of your threads: more instructions, a correction, an answer, or a request to continue, optionally with files attached. It is delivered at once, also while the thread is working.",
   parameters: SendToThreadInput,
   success: Schema.Struct({ delivered: Schema.Boolean }),
   failure: ThreadsToolError,
@@ -224,8 +318,9 @@ const ListProjectsTool = Tool.make("list_projects", {
   .annotate(Tool.OpenWorld, false);
 
 const ListThreadsTool = Tool.make("list_threads", {
-  description: `List the threads you started with their state, what they are doing, todo progress, branch and pull requests. ${LINKING}`,
-  success: Schema.Struct({ threads: Schema.Array(ChildThreadSummary) }),
+  description: `List your threads (the ones you started or the user assigned to you) with their state, what they are doing, todo progress, branch and pull requests. With scope "all" it finds any thread of this environment, by title or project, to read it with read_thread. ${LINKING}`,
+  parameters: ListThreadsInput,
+  success: ListThreadsResult,
   failure: ThreadsToolError,
   dependencies,
 })
@@ -237,7 +332,7 @@ const ListThreadsTool = Tool.make("list_threads", {
 
 const ReadThreadTool = Tool.make("read_thread", {
   description:
-    "Read one of your threads: its state and its latest answers, for example to review a result before you combine it with others.",
+    "Read a thread: its state, its latest answers and the files attached to its messages, for example to review a result before you combine it with others. Works on any thread of this environment; only your own can be messaged or stopped.",
   parameters: ReadThreadInput,
   success: ReadThreadResult,
   failure: ThreadsToolError,

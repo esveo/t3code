@@ -54,6 +54,9 @@ import {
   ThreadSessionSetPayload,
   ThreadTurnDiffCompletedPayload,
 } from "./Schemas.ts";
+// Fork: thread orchestration.
+import { ThreadParentSetPayload } from "@t3tools/contracts";
+import { withParentThread } from "../threadOrchestration/threadParent.ts";
 
 type ThreadPatch = Partial<Omit<OrchestrationThread, "id" | "projectId">>;
 const MAX_THREAD_MESSAGES = 2_000;
@@ -564,6 +567,19 @@ export function projectEvent(
             ...(payload.pinOrderKey !== undefined ? { pinOrderKey: payload.pinOrderKey } : {}),
             updatedAt: payload.updatedAt,
           }),
+        })),
+      );
+
+    // Fork: thread orchestration (see threadOrchestration/threadParent.ts).
+    case "thread.parent-set":
+      return decodeForEvent(ThreadParentSetPayload, event.payload, event.type, "payload").pipe(
+        Effect.map((payload) => ({
+          ...nextBase,
+          threads: nextBase.threads.map((thread) =>
+            thread.id === payload.threadId
+              ? withParentThread(thread, payload.parentThreadId, payload.updatedAt)
+              : thread,
+          ),
         })),
       );
 

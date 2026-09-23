@@ -1,10 +1,12 @@
 import {
+  type ChatAttachment,
   CommandId,
   MessageId,
   ThreadId,
   type ModelSelection,
   type OrchestrationThreadShell,
   ProviderInstanceId,
+  type VcsListRefsResult,
 } from "@t3tools/contracts";
 import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
 import {
@@ -26,12 +28,16 @@ import * as ProjectionSnapshotQuery from "../../../orchestration/Services/Projec
 import * as ProjectSetupScriptRunner from "../../../project/ProjectSetupScriptRunner.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import { describeMessageAttachments, makeThreadAttachments } from "./attachments.ts";
+import { suggestBranches } from "./branchSuggestions.ts";
 import {
   ChildThreadNotFoundError,
   type ChildThreadSummary,
   ThreadOrchestrationDisabledError,
   ThreadOrchestrationFailedError,
   ThreadOrchestrationNestedError,
+  type ThreadAttachmentInput,
+  ThreadNotFoundError,
   ThreadsToolkit,
 } from "./tools.ts";
 
@@ -42,8 +48,14 @@ export function threadLink(thread: Pick<OrchestrationThreadShell, "id" | "title"
   return `[${thread.title.replaceAll("]", ")")}](${threadLinkHref(thread.id)})`;
 }
 
-/** What the tools report about a child; exported so the shape is testable without a layer. */
-export function summarizeChildThread(thread: OrchestrationThreadShell): ChildThreadSummary {
+/** Most threads list_threads returns with scope "all"; a search should not flood the context. */
+const LIST_ALL_MAX_THREADS = 50;
+
+/** What the tools report about a thread; exported so the shape is testable without a layer. */
+export function summarizeChildThread(
+  thread: OrchestrationThreadShell,
+  coordinatorId: ThreadId,
+): ChildThreadSummary {
   return {
     threadId: thread.id,
     title: thread.title,
@@ -56,6 +68,39 @@ export function summarizeChildThread(thread: OrchestrationThreadShell): ChildThr
     worktreePath: thread.worktreePath,
     pullRequests: thread.pullRequests.map((link) => link.url),
     updatedAt: thread.updatedAt,
+    child: thread.parentThreadId === coordinatorId,
+  };
+}
+
+/**
+ * The threads list_threads reports: the coordinator's own by default, or with
+ * scope "all" every other thread, newest first and capped. Archived threads
+ * only on request; deleted ones never reach the shell snapshot.
+ */
+export function selectListedThreads(
+  threads: ReadonlyArray<OrchestrationThreadShell>,
+  input: {
+    readonly coordinatorId: ThreadId;
+    readonly scope: "children" | "all";
+    readonly title?: string | undefined;
+    readonly projectId?: string | undefined;
+    readonly includeArchived?: boolean | undefined;
+  },
+): { readonly threads: ReadonlyArray<OrchestrationThreadShell>; readonly omitted: number } {
+  const title = input.title?.toLowerCase();
+  const matches = threads.filter(
+    (thread) =>
+      thread.id !== input.coordinatorId &&
+      (input.scope === "all" || thread.parentThreadId === input.coordinatorId) &&
+      (input.includeArchived === true || thread.archivedAt === null) &&
+      (title === undefined || thread.title.toLowerCase().includes(title)) &&
+      (input.projectId === undefined || thread.projectId === input.projectId),
+  );
+  if (input.scope === "children") return { threads: matches, omitted: 0 };
+  const newestFirst = matches.toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  return {
+    threads: newestFirst.slice(0, LIST_ALL_MAX_THREADS),
+    omitted: Math.max(0, newestFirst.length - LIST_ALL_MAX_THREADS),
   };
 }
 
@@ -86,6 +131,7 @@ const make = Effect.gen(function* () {
   const setupScripts = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const crypto = yield* Crypto.Crypto;
+  const threadAttachments = yield* makeThreadAttachments;
 
   const uuid = crypto.randomUUIDv4.pipe(Effect.orDie);
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
@@ -127,6 +173,58 @@ const make = Effect.gen(function* () {
     return child.value;
   });
 
+  /**
+   * Resolves the files a coordinator attaches, before anything is created.
+   * An id is looked up in the thread it names, so any thread `read_thread`
+   * shows works, then in the coordinator's own thread and the threads it started.
+   */
+  const resolveAttachments = Effect.fn("ThreadsToolkit.resolveAttachments")(function* (
+    coordinator: OrchestrationThreadShell,
+    attachments: ReadonlyArray<ThreadAttachmentInput> | undefined,
+  ) {
+    if (!attachments || attachments.length === 0) return [];
+    const children = attachments.some((entry) => entry.attachmentId !== undefined)
+      ? yield* snapshots.getShellSnapshot().pipe(
+          Effect.map((snapshot) =>
+            snapshot.threads
+              .filter((thread) => thread.parentThreadId === coordinator.id)
+              .map((thread) => thread.id),
+          ),
+          Effect.catchCause(failWith("Could not list the threads")),
+        )
+      : [];
+    return yield* threadAttachments.resolve({
+      attachments,
+      threadsToSearch: [coordinator.id, ...children],
+      readMessages: (threadId) =>
+        snapshots.getThreadDetailById(threadId).pipe(
+          Effect.map((detail) => (Option.isSome(detail) ? detail.value.messages : [])),
+          Effect.catchCause(failWith("Could not read the thread")),
+        ),
+    });
+  });
+
+  /** A base ref that does not resolve, with the branches the coordinator probably meant. */
+  const unknownBaseRef = Effect.fn("ThreadsToolkit.unknownBaseRef")(function* (
+    cwd: string,
+    baseRef: string,
+  ) {
+    const refs: Array<VcsListRefsResult["refs"][number]> = [];
+    let cursor: number | null = 0;
+    while (cursor !== null && refs.length < 5_000) {
+      const page: VcsListRefsResult = yield* gitWorkflow.listRefs({
+        cwd,
+        refKind: "all",
+        includeMatchingRemoteRefs: true,
+        cursor,
+        limit: 200,
+      });
+      refs.push(...page.refs);
+      cursor = page.nextCursor;
+    }
+    return suggestBranches(baseRef, refs);
+  });
+
   /** The coordinator's project, or another one named by id or workspace path. */
   const resolveTargetProject = Effect.fn("ThreadsToolkit.resolveTargetProject")(function* (
     coordinator: OrchestrationThreadShell,
@@ -159,13 +257,19 @@ const make = Effect.gen(function* () {
     >;
     readonly messageId: MessageId;
     readonly text: string;
+    readonly attachments: ReadonlyArray<ChatAttachment>;
   }) {
     yield* dispatch(
       {
         type: "thread.turn.start",
         commandId: yield* commandId("turn-start"),
         threadId: input.thread.id,
-        message: { messageId: input.messageId, role: "user", text: input.text, attachments: [] },
+        message: {
+          messageId: input.messageId,
+          role: "user",
+          text: input.text,
+          attachments: input.attachments,
+        },
         modelSelection: input.thread.modelSelection,
         runtimeMode: input.thread.runtimeMode,
         interactionMode: input.thread.interactionMode,
@@ -195,6 +299,7 @@ const make = Effect.gen(function* () {
       readonly branch: string;
       readonly messageId: MessageId;
       readonly text: string;
+      readonly attachments: ReadonlyArray<ChatAttachment>;
     }) {
       const worktree = yield* gitWorkflow
         .createWorktree({
@@ -233,7 +338,12 @@ const make = Effect.gen(function* () {
       ) {
         yield* setup.value.completion;
       }
-      yield* startTurn({ thread: input.child, messageId: input.messageId, text: input.text });
+      yield* startTurn({
+        thread: input.child,
+        messageId: input.messageId,
+        text: input.text,
+        attachments: input.attachments,
+      });
     },
   );
 
@@ -287,8 +397,16 @@ const make = Effect.gen(function* () {
           const exists = yield* gitWorkflow
             .hasCommit({ cwd: repositoryCwd, refName: baseRef })
             .pipe(Effect.orElseSucceed(() => false));
-          if (!exists) return yield* failure(`${baseRef} is not a commit in this repository.`);
+          if (!exists) {
+            const suggestions = yield* unknownBaseRef(repositoryCwd, baseRef).pipe(
+              Effect.orElseSucceed((): string[] => []),
+            );
+            return yield* failure(
+              `${baseRef} is not a commit in this repository.${suggestions.length > 0 ? ` Did you mean: ${suggestions.join(", ")}?` : ""}`,
+            );
+          }
         }
+        const attachmentSources = yield* resolveAttachments(coordinator, input.attachments);
 
         const modelSelection: ModelSelection =
           input.provider || input.model
@@ -301,6 +419,7 @@ const make = Effect.gen(function* () {
             : coordinator.modelSelection;
         const threadId = ThreadId.make(yield* uuid);
         const messageId = MessageId.make(yield* uuid);
+        const attachments = yield* threadAttachments.claim(threadId, attachmentSources);
         const text = wrapFromCoordinator({
           coordinatorThreadId: coordinator.id,
           coordinatorTitle: coordinator.title,
@@ -333,7 +452,7 @@ const make = Effect.gen(function* () {
         );
 
         if (!wantsWorktree) {
-          yield* startTurn({ thread: child, messageId, text });
+          yield* startTurn({ thread: child, messageId, text, attachments });
           return {
             threadId,
             link: threadLink({ id: threadId, title: input.title }),
@@ -350,7 +469,7 @@ const make = Effect.gen(function* () {
             type: "thread.message.user.append",
             commandId: yield* commandId("message"),
             threadId,
-            message: { messageId, text, attachments: [] },
+            message: { messageId, text, attachments },
             createdAt,
           },
           "Could not record the task",
@@ -390,6 +509,7 @@ const make = Effect.gen(function* () {
           branch,
           messageId,
           text,
+          attachments,
         }).pipe(
           Effect.catch((error) => markFailed(child, error.message)),
           Effect.forkDetach,
@@ -406,6 +526,8 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const coordinator = yield* requireCoordinator;
         const child = yield* requireChild(coordinator, input.threadId);
+        const attachmentSources = yield* resolveAttachments(coordinator, input.attachments);
+        const attachments = yield* threadAttachments.claim(child.id, attachmentSources);
         yield* startTurn({
           thread: child,
           messageId: MessageId.make(yield* uuid),
@@ -414,7 +536,8 @@ const make = Effect.gen(function* () {
             coordinatorTitle: coordinator.title,
             text: input.message,
           }),
-        });
+          attachments,
+        }).pipe(Effect.tapError(() => threadAttachments.release(attachments)));
         return { delivered: true };
       }),
 
@@ -434,35 +557,53 @@ const make = Effect.gen(function* () {
         };
       }),
 
-    list_threads: () =>
+    list_threads: (input) =>
       Effect.gen(function* () {
         const coordinator = yield* requireCoordinator;
+        const project = input.project
+          ? yield* resolveTargetProject(coordinator, input.project)
+          : null;
         const snapshot = yield* snapshots
           .getShellSnapshot()
           .pipe(Effect.catchCause(failWith("Could not list the threads")));
+        const listed = selectListedThreads(snapshot.threads, {
+          coordinatorId: coordinator.id,
+          scope: input.scope ?? "children",
+          title: input.title,
+          projectId: project?.id,
+          includeArchived: input.includeArchived,
+        });
         return {
-          threads: snapshot.threads
-            .filter(
-              (thread) => thread.parentThreadId === coordinator.id && thread.archivedAt === null,
-            )
-            .map(summarizeChildThread),
+          threads: listed.threads.map((thread) => summarizeChildThread(thread, coordinator.id)),
+          omitted: listed.omitted,
         };
       }),
 
+    // Reading reaches every thread of this environment, so a coordinator can
+    // pick up earlier work; messaging and stopping stay with its own threads.
     read_thread: (input) =>
       Effect.gen(function* () {
         const coordinator = yield* requireCoordinator;
-        const child = yield* requireChild(coordinator, input.threadId);
+        const found = yield* snapshots
+          .getThreadShellById(ThreadId.make(input.threadId))
+          .pipe(Effect.catchCause(failWith("Could not read the thread")));
+        if (Option.isNone(found)) {
+          return yield* new ThreadNotFoundError({ threadId: input.threadId });
+        }
+        const child = found.value;
         const detail = yield* snapshots
           .getThreadDetailById(child.id)
           .pipe(Effect.catchCause(failWith("Could not read the thread")));
-        const answers = Option.isSome(detail)
-          ? detail.value.messages
-              .filter((message) => message.role === "assistant" && message.text.trim().length > 0)
-              .slice(-(input.messages ?? 1))
-              .map((message) => clampAnswer(message.text))
-          : [];
-        return { thread: summarizeChildThread(child), latestAnswers: answers };
+        const messages = Option.isSome(detail) ? detail.value.messages : [];
+        const answers = messages
+          .filter((message) => message.role === "assistant" && message.text.trim().length > 0)
+          .slice(-(input.messages ?? 1))
+          .map((message) => clampAnswer(message.text));
+        return {
+          thread: summarizeChildThread(child, coordinator.id),
+          latestAnswers: answers,
+          attachments: describeMessageAttachments(messages, threadAttachments.attachmentsDir),
+        };
       }),
 
     stop_thread: (input) =>
