@@ -18,25 +18,41 @@ export function parentKeyOf(thread: Pick<EnvironmentThreadShell, "environmentId"
   return keyOf(thread.environmentId, thread.id);
 }
 
+/** Which part of the sidebar a thread lists in: open, snoozed or settled. */
+export type SidebarShelf = "open" | "snoozed" | "settled";
+
+export function sidebarShelfOf(
+  thread: Pick<EnvironmentThreadShell, "settledOverride" | "snoozedUntil">,
+  now: string,
+): SidebarShelf {
+  // Mirrors the sidebar's own sections: snooze outranks settlement.
+  if (thread.snoozedUntil != null && thread.snoozedUntil > now) return "snoozed";
+  return thread.settledOverride === "settled" ? "settled" : "open";
+}
+
 /**
- * A child nests under its coordinator while that coordinator is listed; a
- * child whose coordinator was archived or deleted stands on its own again, so
- * no thread ever disappears from the sidebar.
+ * A child nests under its coordinator while that coordinator is listed on the
+ * same shelf: a settled child leaves an open coordinator's group for the
+ * settled shelf, and comes back with it. A child whose coordinator was
+ * archived or deleted stands on its own again, so no thread ever disappears
+ * from the sidebar.
  */
 export function groupChildThreads(
   threads: ReadonlyArray<EnvironmentThreadShell>,
+  now: string = new Date().toISOString(),
 ): ChildThreadGroups {
-  const listed = new Set(
+  const shelfByKey = new Map(
     threads
       .filter((thread) => thread.archivedAt === null)
-      .map((thread) => keyOf(thread.environmentId, thread.id)),
+      .map((thread) => [keyOf(thread.environmentId, thread.id), sidebarShelfOf(thread, now)]),
   );
   const childrenByParentKey = new Map<string, EnvironmentThreadShell[]>();
   const nestedThreadKeys = new Set<string>();
   for (const thread of threads) {
     if (!thread.parentThreadId || thread.archivedAt !== null) continue;
     const parentKey = keyOf(thread.environmentId, thread.parentThreadId);
-    if (!listed.has(parentKey)) continue;
+    const parentShelf = shelfByKey.get(parentKey);
+    if (parentShelf === undefined || parentShelf !== sidebarShelfOf(thread, now)) continue;
     const group = childrenByParentKey.get(parentKey);
     if (group) group.push(thread);
     else childrenByParentKey.set(parentKey, [thread]);

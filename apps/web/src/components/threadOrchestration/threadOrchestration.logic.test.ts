@@ -45,6 +45,23 @@ describe("groupChildThreads", () => {
     expect([...groups.nestedThreadKeys]).toEqual([key("c1")]);
   });
 
+  it("lists a settled child on the settled shelf, not under its open coordinator", () => {
+    const coordinator = thread("coord");
+    const openChild = thread("c1", { parentThreadId: coordinator.id });
+    const settledChild = thread("c2", {
+      parentThreadId: coordinator.id,
+      settledOverride: "settled",
+    });
+    const groups = groupChildThreads([coordinator, openChild, settledChild]);
+    expect(groups.childrenByParentKey.get(key("coord"))?.map((t) => t.id)).toEqual(["c1"]);
+    expect(groups.nestedThreadKeys.has(key("c2"))).toBe(false);
+
+    // Settled together, they nest again on the settled shelf.
+    const settledCoordinator = { ...coordinator, settledOverride: "settled" as const };
+    const together = groupChildThreads([settledCoordinator, settledChild]);
+    expect(together.childrenByParentKey.get(key("coord"))?.map((t) => t.id)).toEqual(["c2"]);
+  });
+
   it("keeps a folded group's children that need the user or are open", () => {
     const children = [
       thread("working", { session: session("running") }),
