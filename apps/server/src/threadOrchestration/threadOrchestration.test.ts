@@ -106,7 +106,7 @@ engineLayer("thread orchestration", (it) => {
     }),
   );
 
-  it.effect("settling a coordinator settles its finished children", () =>
+  it.effect("a coordinator's children follow it into and out of settled", () =>
     Effect.gen(function* () {
       const engine = yield* OrchestrationEngineService;
       const snapshots = yield* ProjectionSnapshotQuery;
@@ -178,6 +178,17 @@ engineLayer("thread orchestration", (it) => {
       assert.notStrictEqual(yield* settledAt(finishedId), null);
       // A child that still works stays open.
       assert.strictEqual(yield* settledAt(workingId), null);
+
+      // Bringing the coordinator back brings its children back.
+      yield* engine.dispatch({
+        type: "thread.unsettle",
+        commandId: CommandId.make("cmd-unsettle-coordinator"),
+        threadId: coordinatorId,
+        reason: "user",
+      });
+      yield* reactor.drain;
+      assert.strictEqual(yield* settledAt(coordinatorId), null);
+      assert.strictEqual(yield* settledAt(finishedId), null);
     }),
   );
 

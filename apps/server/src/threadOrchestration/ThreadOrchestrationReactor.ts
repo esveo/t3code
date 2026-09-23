@@ -52,8 +52,8 @@ type UpdateRequest =
       readonly requestActivityId?: string;
     }
   | {
-      /** A coordinator was settled; its children follow. */
-      readonly kind: "settle-children";
+      /** A coordinator was settled or brought back; its children follow. */
+      readonly kind: "settle-children" | "unsettle-children";
       readonly threadId: ThreadId;
     };
 
@@ -111,36 +111,39 @@ const make = Effect.gen(function* () {
   const reported = new Map<ThreadId, string>();
 
   /**
-   * Settling a coordinator settles its children. The decider keeps a child
-   * that still works or waits on an approval open, so only finished work
-   * goes away with its coordinator.
+   * Settling a coordinator settles its children, and bringing it back brings
+   * them back. The decider keeps a child that still works or waits on an
+   * approval open, so only finished work goes away with its coordinator.
    */
-  const settleChildren = Effect.fn("ThreadOrchestrationReactor.settleChildren")(function* (
+  const followCoordinator = Effect.fn("ThreadOrchestrationReactor.followCoordinator")(function* (
     coordinatorId: ThreadId,
+    action: "thread.settle" | "thread.unsettle",
   ) {
     const snapshot = yield* snapshots.getShellSnapshot();
     const children = snapshot.threads.filter(
       (thread) =>
         thread.parentThreadId === coordinatorId &&
         thread.archivedAt === null &&
-        thread.settledAt === null,
+        (action === "thread.settle" ? thread.settledAt === null : thread.settledAt !== null),
     );
     yield* Effect.forEach(
       children,
       (child) =>
         Effect.gen(function* () {
-          yield* engine.dispatch({
-            type: "thread.settle",
-            commandId: CommandId.make(
-              `server:thread-orchestration-settle:${child.id}:${yield* uuid}`,
-            ),
-            threadId: child.id,
-          });
+          const commandId = CommandId.make(
+            `server:thread-orchestration-${action}:${child.id}:${yield* uuid}`,
+          );
+          yield* engine.dispatch(
+            action === "thread.settle"
+              ? { type: action, commandId, threadId: child.id }
+              : { type: action, commandId, threadId: child.id, reason: "user" },
+          );
         }).pipe(
           Effect.catchCause((cause) =>
             Cause.hasInterruptsOnly(cause)
               ? Effect.failCause(cause)
-              : Effect.logDebug("child thread stays open with its coordinator settled", {
+              : Effect.logDebug("child thread did not follow its coordinator", {
+                  action,
                   threadId: child.id,
                 }),
           ),
@@ -200,7 +203,13 @@ const make = Effect.gen(function* () {
   });
 
   const worker = yield* makeDrainableWorker((request: UpdateRequest) =>
-    (request.kind === "report" ? report(request) : settleChildren(request.threadId)).pipe(
+    (request.kind === "report"
+      ? report(request)
+      : followCoordinator(
+          request.threadId,
+          request.kind === "settle-children" ? "thread.settle" : "thread.unsettle",
+        )
+    ).pipe(
       Effect.catchCause((cause) =>
         Cause.hasInterruptsOnly(cause)
           ? Effect.failCause(cause)
@@ -235,6 +244,13 @@ const make = Effect.gen(function* () {
       }
       case "thread.settled":
         return worker.enqueue({ kind: "settle-children", threadId: event.payload.threadId });
+      // Only the user's unsettle: a coordinator woken by a child's update
+      // must not pull every other finished child back with it.
+      case "thread.unsettled":
+        if (event.payload.reason === "user") {
+          return worker.enqueue({ kind: "unsettle-children", threadId: event.payload.threadId });
+        }
+        break;
       case "thread.deleted":
         reported.delete(event.payload.threadId);
         break;
