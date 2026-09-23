@@ -6,7 +6,9 @@ import { cn } from "../../lib/utils";
  * Fork: the sidebar's brand lockup, the esveo wordmark in esveo's Sky to Sea
  * gradient followed by "code" outlined from Klavika Medium (esveo's typeface,
  * which the wordmark is drawn in), so no font file ships. Both share the
- * wordmark's baseline and x-height. Hovering or focusing the surrounding link
+ * wordmark's baseline and x-height. The viewBox is padded below as far as the
+ * ascender of "d" reaches above, so centering the box centers the x-height on
+ * the titlebar's icons. Hovering or focusing the surrounding link
  * (a `group`) sweeps the gradient once; nothing animates at rest.
  */
 export function EsveoSidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
@@ -22,8 +24,8 @@ export function EsveoSidebarBrand({ onBackdrop }: { onBackdrop: boolean }) {
   return (
     <svg
       aria-hidden
-      className="h-4 w-auto shrink-0"
-      viewBox="0 -96.0 2063.0 323.0"
+      className="h-5 w-auto shrink-0"
+      viewBox="0 -96 2063 415"
       xmlns="http://www.w3.org/2000/svg"
     >
       <defs>
