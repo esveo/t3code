@@ -75,6 +75,13 @@ const project: OrchestrationProjectShell = {
   updatedAt: "2026-09-23T10:00:00.000Z",
 };
 
+const otherProject: OrchestrationProjectShell = {
+  ...project,
+  id: ProjectId.make("project-2"),
+  title: "Docs site",
+  workspaceRoot: "/workspace/docs",
+};
+
 const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
   options: {
     readonly enabled?: boolean;
@@ -92,6 +99,7 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
       getThreadShellById: (threadId) =>
         Effect.succeed(Option.fromNullishOr(threads.find((thread) => thread.id === threadId))),
       getProjectShellById: () => Effect.succeed(Option.some(project)),
+      getProjectShells: () => Effect.succeed([project, otherProject]),
       getShellSnapshot: () =>
         Effect.succeed({ snapshotSequence: 0, projects: [project], threads, updatedAt: "" }),
       getThreadDetailById: () => Effect.succeed(Option.none()),
@@ -207,6 +215,40 @@ describe("threads toolkit", () => {
       const turn = commands[4] as Extract<OrchestrationCommand, { type: "thread.turn.start" }>;
       // The turn references the task already shown, so it is not sent twice.
       expect(turn.message.messageId).toBe(append.message.messageId);
+    }),
+  );
+
+  it.effect("starts a thread in another project from that project's checkout", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const projects = yield* harness.call("list_projects", {});
+      expect(projects.projects.map((p) => [p.projectId, p.current])).toEqual([
+        ["project-1", true],
+        ["project-2", false],
+      ]);
+      const result = yield* harness.call("start_thread", {
+        title: "Update docs",
+        prompt: "Document the new flag.",
+        project: "/workspace/docs/",
+        worktree: false,
+      });
+      const create = (yield* Ref.get(harness.commands))[0] as Extract<
+        OrchestrationCommand,
+        { type: "thread.create" }
+      >;
+      // The coordinator's branch belongs to its own repository, not this one.
+      expect(create).toMatchObject({
+        projectId: "project-2",
+        parentThreadId: COORDINATOR_ID,
+        branch: null,
+        worktreePath: null,
+      });
+      expect(result.branch).toBe(null);
+
+      const error = yield* harness
+        .call("start_thread", { title: "Nowhere", prompt: "x", project: "missing" })
+        .pipe(Effect.flip);
+      expect(error).toMatchObject({ _tag: "ThreadOrchestrationFailedError" });
     }),
   );
 

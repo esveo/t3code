@@ -52,6 +52,7 @@ export function summarizeChildThread(thread: OrchestrationThreadShell): ChildThr
     detail: describeChildThread(thread),
     progress: childThreadProgress(thread),
     branch: thread.branch,
+    projectId: thread.projectId,
     worktreePath: thread.worktreePath,
     pullRequests: thread.pullRequests.map((link) => link.url),
     updatedAt: thread.updatedAt,
@@ -124,6 +125,31 @@ const make = Effect.gen(function* () {
       return yield* new ChildThreadNotFoundError({ threadId });
     }
     return child.value;
+  });
+
+  /** The coordinator's project, or another one named by id or workspace path. */
+  const resolveTargetProject = Effect.fn("ThreadsToolkit.resolveTargetProject")(function* (
+    coordinator: OrchestrationThreadShell,
+    target: string | undefined,
+  ) {
+    const projects = yield* snapshots
+      .getProjectShells()
+      .pipe(Effect.catchCause(failWith("Could not read the projects")));
+    const wanted = target?.trim().replace(/\/+$/, "");
+    const project = wanted
+      ? projects.find(
+          (candidate) =>
+            candidate.id === wanted || candidate.workspaceRoot.replace(/\/+$/, "") === wanted,
+        )
+      : projects.find((candidate) => candidate.id === coordinator.projectId);
+    if (!project) {
+      return yield* failure(
+        wanted
+          ? `No project matches ${wanted}. Call list_projects for their ids.`
+          : "This thread's project was not found.",
+      );
+    }
+    return project;
   });
 
   const startTurn = Effect.fn("ThreadsToolkit.startTurn")(function* (input: {
@@ -239,19 +265,21 @@ const make = Effect.gen(function* () {
     start_thread: (input) =>
       Effect.gen(function* () {
         const coordinator = yield* requireCoordinator;
-        const project = yield* snapshots
-          .getProjectShellById(coordinator.projectId)
-          .pipe(Effect.catchCause(failWith("Could not read the project")));
-        if (Option.isNone(project)) return yield* failure("This thread's project was not found.");
-        const projectCwd = project.value.workspaceRoot;
-        const repositoryCwd = coordinator.worktreePath ?? projectCwd;
+        const project = yield* resolveTargetProject(coordinator, input.project);
+        const sameProject = project.id === coordinator.projectId;
+        const projectCwd = project.workspaceRoot;
+        // In its own project a thread starts from the coordinator's checkout;
+        // in another one there is no such checkout, so from that project's.
+        const repositoryCwd = sameProject ? (coordinator.worktreePath ?? projectCwd) : projectCwd;
+        const sharedBranch = sameProject ? coordinator.branch : null;
+        const sharedWorktreePath = sameProject ? coordinator.worktreePath : null;
         const wantsWorktree = input.worktree !== false;
         const isRepository = wantsWorktree
           ? yield* gitWorkflow.isRepository(repositoryCwd).pipe(Effect.orElseSucceed(() => false))
           : false;
         if (wantsWorktree && !isRepository) {
           return yield* failure(
-            "This project is not a git repository, so the thread cannot get its own worktree. Pass worktree: false to let it work in your checkout.",
+            "This project is not a git repository, so the thread cannot get its own worktree. Pass worktree: false to let it work in the project's checkout.",
           );
         }
         const baseRef = input.baseBranch ?? "HEAD";
@@ -280,7 +308,7 @@ const make = Effect.gen(function* () {
         });
         const child = {
           id: threadId,
-          projectId: coordinator.projectId,
+          projectId: project.id,
           modelSelection,
           runtimeMode: coordinator.runtimeMode,
           interactionMode: "default" as const,
@@ -291,14 +319,14 @@ const make = Effect.gen(function* () {
             type: "thread.create",
             commandId: yield* commandId("thread-create"),
             threadId,
-            projectId: coordinator.projectId,
+            projectId: project.id,
             parentThreadId: coordinator.id,
             title: input.title,
             modelSelection,
             runtimeMode: child.runtimeMode,
             interactionMode: child.interactionMode,
-            branch: wantsWorktree ? null : coordinator.branch,
-            worktreePath: wantsWorktree ? null : coordinator.worktreePath,
+            branch: wantsWorktree ? null : sharedBranch,
+            worktreePath: wantsWorktree ? null : sharedWorktreePath,
             createdAt,
           },
           "Could not create the thread",
@@ -309,7 +337,7 @@ const make = Effect.gen(function* () {
           return {
             threadId,
             link: threadLink({ id: threadId, title: input.title }),
-            branch: coordinator.branch,
+            branch: sharedBranch,
             worktree: false,
           };
         }
@@ -358,7 +386,7 @@ const make = Effect.gen(function* () {
           repositoryCwd,
           projectCwd,
           baseRef,
-          baseBranch: input.baseBranch ?? coordinator.branch,
+          baseBranch: input.baseBranch ?? sharedBranch,
           branch,
           messageId,
           text,
@@ -388,6 +416,22 @@ const make = Effect.gen(function* () {
           }),
         });
         return { delivered: true };
+      }),
+
+    list_projects: () =>
+      Effect.gen(function* () {
+        const coordinator = yield* requireCoordinator;
+        const projects = yield* snapshots
+          .getProjectShells()
+          .pipe(Effect.catchCause(failWith("Could not list the projects")));
+        return {
+          projects: projects.map((project) => ({
+            projectId: project.id,
+            title: project.title,
+            workspaceRoot: project.workspaceRoot,
+            current: project.id === coordinator.projectId,
+          })),
+        };
       }),
 
     list_threads: () =>

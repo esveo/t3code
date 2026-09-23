@@ -3,7 +3,11 @@ import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environ
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { groupChildThreads, visibleChildThreads } from "./childThreads.logic";
+import {
+  crossProjectCoordinatorKeys,
+  groupChildThreads,
+  visibleChildThreads,
+} from "./childThreads.logic";
 import { buildThreadOverview, waitingThreadCount } from "./threadOverview.logic";
 
 const ENV = EnvironmentId.make("env-1");
@@ -55,6 +59,24 @@ describe("groupChildThreads", () => {
     expect(visibleChildThreads({ children, collapsed: false, openThreadKey: null })).toHaveLength(
       3,
     );
+  });
+});
+
+describe("crossProjectCoordinatorKeys", () => {
+  it("moves a coordinator out of its project once its work spans projects", () => {
+    const projectA = "project-a" as EnvironmentThreadShell["projectId"];
+    const projectB = "project-b" as EnvironmentThreadShell["projectId"];
+    const local = thread("local", { projectId: projectA });
+    const localChild = thread("lc", { projectId: projectA, parentThreadId: local.id });
+    const spanning = thread("spanning", { projectId: projectA });
+    const sameChild = thread("s1", { projectId: projectA, parentThreadId: spanning.id });
+    const otherChild = thread("s2", { projectId: projectB, parentThreadId: spanning.id });
+    // All children elsewhere still spans two projects: the coordinator's and theirs.
+    const remote = thread("remote", { projectId: projectA });
+    const remoteChild = thread("r1", { projectId: projectB, parentThreadId: remote.id });
+    const threads = [local, localChild, spanning, sameChild, otherChild, remote, remoteChild];
+    const keys = crossProjectCoordinatorKeys({ threads, groups: groupChildThreads(threads) });
+    expect([...keys].toSorted()).toEqual([key("remote"), key("spanning")].toSorted());
   });
 });
 

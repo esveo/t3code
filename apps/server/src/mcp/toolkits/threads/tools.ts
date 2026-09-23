@@ -92,6 +92,7 @@ export const ChildThreadSummary = Schema.Struct({
   }),
   detail: Schema.String,
   progress: Schema.NullOr(Schema.Struct({ completed: Schema.Int, total: Schema.Int })),
+  projectId: Schema.String,
   branch: Schema.NullOr(Schema.String),
   worktreePath: Schema.NullOr(Schema.String),
   pullRequests: Schema.Array(Schema.String),
@@ -117,6 +118,12 @@ export const CreateThreadInput = Schema.Struct({
     TrimmedNonEmptyString.annotate({
       description:
         "Branch or commit the new worktree starts from. Defaults to your current commit.",
+    }),
+  ),
+  project: Schema.optional(
+    TrimmedNonEmptyString.annotate({
+      description:
+        "Project to start the thread in, by id or workspace path from list_projects. Defaults to your project. In another project the worktree starts from that repository's current commit, and worktree: false means its main checkout.",
     }),
   ),
   provider: Schema.optional(
@@ -169,7 +176,7 @@ export const ReadThreadResult = Schema.Struct({
 export type ReadThreadResult = typeof ReadThreadResult.Type;
 
 const CreateThreadTool = Tool.make("start_thread", {
-  description: `Start a new thread that works on a task in parallel, as a child of this one. ${WHEN_TO_USE} It gets its own session, sidebar entry and (by default) git worktree and branch. You do not need to poll: when it finishes, fails or waits on the user, you receive a message about it. ${LINKING}`,
+  description: `Start a new thread that works on a task in parallel, as a child of this one. ${WHEN_TO_USE} It gets its own session, sidebar entry and (by default) git worktree and branch, in your project or another one (see list_projects). You do not need to poll: when it finishes, fails or waits on the user, you receive a message about it. ${LINKING}`,
   parameters: CreateThreadInput,
   success: CreateThreadResult,
   failure: ThreadsToolError,
@@ -193,6 +200,27 @@ const SendToThreadTool = Tool.make("send_to_thread", {
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
+export const ProjectSummary = Schema.Struct({
+  projectId: Schema.String,
+  title: Schema.String,
+  workspaceRoot: Schema.String,
+  current: Schema.Boolean.annotate({ description: "True for the project this thread is in." }),
+});
+export type ProjectSummary = typeof ProjectSummary.Type;
+
+const ListProjectsTool = Tool.make("list_projects", {
+  description:
+    "List the projects of this T3 Code environment, to start a thread in another repository with start_thread's project.",
+  success: Schema.Struct({ projects: Schema.Array(ProjectSummary) }),
+  failure: ThreadsToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "List projects")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false);
 
 const ListThreadsTool = Tool.make("list_threads", {
@@ -236,6 +264,7 @@ const StopThreadTool = Tool.make("stop_thread", {
   .annotate(Tool.OpenWorld, false);
 
 export const ThreadsToolkit = Toolkit.make(
+  ListProjectsTool,
   CreateThreadTool,
   SendToThreadTool,
   ListThreadsTool,

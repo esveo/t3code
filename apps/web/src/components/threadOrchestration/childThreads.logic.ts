@@ -83,3 +83,29 @@ export function visibleChildThreads(input: {
     );
   });
 }
+
+/** Run key of the sidebar's "Cross-project" group; no project key can take this form. */
+export const CROSS_PROJECT_RUN_KEY = "\u0001cross-project";
+
+/**
+ * Coordinators whose work spans projects: they and their children cover more
+ * than one project. With the sidebar grouped by project they leave their
+ * project's run for the "Cross-project" group, since no single project owns
+ * the work any more.
+ */
+export function crossProjectCoordinatorKeys(input: {
+  readonly threads: ReadonlyArray<EnvironmentThreadShell>;
+  readonly groups: ChildThreadGroups;
+}): ReadonlySet<string> {
+  const byKey = new Map(
+    input.threads.map((thread) => [keyOf(thread.environmentId, thread.id), thread]),
+  );
+  const keys = new Set<string>();
+  for (const [parentKey, children] of input.groups.childrenByParentKey) {
+    const parent = byKey.get(parentKey);
+    if (!parent) continue;
+    const projects = new Set([parent.projectId, ...children.map((child) => child.projectId)]);
+    if (projects.size > 1) keys.add(parentKey);
+  }
+  return keys;
+}

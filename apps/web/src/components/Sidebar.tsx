@@ -219,7 +219,11 @@ import { resolveSnoozePresets, snoozeWakeLabel, type SnoozePreset } from "./Side
 import { ProjectFavicon, type ProjectFaviconProject } from "./ProjectFavicon";
 // Fork: per-project runs in the thread list.
 import { SidebarChildThreads } from "./threadOrchestration/SidebarChildThreads";
-import { groupChildThreads } from "./threadOrchestration/childThreads.logic";
+import {
+  CROSS_PROJECT_RUN_KEY,
+  crossProjectCoordinatorKeys,
+  groupChildThreads,
+} from "./threadOrchestration/childThreads.logic";
 import { SidebarProjectRunHeader } from "./sidebarProjectRuns/SidebarProjectRunHeader";
 import { SidebarProjectRunRowLead } from "./sidebarProjectRuns/SidebarProjectRunRowLead";
 import {
@@ -2234,6 +2238,16 @@ export default function Sidebar() {
   const threads = useThreadShells();
   // Fork: threads a coordinator started render under it, not as rows of their own.
   const childThreadGroups = useMemo(() => groupChildThreads(threads), [threads]);
+  // Fork: coordinators whose work spans projects gather under "Cross-project".
+  const crossProjectRunKeys = useMemo(
+    () =>
+      new Map(
+        [...crossProjectCoordinatorKeys({ threads, groups: childThreadGroups })].map(
+          (key) => [key, CROSS_PROJECT_RUN_KEY] as const,
+        ),
+      ),
+    [childThreadGroups, threads],
+  );
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -2750,6 +2764,7 @@ export default function Sidebar() {
     threads: ungroupedActiveThreads,
     projectGroupByThreadProjectKey,
     routeThreadKey,
+    runKeyByThreadKey: crossProjectRunKeys,
   });
   const activeThreads = activeRuns.plan.threads;
 
@@ -2881,6 +2896,7 @@ export default function Sidebar() {
     threads: shelfSettledThreads,
     projectGroupByThreadProjectKey,
     routeThreadKey,
+    runKeyByThreadKey: crossProjectRunKeys,
   });
   const renderedSettledThreads = settledRuns.plan.threads;
 

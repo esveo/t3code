@@ -52,10 +52,13 @@ export function useSidebarProjectRuns(input: {
   projectGroupByThreadProjectKey: ReadonlyMap<string, SidebarProjectSnapshot>;
   /** The open thread, which a collapsed run must not hide. */
   routeThreadKey: string | null;
+  /** Fork (thread orchestration): threads that join another run than their project's. */
+  runKeyByThreadKey?: ReadonlyMap<string, string>;
 }): SidebarProjectRuns {
   const enabled = useGroupSidebarThreadsByProject();
   const { collapsed, toggle } = useCollapsedRuns();
-  const { section, threads, projectGroupByThreadProjectKey, routeThreadKey } = input;
+  const { section, threads, projectGroupByThreadProjectKey, routeThreadKey, runKeyByThreadKey } =
+    input;
 
   const projectByRunKey = useMemo(() => {
     const groups = new Map<string, SidebarProjectSnapshot>();
@@ -71,8 +74,12 @@ export function useSidebarProjectRuns(input: {
         threads: enabled ? threads : [],
         threadKeyOf: (thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
         projectKeyOf: (thread) =>
+          runKeyByThreadKey?.get(
+            scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+          ) ??
           projectGroupByThreadProjectKey.get(`${thread.environmentId}:${thread.projectId}`)
-            ?.projectKey ?? null,
+            ?.projectKey ??
+          null,
         isCollapsed: (projectKey) => collapsed.has(`${section}:${projectKey}`),
         isRunning: (thread) =>
           thread.session?.status === "running" && thread.session.activeTurnId != null,
@@ -84,7 +91,15 @@ export function useSidebarProjectRuns(input: {
         isProtected: (thread) =>
           scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
       }),
-    [collapsed, enabled, projectGroupByThreadProjectKey, routeThreadKey, section, threads],
+    [
+      collapsed,
+      enabled,
+      projectGroupByThreadProjectKey,
+      routeThreadKey,
+      runKeyByThreadKey,
+      section,
+      threads,
+    ],
   );
 
   const toggleRun = useCallback(
