@@ -71,9 +71,9 @@ export function threadToastShortcuts(thread: ScopedThreadRef, closeToast: () => 
   }
   return {
     /** Two buttons leave the text too little room beside them, so they move to
-     * a row of their own. */
+     * a row of their own and share its width. */
     data: {
-      actionLayout: "stacked-end",
+      actionLayout: "stacked-fill",
       secondaryActionProps: {
         children: withShortcut("Open in new pane", "O"),
         onClick: entry.openBeside,
