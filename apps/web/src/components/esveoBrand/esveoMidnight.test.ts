@@ -19,6 +19,11 @@ describe("esveo Midnight gradient hooks", () => {
     expect(chatComposer).toMatch(/\bbg-message-action\s/);
   });
 
+  it("finds the row ids the live message marker targets", () => {
+    expect(messagesTimeline).toContain("data-timeline-row-id={row.id}");
+    expect(messagesTimeline).toContain("<LiveUserMessageMarker");
+  });
+
   it("matches the theme id the stylesheet is scoped to", () => {
     expect(esveoTheme).toContain('id: "esveo-midnight"');
   });
