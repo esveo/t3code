@@ -4512,6 +4512,15 @@ export default function Sidebar() {
     [isMobile, newThreadContext, projectGroups.length, setOpenMobile],
   );
 
+  // Fork: the run header's hover button starts a thread in that project.
+  const handleRunHeaderNewThread = useCallback(
+    (project: SidebarProjectSnapshot) => {
+      if (isMobile) setOpenMobile(false);
+      void handleNewThreadRef.current(scopeProjectRef(project.environmentId, project.id));
+    },
+    [isMobile, setOpenMobile],
+  );
+
   // The button mirrors chat.new: in multi-project setups both route through
   // the command palette's "New thread in..." picker, and in single-project
   // setups both create immediately. In multi-project setups the label is only
@@ -4941,6 +4950,7 @@ export default function Sidebar() {
                               header={header}
                               project={runs.projectByRunKey.get(header.projectKey) ?? null}
                               onToggle={runs.toggleRun}
+                              onNewThread={handleRunHeaderNewThread}
                             />,
                           );
                         }
