@@ -123,7 +123,12 @@ const git = (
       operation: "GitVcsDriver.test.git",
       cwd,
       args,
-      ...(env ? { env } : {}),
+      env: {
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: "safe.bareRepository",
+        GIT_CONFIG_VALUE_0: "all",
+        ...env,
+      },
       timeoutMs: 10_000,
     });
     return result.stdout.trim();
