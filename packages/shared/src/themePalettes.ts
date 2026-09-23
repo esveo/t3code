@@ -1,4 +1,9 @@
-export const BUILT_IN_THEME_IDS = ["t3-chat", "grove", "ocean", "ember", "iris"] as const;
+// Fork: the esveo theme lives in its own file to keep upstream palette edits mergeable.
+import { ESVEO_THEME } from "./esveoTheme.ts";
+
+export { ESVEO_THEME };
+
+export const BUILT_IN_THEME_IDS = ["t3-chat", "grove", "ocean", "ember", "iris", "esveo"] as const;
 
 /** The standard T3 Code palette, kept separate from the optional built-in theme library. */
 export const MOBILE_DEFAULT_THEME_ID = "t3-code";
@@ -889,6 +894,7 @@ export const BUILT_IN_THEMES: ReadonlyArray<ThemeDefinition> = [
   OCEAN_THEME,
   EMBER_THEME,
   IRIS_THEME,
+  ESVEO_THEME,
 ];
 
 export function getThemeColorsForAppearance(
