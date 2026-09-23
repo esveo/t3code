@@ -406,6 +406,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["installed cli versions newer available codex claude cursor grok opencode"],
     scope: "environment-defaults",
   },
+  // Fork: thread orchestration.
+  {
+    id: "thread-orchestration",
+    title: "Thread orchestration",
+    to: "/settings/general",
+    searchTerms: ["coordinator child threads orchestrate parallel agents overview subthreads"],
+  },
   {
     id: "continue-threads-after-server-update",
     title: "Continue threads after restarts",

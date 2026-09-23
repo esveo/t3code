@@ -35,6 +35,10 @@
       "types": "./src/advertisedEndpoint.ts",
       "import": "./src/advertisedEndpoint.ts"
     },
+    "./threadOrchestration": {
+      "types": "./src/threadOrchestration.ts",
+      "import": "./src/threadOrchestration.ts"
+    },
     "./agentAwareness": {
       "types": "./src/agentAwareness.ts",
       "import": "./src/agentAwareness.ts"

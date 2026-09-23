@@ -232,6 +232,8 @@ import {
 import { BranchToolbar, type BranchToolbarHandle } from "./BranchToolbar";
 import { nextGitGraphPanelStep } from "./gitGraph/gitGraphPanelLadder";
 import { AgentStagePanel } from "./agentStage/AgentStagePanel";
+import { ThreadOverviewPanel } from "./threadOrchestration/ThreadOverviewPanel";
+import { useThreadOverviewSurface } from "./threadOrchestration/useThreadOverviewSurface";
 import { useAgentStageEnabled } from "./agentStage/agentStageStore";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import { isEditableFocused } from "../lib/editableFocus";
@@ -4613,6 +4615,8 @@ export default function ChatView(props: ChatViewProps) {
     useRightPanelStore.getState().open(activeThreadRef, "agents");
   }, [activeThreadRef]);
   const agentStageEnabled = useAgentStageEnabled();
+  // Fork: the threads this one started.
+  const threadOverview = useThreadOverviewSurface(activeThreadRef);
   const addAgentStageSurface = useCallback(() => {
     if (!activeThreadRef || !agentStageEnabled) return;
     useRightPanelStore.getState().open(activeThreadRef, "agent-stage");
@@ -9756,6 +9760,8 @@ export default function ChatView(props: ChatViewProps) {
       />
     ) : renderedRightPanelSurface?.kind === "agent-stage" ? (
       <AgentStagePanel threadRef={activeThreadRef} workspaceRoot={activeWorkspaceRoot} />
+    ) : renderedRightPanelSurface?.kind === "thread-overview" ? (
+      <ThreadOverviewPanel threadRef={activeThreadRef} />
     ) : renderedRightPanelSurface?.kind === "diff" ? (
       <Suspense fallback={null}>
         <DiffPanel
@@ -10497,6 +10503,7 @@ export default function ChatView(props: ChatViewProps) {
           onAddPullRequests={addPullRequestsSurface}
           onAddAgents={addAgentsSurface}
           onAddAgentStage={addAgentStageSurface}
+          onAddThreadOverview={threadOverview.open}
           onAddDevice={addDeviceSurface}
           browserAvailable={isPreviewSupportedInRuntime()}
           terminalAvailable={activeProject !== null}
@@ -10507,6 +10514,8 @@ export default function ChatView(props: ChatViewProps) {
           pullRequestsAvailable={pullRequestsSurfaceAvailable}
           agentsAvailable
           agentStageAvailable={agentStageEnabled}
+          threadOverviewAvailable={threadOverview.available}
+          threadsWaitingCount={threadOverview.waitingCount}
           deviceAvailable={activeThreadRef !== null}
           liveAgentCount={agentPanelModel.liveCount}
         >
@@ -10559,6 +10568,7 @@ export default function ChatView(props: ChatViewProps) {
             onAddPullRequests={addPullRequestsSurface}
             onAddAgents={addAgentsSurface}
             onAddAgentStage={addAgentStageSurface}
+            onAddThreadOverview={threadOverview.open}
             onAddDevice={addDeviceSurface}
             browserAvailable={isPreviewSupportedInRuntime()}
             terminalAvailable={activeProject !== null}
@@ -10569,6 +10579,8 @@ export default function ChatView(props: ChatViewProps) {
             pullRequestsAvailable={pullRequestsSurfaceAvailable}
             agentsAvailable
             agentStageAvailable={agentStageEnabled}
+            threadOverviewAvailable={threadOverview.available}
+            threadsWaitingCount={threadOverview.waitingCount}
             deviceAvailable={activeThreadRef !== null}
             liveAgentCount={agentPanelModel.liveCount}
           >

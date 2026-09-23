@@ -1,0 +1,257 @@
+import {
+  EnvironmentId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+  type OrchestrationCommand,
+  type OrchestrationProjectShell,
+  type OrchestrationThreadShell,
+} from "@t3tools/contracts";
+import { parseTaggedThreadMessage } from "@t3tools/shared/threadOrchestration";
+import { describe, expect, it } from "@effect/vitest";
+import * as Crypto from "effect/Crypto";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
+import * as Stream from "effect/Stream";
+import type { Tool } from "effect/unstable/ai";
+
+import { GitWorkflowService } from "../../../git/GitWorkflowService.ts";
+import {
+  OrchestrationEngineService,
+  type OrchestrationEngineShape,
+} from "../../../orchestration/Services/OrchestrationEngine.ts";
+import { ProjectionSnapshotQuery } from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { ProjectSetupScriptRunner } from "../../../project/ProjectSetupScriptRunner.ts";
+import * as ServerSettings from "../../../serverSettings.ts";
+import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import { ThreadsToolkitHandlersLive } from "./handlers.ts";
+import { ThreadsToolkit } from "./tools.ts";
+
+const PROJECT_ID = ProjectId.make("project-1");
+const COORDINATOR_ID = ThreadId.make("coordinator");
+const CHILD_ID = ThreadId.make("child");
+
+let uuidCounter = 0;
+const testCrypto = Crypto.make({
+  randomBytes: (size) => new Uint8Array(size).fill(171),
+  digest: (_algorithm, data) => Effect.succeed(data),
+});
+
+function makeThread(overrides: Partial<OrchestrationThreadShell>): OrchestrationThreadShell {
+  return {
+    id: COORDINATOR_ID,
+    projectId: PROJECT_ID,
+    title: "2.0 audit",
+    modelSelection: { instanceId: ProviderInstanceId.make("claudeAgent"), model: "opus" },
+    runtimeMode: "full-access",
+    interactionMode: "default",
+    branch: "release/2.0",
+    worktreePath: "/workspace/project",
+    pullRequests: [],
+    latestTurn: null,
+    createdAt: "2026-09-23T10:00:00.000Z",
+    updatedAt: "2026-09-23T10:00:00.000Z",
+    archivedAt: null,
+    settledOverride: null,
+    settledAt: null,
+    session: null,
+    latestUserMessageAt: null,
+    hasPendingApprovals: false,
+    hasPendingUserInput: false,
+    hasActionableProposedPlan: false,
+    ...overrides,
+  };
+}
+
+const project: OrchestrationProjectShell = {
+  id: PROJECT_ID,
+  title: "Project",
+  workspaceRoot: "/workspace/project",
+  defaultModelSelection: null,
+  scripts: [],
+  createdAt: "2026-09-23T10:00:00.000Z",
+  updatedAt: "2026-09-23T10:00:00.000Z",
+};
+
+const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
+  options: {
+    readonly enabled?: boolean;
+    readonly caller?: OrchestrationThreadShell;
+    readonly threads?: ReadonlyArray<OrchestrationThreadShell>;
+  } = {},
+) {
+  const commands = yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]);
+  const caller = options.caller ?? makeThread({});
+  const threads = [caller, ...(options.threads ?? [])];
+  const dispatch: OrchestrationEngineShape["dispatch"] = (command) =>
+    Ref.update(commands, (recorded) => [...recorded, command]).pipe(Effect.as({ sequence: 1 }));
+  const dependencies = Layer.mergeAll(
+    Layer.mock(ProjectionSnapshotQuery)({
+      getThreadShellById: (threadId) =>
+        Effect.succeed(Option.fromNullishOr(threads.find((thread) => thread.id === threadId))),
+      getProjectShellById: () => Effect.succeed(Option.some(project)),
+      getShellSnapshot: () =>
+        Effect.succeed({ snapshotSequence: 0, projects: [project], threads, updatedAt: "" }),
+      getThreadDetailById: () => Effect.succeed(Option.none()),
+    }),
+    Layer.mock(OrchestrationEngineService)({
+      readEvents: () => Stream.empty,
+      dispatch,
+      streamDomainEvents: Stream.empty,
+      latestSequence: Effect.succeed(0),
+    }),
+    Layer.mock(GitWorkflowService)({
+      isRepository: () => Effect.succeed(true),
+      hasCommit: () => Effect.succeed(true),
+      createWorktree: (input) =>
+        Effect.succeed({
+          worktree: { path: `/worktrees/${input.newRefName}`, refName: input.newRefName! },
+        } as never),
+    }),
+    Layer.mock(ProjectSetupScriptRunner)({
+      runForThread: () => Effect.succeed({ status: "no-script" as const }),
+    }),
+    ServerSettings.layerTest({ enableThreadOrchestration: options.enabled ?? true }),
+    Layer.succeed(Crypto.Crypto, {
+      ...testCrypto,
+      randomUUIDv4: Effect.sync(() => `uuid-${++uuidCounter}`),
+    } satisfies typeof testCrypto),
+  );
+  const toolkit = yield* ThreadsToolkit.pipe(
+    Effect.provide(ThreadsToolkitHandlersLive.pipe(Layer.provide(dependencies))),
+  );
+  const call = <Name extends keyof typeof ThreadsToolkit.tools>(
+    name: Name,
+    params: Parameters<typeof toolkit.handle<Name>>[1],
+  ) =>
+    toolkit.handle(name, params).pipe(
+      Stream.unwrap,
+      Stream.runCollect,
+      Effect.map(
+        (chunk) => chunk.at(-1)!.result as Tool.Success<(typeof ThreadsToolkit.tools)[Name]>,
+      ),
+      Effect.provideService(McpInvocationContext.McpInvocationContext, {
+        environmentId: EnvironmentId.make("environment-1"),
+        threadId: caller.id,
+        providerSessionId: "session-1",
+        providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+        capabilities: new Set<McpInvocationContext.McpCapability>(["pull-requests", "threads"]),
+        issuedAt: 1,
+      }),
+      Effect.provide(dependencies),
+    );
+  /** The worktree runs after create_thread returns; its mocks resolve within a few yields. */
+  const settle = Effect.repeat(Effect.yieldNow, { times: 20 });
+  return { commands, call, settle };
+});
+
+const types = (commands: ReadonlyArray<OrchestrationCommand>) => commands.map((c) => c.type);
+
+describe("threads toolkit", () => {
+  it.effect("starts a thread in the coordinator's checkout", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const result = yield* harness.call("create_thread", {
+        title: "Fix cold start",
+        prompt: "Measure the cold start.",
+        worktree: false,
+      });
+      const commands = yield* Ref.get(harness.commands);
+      expect(types(commands)).toEqual(["thread.create", "thread.turn.start"]);
+      const create = commands[0] as Extract<OrchestrationCommand, { type: "thread.create" }>;
+      expect(create).toMatchObject({
+        parentThreadId: COORDINATOR_ID,
+        projectId: PROJECT_ID,
+        title: "Fix cold start",
+        branch: "release/2.0",
+        worktreePath: "/workspace/project",
+      });
+      const turn = commands[1] as Extract<OrchestrationCommand, { type: "thread.turn.start" }>;
+      expect(parseTaggedThreadMessage(turn.message.text)).toMatchObject({
+        tag: "t3_from_coordinator",
+        threadId: COORDINATOR_ID,
+        body: "Measure the cold start.",
+      });
+      expect(result).toMatchObject({ worktree: false, branch: "release/2.0" });
+      expect(result.link).toBe(`[Fix cold start](t3-thread:${create.threadId})`);
+    }),
+  );
+
+  it.effect("prepares its own worktree and then starts the turn", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const result = yield* harness.call("create_thread", {
+        title: "Harden checkout",
+        prompt: "Trace the retries.",
+      });
+      yield* harness.settle;
+      const commands = yield* Ref.get(harness.commands);
+      expect(types(commands)).toEqual([
+        "thread.create",
+        "thread.message.user.append",
+        "thread.session.set",
+        "thread.meta.update",
+        "thread.turn.start",
+      ]);
+      expect(result).toMatchObject({ worktree: true, branch: "t3code/abababab" });
+      expect(commands[3]).toMatchObject({
+        branch: "t3code/abababab",
+        worktreePath: "/worktrees/t3code/abababab",
+      });
+      const append = commands[1] as Extract<
+        OrchestrationCommand,
+        { type: "thread.message.user.append" }
+      >;
+      const turn = commands[4] as Extract<OrchestrationCommand, { type: "thread.turn.start" }>;
+      // The turn references the task already shown, so it is not sent twice.
+      expect(turn.message.messageId).toBe(append.message.messageId);
+    }),
+  );
+
+  it.effect("stays off until the user turns it on", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ enabled: false });
+      const error = yield* harness.call("list_threads", {}).pipe(Effect.flip);
+      expect(error).toMatchObject({ _tag: "ThreadOrchestrationDisabledError" });
+    }),
+  );
+
+  it.effect("a child cannot start threads of its own", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({
+        caller: makeThread({ id: CHILD_ID, parentThreadId: COORDINATOR_ID }),
+      });
+      const error = yield* harness
+        .call("create_thread", { title: "Nested", prompt: "Nope." })
+        .pipe(Effect.flip);
+      expect(error).toMatchObject({ _tag: "ThreadOrchestrationNestedError" });
+    }),
+  );
+
+  it.effect("lists and messages only the coordinator's own children", () =>
+    Effect.gen(function* () {
+      const child = makeThread({
+        id: CHILD_ID,
+        title: "Load test",
+        parentThreadId: COORDINATOR_ID,
+        session: { status: "running" } as OrchestrationThreadShell["session"],
+      });
+      const stranger = makeThread({ id: ThreadId.make("stranger"), title: "Other" });
+      const harness = yield* makeHarness({ threads: [child, stranger] });
+
+      const listed = yield* harness.call("list_threads", {});
+      expect(listed.threads.map((thread) => [thread.threadId, thread.state])).toEqual([
+        [CHILD_ID, "working"],
+      ]);
+
+      yield* harness.call("send_to_thread", { threadId: CHILD_ID, message: "Also run 10k." });
+      const error = yield* harness
+        .call("send_to_thread", { threadId: "stranger", message: "Hi" })
+        .pipe(Effect.flip);
+      expect(error).toMatchObject({ _tag: "ChildThreadNotFoundError" });
+      expect(types(yield* Ref.get(harness.commands))).toEqual(["thread.turn.start"]);
+    }),
+  );
+});

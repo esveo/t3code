@@ -218,6 +218,8 @@ import {
 import { resolveSnoozePresets, snoozeWakeLabel, type SnoozePreset } from "./Sidebar.snooze";
 import { ProjectFavicon, type ProjectFaviconProject } from "./ProjectFavicon";
 // Fork: per-project runs in the thread list.
+import { SidebarChildThreads } from "./threadOrchestration/SidebarChildThreads";
+import { groupChildThreads } from "./threadOrchestration/childThreads.logic";
 import { SidebarProjectRunHeader } from "./sidebarProjectRuns/SidebarProjectRunHeader";
 import { SidebarProjectRunRowLead } from "./sidebarProjectRuns/SidebarProjectRunRowLead";
 import {
@@ -2230,6 +2232,8 @@ export default function Sidebar() {
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threads = useThreadShells();
+  // Fork: threads a coordinator started render under it, not as rows of their own.
+  const childThreadGroups = useMemo(() => groupChildThreads(threads), [threads]);
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -2638,6 +2642,9 @@ export default function Sidebar() {
     const visible = threads.filter(
       (thread) =>
         thread.archivedAt === null &&
+        !childThreadGroups.nestedThreadKeys.has(
+          scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+        ) &&
         (scopedProjectKeys === null ||
           scopedProjectKeys.has(`${thread.environmentId}:${thread.projectId}`)),
     );
@@ -2725,7 +2732,15 @@ export default function Sidebar() {
       settledThreads: sortSettledThreadsForSidebar(settled),
       snoozeNow: preciseNow,
     };
-  }, [nowMinute, optimisticDrop, scopedProjectKeys, serverConfigs, snoozeWakeTick, threads]);
+  }, [
+    childThreadGroups,
+    nowMinute,
+    optimisticDrop,
+    scopedProjectKeys,
+    serverConfigs,
+    snoozeWakeTick,
+    threads,
+  ]);
 
   // Fork: the active section, gathered into per-project runs. Everything
   // downstream — ordering, jump hints, drag, multi-select — reads the
@@ -2744,8 +2759,14 @@ export default function Sidebar() {
   const isSearchingThreads = threadSearchQuery.trim().length > 0;
   const searchableThreads = useMemo(
     // Fork: the ungathered list — search must still reach a folded run.
-    () => [...pinnedThreads, ...ungroupedActiveThreads, ...snoozedThreads, ...settledThreads],
-    [ungroupedActiveThreads, pinnedThreads, settledThreads, snoozedThreads],
+    () => [
+      ...pinnedThreads,
+      ...ungroupedActiveThreads,
+      ...snoozedThreads,
+      ...settledThreads,
+      ...[...childThreadGroups.childrenByParentKey.values()].flat(),
+    ],
+    [childThreadGroups, ungroupedActiveThreads, pinnedThreads, settledThreads, snoozedThreads],
   );
   const searchEnvironmentIds = useMemo(
     () =>
@@ -4984,6 +5005,20 @@ export default function Sidebar() {
                             );
                           }
                           items.push(renderThreadRow(threadByKey.get(item.key)!, item.section));
+                          // Fork: the threads this one coordinates, under its row.
+                          const childThreads = childThreadGroups.childrenByParentKey.get(item.key);
+                          if (childThreads) {
+                            const section = item.section;
+                            items.push(
+                              <SidebarChildThreads
+                                key={`child-threads:${item.key}`}
+                                parentKey={item.key}
+                                children={childThreads}
+                                openThreadKey={routeThreadKey}
+                                renderRow={(child) => renderThreadRowInner(child, section)}
+                              />,
+                            );
+                          }
                           continue;
                         }
                         if (item.marker === "snoozed-header" || item.marker === "settled-header") {

@@ -1,3 +1,4 @@
+import { readableThreadMessage } from "@t3tools/shared/threadOrchestration";
 import {
   WorktreeWorkingHeader,
   WorktreeSetupCard,
@@ -1515,7 +1516,8 @@ function renderFeedEntry(
       );
     }
     const isUser = message.role === "user";
-    const renderedText = renderAssistantCitationsAsText(message.text);
+    // Fork: thread orchestration messages read as text on mobile.
+    const renderedText = renderAssistantCitationsAsText(readableThreadMessage(message.text));
     const styles = isUser ? markdownStyles.user : markdownStyles.assistant;
     const timestampLabel = formatMessageTime(isUser ? message.createdAt : message.updatedAt);
     const attachments = message.attachments ?? [];

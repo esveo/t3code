@@ -910,6 +910,12 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     const access = yield* agentAccessSettings(threadId);
     if (access.browser) capabilities.add("preview");
     if (access.device) capabilities.add("device");
+    // Fork: thread orchestration, an environment-wide opt-in.
+    const orchestration = yield* serverSettings.getSettings.pipe(
+      Effect.map((settings) => settings.enableThreadOrchestration),
+      Effect.orElseSucceed(() => false),
+    );
+    if (orchestration) capabilities.add("threads");
     return capabilities;
   });
 

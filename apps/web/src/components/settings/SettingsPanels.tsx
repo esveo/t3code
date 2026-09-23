@@ -168,6 +168,7 @@ import {
   useSettingsSearchTargetId,
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
+import { ThreadOrchestrationSettingRow } from "../threadOrchestration/ThreadOrchestrationSettingRow";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
 import { AgentStageSettingRow } from "../agentStage/AgentStageSetting";
@@ -2911,6 +2912,9 @@ export function GeneralSettingsPanel() {
             />
           }
         />
+
+        {/* Fork: thread orchestration. */}
+        <ThreadOrchestrationSettingRow />
 
         <SettingsRow
           serverScoped
