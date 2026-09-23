@@ -1,17 +1,33 @@
 import type { RuntimeSubagent } from "@t3tools/client-runtime/state/subagentRuntime";
-import type { SubagentTranscriptChunk, SubagentTranscriptEntry } from "@t3tools/contracts";
+import type {
+  OrchestrationMessage,
+  OrchestrationThreadActivity,
+  SubagentTranscriptChunk,
+} from "@t3tools/contracts";
 
 export interface SubagentTranscript {
   readonly found: boolean;
   readonly truncated: boolean;
-  readonly entries: ReadonlyArray<SubagentTranscriptEntry>;
+  readonly messages: ReadonlyArray<OrchestrationMessage>;
+  readonly activities: ReadonlyArray<OrchestrationThreadActivity>;
 }
 
 export const EMPTY_SUBAGENT_TRANSCRIPT: SubagentTranscript = {
   found: false,
   truncated: false,
-  entries: [],
+  messages: [],
+  activities: [],
 };
+
+function appendNew<T extends { readonly id: string }>(
+  current: ReadonlyArray<T>,
+  next: ReadonlyArray<T>,
+): ReadonlyArray<T> {
+  if (next.length === 0) return current;
+  const known = new Set(current.map((item) => item.id));
+  const appended = next.filter((item) => !known.has(item.id));
+  return appended.length === 0 ? current : [...current, ...appended];
+}
 
 /** Folds one streamed chunk into what the view holds. A reset chunk replaces it. */
 export function applySubagentTranscriptChunk(
@@ -19,69 +35,19 @@ export function applySubagentTranscriptChunk(
   chunk: SubagentTranscriptChunk,
 ): SubagentTranscript {
   if (chunk.reset) {
-    return { found: chunk.found, truncated: chunk.truncated, entries: chunk.entries };
+    return {
+      found: chunk.found,
+      truncated: chunk.truncated,
+      messages: chunk.messages,
+      activities: chunk.activities,
+    };
   }
-  if (chunk.entries.length === 0) {
+  const messages = appendNew(current.messages, chunk.messages);
+  const activities = appendNew(current.activities, chunk.activities);
+  if (messages === current.messages && activities === current.activities) {
     return chunk.found === current.found ? current : { ...current, found: chunk.found };
   }
-  const known = new Set(current.entries.map((entry) => entry.id));
-  const appended = chunk.entries.filter((entry) => !known.has(entry.id));
-  return {
-    found: chunk.found,
-    truncated: current.truncated,
-    entries: appended.length === 0 ? current.entries : [...current.entries, ...appended],
-  };
-}
-
-export type SubagentChatRow =
-  | {
-      readonly kind: "prompt" | "text" | "thinking";
-      readonly id: string;
-      readonly text: string;
-    }
-  | {
-      readonly kind: "tool";
-      readonly id: string;
-      readonly call: SubagentTranscriptEntry | null;
-      readonly result: SubagentTranscriptEntry | null;
-    };
-
-/**
- * Rows in reading order: every tool call carries its result, and a result
- * whose call fell outside the loaded window stands alone.
- */
-export function deriveSubagentChatRows(
-  entries: ReadonlyArray<SubagentTranscriptEntry>,
-): ReadonlyArray<SubagentChatRow> {
-  const calls = new Set<string>();
-  for (const entry of entries) {
-    if (entry.kind === "tool_use" && entry.toolUseId) calls.add(entry.toolUseId);
-  }
-  const results = new Map<string, SubagentTranscriptEntry>();
-  for (const entry of entries) {
-    if (entry.kind === "tool_result" && entry.toolUseId && calls.has(entry.toolUseId)) {
-      results.set(entry.toolUseId, entry);
-    }
-  }
-  return entries.flatMap((entry): SubagentChatRow[] => {
-    switch (entry.kind) {
-      case "tool_use":
-        return [
-          {
-            kind: "tool",
-            id: entry.id,
-            call: entry,
-            result: (entry.toolUseId && results.get(entry.toolUseId)) || null,
-          },
-        ];
-      case "tool_result":
-        return entry.toolUseId && calls.has(entry.toolUseId)
-          ? []
-          : [{ kind: "tool", id: entry.id, call: null, result: entry }];
-      default:
-        return [{ kind: entry.kind, id: entry.id, text: entry.text }];
-    }
-  });
+  return { found: chunk.found, truncated: current.truncated, messages, activities };
 }
 
 /**

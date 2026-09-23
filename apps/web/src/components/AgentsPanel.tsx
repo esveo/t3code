@@ -30,6 +30,7 @@ import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
 // Fork: agents open as chats.
 import { SubagentChatView } from "~/components/subagentChat/SubagentChatView";
+import { SubagentChatLink } from "~/components/subagentChat/SubagentChatLink";
 import { canOpenSubagentChat } from "~/components/subagentChat/subagentChat.logic";
 import { useSubagentChatSupport } from "~/components/subagentChat/useSubagentChatSupport";
 
@@ -140,8 +141,8 @@ function agentActivityText(agent: RuntimeSubagent): string | null {
   );
 }
 
-/** Flat agent status line. No unfold; opens the agent's chat when onOpen is given. */
-function AgentRow({ agent, onOpen }: { agent: RuntimeSubagent; onOpen?: () => void }) {
+/** Flat, non-interactive agent status line. No unfold. */
+function AgentRow({ agent }: { agent: RuntimeSubagent }) {
   const visuals = STATUS_VISUALS[agent.status];
   const statusLabel =
     agent.kind === "subagent_batch" && agent.status === "idle" ? "Idle" : visuals.label;
@@ -158,15 +159,8 @@ function AgentRow({ agent, onOpen }: { agent: RuntimeSubagent; onOpen?: () => vo
     agent.activationCount > 1 ? `run ${agent.activationCount}` : null,
   ].filter((value): value is string => value !== null);
 
-  const Row = onOpen ? "button" : "div";
   return (
-    <Row
-      {...(onOpen ? { type: "button" as const, onClick: onOpen } : {})}
-      className={cn(
-        "grid h-[3.875rem] w-full grid-cols-[0.375rem_minmax(0,1fr)_auto] grid-rows-[1.25rem_1.125rem_1rem] items-center gap-x-2 rounded-md px-1.5 py-1 text-left",
-        onOpen && "hover:bg-accent/40",
-      )}
-    >
+    <div className="grid h-[3.875rem] grid-cols-[0.375rem_minmax(0,1fr)_auto] grid-rows-[1.25rem_1.125rem_1rem] items-center gap-x-2 rounded-md px-1.5 py-1">
       <span className="col-start-1 row-start-1 flex items-center">
         <StatusDot status={agent.status} />
       </span>
@@ -198,7 +192,7 @@ function AgentRow({ agent, onOpen }: { agent: RuntimeSubagent; onOpen?: () => vo
         {metadata.join(" · ")}
       </span>
       <span className="sr-only">{statusLabel}</span>
-    </Row>
+    </div>
   );
 }
 
@@ -588,15 +582,15 @@ export function AgentsPanel({
               <div className="px-1.5 pt-1 text-[.65rem] font-medium uppercase tracking-wider text-muted-foreground">
                 Direct spawns
               </div>
-              {model.directAgents.map((agent) => (
-                <AgentRow
-                  key={agent.id}
-                  agent={agent}
-                  {...(chatSupported && canOpenSubagentChat(agent)
-                    ? { onOpen: () => setOpenAgentId(agent.id) }
-                    : {})}
-                />
-              ))}
+              {model.directAgents.map((agent) =>
+                chatSupported && canOpenSubagentChat(agent) ? (
+                  <SubagentChatLink key={agent.id} onOpen={() => setOpenAgentId(agent.id)}>
+                    <AgentRow agent={agent} />
+                  </SubagentChatLink>
+                ) : (
+                  <AgentRow key={agent.id} agent={agent} />
+                ),
+              )}
             </section>
           ) : null}
         </div>

@@ -13,11 +13,10 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import {
-  SUBAGENT_TRANSCRIPT_SNAPSHOT_MAX_ENTRIES,
+  SUBAGENT_TRANSCRIPT_SNAPSHOT_MAX_LINES,
   SubagentChatError,
   type SubagentChatTarget,
   type SubagentTranscriptChunk,
-  type SubagentTranscriptEntry,
 } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -25,7 +24,11 @@ import * as Stream from "effect/Stream";
 
 import { ProviderService } from "../provider/Services/ProviderService.ts";
 import { ProviderSessionDirectory } from "../provider/Services/ProviderSessionDirectory.ts";
-import { parseSubagentTranscriptLine, splitTranscriptLines } from "./subagentTranscript.ts";
+import {
+  createSubagentTranscriptConverter,
+  splitTranscriptLines,
+  type SubagentTranscriptSlice,
+} from "./subagentTranscript.ts";
 
 const POLL_INTERVAL = "1 second";
 /** A tail read never pulls more than this per tick; the rest follows on the next ones. */
@@ -80,6 +83,7 @@ async function findTranscriptFile(sessionId: string, agentId: string): Promise<s
 }
 
 interface TailState {
+  convert: ReturnType<typeof createSubagentTranscriptConverter>;
   file: string | null;
   offset: number;
   rest: string;
@@ -89,8 +93,9 @@ interface TailState {
 
 async function readAppended(
   state: TailState,
-): Promise<{ entries: SubagentTranscriptEntry[]; truncated: boolean }> {
-  if (state.file === null) return { entries: [], truncated: false };
+): Promise<SubagentTranscriptSlice & { truncated: boolean }> {
+  const empty = { messages: [], activities: [], truncated: false };
+  if (state.file === null) return empty;
   const handle = await NodeFSP.open(state.file, "r");
   try {
     const { size } = await handle.stat();
@@ -98,8 +103,9 @@ async function readAppended(
       // Rewritten from scratch; start over.
       state.offset = 0;
       state.rest = "";
+      state.convert = createSubagentTranscriptConverter();
     }
-    if (size === state.offset) return { entries: [], truncated: false };
+    if (size === state.offset) return empty;
     // A long transcript opens at its end: the snapshot starts one cap before
     // the end and drops the partial line it lands in.
     const skipsHead = !state.started && size > READ_BYTE_CAP;
@@ -112,11 +118,19 @@ async function readAppended(
     if (skipsHead) text = text.slice(text.indexOf("\n") + 1);
     const { lines, rest } = splitTranscriptLines(text);
     state.rest = rest;
-    const entries = lines.flatMap((line) => parseSubagentTranscriptLine(line));
-    if (!state.started && entries.length > SUBAGENT_TRANSCRIPT_SNAPSHOT_MAX_ENTRIES) {
-      return { entries: entries.slice(-SUBAGENT_TRANSCRIPT_SNAPSHOT_MAX_ENTRIES), truncated: true };
-    }
-    return { entries, truncated: skipsHead };
+    // Every line goes through the converter, so results find their calls, but
+    // the snapshot keeps only the newest lines' rows.
+    const keepFrom = state.started
+      ? 0
+      : Math.max(0, lines.length - SUBAGENT_TRANSCRIPT_SNAPSHOT_MAX_LINES);
+    const slice: SubagentTranscriptSlice = { messages: [], activities: [] };
+    lines.forEach((line, index) => {
+      const converted = state.convert(line);
+      if (index < keepFrom) return;
+      slice.messages.push(...converted.messages);
+      slice.activities.push(...converted.activities);
+    });
+    return { ...slice, truncated: skipsHead || keepFrom > 0 };
   } finally {
     await handle.close();
   }
@@ -144,6 +158,7 @@ export const subscribeSubagentTranscript = (target: SubagentChatTarget) =>
     Effect.gen(function* () {
       const sessionId = yield* resolveSessionId(target);
       const state: TailState = {
+        convert: createSubagentTranscriptConverter(),
         file: null,
         offset: 0,
         rest: "",
@@ -155,13 +170,14 @@ export const subscribeSubagentTranscript = (target: SubagentChatTarget) =>
           if (state.file === null && sessionId !== undefined) {
             state.file = await findTranscriptFile(sessionId, target.agentId);
           }
-          const { entries, truncated } = await readAppended(state);
+          const { messages, activities, truncated } = await readAppended(state);
           const found = state.file !== null;
           const reset = !state.started;
           state.started = true;
-          if (!reset && entries.length === 0 && found === state.lastFound) return null;
+          const empty = messages.length === 0 && activities.length === 0;
+          if (!reset && empty && found === state.lastFound) return null;
           state.lastFound = found;
-          return { reset, found, truncated, entries };
+          return { reset, found, truncated, messages, activities };
         },
         catch: () => new SubagentChatError({ message: "Could not read the subagent transcript." }),
       });

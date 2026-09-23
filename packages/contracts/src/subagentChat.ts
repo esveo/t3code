@@ -9,18 +9,17 @@ import * as Rpc from "effect/unstable/rpc/Rpc";
 
 import { EnvironmentAuthorizationError } from "./auth.ts";
 import { ThreadId, TrimmedNonEmptyString } from "./baseSchemas.ts";
+import { OrchestrationMessage, OrchestrationThreadActivity } from "./orchestration.ts";
 
 export const SUBAGENT_CHAT_WS_METHODS = {
   subscribeTranscript: "subagentChat.subscribeTranscript",
   stop: "subagentChat.stop",
 } as const;
 
-/** Producers clamp free text to these so a single long tool output cannot flood the socket. */
+/** Producers clamp free text to this so one long answer cannot flood the socket. */
 export const SUBAGENT_TRANSCRIPT_TEXT_MAX_LENGTH = 20_000;
-export const SUBAGENT_TRANSCRIPT_TOOL_INPUT_MAX_LENGTH = 2_000;
-export const SUBAGENT_TRANSCRIPT_TOOL_RESULT_MAX_LENGTH = 3_000;
-/** The first chunk carries at most this many entries, newest last. */
-export const SUBAGENT_TRANSCRIPT_SNAPSHOT_MAX_ENTRIES = 600;
+/** The first chunk carries at most this many transcript lines, newest last. */
+export const SUBAGENT_TRANSCRIPT_SNAPSHOT_MAX_LINES = 600;
 
 export const SubagentChatTarget = Schema.Struct({
   threadId: ThreadId,
@@ -29,31 +28,21 @@ export const SubagentChatTarget = Schema.Struct({
 });
 export type SubagentChatTarget = typeof SubagentChatTarget.Type;
 
-/** One rendered block of a subagent's conversation. */
-export const SubagentTranscriptEntry = Schema.Struct({
-  /** Stable across reads, so a client can merge chunks without duplicates. */
-  id: Schema.String,
-  kind: Schema.Literals(["prompt", "text", "thinking", "tool_use", "tool_result"]),
-  at: Schema.NullOr(Schema.String),
-  /** Prompt, answer, thinking or tool output; the one-line summary for a tool call. */
-  text: Schema.String,
-  toolName: Schema.optional(Schema.String),
-  /** Pairs a tool_result with its tool_use. */
-  toolUseId: Schema.optional(Schema.String),
-  /** Tool input as JSON, clamped. */
-  input: Schema.optional(Schema.String),
-  isError: Schema.optional(Schema.Boolean),
-});
-export type SubagentTranscriptEntry = typeof SubagentTranscriptEntry.Type;
-
+/**
+ * A slice of the subagent's conversation in the main chat's own shapes, so the
+ * client renders it with the same timeline: the parent's prompts and messages
+ * as user messages, answers and thinking as assistant and reasoning messages,
+ * tool calls as tool activities.
+ */
 export const SubagentTranscriptChunk = Schema.Struct({
   /** True on the first chunk of a subscription: it replaces what the client holds. */
   reset: Schema.Boolean,
-  /** False while the transcript file does not exist (yet), or for providers without one. */
+  /** False while the transcript file does not exist (yet). */
   found: Schema.Boolean,
-  /** True when the snapshot dropped older entries to stay within its cap. */
+  /** True when the snapshot dropped older lines to stay within its cap. */
   truncated: Schema.Boolean,
-  entries: Schema.Array(SubagentTranscriptEntry),
+  messages: Schema.Array(OrchestrationMessage),
+  activities: Schema.Array(OrchestrationThreadActivity),
 });
 export type SubagentTranscriptChunk = typeof SubagentTranscriptChunk.Type;
 

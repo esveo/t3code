@@ -1,189 +1,199 @@
 /**
  * Fork: turns lines of a Claude subagent transcript
  * (`<config>/projects/<project>/<session>/subagents/agent-<id>.jsonl`) into the
- * entries the subagent chat view renders. Pure, so tailing and tests share it.
+ * messages and activities the main chat renders, so the client shows a
+ * subagent with the same timeline.
  *
- * Only what reads as conversation survives: the prompt, messages the parent
- * sent mid-run (queued commands from the coordinator), answers, thinking, tool
- * calls and their results. Harness attachments (reminders, listings, task
+ * Everything that reaches the subagent from its parent (the task prompt and
+ * later SendMessage deliveries) becomes a user message. Answers become
+ * assistant messages, thinking becomes reasoning, and each tool call becomes a
+ * tool.started activity that its result completes, as the Claude adapter does
+ * for the parent. Harness attachments (reminders, listings, task
  * notifications) are dropped.
  */
 import {
+  EventId,
+  MessageId,
   SUBAGENT_TRANSCRIPT_TEXT_MAX_LENGTH,
-  SUBAGENT_TRANSCRIPT_TOOL_INPUT_MAX_LENGTH,
-  SUBAGENT_TRANSCRIPT_TOOL_RESULT_MAX_LENGTH,
-  type SubagentTranscriptEntry,
+  type OrchestrationMessage,
+  type OrchestrationThreadActivity,
 } from "@t3tools/contracts";
 
+import {
+  classifyToolItemType,
+  summarizeToolRequest,
+  titleForTool,
+} from "../provider/Layers/ClaudeAdapter.ts";
+import { projectActivityPayload } from "../orchestration/ActivityPayloadProjection.ts";
+
 type Json = Record<string, unknown>;
+
+export interface SubagentTranscriptSlice {
+  readonly messages: OrchestrationMessage[];
+  readonly activities: OrchestrationThreadActivity[];
+}
+
+interface PendingToolCall {
+  readonly toolName: string;
+  readonly input: Json;
+}
 
 function isRecord(value: unknown): value is Json {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function clamp(text: string, max: number): string {
+function clamp(text: string): string {
+  const max = SUBAGENT_TRANSCRIPT_TEXT_MAX_LENGTH;
   return text.length > max
     ? `${text.slice(0, max)}\n… (${text.length - max} more characters)`
     : text;
 }
 
-/** A tool result's content is a string or an array of text/image blocks. */
-function toolResultText(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content
-    .map((block) => {
-      if (!isRecord(block)) return "";
-      if (block.type === "text" && typeof block.text === "string") return block.text;
-      if (block.type === "image") return "[image]";
-      return "";
-    })
-    .filter((text) => text.length > 0)
-    .join("\n");
+function message(
+  id: string,
+  role: OrchestrationMessage["role"],
+  text: string,
+  at: string,
+): OrchestrationMessage {
+  return {
+    id: MessageId.make(`subagent:${id}`),
+    role,
+    text: clamp(text),
+    turnId: null,
+    streaming: false,
+    createdAt: at,
+    updatedAt: at,
+  };
 }
 
-/** One line for the collapsed tool row: the input field that says the most. */
-function summarizeToolInput(input: Json): string {
-  for (const key of [
-    "description",
-    "command",
-    "file_path",
-    "path",
-    "pattern",
-    "url",
-    "query",
-    "prompt",
-  ]) {
-    const value = input[key];
-    if (typeof value === "string" && value.trim().length > 0) {
-      return value.trim().split("\n")[0]!.slice(0, 200);
+function toolActivity(input: {
+  readonly id: string;
+  readonly phase: "started" | "completed";
+  readonly toolUseId: string;
+  readonly call: PendingToolCall;
+  readonly result?: Json;
+  readonly at: string;
+}): OrchestrationThreadActivity {
+  const itemType = classifyToolItemType(input.call.toolName, input.call.input);
+  const title = titleForTool(itemType);
+  const failed = input.result?.is_error === true;
+  return projectActivityPayload({
+    id: EventId.make(`subagent:${input.id}:${input.phase}`),
+    tone: "tool",
+    kind: `tool.${input.phase}`,
+    summary: input.phase === "started" ? `${title} started` : title,
+    payload: {
+      itemType,
+      toolCallId: input.toolUseId,
+      status: input.phase === "started" ? "inProgress" : failed ? "failed" : "completed",
+      title,
+      detail: summarizeToolRequest(input.call.toolName, input.call.input),
+      data: {
+        toolName: input.call.toolName,
+        input: input.call.input,
+        ...(input.result ? { result: input.result } : {}),
+      },
+    },
+    turnId: null,
+    createdAt: input.at,
+  });
+}
+
+/**
+ * A converter per subscription: tool results name only their call's id, so it
+ * remembers the calls it has seen to complete them with the call's name and input.
+ */
+export function createSubagentTranscriptConverter() {
+  const calls = new Map<string, PendingToolCall>();
+
+  return function convertLine(line: string): SubagentTranscriptSlice {
+    const slice: SubagentTranscriptSlice = { messages: [], activities: [] };
+    let record: unknown;
+    try {
+      record = JSON.parse(line);
+    } catch {
+      return slice;
     }
-  }
-  return "";
-}
+    // Every conversation line carries both; the rest is harness bookkeeping.
+    if (!isRecord(record) || typeof record.uuid !== "string") return slice;
+    if (typeof record.timestamp !== "string") return slice;
+    const uuid = record.uuid;
+    const at = record.timestamp;
 
-function stringifyInput(input: unknown): string | undefined {
-  if (!isRecord(input) || Object.keys(input).length === 0) return undefined;
-  try {
-    return clamp(JSON.stringify(input, null, 2), SUBAGENT_TRANSCRIPT_TOOL_INPUT_MAX_LENGTH);
-  } catch {
-    return undefined;
-  }
-}
+    if (record.type === "attachment") {
+      // Messages the parent sends while the subagent works arrive queued.
+      const attachment = record.attachment;
+      if (!isRecord(attachment) || attachment.type !== "queued_command") return slice;
+      const prompt = typeof attachment.prompt === "string" ? attachment.prompt : "";
+      if (prompt.trim().length > 0 && !prompt.startsWith("<task-notification>")) {
+        slice.messages.push(message(uuid, "user", prompt, at));
+      }
+      return slice;
+    }
 
-export function parseSubagentTranscriptLine(line: string): ReadonlyArray<SubagentTranscriptEntry> {
-  let record: unknown;
-  try {
-    record = JSON.parse(line);
-  } catch {
-    return [];
-  }
-  if (!isRecord(record)) return [];
-  const uuid = typeof record.uuid === "string" ? record.uuid : null;
-  if (uuid === null) return [];
-  const at = typeof record.timestamp === "string" ? record.timestamp : null;
+    const content = isRecord(record.message) ? record.message.content : undefined;
 
-  if (record.type === "attachment") {
-    const attachment = record.attachment;
-    if (!isRecord(attachment) || attachment.type !== "queued_command") return [];
-    const prompt = typeof attachment.prompt === "string" ? attachment.prompt : "";
-    if (prompt.length === 0 || prompt.startsWith("<task-notification>")) return [];
-    return [
-      { id: uuid, kind: "prompt", at, text: clamp(prompt, SUBAGENT_TRANSCRIPT_TEXT_MAX_LENGTH) },
-    ];
-  }
-
-  const message = record.message;
-  if (!isRecord(message)) return [];
-  const content = message.content;
-
-  if (record.type === "user") {
-    if (typeof content === "string") {
-      return content.trim().length === 0
-        ? []
-        : [
-            {
-              id: uuid,
-              kind: "prompt",
+    if (record.type === "user") {
+      if (typeof content === "string") {
+        if (content.trim().length > 0 && !content.startsWith("<task-notification>")) {
+          slice.messages.push(message(uuid, "user", content, at));
+        }
+        return slice;
+      }
+      if (!Array.isArray(content)) return slice;
+      content.forEach((block, index) => {
+        if (!isRecord(block)) return;
+        const id = `${uuid}:${index}`;
+        if (block.type === "tool_result" && typeof block.tool_use_id === "string") {
+          const call = calls.get(block.tool_use_id) ?? { toolName: "Tool", input: {} };
+          calls.delete(block.tool_use_id);
+          slice.activities.push(
+            toolActivity({
+              id,
+              phase: "completed",
+              toolUseId: block.tool_use_id,
+              call,
+              result: block,
               at,
-              text: clamp(content, SUBAGENT_TRANSCRIPT_TEXT_MAX_LENGTH),
-            },
-          ];
+            }),
+          );
+        } else if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
+          slice.messages.push(message(id, "user", block.text, at));
+        }
+      });
+      return slice;
     }
-    if (!Array.isArray(content)) return [];
-    return content.flatMap((block, index): SubagentTranscriptEntry[] => {
-      if (!isRecord(block)) return [];
-      const id = `${uuid}:${index}`;
-      if (block.type === "tool_result") {
-        return [
-          {
-            id,
-            kind: "tool_result",
-            at,
-            text: clamp(toolResultText(block.content), SUBAGENT_TRANSCRIPT_TOOL_RESULT_MAX_LENGTH),
-            ...(typeof block.tool_use_id === "string" ? { toolUseId: block.tool_use_id } : {}),
-            ...(block.is_error === true ? { isError: true } : {}),
-          },
-        ];
-      }
-      if (block.type === "text" && typeof block.text === "string" && block.text.trim().length > 0) {
-        return [
-          { id, kind: "prompt", at, text: clamp(block.text, SUBAGENT_TRANSCRIPT_TEXT_MAX_LENGTH) },
-        ];
-      }
-      return [];
-    });
-  }
 
-  if (record.type === "assistant" && Array.isArray(content)) {
-    return content.flatMap((block, index): SubagentTranscriptEntry[] => {
-      if (!isRecord(block)) return [];
-      const id = `${uuid}:${index}`;
-      if (block.type === "text" && typeof block.text === "string" && block.text.trim().length > 0) {
-        return [
-          { id, kind: "text", at, text: clamp(block.text, SUBAGENT_TRANSCRIPT_TEXT_MAX_LENGTH) },
-        ];
-      }
-      // Thinking without text is a signature-only block; nothing to read.
-      if (
-        block.type === "thinking" &&
-        typeof block.thinking === "string" &&
-        block.thinking.trim().length > 0
-      ) {
-        return [
-          {
-            id,
-            kind: "thinking",
-            at,
-            text: clamp(block.thinking, SUBAGENT_TRANSCRIPT_TEXT_MAX_LENGTH),
-          },
-        ];
-      }
-      if (
-        (block.type === "tool_use" ||
-          block.type === "server_tool_use" ||
-          block.type === "mcp_tool_use") &&
-        typeof block.name === "string"
-      ) {
-        const input = isRecord(block.input) ? block.input : {};
-        const serializedInput = stringifyInput(input);
-        return [
-          {
-            id,
-            kind: "tool_use",
-            at,
-            text: summarizeToolInput(input),
-            toolName: block.name,
-            ...(typeof block.id === "string" ? { toolUseId: block.id } : {}),
-            ...(serializedInput ? { input: serializedInput } : {}),
-          },
-        ];
-      }
-      return [];
-    });
-  }
-
-  return [];
+    if (record.type === "assistant" && Array.isArray(content)) {
+      content.forEach((block, index) => {
+        if (!isRecord(block)) return;
+        const id = `${uuid}:${index}`;
+        if (block.type === "text" && typeof block.text === "string" && block.text.trim()) {
+          slice.messages.push(message(id, "assistant", block.text, at));
+        } else if (
+          // Thinking without text is a signature-only block; nothing to read.
+          block.type === "thinking" &&
+          typeof block.thinking === "string" &&
+          block.thinking.trim()
+        ) {
+          slice.messages.push(message(id, "reasoning", block.thinking, at));
+        } else if (
+          (block.type === "tool_use" ||
+            block.type === "server_tool_use" ||
+            block.type === "mcp_tool_use") &&
+          typeof block.name === "string" &&
+          typeof block.id === "string"
+        ) {
+          const call = { toolName: block.name, input: isRecord(block.input) ? block.input : {} };
+          calls.set(block.id, call);
+          slice.activities.push(
+            toolActivity({ id, phase: "started", toolUseId: block.id, call, at }),
+          );
+        }
+      });
+    }
+    return slice;
+  };
 }
 
 /**

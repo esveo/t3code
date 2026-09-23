@@ -1,74 +1,77 @@
-import type { SubagentTranscriptEntry } from "@t3tools/contracts";
+import type { OrchestrationMessage, OrchestrationThreadActivity } from "@t3tools/contracts";
+import { EventId, MessageId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   EMPTY_SUBAGENT_TRANSCRIPT,
   applySubagentTranscriptChunk,
   buildSubagentRelayMessage,
-  deriveSubagentChatRows,
 } from "./subagentChat.logic";
 
-const entry = (
-  id: string,
-  kind: SubagentTranscriptEntry["kind"],
-  extra: Partial<SubagentTranscriptEntry> = {},
-): SubagentTranscriptEntry => ({ id, kind, at: null, text: id, ...extra });
+const at = "2026-09-23T10:00:00.000Z";
+const message = (id: string): OrchestrationMessage => ({
+  id: MessageId.make(id),
+  role: "assistant",
+  text: id,
+  turnId: null,
+  streaming: false,
+  createdAt: at,
+  updatedAt: at,
+});
+const activity = (id: string): OrchestrationThreadActivity => ({
+  id: EventId.make(id),
+  tone: "tool",
+  kind: "tool.started",
+  summary: "Command run started",
+  payload: {},
+  turnId: null,
+  createdAt: at,
+});
 
 describe("applySubagentTranscriptChunk", () => {
-  it("replaces on reset, appends afterwards and skips entries it already holds", () => {
+  it("replaces on reset, appends afterwards and skips rows it already holds", () => {
     const first = applySubagentTranscriptChunk(EMPTY_SUBAGENT_TRANSCRIPT, {
       reset: true,
       found: true,
       truncated: false,
-      entries: [entry("a", "prompt")],
+      messages: [message("a")],
+      activities: [],
     });
     const second = applySubagentTranscriptChunk(first, {
       reset: false,
       found: true,
       truncated: false,
-      entries: [entry("a", "prompt"), entry("b", "text")],
+      messages: [message("a"), message("b")],
+      activities: [activity("t1")],
     });
-    expect(second.entries.map((e) => e.id)).toEqual(["a", "b"]);
+    expect(second.messages.map((m) => m.id)).toEqual(["a", "b"]);
+    expect(second.activities.map((a) => a.id)).toEqual(["t1"]);
+
+    const unchanged = applySubagentTranscriptChunk(second, {
+      reset: false,
+      found: true,
+      truncated: false,
+      messages: [message("b")],
+      activities: [],
+    });
+    expect(unchanged).toBe(second);
 
     const reconnected = applySubagentTranscriptChunk(second, {
       reset: true,
       found: true,
       truncated: true,
-      entries: [entry("b", "text")],
+      messages: [message("b")],
+      activities: [],
     });
-    expect(reconnected).toEqual({ found: true, truncated: true, entries: [entry("b", "text")] });
-  });
-});
-
-describe("deriveSubagentChatRows", () => {
-  it("folds each result into its call and keeps orphaned results", () => {
-    const rows = deriveSubagentChatRows([
-      entry("orphan", "tool_result", { toolUseId: "gone" }),
-      entry("call", "tool_use", { toolUseId: "t1", toolName: "Bash" }),
-      entry("thinking", "thinking"),
-      entry("result", "tool_result", { toolUseId: "t1" }),
-      entry("running", "tool_use", { toolUseId: "t2" }),
-    ]);
-    expect(
-      rows.map((row) =>
-        row.kind === "tool" ? [row.id, row.call?.id ?? null, row.result?.id ?? null] : [row.id],
-      ),
-    ).toEqual([
-      ["orphan", null, "orphan"],
-      ["call", "call", "result"],
-      ["thinking"],
-      ["running", "running", null],
-    ]);
+    expect(reconnected.messages.map((m) => m.id)).toEqual(["b"]);
+    expect(reconnected.truncated).toBe(true);
   });
 });
 
 describe("buildSubagentRelayMessage", () => {
   it("addresses the agent by id and keeps the text verbatim", () => {
-    const message = buildSubagentRelayMessage(
-      { id: "a123", title: "Review" },
-      "  Check tests too \n",
-    );
-    expect(message).toContain('to: "a123"');
-    expect(message).toContain("<message>\nCheck tests too\n</message>");
+    const text = buildSubagentRelayMessage({ id: "a123", title: "Review" }, "  Check tests too \n");
+    expect(text).toContain('to: "a123"');
+    expect(text).toContain("<message>\nCheck tests too\n</message>");
   });
 });
