@@ -21,6 +21,7 @@ import {
   unlockNotificationAudio,
 } from "../threadNotifications";
 import { resolveSidebarThreadStatus } from "./Sidebar.logic";
+import { openBesideToastAction } from "./split/openBesideToast";
 import { revealThreadInSplit } from "./split/splitPanes";
 import { toastManager } from "./ui/toast";
 
@@ -177,12 +178,17 @@ function EnvironmentNotifications({
         document.hasFocus() &&
         (activeEnvironmentId !== environmentId || activeThreadId !== thread.id)
       ) {
+        const openBeside = openBesideToastAction({ environmentId, threadId: thread.id }, () =>
+          toastManager.close(toastId),
+        );
         const toastId = toastManager.add({
+          onClose: openBeside.disarm,
           type: kind === "completion" ? "success" : status === "failed" ? "error" : "warning",
           title,
           description: thread.title,
           data: {
             hideCopyButton: true,
+            secondaryActionProps: openBeside.props,
             leadingIcon:
               kind === "completion" ? (
                 <CircleCheckIcon

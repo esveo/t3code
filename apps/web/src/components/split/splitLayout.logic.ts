@@ -211,6 +211,26 @@ export function appendThreadPane(
   return { layout: appendColumn(root, leaf, makeId), leafId: leaf.id };
 }
 
+/**
+ * Opens `thread` in a pane right of the active one, turning a single pane into
+ * a split. A thread that already has a pane keeps it and just gets reported.
+ */
+export function insertThreadBeside(
+  root: SplitNode,
+  activeLeafId: string,
+  thread: ScopedThreadRef,
+  makeId: (prefix: string) => string,
+): { readonly layout: SplitNode; readonly leafId: string } {
+  const existing = findThreadLeaf(root, thread);
+  if (existing) return { layout: root, leafId: existing.id };
+  const targetId = findLeaf(root, activeLeafId) ? activeLeafId : ROUTE_LEAF_ID;
+  const leaf: SplitLeaf = { kind: "leaf", id: makeId("pane"), thread };
+  return {
+    layout: insertBeside(root, targetId, "right", leaf, makeId("split")),
+    leafId: leaf.id,
+  };
+}
+
 /** Swaps the positions of two leaves, keeping their ids and threads together. */
 export function swapLeaves(root: SplitNode, firstId: string, secondId: string): SplitNode {
   const first = findLeaf(root, firstId);

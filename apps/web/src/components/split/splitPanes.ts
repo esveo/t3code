@@ -5,6 +5,7 @@ import {
   appendRoutePane,
   appendThreadPane,
   findThreadLeaf,
+  insertThreadBeside,
   ROUTE_LEAF_ID,
   sameThread,
 } from "./splitLayout.logic";
@@ -56,6 +57,25 @@ export function revealThreadInSplit(
   setActiveLeaf(appended.leafId);
   focusPane(appended.leafId);
   return true;
+}
+
+/**
+ * Opens a thread in a pane right of the focused one, so it can be read next to
+ * the thread in front of the user instead of replacing it. Without a split this
+ * starts one; a thread already on screen just takes focus.
+ */
+export function openThreadBeside(thread: ScopedThreadRef): void {
+  const { layout, activeLeafId, routeThread, setLayout, setActiveLeaf } =
+    useSplitThreadStore.getState();
+  if (routeThread && sameThread(thread, routeThread) && findThreadLeaf(layout, thread) === null) {
+    setActiveLeaf(ROUTE_LEAF_ID);
+    focusPane(ROUTE_LEAF_ID);
+    return;
+  }
+  const next = insertThreadBeside(layout, activeLeafId, thread, nextPaneId);
+  if (next.layout !== layout) setLayout(next.layout);
+  setActiveLeaf(next.leafId);
+  focusPane(next.leafId);
 }
 
 /** Whether a pane of the split already shows this thread. */
