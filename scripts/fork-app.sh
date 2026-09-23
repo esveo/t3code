@@ -172,8 +172,10 @@ start() {
     export T3CODE_DISABLE_AUTO_UPDATE=1
     export T3CODE_FORK_APP_ROOT="$ROOT"
     export T3CODE_FORK_APP_SCRIPT="$SCRIPT_REPO/scripts/fork-app.sh"
-    # &! detaches the job from this shell so it outlives the script.
-    nohup npx vp run start:desktop > "$log" 2>&1 &!
+    # &! detaches the job from this shell so it outlives the script. The
+    # desktop's start script, without the second or so npx and vp add.
+    cd apps/desktop
+    nohup node scripts/start-electron.mjs > "$log" 2>&1 &!
   )
   for _ in {1..60}; do
     if grep -q "main window created" "$log" 2>/dev/null; then
@@ -236,6 +238,52 @@ discard() {
   (rm -rf "$trash" &!)
 }
 
+# Copies the checkout into a build directory: tracked and untracked source,
+# minus everything gitignored. Excluded paths (node_modules, dist) survive in
+# the directory, so repeat builds stay fast. The vendored .repos are reading
+# material only.
+sync_source() {
+  echo "Syncing $1 → $2 …"
+  rsync -a --delete --exclude=.git --exclude=.fork-build.json --exclude=.repos \
+    --filter=':- .gitignore' "$1/" "$2/"
+  rm -rf "$2/.repos"
+}
+
+# Installs only the workspaces a build needs (the root, the build scripts and
+# the given packages with their dependencies) for this machine alone. The whole
+# workspace, with the mobile app, the relay infra and the Linux and x64
+# binaries pnpm-workspace.yaml adds for CI, made every build ~6 GB.
+install_deps() {
+  local dir="$1" marker="$1/node_modules/.fork-slim-install"
+  shift
+  # A directory recycled from a full install keeps the packages a filtered
+  # install leaves alone; start it over once.
+  if [[ -d "$dir/node_modules" && ! -f "$marker" ]]; then
+    echo "Removing the full install left in $dir …"
+    find "$dir" -maxdepth 3 -type d -name node_modules -prune -exec rm -rf {} +
+  fi
+  local filters=(--filter @t3tools/monorepo --filter '@t3tools/scripts...')
+  local package
+  for package in "$@"; do filters+=(--filter "$package..."); done
+  echo "Installing dependencies …"
+  (cd "$dir" && npx -y "$PNPM" install --frozen-lockfile --prefer-offline \
+    --os "$(node -p process.platform)" --cpu "$(node -p process.arch)" "${filters[@]}")
+  touch "$marker"
+}
+
+# Fetches Electron (from its download cache) and builds the app bundle the
+# launcher starts, both of which the first start did otherwise and which made
+# an update take ~15 s. The launcher keeps the bundle while its record names
+# the same Electron path; the build runs from current/ once it is switched to.
+prepare_electron() {
+  local desktop="$1/apps/desktop" electron
+  electron="$(cd "$desktop" && node -p 'require("path").dirname(require.resolve("electron/package.json"))')"
+  (cd "$electron" && node install.js)
+  (cd "$desktop" && env -u VITE_DEV_SERVER_URL node -e \
+    'import("./scripts/electron-launcher.mjs").then((m) => m.resolveElectronLaunchCommand())')
+  sed -i '' "s|\"$1/|\"$ROOT/current/|" "$desktop/.electron-runtime/metadata.json"
+}
+
 prepare() {
   local source_repo="$SCRIPT_REPO"
   acquire_lock prepare
@@ -245,11 +293,7 @@ prepare() {
   local staging="$ROOT/staging"
   mkdir -p "$staging"
   rm -f "$staging/.fork-build.json"
-  echo "Syncing $source_repo → $staging …"
-  # Tracked and untracked source, minus everything gitignored. Excluded paths
-  # (node_modules, dist) survive in the slot, so repeat builds stay fast.
-  rsync -a --delete --exclude=.git --exclude=.fork-build.json \
-    --filter=':- .gitignore' "$source_repo/" "$staging/"
+  sync_source "$source_repo" "$staging"
 
   local branch slug commit sha dirty=""
   branch="$(branch_of "$source_repo")"
@@ -259,10 +303,10 @@ prepare() {
   [[ -n "$(git -C "$source_repo" status --porcelain)" ]] && dirty="+changes"
   local label="$branch@$commit$dirty $(date +%H:%M)"
 
-  echo "Installing dependencies …"
-  (cd "$staging" && npx -y "$PNPM" install --frozen-lockfile --prefer-offline)
+  install_deps "$staging" @t3tools/desktop t3
   echo "Building $label …"
   (cd "$staging" && T3CODE_COMMIT_HASH="$sha" npx vp run build:desktop)
+  prepare_electron "$staging"
 
   printf '{"label": "%s", "branch": "%s", "commit": "%s", "dirty": %s, "source": "%s", "builtAt": "%s", "sizeBytes": %s}\n' \
     "$label" "$branch" "$sha" "$([[ -n "$dirty" ]] && echo true || echo false)" \
@@ -373,13 +417,11 @@ prepare_server() {
   # which must not reach an app build.
   local staging="$SERVER_STAGING"
   mkdir -p "$staging"
-  echo "Syncing $source_repo → $staging …"
-  rsync -a --delete --exclude=.git --filter=':- .gitignore' "$source_repo/" "$staging/"
+  sync_source "$source_repo" "$staging"
 
   node -e "const fs=require('fs');const p='$staging/apps/server/package.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.version='$version';fs.writeFileSync(p,JSON.stringify(j,null,2)+'\n')"
 
-  echo "Installing dependencies …"
-  (cd "$staging" && npx -y "$PNPM" install --frozen-lockfile --prefer-offline)
+  install_deps "$staging" t3
   # Both the packer and the archive builder spawn a bare `vp`, which lives only
   # in the workspace bin dir.
   export PATH="$staging/node_modules/.bin:$PATH"

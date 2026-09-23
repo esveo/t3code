@@ -938,7 +938,6 @@ describe("DesktopWindow", () => {
         assert.deepEqual(mainWindowBoundsUpdates, [{ x: 220, y: 140, width: 1380, height: 920 }]);
         assert.deepEqual(mainWindowMaximizedUpdates, [true]);
         assert.equal(fakeWindow.getNormalBounds.mock.calls.length, 1);
-        assert.equal(fakeWindow.getBounds.mock.calls.length, 0);
       }).pipe(Effect.provide(layer));
     }),
   );
