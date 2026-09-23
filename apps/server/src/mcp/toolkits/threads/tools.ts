@@ -100,6 +100,33 @@ export const ChildThreadSummary = Schema.Struct({
 });
 export type ChildThreadSummary = typeof ChildThreadSummary.Type;
 
+export const ThreadAttachmentInput = Schema.Struct({
+  path: Schema.optional(
+    TrimmedNonEmptyString.annotate({
+      description: "Absolute path of a local file on the machine T3 Code runs on.",
+    }),
+  ),
+  attachmentId: Schema.optional(
+    TrimmedNonEmptyString.annotate({
+      description:
+        "An attachment already in this thread or one you started: its attachmentId, or the ref of its t3-context link (file_…). read_thread lists a thread's attachments.",
+    }),
+  ),
+  name: Schema.optional(
+    TrimmedNonEmptyString.annotate({
+      description: "File name the thread sees. Defaults to the original name.",
+    }),
+  ),
+});
+export type ThreadAttachmentInput = typeof ThreadAttachmentInput.Type;
+
+const attachmentsParameter = Schema.optional(
+  Schema.Array(ThreadAttachmentInput).annotate({
+    description:
+      "Files to attach to the message, each by path or attachmentId. They arrive as if the user had attached them: images up to 10 MiB as images, anything else as files up to 50 MiB.",
+  }),
+);
+
 export const CreateThreadInput = Schema.Struct({
   title: TrimmedNonEmptyString.annotate({
     description: "Short name for the thread, as the user will see it in the sidebar.",
@@ -117,7 +144,7 @@ export const CreateThreadInput = Schema.Struct({
   baseBranch: Schema.optional(
     TrimmedNonEmptyString.annotate({
       description:
-        "Branch or commit the new worktree starts from. Defaults to your current commit.",
+        "Branch or commit the new worktree starts from; origin/<branch> for a branch that only exists on the remote. Defaults to your current commit.",
     }),
   ),
   project: Schema.optional(
@@ -135,6 +162,7 @@ export const CreateThreadInput = Schema.Struct({
   model: Schema.optional(
     TrimmedNonEmptyString.annotate({ description: "Model id for the thread. Defaults to yours." }),
   ),
+  attachments: attachmentsParameter,
 });
 export type CreateThreadInput = typeof CreateThreadInput.Type;
 
@@ -156,6 +184,7 @@ export const SendToThreadInput = Schema.Struct({
     description:
       "What to tell the thread. It arrives as a message from you; a finished thread resumes.",
   }),
+  attachments: attachmentsParameter,
 });
 export type SendToThreadInput = typeof SendToThreadInput.Type;
 
@@ -169,14 +198,31 @@ export const ReadThreadInput = Schema.Struct({
 });
 export type ReadThreadInput = typeof ReadThreadInput.Type;
 
+export const ThreadAttachmentSummary = Schema.Struct({
+  messageId: Schema.String,
+  role: Schema.String,
+  attachmentId: Schema.String.annotate({
+    description: "Pass it as attachmentId to start_thread or send_to_thread to hand the file on.",
+  }),
+  type: Schema.Literals(["image", "file"]),
+  name: Schema.String.annotate({ description: "The original file name." }),
+  mimeType: Schema.String,
+  sizeBytes: Schema.Int,
+  path: Schema.NullOr(Schema.String).annotate({ description: "Local path, to read the file." }),
+});
+export type ThreadAttachmentSummary = typeof ThreadAttachmentSummary.Type;
+
 export const ReadThreadResult = Schema.Struct({
   thread: ChildThreadSummary,
   latestAnswers: Schema.Array(Schema.String),
+  attachments: Schema.Array(ThreadAttachmentSummary).annotate({
+    description: "Every file attached to the thread's messages, oldest first.",
+  }),
 });
 export type ReadThreadResult = typeof ReadThreadResult.Type;
 
 const CreateThreadTool = Tool.make("start_thread", {
-  description: `Start a new thread that works on a task in parallel, as a child of this one. ${WHEN_TO_USE} It gets its own session, sidebar entry and (by default) git worktree and branch, in your project or another one (see list_projects). You do not need to poll: when it finishes, fails or waits on the user, you receive a message about it. ${LINKING}`,
+  description: `Start a new thread that works on a task in parallel, as a child of this one. ${WHEN_TO_USE} It gets its own session, sidebar entry and (by default) git worktree and branch, in your project or another one (see list_projects). Attach files the user gave you with attachments instead of pasting their paths. You do not need to poll: when it finishes, fails or waits on the user, you receive a message about it. ${LINKING}`,
   parameters: CreateThreadInput,
   success: CreateThreadResult,
   failure: ThreadsToolError,
@@ -190,7 +236,7 @@ const CreateThreadTool = Tool.make("start_thread", {
 
 const SendToThreadTool = Tool.make("send_to_thread", {
   description:
-    "Send a message to one of the threads you started: more instructions, a correction, an answer, or a request to continue. It is delivered at once, also while the thread is working.",
+    "Send a message to one of the threads you started: more instructions, a correction, an answer, or a request to continue, optionally with files attached. It is delivered at once, also while the thread is working.",
   parameters: SendToThreadInput,
   success: Schema.Struct({ delivered: Schema.Boolean }),
   failure: ThreadsToolError,
@@ -237,7 +283,7 @@ const ListThreadsTool = Tool.make("list_threads", {
 
 const ReadThreadTool = Tool.make("read_thread", {
   description:
-    "Read one of your threads: its state and its latest answers, for example to review a result before you combine it with others.",
+    "Read one of your threads: its state, its latest answers and the files attached to its messages, for example to review a result before you combine it with others.",
   parameters: ReadThreadInput,
   success: ReadThreadResult,
   failure: ThreadsToolError,
