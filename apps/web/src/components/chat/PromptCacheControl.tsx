@@ -7,7 +7,6 @@ import {
   msUntilPromptCacheStateChanges,
   resolvePromptCacheState,
 } from "~/lib/promptCache";
-import { cn } from "~/lib/utils";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ComposerControl, ComposerControlIcon, type ComposerControlSize } from "./ComposerControl";
 
@@ -56,8 +55,8 @@ export function PromptCacheControl(props: {
       >
         <ComposerControlIcon
           icon={state.kind === "warm" ? TimerIcon : TimerOffIcon}
+          className={state.kind === "cold" ? "text-warning" : undefined}
           size={size}
-          className={cn(state.kind === "cold" && "opacity-60")}
         />
         {state.kind === "warm" ? (
           <span data-composer-control-label className="tabular-nums">
