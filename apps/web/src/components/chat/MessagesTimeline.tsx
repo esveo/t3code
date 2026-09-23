@@ -16,6 +16,7 @@ import {
   PinnedUserMessage,
   resolvePinnedUserMessageIndex,
 } from "./PinnedUserMessage";
+import { LiveUserMessageMarker } from "../esveoBrand/LiveUserMessageMarker";
 import { ThoughtTrailButton } from "./ThoughtTrailButton";
 import { usePublishTimelineThoughts } from "./thoughtTrailStore";
 import {
@@ -1276,7 +1277,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         ? null
         : (minimapItems.find((candidate) => candidate.id === pinnedUserMessageId) ?? null);
     const text = compactPinnedUserMessageText(item?.userText);
-    return item && text !== null ? { rowIndex: item.rowIndex, text } : null;
+    return item && text !== null ? { id: item.id, rowIndex: item.rowIndex, text } : null;
   }, [minimapItems, pinnedUserMessageId]);
 
   if (rows.length === 0 && !isWorking) {
@@ -1361,8 +1362,10 @@ export const MessagesTimeline = memo(function MessagesTimeline({
             }
             ListFooterComponent={timelineListFooter}
           />
+          <LiveUserMessageMarker rowId={isWorking ? (minimapItems.at(-1)?.id ?? null) : null} />
           {pinnedUserMessage ? (
             <PinnedUserMessage
+              rowId={pinnedUserMessage.id}
               text={pinnedUserMessage.text}
               onSelect={() => {
                 onManualNavigation();

@@ -1,0 +1,167 @@
+/*
+ * Fork: esveo Midnight's brand gradients, in the blues of esveo.com's own
+ * tokens (Space navy, Sky, the Sky-Sea mid and Sea). Dark mode only; light
+ * Midnight keeps esveo's flat palette.
+ *
+ * It hooks onto markup upstream already renders (.bg-message on the user's
+ * bubble, .bg-message-action on the composer's send buttons) and the fork's
+ * pinned prompt pill, so no upstream file carries a fork edit. If upstream
+ * renames them, the selectors stop matching and the theme falls back to its
+ * flat colors; esveoMidnight.test.ts guards against that. This file is
+ * unlayered, so it wins over Tailwind's layered utilities.
+ *
+ * Every user message gets the same tile and hairline ring. On the message
+ * whose turn is running (marked by LiveUserMessageMarker) a light circles
+ * that ring at an uneven pace; the tile inside stays as it is. The circling
+ * layer only rotates, which the compositor handles without repainting, and it
+ * exists only while a turn runs.
+ */
+
+html[data-theme-id="esveo-midnight"].dark {
+  --esveo-sky: #03a8ff;
+  --esveo-sky-sea: #35c6ef;
+  --esveo-sea: #68e5de;
+  /* Kachel Sky, toned down: Space navy into Sky ink, which keeps the
+     white text readable in the bright corner. */
+  --esveo-tile:
+    radial-gradient(120% 90% at 100% 0%, rgb(104 229 222 / 0.1), transparent 55%),
+    radial-gradient(90% 90% at 0% 100%, rgb(3 168 255 / 0.07), transparent 60%),
+    linear-gradient(
+      160deg,
+      oklch(0.25 0.055 268) 0%,
+      oklch(0.33 0.085 250) 60%,
+      oklch(0.42 0.11 243) 100%
+    );
+  --esveo-ring: linear-gradient(
+    215deg,
+    rgb(104 229 222 / 0.6) 0%,
+    rgb(3 168 255 / 0.45) 35%,
+    rgb(3 168 255 / 0.15) 70%,
+    rgb(53 198 239 / 0.12) 100%
+  );
+
+  /* Bubbles and the pinned prompt pill: the tile inside a hairline ring. */
+  & .bg-message,
+  & [data-pinned-user-message] button {
+    border: 1px solid transparent;
+    background:
+      var(--esveo-tile) padding-box,
+      var(--esveo-ring) border-box;
+    box-shadow:
+      0 10px 32px -18px rgb(3 168 255 / 0.3),
+      inset 0 1px 0 rgb(255 255 255 / 0.06);
+  }
+
+  & .bg-message {
+    padding: calc(0.75rem - 1px);
+  }
+
+  /* Send, Refine, Implement and the collapsed composer's action: Sky into
+     the Sky-Sea mid, with a soft Sky glow while enabled. */
+  & .bg-message-action {
+    background-image: linear-gradient(
+      135deg,
+      #0a97ef 0%,
+      var(--esveo-sky) 50%,
+      var(--esveo-sky-sea) 100%
+    );
+  }
+
+  & .bg-message-action:not(:disabled) {
+    filter: drop-shadow(0 4px 9px rgb(3 168 255 / 0.38));
+  }
+
+  & .bg-message-action:not(:disabled):hover {
+    filter: brightness(1.07) drop-shadow(0 5px 13px rgb(3 168 255 / 0.52));
+  }
+
+  /* Implement and its menu chevron read as one pill, so the gradient runs
+     across both halves instead of starting over in the chevron. */
+  & [data-chat-composer-implement-actions] > :first-child.bg-message-action {
+    background-image: linear-gradient(135deg, #0a97ef 0%, var(--esveo-sky) 100%);
+  }
+
+  & [data-chat-composer-implement-actions] > :last-child.bg-message-action {
+    background-image: linear-gradient(135deg, var(--esveo-sky) 0%, var(--esveo-sky-sea) 100%);
+  }
+}
+
+/* The running turn's message. Only the ring moves: the border gives way to a
+   1px edge where the static ring (the bubble's own background) shows under
+   a rotating conic light (::before), and the same tile as every other bubble
+   is laid over the rest (::after), fully opaque. */
+@container style(--live-user-message: 1) {
+  html[data-theme-id="esveo-midnight"].dark :is(.bg-message, [data-pinned-user-message] button) {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    border-width: 0;
+    /* Pinned here and derived below, so the tile's corners stay concentric
+       with the ring instead of cutting into it. */
+    border-radius: var(--radius-2xl);
+    background: var(--esveo-ring);
+  }
+
+  html[data-theme-id="esveo-midnight"].dark .bg-message {
+    padding: 0.75rem;
+  }
+
+  html[data-theme-id="esveo-midnight"].dark [data-pinned-user-message] button {
+    padding: calc(0.5rem + 1px) calc(0.75rem + 1px);
+  }
+
+  html[data-theme-id="esveo-midnight"].dark
+    :is(.bg-message, [data-pinned-user-message] button)::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    top: 50%;
+    left: 50%;
+    width: 200%;
+    aspect-ratio: 1;
+    translate: -50% -50%;
+    pointer-events: none;
+    background: conic-gradient(
+      transparent 0deg,
+      rgb(3 168 255 / 0.18) 80deg,
+      transparent 150deg,
+      transparent 190deg,
+      rgb(3 168 255 / 0.65) 285deg,
+      var(--esveo-sky-sea) 330deg,
+      var(--esveo-sea) 352deg,
+      rgb(255 255 255 / 0.85) 358deg,
+      transparent 360deg
+    );
+    animation: esveo-live-orbit 3.6s cubic-bezier(0.35, 0.05, 0.65, 0.95) infinite;
+  }
+
+  html[data-theme-id="esveo-midnight"].dark
+    :is(.bg-message, [data-pinned-user-message] button)::after {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset: 1px;
+    border-radius: calc(var(--radius-2xl) - 1px);
+    pointer-events: none;
+    background: var(--esveo-tile);
+  }
+}
+
+/* One surge and one lull per turn: the easing speeds the light up through
+   the middle of the circle and lets it drift where the loop wraps. At its
+   fastest it runs about 1.5 times the average pace. */
+@keyframes esveo-live-orbit {
+  from {
+    rotate: 0deg;
+  }
+  to {
+    rotate: 360deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-theme-id="esveo-midnight"].dark
+    :is(.bg-message, [data-pinned-user-message] button)::before {
+    animation: none;
+  }
+}

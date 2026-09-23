@@ -45,10 +45,12 @@ export function compactPinnedUserMessageText(text: string | null | undefined): s
  * is chrome over the list, not another bubble in it.
  */
 export function PinnedUserMessage({
+  rowId,
   text,
   className,
   onSelect,
 }: {
+  rowId: string;
   text: string;
   className?: string;
   onSelect: () => void;
@@ -60,6 +62,7 @@ export function PinnedUserMessage({
         className,
       )}
       data-pinned-user-message="true"
+      data-pinned-user-message-row-id={rowId}
     >
       <div className="flex w-full max-w-3xl justify-end">
         <button

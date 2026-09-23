@@ -1,6 +1,8 @@
 import { useId } from "react";
 
 import { cn } from "../../lib/utils";
+// esveo Midnight's gradients ride along with the brand, loaded wherever the sidebar is.
+import "./esveoMidnight.css";
 
 /**
  * Fork: the sidebar's brand lockup, the esveo wordmark in esveo's Sky to Sea
