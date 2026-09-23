@@ -13,6 +13,7 @@ import {
   equalizeBranch,
   findLeaf,
   gridColumnCounts,
+  insertThreadBeside,
   listLeaves,
   recommendGrid,
   resizeBranch,
@@ -440,5 +441,57 @@ describe("revealing a thread in the split", () => {
       ...ids(),
     });
     expect(appendThreadPane(layout, thread("a"), (prefix) => prefix)).toBeNull();
+  });
+});
+
+describe("opening a thread beside the active pane", () => {
+  it("turns a single pane into a split with the thread on the right", () => {
+    const { layout, leafId } = insertThreadBeside(
+      SINGLE_PANE_LAYOUT,
+      "route",
+      thread("a"),
+      (prefix) => `${prefix}-1`,
+    );
+    expect(shape(layout)).toEqual({ row: ["route", "pane-1"], sizes: [0.5, 0.5] });
+    expect(findLeaf(layout, leafId)?.thread).toEqual(thread("a"));
+  });
+
+  it("splits the active pane rather than the route pane", () => {
+    const grid = dropNewThread(SINGLE_PANE_LAYOUT, {
+      targetLeafId: "route",
+      zone: "bottom",
+      thread: thread("a"),
+      newLeafId: "a",
+      newBranchId: "branch",
+    });
+    const { layout } = insertThreadBeside(grid, "a", thread("b"), (prefix) => `${prefix}-1`);
+    expect(shape(layout)).toEqual({
+      column: ["route", { row: ["a", "pane-1"], sizes: [0.5, 0.5] }],
+      sizes: [0.5, 0.5],
+    });
+  });
+
+  it("falls back to the route pane when the active pane is gone", () => {
+    const { layout } = insertThreadBeside(
+      SINGLE_PANE_LAYOUT,
+      "closed",
+      thread("a"),
+      (prefix) => `${prefix}-1`,
+    );
+    expect(shape(layout)).toEqual({ row: ["route", "pane-1"], sizes: [0.5, 0.5] });
+  });
+
+  it("reuses the pane that already shows the thread", () => {
+    const grid = dropNewThread(SINGLE_PANE_LAYOUT, {
+      targetLeafId: "route",
+      zone: "right",
+      thread: thread("a"),
+      newLeafId: "a",
+      newBranchId: "branch",
+    });
+    expect(insertThreadBeside(grid, "route", thread("a"), (prefix) => prefix)).toEqual({
+      layout: grid,
+      leafId: "a",
+    });
   });
 });

@@ -65,7 +65,8 @@ export type ThreadToastData = {
   expandableLabels?: { expand?: string; collapse?: string };
   /** When set with `expandableContent`, the summary + label act as one text disclosure (no separate chevron row). */
   expandableDescriptionTrigger?: boolean;
-  actionLayout?: "inline" | "stacked-end";
+  /** `stacked-fill`: the stacked row, with buttons sharing its full width at a larger size. */
+  actionLayout?: "inline" | "stacked-end" | "stacked-fill";
   actionVariant?:
     | "default"
     | "destructive"
@@ -290,7 +291,8 @@ function deriveToastBodyDescriptor(toast: {
 }): ToastBodyDescriptor {
   const Icon = toast.type ? TOAST_ICONS[toast.type as keyof typeof TOAST_ICONS] : null;
   const stackedActionLayout =
-    hasVisibleToastAction(toast.actionProps) && toast.data?.actionLayout === "stacked-end";
+    hasVisibleToastAction(toast.actionProps) &&
+    (toast.data?.actionLayout === "stacked-end" || toast.data?.actionLayout === "stacked-fill");
   const actionVariant: NonNullable<ThreadToastData["actionVariant"]> =
     toast.data?.actionVariant ?? "default";
   const secondaryActionVariant: NonNullable<ThreadToastData["secondaryActionVariant"]> =
@@ -340,6 +342,8 @@ function ToastBodyContent({
   const additionalActions = toastData?.additionalActions ?? [];
   const secondaryActionProps = toastData?.secondaryActionProps;
   const leadingIcon = toastData?.leadingIcon;
+  const fillActions = stackedActionLayout && toastData?.actionLayout === "stacked-fill";
+  const actionSize = fillActions ? "sm" : "xs";
   const { className: secondaryActionClassName, ...secondaryActionRest } =
     secondaryActionProps ?? {};
 
@@ -380,6 +384,7 @@ function ToastBodyContent({
           className={cn(
             "flex items-center gap-1.5",
             stackedActionLayout ? "w-full justify-end" : "shrink-0",
+            fillActions && "*:flex-1",
           )}
         >
           {copyErrorText !== null ? <CopyErrorButton text={copyErrorText} /> : null}
@@ -397,14 +402,17 @@ function ToastBodyContent({
             <Button
               {...secondaryActionRest}
               className={secondaryActionClassName}
-              size="xs"
+              size={actionSize}
               type="button"
               variant={secondaryActionVariant}
             />
           ) : null}
           {hasVisibleToastAction(actionProps) ? (
             <Toast.Action
-              className={cn(buttonVariants({ size: "xs", variant: actionVariant }), "shrink-0")}
+              className={cn(
+                buttonVariants({ size: actionSize, variant: actionVariant }),
+                "shrink-0",
+              )}
               data-slot="toast-action"
             >
               {actionProps?.children}
