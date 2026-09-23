@@ -8,6 +8,7 @@ import {
   CommandId,
   MessageId,
   type OrchestrationEvent,
+  type OrchestrationMessage,
   type OrchestrationThreadShell,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -15,7 +16,9 @@ import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import {
   type ChildThreadState,
   describeChildThread,
+  parseTaggedThreadMessage,
   resolveChildThreadState,
+  THREAD_UPDATE_TAG,
   wrapThreadUpdate,
 } from "@t3tools/shared/threadOrchestration";
 import * as Cause from "effect/Cause";
@@ -89,6 +92,33 @@ export function childUpdateFor(input: {
   // A failure that ends a turn before its first answer still has to be reported once.
   const anchor = input.latestAnswerId ?? input.child.session?.updatedAt ?? input.child.updatedAt;
   return { key: `${state}:${anchor}`, state };
+}
+
+/**
+ * Whether the coordinator already holds an update in this state about the
+ * child, sent after `since` (the answer or failure the update would report).
+ * The reactor's memory of sent updates is gone after a server restart; this
+ * keeps a later session write, such as the stop that settling a child
+ * triggers, from reporting an old finish again.
+ */
+export function coordinatorHasUpdate(input: {
+  readonly coordinatorMessages: ReadonlyArray<
+    Pick<OrchestrationMessage, "role" | "text" | "createdAt">
+  >;
+  readonly childId: ThreadId;
+  readonly state: ChildThreadState;
+  readonly since: string;
+}): boolean {
+  const since = Date.parse(input.since);
+  return input.coordinatorMessages.some((message) => {
+    if (message.role !== "user" || Date.parse(message.createdAt) < since) return false;
+    const tagged = parseTaggedThreadMessage(message.text);
+    return (
+      tagged?.tag === THREAD_UPDATE_TAG &&
+      tagged.threadId === input.childId &&
+      tagged.state === input.state
+    );
+  });
 }
 
 function clampAnswer(text: string): string {
@@ -172,6 +202,9 @@ const make = Effect.gen(function* () {
     if (!enabled) return;
     const child = yield* snapshots.getThreadShellById(request.threadId);
     if (Option.isNone(child) || !child.value.parentThreadId) return;
+    // Settling says its result has been dealt with; the session stop that
+    // follows a settle is no news. New work unsettles the child first.
+    if (child.value.settledAt !== null && request.requestActivityId === undefined) return;
     const parent = yield* snapshots.getThreadShellById(child.value.parentThreadId);
     if (Option.isNone(parent) || parent.value.archivedAt !== null) return;
 
@@ -187,6 +220,21 @@ const make = Effect.gen(function* () {
       requestActivityId: request.requestActivityId,
     });
     if (update === null || reported.get(child.value.id) === update.key) return;
+    if (!reported.has(child.value.id) && update.state !== "waiting") {
+      const coordinatorDetail = yield* snapshots.getThreadDetailById(parent.value.id);
+      const sent =
+        Option.isSome(coordinatorDetail) &&
+        coordinatorHasUpdate({
+          coordinatorMessages: coordinatorDetail.value.messages,
+          childId: child.value.id,
+          state: update.state,
+          since: latestAnswer?.createdAt ?? child.value.session?.updatedAt ?? child.value.updatedAt,
+        });
+      if (sent) {
+        reported.set(child.value.id, update.key);
+        return;
+      }
+    }
     reported.set(child.value.id, update.key);
 
     yield* engine.dispatch({
