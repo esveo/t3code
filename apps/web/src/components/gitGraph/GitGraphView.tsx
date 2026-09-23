@@ -263,13 +263,14 @@ export function GitGraphView({
                       ) : (
                         <>
                           {/* Badges shrink and truncate instead of spilling into
-                          the author column when a commit carries long refs. */}
+                          the author column when a commit carries long refs;
+                          hovering one grows it back to its full name. */}
                           <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
                             {row.commit.refs.map((ref) => (
                               <span
                                 key={`${ref.kind}:${ref.name}`}
                                 className={cn(
-                                  "min-w-6 max-w-56 truncate rounded-full border px-1.5 text-[11px] leading-4",
+                                  "min-w-6 max-w-56 truncate rounded-full border px-1.5 text-[11px] leading-4 hover:max-w-none hover:shrink-0",
                                   REF_BADGE_CLASS[ref.kind],
                                 )}
                               >
