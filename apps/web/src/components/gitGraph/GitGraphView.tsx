@@ -262,19 +262,21 @@ export function GitGraphView({
                         </>
                       ) : (
                         <>
-                          <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                          {/* Badges shrink and truncate instead of spilling into
+                          the author column when a commit carries long refs. */}
+                          <span className="flex min-w-0 flex-1 items-center gap-1.5 overflow-hidden">
                             {row.commit.refs.map((ref) => (
                               <span
                                 key={`${ref.kind}:${ref.name}`}
                                 className={cn(
-                                  "shrink-0 rounded-full border px-1.5 text-[11px] leading-4",
+                                  "min-w-6 max-w-56 truncate rounded-full border px-1.5 text-[11px] leading-4",
                                   REF_BADGE_CLASS[ref.kind],
                                 )}
                               >
                                 {ref.kind === "head" ? `⌂ ${ref.name}` : ref.name}
                               </span>
                             ))}
-                            <span className="truncate">{row.commit.subject}</span>
+                            <span className="min-w-16 truncate">{row.commit.subject}</span>
                           </span>
                           {/* Narrow panes keep the subject and the date and drop
                           the rest; the details pane still has all of it. */}
