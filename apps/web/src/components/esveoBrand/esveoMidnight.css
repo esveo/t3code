@@ -1,13 +1,14 @@
 /*
  * Fork: esveo Midnight's brand gradients, in the blues of esveo.com's own
  * tokens (Space navy, Sky, the Sky-Sea mid and Sea), on the user's messages,
- * the send buttons and the current thread in the sidebar. Dark mode only;
- * light Midnight keeps esveo's flat palette.
+ * the send buttons, the current thread in the sidebar and the toasts. Dark
+ * mode only; light Midnight keeps esveo's flat palette.
  *
  * It hooks onto markup upstream already renders (.bg-message on the user's
  * bubble, .bg-message-action on the composer's send buttons,
- * .bg-sidebar-row-active on the current sidebar row) and the fork's
- * pinned prompt pill, so no upstream file carries a fork edit. If upstream
+ * .bg-sidebar-row-active on the current sidebar row, the toast's data-slot
+ * and data-type attributes) and the fork's pinned prompt pill, so no
+ * upstream file carries a fork edit. If upstream
  * renames them, the selectors stop matching and the theme falls back to its
  * flat colors; esveoMidnight.test.ts guards against that. This file is
  * unlayered, so it wins over Tailwind's layered utilities.
@@ -74,6 +75,56 @@ html[data-theme-id="esveo-midnight"].dark {
 
   & .bg-message-action:not(:disabled):hover {
     filter: brightness(1.07) drop-shadow(0 5px 13px rgb(3 168 255 / 0.52));
+  }
+
+  /* Toasts (thread notifications and every other stacked toast): the
+     bubbles' tile instead of the glass. It is opaque, so the backdrop blur
+     only cost GPU. Error and warning toasts keep their type colour as a
+     tinted edge, so they still read apart from a success at a glance. */
+  & [data-slot="toast-viewport"] > .dropdown-glass {
+    border-color: transparent;
+    background: var(--esveo-tile) border-box;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow:
+      0 14px 36px -16px rgb(3 168 255 / 0.4),
+      0 10px 24px -12px rgb(0 0 0 / 0.5),
+      inset 0 1px 0 rgb(255 255 255 / 0.07);
+  }
+
+  & [data-slot="toast-viewport"] > .dropdown-glass:is([data-type="error"], [data-type="warning"]) {
+    border-color: color-mix(in oklab, var(--toast-edge) 70%, transparent);
+    box-shadow:
+      0 14px 36px -16px color-mix(in oklab, var(--toast-edge) 45%, transparent),
+      0 10px 24px -12px rgb(0 0 0 / 0.5),
+      inset 0 1px 0 rgb(255 255 255 / 0.07);
+  }
+
+  & [data-slot="toast-viewport"] > [data-type="error"] {
+    --toast-edge: var(--destructive);
+  }
+
+  & [data-slot="toast-viewport"] > [data-type="warning"] {
+    --toast-edge: var(--warning);
+  }
+
+  /* The description sits on the tile's lighter blues, so it gets a touch
+     more light than the muted grey it has on the glass. */
+  & [data-slot="toast-viewport"] [data-slot="toast-description"] {
+    color: rgb(255 255 255 / 0.72);
+  }
+
+  /* The toast's primary action wears the send buttons' Sky gradient;
+     secondary buttons stay outlined. */
+  & [data-slot="toast-viewport"] [data-slot="toast-action"].bg-primary {
+    border-color: transparent;
+    background-image: linear-gradient(
+      135deg,
+      #0a97ef 0%,
+      var(--esveo-sky) 50%,
+      var(--esveo-sky-sea) 100%
+    );
+    filter: drop-shadow(0 3px 8px rgb(3 168 255 / 0.35));
   }
 
   /* Implement and its menu chevron read as one pill, so the gradient runs

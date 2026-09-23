@@ -5,6 +5,7 @@ import chatComposer from "../chat/ChatComposer.tsx?raw";
 import composerPrimaryActions from "../chat/ComposerPrimaryActions.tsx?raw";
 import messagesTimeline from "../chat/MessagesTimeline.tsx?raw";
 import sidebar from "../Sidebar.tsx?raw";
+import toast from "../ui/toast.tsx?raw";
 
 // esveoMidnight.css styles upstream's markup through the classes and data
 // attributes it already renders. When an upstream merge renames one, the
@@ -22,6 +23,13 @@ describe("esveo Midnight gradient hooks", () => {
 
   it("finds the current thread's sidebar row", () => {
     expect(sidebar).toMatch(/"bg-sidebar-row-active\s/);
+  });
+
+  it("finds the stacked toast surface and its primary action", () => {
+    expect(toast).toContain('data-slot="toast-viewport"');
+    expect(toast).toMatch(/"dropdown-glass absolute\s/);
+    expect(toast).toContain('data-slot="toast-action"');
+    expect(toast).toContain('data-slot="toast-description"');
   });
 
   it("finds the row ids the live message marker targets", () => {
