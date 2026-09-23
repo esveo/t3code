@@ -21,6 +21,7 @@ import {
   unlockNotificationAudio,
 } from "../threadNotifications";
 import { resolveSidebarThreadStatus } from "./Sidebar.logic";
+import { threadToastShortcuts } from "./split/threadToastShortcuts";
 import { revealThreadInSplit } from "./split/splitPanes";
 import { toastManager } from "./ui/toast";
 
@@ -177,12 +178,17 @@ function EnvironmentNotifications({
         document.hasFocus() &&
         (activeEnvironmentId !== environmentId || activeThreadId !== thread.id)
       ) {
+        const shortcuts = threadToastShortcuts({ environmentId, threadId: thread.id }, () =>
+          toastManager.close(toastId),
+        );
         const toastId = toastManager.add({
+          onClose: shortcuts.disarm,
           type: kind === "completion" ? "success" : status === "failed" ? "error" : "warning",
           title,
           description: thread.title,
           data: {
             hideCopyButton: true,
+            ...shortcuts.data,
             leadingIcon:
               kind === "completion" ? (
                 <CircleCheckIcon
@@ -203,13 +209,13 @@ function EnvironmentNotifications({
                 />
               ),
           },
-          actionProps: {
+          actionProps: shortcuts.openThread({
             children: "Open thread",
             onClick: () => {
               toastManager.close(toastId);
               openThread(thread.id);
             },
-          },
+          }),
         });
         continue;
       }
