@@ -51,7 +51,16 @@ export class ChildThreadNotFoundError extends Schema.TaggedError<ChildThreadNotF
   { threadId: Schema.String },
 ) {
   override get message(): string {
-    return `Thread ${this.threadId} is not one of the threads you started. Call list_threads for their ids.`;
+    return `Thread ${this.threadId} is not one of your threads. read_thread can still read it; to message or stop it, ask the user to assign it to you (sidebar: right-click the thread, Assign to coordinator). Call list_threads for your threads' ids.`;
+  }
+}
+
+export class ThreadNotFoundError extends Schema.TaggedError<ThreadNotFoundError>()(
+  "ThreadNotFoundError",
+  { threadId: Schema.String },
+) {
+  override get message(): string {
+    return `Thread ${this.threadId} was not found. Call list_threads with scope "all" to find a thread by title.`;
   }
 }
 
@@ -69,6 +78,7 @@ export const ThreadsToolError = Schema.Union([
   ThreadOrchestrationDisabledError,
   ThreadOrchestrationNestedError,
   ChildThreadNotFoundError,
+  ThreadNotFoundError,
   ThreadOrchestrationFailedError,
 ]);
 export type ThreadsToolError = typeof ThreadsToolError.Type;
@@ -97,6 +107,10 @@ export const ChildThreadSummary = Schema.Struct({
   worktreePath: Schema.NullOr(Schema.String),
   pullRequests: Schema.Array(Schema.String),
   updatedAt: Schema.String,
+  child: Schema.Boolean.annotate({
+    description:
+      "True for your own threads, which you can message and stop. Others you can only read.",
+  }),
 });
 export type ChildThreadSummary = typeof ChildThreadSummary.Type;
 
@@ -147,8 +161,40 @@ export const CreateThreadResult = Schema.Struct({
 export type CreateThreadResult = typeof CreateThreadResult.Type;
 
 const ThreadTarget = {
-  threadId: TrimmedNonEmptyString.annotate({ description: "Id of a thread you started." }),
+  threadId: TrimmedNonEmptyString.annotate({ description: "Id of one of your threads." }),
 };
+
+export const ListThreadsInput = Schema.Struct({
+  scope: Schema.optional(
+    Schema.Literals(["children", "all"]).annotate({
+      description:
+        "children (default): your own threads. all: every thread of this environment, to find one you did not start, for example by title.",
+    }),
+  ),
+  title: Schema.optional(
+    TrimmedNonEmptyString.annotate({
+      description: "Only threads whose title contains this text, ignoring case.",
+    }),
+  ),
+  project: Schema.optional(
+    TrimmedNonEmptyString.annotate({
+      description: "Only threads of this project, by id or workspace path from list_projects.",
+    }),
+  ),
+  includeArchived: Schema.optional(
+    Schema.Boolean.annotate({ description: "Also list archived threads. Defaults to false." }),
+  ),
+});
+export type ListThreadsInput = typeof ListThreadsInput.Type;
+
+export const ListThreadsResult = Schema.Struct({
+  threads: Schema.Array(ChildThreadSummary),
+  omitted: Schema.Int.annotate({
+    description:
+      "Matching threads left out beyond the most recently updated ones; narrow the filter to see them.",
+  }),
+});
+export type ListThreadsResult = typeof ListThreadsResult.Type;
 
 export const SendToThreadInput = Schema.Struct({
   ...ThreadTarget,
@@ -160,7 +206,9 @@ export const SendToThreadInput = Schema.Struct({
 export type SendToThreadInput = typeof SendToThreadInput.Type;
 
 export const ReadThreadInput = Schema.Struct({
-  ...ThreadTarget,
+  threadId: TrimmedNonEmptyString.annotate({
+    description: "Id of any thread, yours or one found with list_threads scope all.",
+  }),
   messages: Schema.optional(
     PositiveInt.annotate({
       description: "How many of its latest answers to return. Defaults to 1.",
@@ -190,7 +238,7 @@ const CreateThreadTool = Tool.make("start_thread", {
 
 const SendToThreadTool = Tool.make("send_to_thread", {
   description:
-    "Send a message to one of the threads you started: more instructions, a correction, an answer, or a request to continue. It is delivered at once, also while the thread is working.",
+    "Send a message to one of your threads: more instructions, a correction, an answer, or a request to continue. It is delivered at once, also while the thread is working.",
   parameters: SendToThreadInput,
   success: Schema.Struct({ delivered: Schema.Boolean }),
   failure: ThreadsToolError,
@@ -224,8 +272,9 @@ const ListProjectsTool = Tool.make("list_projects", {
   .annotate(Tool.OpenWorld, false);
 
 const ListThreadsTool = Tool.make("list_threads", {
-  description: `List the threads you started with their state, what they are doing, todo progress, branch and pull requests. ${LINKING}`,
-  success: Schema.Struct({ threads: Schema.Array(ChildThreadSummary) }),
+  description: `List your threads (the ones you started or the user assigned to you) with their state, what they are doing, todo progress, branch and pull requests. With scope "all" it finds any thread of this environment, by title or project, to read it with read_thread. ${LINKING}`,
+  parameters: ListThreadsInput,
+  success: ListThreadsResult,
   failure: ThreadsToolError,
   dependencies,
 })
@@ -237,7 +286,7 @@ const ListThreadsTool = Tool.make("list_threads", {
 
 const ReadThreadTool = Tool.make("read_thread", {
   description:
-    "Read one of your threads: its state and its latest answers, for example to review a result before you combine it with others.",
+    "Read a thread: its state and its latest answers, for example to review a result before you combine it with others. Works on any thread of this environment; only your own can be messaged or stopped.",
   parameters: ReadThreadInput,
   success: ReadThreadResult,
   failure: ThreadsToolError,

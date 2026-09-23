@@ -192,6 +192,133 @@ engineLayer("thread orchestration", (it) => {
     }),
   );
 
+  it.effect("an existing thread moves under a coordinator and out again", () =>
+    Effect.gen(function* () {
+      const engine = yield* OrchestrationEngineService;
+      const snapshots = yield* ProjectionSnapshotQuery;
+      const reactor = yield* ThreadOrchestrationReactor.ThreadOrchestrationReactor;
+      yield* reactor.start();
+      const createdAt = "2026-09-23T12:00:00.000Z";
+      const projectId = ProjectId.make("project-adopt");
+      const otherProjectId = ProjectId.make("project-adopt-other");
+      const coordinatorId = ThreadId.make("adopt-coordinator");
+      const analysisId = ThreadId.make("adopt-analysis");
+      const startedId = ThreadId.make("adopt-started");
+      const otherCoordinatorId = ThreadId.make("adopt-other-coordinator");
+      const modelSelection = { instanceId: ProviderInstanceId.make("claudeAgent"), model: "opus" };
+      for (const [id, workspaceRoot] of [
+        [projectId, "/tmp/project-adopt"],
+        [otherProjectId, "/tmp/project-adopt-other"],
+      ] as const) {
+        yield* engine.dispatch({
+          type: "project.create",
+          commandId: CommandId.make(`cmd-adopt-project-${id}`),
+          projectId: id,
+          title: id,
+          workspaceRoot,
+          defaultModelSelection: modelSelection,
+          createdAt,
+        });
+      }
+      for (const [threadId, threadProjectId, parentThreadId] of [
+        [coordinatorId, projectId, undefined],
+        [analysisId, otherProjectId, undefined],
+        [otherCoordinatorId, projectId, undefined],
+        [startedId, projectId, otherCoordinatorId],
+      ] as const) {
+        yield* engine.dispatch({
+          type: "thread.create",
+          commandId: CommandId.make(`cmd-adopt-create-${threadId}`),
+          threadId,
+          projectId: threadProjectId,
+          ...(parentThreadId ? { parentThreadId } : {}),
+          title: threadId,
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdAt,
+        });
+      }
+      const setParent = (threadId: ThreadId, parentThreadId: ThreadId | null, tag: string) =>
+        engine.dispatch({
+          type: "thread.parent.set",
+          commandId: CommandId.make(`cmd-adopt-parent-${tag}`),
+          threadId,
+          parentThreadId,
+        });
+      const parentOf = (threadId: ThreadId) =>
+        snapshots
+          .getThreadShellById(threadId)
+          .pipe(Effect.map((thread) => Option.getOrThrow(thread).parentThreadId));
+      const rejection = <A, E extends { readonly message: string }>(effect: Effect.Effect<A, E>) =>
+        effect.pipe(
+          Effect.flip,
+          Effect.map((error) => error.message),
+        );
+
+      // A thread of another project can be adopted, as start_thread may start one there.
+      yield* setParent(analysisId, coordinatorId, "adopt");
+      assert.strictEqual(yield* parentOf(analysisId), coordinatorId);
+      // Later whole-row upserts keep the new parent.
+      yield* engine.dispatch({
+        type: "thread.meta.update",
+        commandId: CommandId.make("cmd-adopt-meta"),
+        threadId: analysisId,
+        title: "DocGen analysis",
+      });
+      assert.strictEqual(yield* parentOf(analysisId), coordinatorId);
+
+      assert.include(
+        yield* rejection(setParent(coordinatorId, coordinatorId, "self")),
+        "own parent",
+      );
+      assert.include(
+        yield* rejection(setParent(coordinatorId, ThreadId.make("missing"), "missing")),
+        "does not exist",
+      );
+      // One level deep: a child cannot coordinate, and a coordinator cannot become a child.
+      assert.include(
+        yield* rejection(setParent(otherCoordinatorId, analysisId, "under-child")),
+        "belongs to another thread",
+      );
+      assert.include(
+        yield* rejection(setParent(coordinatorId, otherCoordinatorId, "coordinator")),
+        "coordinates threads of its own",
+      );
+
+      // The adopted thread reports to its new coordinator like one it started.
+      yield* engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-adopt-session"),
+        threadId: analysisId,
+        session: {
+          threadId: analysisId,
+          status: "error",
+          providerName: "claudeAgent",
+          providerInstanceId: modelSelection.instanceId,
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: "Out of tokens",
+          updatedAt: createdAt,
+        },
+        createdAt,
+      });
+      yield* reactor.drain;
+      const coordinatorDetail = Option.getOrThrow(
+        yield* snapshots.getThreadDetailById(coordinatorId),
+      );
+      assert.include(coordinatorDetail.messages.at(-1)?.text ?? "", `thread_id="${analysisId}"`);
+
+      // Taking it out again clears the parent in the projection, not only in memory.
+      yield* setParent(analysisId, null, "detach");
+      assert.strictEqual(yield* parentOf(analysisId), undefined);
+      const shell = yield* snapshots.getShellSnapshot();
+      assert.isFalse(shell.threads.some((thread) => thread.parentThreadId === coordinatorId));
+    }),
+  );
+
   it.effect("the fork schema step is safe to run again", () =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient;

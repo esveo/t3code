@@ -296,4 +296,66 @@ describe("threads toolkit", () => {
       expect(types(yield* Ref.get(harness.commands))).toEqual(["thread.turn.start"]);
     }),
   );
+
+  it.effect("finds and reads any thread, but messages and stops only its own", () =>
+    Effect.gen(function* () {
+      const child = makeThread({
+        id: CHILD_ID,
+        title: "Load test",
+        parentThreadId: COORDINATOR_ID,
+      });
+      const analysis = makeThread({
+        id: ThreadId.make("analysis"),
+        title: "DocGen Analyse",
+        projectId: otherProject.id,
+        branch: "docgen",
+        updatedAt: "2026-09-23T12:00:00.000Z",
+      });
+      const archived = makeThread({
+        id: ThreadId.make("archived"),
+        title: "Old docgen notes",
+        archivedAt: "2026-09-22T10:00:00.000Z",
+      });
+      const harness = yield* makeHarness({ threads: [child, analysis, archived] });
+
+      const found = yield* harness.call("list_threads", {
+        scope: "all",
+        title: "docgen",
+        project: "/workspace/docs",
+      });
+      expect(found.threads.map((thread) => [thread.threadId, thread.child, thread.branch])).toEqual(
+        [["analysis", false, "docgen"]],
+      );
+      const everything = yield* harness.call("list_threads", {
+        scope: "all",
+        includeArchived: true,
+      });
+      // Newest first, without the coordinator itself.
+      expect(everything.threads.map((thread) => [thread.threadId, thread.child])).toEqual([
+        ["analysis", false],
+        [CHILD_ID, true],
+        ["archived", false],
+      ]);
+
+      const read = yield* harness.call("read_thread", { threadId: "analysis" });
+      expect(read.thread).toMatchObject({ threadId: "analysis", child: false });
+      const missing = yield* harness.call("read_thread", { threadId: "gone" }).pipe(Effect.flip);
+      expect(missing).toMatchObject({ _tag: "ThreadNotFoundError" });
+
+      const stop = yield* harness.call("stop_thread", { threadId: "analysis" }).pipe(Effect.flip);
+      expect(stop).toMatchObject({ _tag: "ChildThreadNotFoundError" });
+    }),
+  );
+
+  it.effect("caps a search over all threads", () =>
+    Effect.gen(function* () {
+      const many = Array.from({ length: 55 }, (_, index) =>
+        makeThread({ id: ThreadId.make(`thread-${index}`), title: `Thread ${index}` }),
+      );
+      const harness = yield* makeHarness({ threads: many });
+      const listed = yield* harness.call("list_threads", { scope: "all" });
+      expect(listed.threads).toHaveLength(50);
+      expect(listed.omitted).toBe(5);
+    }),
+  );
 });

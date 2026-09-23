@@ -220,6 +220,10 @@ import { ProjectFavicon, type ProjectFaviconProject } from "./ProjectFavicon";
 // Fork: per-project runs in the thread list.
 import { SidebarChildThreads } from "./threadOrchestration/SidebarChildThreads";
 import {
+  ThreadParentDialogHost,
+  useThreadParentActions,
+} from "./threadOrchestration/ThreadParentActions";
+import {
   CROSS_PROJECT_RUN_KEY,
   crossProjectCoordinatorKeys,
   groupChildThreads,
@@ -2238,6 +2242,7 @@ export default function Sidebar() {
   const threads = useThreadShells();
   // Fork: threads a coordinator started render under it, not as rows of their own.
   const childThreadGroups = useMemo(() => groupChildThreads(threads), [threads]);
+  const threadParentActions = useThreadParentActions();
   // Fork: coordinators whose work spans projects gather under "Cross-project".
   const crossProjectRunKeys = useMemo(
     () =>
@@ -4227,7 +4232,8 @@ export default function Sidebar() {
             ),
           ) ?? null;
         const clicked = await settlePromise(() =>
-          api.contextMenu.show(
+          // Fork: thread orchestration adds "Assign to coordinator…" and "Detach".
+          threadParentActions.showMenu(api, thread)(
             buildThreadActionMenuItems({
               branch: thread.branch ?? null,
               projectFilter: threadProjectGroup
@@ -4255,6 +4261,7 @@ export default function Sidebar() {
           ),
         );
         if (clicked._tag === "Failure") return;
+        if (await threadParentActions.handle(clicked.value, thread)) return;
         if (clicked.value?.startsWith("snooze:")) {
           const preset =
             clicked.value === "snooze:custom"
@@ -4443,6 +4450,7 @@ export default function Sidebar() {
       serverConfigs,
       setProjectScopeKey,
       startThreadRename,
+      threadParentActions,
       updateThreadMetadata,
       timestampFormat,
     ],
@@ -4573,6 +4581,8 @@ export default function Sidebar() {
   return (
     <>
       <SidebarChromeHeader isElectron={isElectron} />
+      {/* Fork: thread orchestration's coordinator picker. */}
+      <ThreadParentDialogHost />
       <SidebarContent
         className="min-h-full"
         fixedHeader={
