@@ -44,11 +44,18 @@ export class ThreadOrchestrationReactor extends Context.Service<
 /** The coordinator reads the child's answer from the update; long ones stay readable. */
 const UPDATE_ANSWER_MAX_LENGTH = 6_000;
 
-interface UpdateRequest {
-  readonly threadId: ThreadId;
-  /** Set when the event was a new approval or question: the request it announces. */
-  readonly requestActivityId?: string;
-}
+type UpdateRequest =
+  | {
+      readonly kind: "report";
+      readonly threadId: ThreadId;
+      /** Set when the event was a new approval or question: the request it announces. */
+      readonly requestActivityId?: string;
+    }
+  | {
+      /** A coordinator was settled; its children follow. */
+      readonly kind: "settle-children";
+      readonly threadId: ThreadId;
+    };
 
 export interface ChildUpdate {
   /** Identifies what the update reports, so the same finish is never reported twice. */
@@ -103,7 +110,48 @@ const make = Effect.gen(function* () {
   /** Last update each child sent, so replays and repeated session writes stay quiet. */
   const reported = new Map<ThreadId, string>();
 
-  const report = Effect.fn("ThreadOrchestrationReactor.report")(function* (request: UpdateRequest) {
+  /**
+   * Settling a coordinator settles its children. The decider keeps a child
+   * that still works or waits on an approval open, so only finished work
+   * goes away with its coordinator.
+   */
+  const settleChildren = Effect.fn("ThreadOrchestrationReactor.settleChildren")(function* (
+    coordinatorId: ThreadId,
+  ) {
+    const snapshot = yield* snapshots.getShellSnapshot();
+    const children = snapshot.threads.filter(
+      (thread) =>
+        thread.parentThreadId === coordinatorId &&
+        thread.archivedAt === null &&
+        thread.settledAt === null,
+    );
+    yield* Effect.forEach(
+      children,
+      (child) =>
+        Effect.gen(function* () {
+          yield* engine.dispatch({
+            type: "thread.settle",
+            commandId: CommandId.make(
+              `server:thread-orchestration-settle:${child.id}:${yield* uuid}`,
+            ),
+            threadId: child.id,
+          });
+        }).pipe(
+          Effect.catchCause((cause) =>
+            Cause.hasInterruptsOnly(cause)
+              ? Effect.failCause(cause)
+              : Effect.logDebug("child thread stays open with its coordinator settled", {
+                  threadId: child.id,
+                }),
+          ),
+        ),
+      { discard: true },
+    );
+  });
+
+  const report = Effect.fn("ThreadOrchestrationReactor.report")(function* (
+    request: Extract<UpdateRequest, { kind: "report" }>,
+  ) {
     const enabled = yield* serverSettings.getSettings.pipe(
       Effect.map((settings) => settings.enableThreadOrchestration),
       Effect.orElseSucceed(() => false),
@@ -152,7 +200,7 @@ const make = Effect.gen(function* () {
   });
 
   const worker = yield* makeDrainableWorker((request: UpdateRequest) =>
-    report(request).pipe(
+    (request.kind === "report" ? report(request) : settleChildren(request.threadId)).pipe(
       Effect.catchCause((cause) =>
         Cause.hasInterruptsOnly(cause)
           ? Effect.failCause(cause)
@@ -171,19 +219,22 @@ const make = Effect.gen(function* () {
           event.payload.session.status !== "running" &&
           event.payload.session.status !== "starting"
         ) {
-          return worker.enqueue({ threadId: event.payload.threadId });
+          return worker.enqueue({ kind: "report", threadId: event.payload.threadId });
         }
         break;
       case "thread.activity-appended": {
         const { activity } = event.payload;
         if (activity.kind === "approval.requested" || activity.kind === "user-input.requested") {
           return worker.enqueue({
+            kind: "report",
             threadId: event.payload.threadId,
             requestActivityId: activity.id,
           });
         }
         break;
       }
+      case "thread.settled":
+        return worker.enqueue({ kind: "settle-children", threadId: event.payload.threadId });
       case "thread.deleted":
         reported.delete(event.payload.threadId);
         break;

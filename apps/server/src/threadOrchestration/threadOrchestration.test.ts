@@ -18,23 +18,30 @@ import { OrchestrationCommandReceiptRepositoryLive } from "../persistence/Layers
 import { OrchestrationEventStoreLive } from "../persistence/Layers/OrchestrationEventStore.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import * as RepositoryIdentityResolver from "../project/RepositoryIdentityResolver.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import { ensureForkSchema } from "./forkSchema.ts";
+import * as ThreadOrchestrationReactor from "./ThreadOrchestrationReactor.ts";
 
 const engineLayer = it.layer(
-  OrchestrationEngineLive.pipe(
-    Layer.provideMerge(OrchestrationProjectionSnapshotQueryLive),
-    Layer.provide(ThreadBackgroundLiveness.layer),
-    Layer.provide(ThreadPlanProgress.layer),
-    Layer.provideMerge(OrchestrationProjectionPipelineLive),
-    Layer.provide(OrchestrationEventStoreLive),
-    Layer.provide(OrchestrationCommandReceiptRepositoryLive),
-    Layer.provide(RepositoryIdentityResolver.layer),
-    Layer.provideMerge(SqlitePersistenceMemory),
-    Layer.provideMerge(
-      ServerConfig.layerTest(process.cwd(), { prefix: "t3-thread-orchestration-test-" }),
+  ThreadOrchestrationReactor.layer
+    .pipe(
+      Layer.provideMerge(ServerSettings.layerTest({ enableThreadOrchestration: true })),
+      Layer.provideMerge(OrchestrationEngineLive),
+    )
+    .pipe(
+      Layer.provideMerge(OrchestrationProjectionSnapshotQueryLive),
+      Layer.provide(ThreadBackgroundLiveness.layer),
+      Layer.provide(ThreadPlanProgress.layer),
+      Layer.provideMerge(OrchestrationProjectionPipelineLive),
+      Layer.provide(OrchestrationEventStoreLive),
+      Layer.provide(OrchestrationCommandReceiptRepositoryLive),
+      Layer.provide(RepositoryIdentityResolver.layer),
+      Layer.provideMerge(SqlitePersistenceMemory),
+      Layer.provideMerge(
+        ServerConfig.layerTest(process.cwd(), { prefix: "t3-thread-orchestration-test-" }),
+      ),
+      Layer.provideMerge(NodeServices.layer),
     ),
-    Layer.provideMerge(NodeServices.layer),
-  ),
 );
 
 engineLayer("thread orchestration", (it) => {
@@ -96,6 +103,81 @@ engineLayer("thread orchestration", (it) => {
       );
       const detail = yield* snapshots.getThreadDetailById(childId);
       assert.strictEqual(Option.getOrThrow(detail).parentThreadId, coordinatorId);
+    }),
+  );
+
+  it.effect("settling a coordinator settles its finished children", () =>
+    Effect.gen(function* () {
+      const engine = yield* OrchestrationEngineService;
+      const snapshots = yield* ProjectionSnapshotQuery;
+      const reactor = yield* ThreadOrchestrationReactor.ThreadOrchestrationReactor;
+      yield* reactor.start();
+      const createdAt = "2026-09-23T11:00:00.000Z";
+      const projectId = ProjectId.make("project-settle");
+      const coordinatorId = ThreadId.make("settle-coordinator");
+      const finishedId = ThreadId.make("settle-finished");
+      const workingId = ThreadId.make("settle-working");
+      const modelSelection = { instanceId: ProviderInstanceId.make("claudeAgent"), model: "opus" };
+      yield* engine.dispatch({
+        type: "project.create",
+        commandId: CommandId.make("cmd-settle-project"),
+        projectId,
+        title: "Settle",
+        workspaceRoot: "/tmp/project-settle",
+        defaultModelSelection: modelSelection,
+        createdAt,
+      });
+      for (const [threadId, parentThreadId] of [
+        [coordinatorId, undefined],
+        [finishedId, coordinatorId],
+        [workingId, coordinatorId],
+      ] as const) {
+        yield* engine.dispatch({
+          type: "thread.create",
+          commandId: CommandId.make(`cmd-settle-create-${threadId}`),
+          threadId,
+          projectId,
+          ...(parentThreadId ? { parentThreadId } : {}),
+          title: threadId,
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdAt,
+        });
+      }
+      yield* engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-settle-working-session"),
+        threadId: workingId,
+        session: {
+          threadId: workingId,
+          status: "running",
+          providerName: "claudeAgent",
+          providerInstanceId: modelSelection.instanceId,
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: createdAt,
+        },
+        createdAt,
+      });
+
+      yield* engine.dispatch({
+        type: "thread.settle",
+        commandId: CommandId.make("cmd-settle-coordinator"),
+        threadId: coordinatorId,
+      });
+      yield* reactor.drain;
+
+      const settledAt = (threadId: ThreadId) =>
+        snapshots
+          .getThreadShellById(threadId)
+          .pipe(Effect.map((thread) => Option.getOrThrow(thread).settledAt));
+      assert.notStrictEqual(yield* settledAt(finishedId), null);
+      // A child that still works stays open.
+      assert.strictEqual(yield* settledAt(workingId), null);
     }),
   );
 
