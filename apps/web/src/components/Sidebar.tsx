@@ -1064,6 +1064,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
    * and drops the project label its run header already carries.
    */
   projectRunPlacement?: SidebarProjectRunPlacement | null | undefined;
+  /** Fork (thread orchestration): the row is a coordinator in the "Cross-project" run. */
+  crossProjectRun?: boolean | undefined;
 }) {
   const {
     isRenaming,
@@ -1866,7 +1868,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
               {draftIndicator}
               {/* Fork: a run's rows hand this line to the branch — their
                   project sits in the run header above them. */}
-              {projectRunPlacement !== null ? <SidebarProjectRunRowLead thread={thread} /> : null}
+              {projectRunPlacement !== null ? (
+                <SidebarProjectRunRowLead
+                  thread={thread}
+                  crossProject={props.crossProjectRun === true}
+                  recede={shouldRecede}
+                />
+              ) : null}
               {props.project && projectRunPlacement === null ? (
                 <ProjectFavicon project={props.project} className="size-4 shrink-0" />
               ) : null}
@@ -4942,6 +4950,7 @@ export default function Sidebar() {
                             onUnpin={attemptUnpin}
                             onAcknowledgeWoke={acknowledgeWoke}
                             onFileDropThreads={handleThreadFileDrop}
+                            crossProjectRun={crossProjectRunKeys.has(threadKey)}
                             projectRunPlacement={
                               (section === "active"
                                 ? activeRuns
