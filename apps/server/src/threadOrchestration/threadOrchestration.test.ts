@@ -8,6 +8,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
+import { resolveChildThreadState } from "@t3tools/shared/threadOrchestration";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -471,6 +472,141 @@ engineLayer("thread orchestration", (it) => {
       const shell = yield* snapshots.getShellSnapshot();
       assert.isFalse(shell.threads.some((thread) => thread.parentThreadId === coordinatorId));
     }),
+  );
+
+  it.effect("an adopted thread with running subagents stays working and reports done once", () =>
+    Effect.gen(function* () {
+      const engine = yield* OrchestrationEngineService;
+      const snapshots = yield* ProjectionSnapshotQuery;
+      const liveness = yield* ThreadBackgroundLiveness.ThreadBackgroundLivenessService;
+      const reactor = yield* ThreadOrchestrationReactor.ThreadOrchestrationReactor;
+      yield* reactor.start();
+      const createdAt = "2026-09-23T12:00:00.000Z";
+      const projectId = ProjectId.make("project-adopt-background");
+      const coordinatorId = ThreadId.make("adopt-background-coordinator");
+      const threadId = ThreadId.make("adopt-background-thread");
+      const modelSelection = { instanceId: ProviderInstanceId.make("claudeAgent"), model: "opus" };
+      yield* engine.dispatch({
+        type: "project.create",
+        commandId: CommandId.make("cmd-adopt-background-project"),
+        projectId,
+        title: "Adopt background",
+        workspaceRoot: "/tmp/project-adopt-background",
+        defaultModelSelection: modelSelection,
+        createdAt,
+      });
+      for (const id of [coordinatorId, threadId]) {
+        yield* engine.dispatch({
+          type: "thread.create",
+          commandId: CommandId.make(`cmd-adopt-background-create-${id}`),
+          threadId: id,
+          projectId,
+          title: id,
+          modelSelection,
+          runtimeMode: "full-access",
+          interactionMode: "default",
+          branch: null,
+          worktreePath: null,
+          createdAt,
+        });
+      }
+      yield* engine.dispatch({
+        type: "thread.message.assistant.delta",
+        commandId: CommandId.make("cmd-adopt-background-delta"),
+        threadId,
+        messageId: MessageId.make("adopt-background-answer"),
+        delta: "A subagent is on it.",
+        createdAt,
+      });
+      yield* engine.dispatch({
+        type: "thread.message.assistant.complete",
+        commandId: CommandId.make("cmd-adopt-background-complete"),
+        threadId,
+        messageId: MessageId.make("adopt-background-answer"),
+        createdAt,
+      });
+      const updates = snapshots
+        .getThreadDetailById(coordinatorId)
+        .pipe(
+          Effect.map((detail) =>
+            Option.getOrThrow(detail).messages.filter((message) =>
+              message.text.includes("t3_thread_update"),
+            ),
+          ),
+        );
+      const stateOf = snapshots
+        .getThreadShellById(threadId)
+        .pipe(Effect.map((thread) => resolveChildThreadState(Option.getOrThrow(thread))));
+      const sessionReady = (tag: string, updatedAt: string) =>
+        engine.dispatch({
+          type: "thread.session.set",
+          commandId: CommandId.make(`cmd-adopt-background-${tag}`),
+          threadId,
+          session: {
+            threadId,
+            status: "ready",
+            providerName: "claudeAgent",
+            providerInstanceId: modelSelection.instanceId,
+            runtimeMode: "full-access",
+            activeTurnId: null,
+            lastError: null,
+            updatedAt,
+          },
+          createdAt: updatedAt,
+        });
+
+      // Its turn ends while a subagent runs on, before it has a coordinator.
+      liveness.recordTaskLiveness({
+        threadId,
+        taskId: "subagent-1",
+        taskType: "local_agent",
+        status: undefined,
+        kind: "started",
+      });
+      yield* sessionReady("ready", createdAt);
+      yield* engine.dispatch({
+        type: "thread.parent.set",
+        commandId: CommandId.make("cmd-adopt-background-parent"),
+        threadId,
+        parentThreadId: coordinatorId,
+      });
+      yield* reactor.drain;
+      assert.strictEqual(yield* stateOf, "working");
+      assert.strictEqual((yield* updates).length, 0);
+
+      // The subagent ends and no turn follows: the new coordinator hears once.
+      liveness.recordTaskLiveness({
+        threadId,
+        taskId: "subagent-1",
+        taskType: "local_agent",
+        status: "completed",
+        kind: "completed",
+      });
+      yield* engine.dispatch({
+        type: "thread.activity.append",
+        commandId: CommandId.make("cmd-adopt-background-task-completed"),
+        threadId,
+        activity: {
+          id: EventId.make("adopt-background-task-completed"),
+          tone: "info",
+          kind: "task.completed",
+          summary: "Task completed",
+          payload: { taskId: "subagent-1", status: "completed" },
+          turnId: null,
+          createdAt,
+        },
+        createdAt,
+      });
+      yield* TestClock.adjust(Duration.seconds(30));
+      yield* reactor.drain;
+      assert.strictEqual(yield* stateOf, "done");
+      yield* sessionReady("ready-again", "2026-09-23T12:01:00.000Z");
+      yield* reactor.drain;
+      const reported = yield* updates;
+      assert.strictEqual(reported.length, 1);
+      assert.include(reported[0]!.text, 'state="done"');
+      assert.include(reported[0]!.text, `thread_id="${threadId}"`);
+    }).pipe(Effect.provide(TestClock.layer())),
   );
 
   it.effect("the fork schema step is safe to run again", () =>
