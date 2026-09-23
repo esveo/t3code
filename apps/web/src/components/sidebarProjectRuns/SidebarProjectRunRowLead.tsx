@@ -11,8 +11,9 @@ import { cn } from "~/lib/utils";
  * with their third line. Rows without a branch fall back to a spacer, which
  * keeps the status slot hard right.
  *
- * A coordinator in the "Cross-project" run shows that group instead, like
- * its children below it show their projects: its own project would say less.
+ * A coordinator shows "Cross-project" instead, in and outside a run, like its
+ * children below it show their projects: its own project would say less (see
+ * `sidebarRowLead`).
  */
 export function SidebarProjectRunRowLead(props: {
   thread: Pick<SidebarThreadSummary, "id" | "branch" | "worktreePath">;
@@ -22,7 +23,7 @@ export function SidebarProjectRunRowLead(props: {
   if (props.crossProject) {
     return (
       <>
-        <NetworkIcon aria-hidden className="size-4 shrink-0 text-sidebar-muted-foreground" />
+        <SidebarCoordinatorIcon />
         <span
           className={cn(
             "min-w-0 flex-1 truncate text-secondary-label text-xs",
@@ -42,4 +43,9 @@ export function SidebarProjectRunRowLead(props: {
       <MiddleTruncate value={branch} showTitle={false} className="min-w-0 flex-1" />
     </span>
   );
+}
+
+/** Fork: the coordinator's stand-in for a project favicon. */
+export function SidebarCoordinatorIcon() {
+  return <NetworkIcon aria-hidden className="size-4 shrink-0 text-sidebar-muted-foreground" />;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { buildSidebarProjectRunPlan } from "./sidebarProjectRuns.logic";
+import { buildSidebarProjectRunPlan, sidebarRowLead } from "./sidebarProjectRuns.logic";
 
 interface TestThread {
   readonly key: string;
@@ -159,5 +159,17 @@ describe("buildSidebarProjectRunPlan", () => {
     expect(result.trailingHeaders).toEqual([
       { projectKey: "beta", threadCount: 2, runningCount: 0, attentionCount: 0, collapsed: true },
     ]);
+  });
+});
+
+describe("sidebarRowLead", () => {
+  it("names a coordinator Cross-project with and without project grouping", () => {
+    expect(sidebarRowLead({ coordinator: true, inProjectRun: true })).toBe("cross-project");
+    expect(sidebarRowLead({ coordinator: true, inProjectRun: false })).toBe("cross-project");
+  });
+
+  it("gives a child or a former coordinator its branch in a run and its project outside one", () => {
+    expect(sidebarRowLead({ coordinator: false, inProjectRun: true })).toBe("branch");
+    expect(sidebarRowLead({ coordinator: false, inProjectRun: false })).toBe("project");
   });
 });

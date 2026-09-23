@@ -45,6 +45,15 @@ describe("groupChildThreads", () => {
     expect([...groups.nestedThreadKeys]).toEqual([key("c1")]);
   });
 
+  it("stops treating a thread as coordinator once its last child is detached", () => {
+    const coordinator = thread("coord");
+    const detached = thread("c1", { parentThreadId: undefined });
+
+    const groups = groupChildThreads([coordinator, detached]);
+    expect(groups.childrenByParentKey.has(key("coord"))).toBe(false);
+    expect(groups.nestedThreadKeys.size).toBe(0);
+  });
+
   it("lists a settled child on the settled shelf, not under its open coordinator", () => {
     const coordinator = thread("coord");
     const openChild = thread("c1", { parentThreadId: coordinator.id });
