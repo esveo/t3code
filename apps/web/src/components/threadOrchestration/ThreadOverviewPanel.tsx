@@ -3,7 +3,7 @@
  * user: what waits on them, what is running, what is ready for review, and
  * what is done. Each row opens its thread.
  */
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import {
@@ -22,6 +22,7 @@ import { cn } from "~/lib/utils";
 import { useThreadShells } from "~/state/entities";
 import { formatElapsedDurationLabel } from "~/timestampFormat";
 import { CHILD_THREAD_DOT_CLASS } from "./childThreadStateVisuals";
+import { EmbeddedChildThread } from "./EmbeddedChildThread";
 import {
   buildThreadOverview,
   childThreadsOf,
@@ -39,7 +40,13 @@ const STATE_TEXT_CLASS = {
   done: "text-muted-foreground",
 } as const;
 
-function OverviewRow({ thread }: { thread: EnvironmentThreadShell }) {
+function OverviewRow({
+  thread,
+  onOpenInPanel,
+}: {
+  thread: EnvironmentThreadShell;
+  onOpenInPanel: (threadRef: ScopedThreadRef) => void;
+}) {
   const openThread = useOpenThread();
   const state = resolveChildThreadState(thread);
   const progress = childThreadProgress(thread);
@@ -47,7 +54,12 @@ function OverviewRow({ thread }: { thread: EnvironmentThreadShell }) {
   return (
     <button
       type="button"
-      onClick={() => openThread(scopeThreadRef(thread.environmentId, thread.id))}
+      // Opens here, beside the coordinator; with Cmd/Ctrl as the thread itself.
+      onClick={(event) => {
+        const threadRef = scopeThreadRef(thread.environmentId, thread.id);
+        if (event.metaKey || event.ctrlKey) openThread(threadRef);
+        else onOpenInPanel(threadRef);
+      }}
       className="group/overview-row grid w-full cursor-pointer grid-cols-[0.375rem_minmax(0,1fr)_auto] items-center gap-x-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span aria-hidden className={cn("size-1.5 rounded-full", CHILD_THREAD_DOT_CLASS[state])} />
@@ -74,7 +86,13 @@ function OverviewRow({ thread }: { thread: EnvironmentThreadShell }) {
   );
 }
 
-function OverviewSection({ group }: { group: ThreadOverviewGroup }) {
+function OverviewSection({
+  group,
+  onOpenInPanel,
+}: {
+  group: ThreadOverviewGroup;
+  onOpenInPanel: (threadRef: ScopedThreadRef) => void;
+}) {
   // Finished work folds away by default; everything else stays open.
   const [open, setOpen] = useState(group.id !== "done");
   return (
@@ -97,7 +115,7 @@ function OverviewSection({ group }: { group: ThreadOverviewGroup }) {
       {open ? (
         <div className="flex flex-col gap-0.5 py-1">
           {group.threads.map((thread) => (
-            <OverviewRow key={thread.id} thread={thread} />
+            <OverviewRow key={thread.id} thread={thread} onOpenInPanel={onOpenInPanel} />
           ))}
         </div>
       ) : null}
@@ -119,6 +137,25 @@ export function ThreadOverviewPanel({ threadRef }: { threadRef: ScopedThreadRef 
   );
   const groups = useMemo(() => buildThreadOverview(children), [children]);
   const waiting = waitingThreadCount(children);
+  // The child open in the panel, cleared when the panel moves to another coordinator.
+  const [openChild, setOpenChild] = useState<{
+    readonly coordinatorKey: string;
+    readonly threadRef: ScopedThreadRef;
+  } | null>(null);
+  const coordinatorKey = threadRef ? scopedThreadKey(threadRef) : null;
+  const openChildRef = openChild?.coordinatorKey === coordinatorKey ? openChild.threadRef : null;
+
+  if (openChildRef && coordinatorKey) {
+    return (
+      <EmbeddedChildThread
+        key={scopedThreadKey(openChildRef)}
+        threadRef={openChildRef}
+        onBack={() => setOpenChild(null)}
+      />
+    );
+  }
+  const openInPanel = (childRef: ScopedThreadRef) =>
+    coordinatorKey ? setOpenChild({ coordinatorKey, threadRef: childRef }) : undefined;
 
   if (children.length === 0) {
     return (
@@ -147,7 +184,7 @@ export function ThreadOverviewPanel({ threadRef }: { threadRef: ScopedThreadRef 
           </p>
         </header>
         {groups.map((group) => (
-          <OverviewSection key={group.id} group={group} />
+          <OverviewSection key={group.id} group={group} onOpenInPanel={openInPanel} />
         ))}
       </div>
     </ScrollArea>

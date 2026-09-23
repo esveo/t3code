@@ -766,6 +766,8 @@ type ChatViewProps =
       reserveTitleBarControlInset?: boolean;
       forceExpandedMobileComposer?: boolean;
       threadSyncPhase?: ThreadSyncPhase | null;
+      /** Fork: shown inside another thread's panel, without its own header and right panel. */
+      embedded?: boolean;
       routeKind: "server";
       draftId?: never;
     }
@@ -776,6 +778,7 @@ type ChatViewProps =
       reserveTitleBarControlInset?: boolean;
       forceExpandedMobileComposer?: boolean;
       threadSyncPhase?: never;
+      embedded?: never;
       routeKind: "draft";
       draftId: DraftId;
     };
@@ -2092,7 +2095,9 @@ export default function ChatView(props: ChatViewProps) {
     activeThreadKey,
     panelAnimationDurationMs,
   );
-  const rightPanelPresent = rightPanelPresence.present;
+  // Fork: an embedded thread leaves panels to the thread it is shown in.
+  const embedded = props.embedded === true;
+  const rightPanelPresent = rightPanelPresence.present && !embedded;
   const rightPanelControlsInPanel = shouldUseRightPanelSheet && rightPanelPresent && rightPanelOpen;
   const rightPanelControlsAtRoot = rightPanelPresent && !shouldUseRightPanelSheet;
   const renderedRightPanelSurface = rightPanelPresence.value?.activeSurface ?? null;
@@ -2103,7 +2108,7 @@ export default function ChatView(props: ChatViewProps) {
   );
   const canMaximizeRightPanel = rightPanelOpen && !shouldUseRightPanelSheet;
   const rightPanelMaximized =
-    canMaximizeRightPanel && maximizedRightPanelThreadKey === routeThreadKey;
+    !embedded && canMaximizeRightPanel && maximizedRightPanelThreadKey === routeThreadKey;
   const inlineRightPanelOwnsTitleBar = rightPanelOpen && !shouldUseRightPanelSheet;
 
   useEffect(() => {
@@ -9948,7 +9953,7 @@ export default function ChatView(props: ChatViewProps) {
           data-chat-header
           electron={isElectron}
           reserveNativeControls={reserveTitleBarControlInset && !inlineRightPanelOwnsTitleBar}
-          className="relative bg-background"
+          className={cn("relative bg-background", embedded && "hidden")}
         >
           {isElectron && rightPanelControlsAtRoot ? (
             <span
