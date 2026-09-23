@@ -517,6 +517,8 @@ interface ClaudeQueryRuntime extends AsyncIterable<SDKMessage> {
   readonly setModel: (model?: string) => Promise<void>;
   readonly setPermissionMode: (mode: PermissionMode) => Promise<void>;
   readonly setMaxThinkingTokens: (maxThinkingTokens: number | null) => Promise<void>;
+  /** Fork: optional so test doubles need not implement it. */
+  readonly stopTask?: (taskId: string) => Promise<void>;
   readonly close: () => void;
 }
 
@@ -5456,6 +5458,31 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     },
   );
 
+  // Fork: subagent chat view's stop button.
+  const stopSubagent: NonNullable<ClaudeAdapterShape["stopSubagent"]> = Effect.fn("stopSubagent")(
+    function* (threadId, agentId) {
+      const context = yield* requireSession(threadId);
+      const stopTask = context.query.stopTask;
+      if (!stopTask) {
+        return yield* new ProviderAdapterRequestError({
+          provider: PROVIDER,
+          method: "stop_task",
+          detail: "This Claude session cannot stop subagents.",
+        });
+      }
+      yield* Effect.tryPromise({
+        try: () => stopTask.call(context.query, agentId),
+        catch: (cause) =>
+          new ProviderAdapterRequestError({
+            provider: PROVIDER,
+            method: "stop_task",
+            detail: cause instanceof Error ? cause.message : "Could not stop the subagent.",
+            cause,
+          }),
+      });
+    },
+  );
+
   const readThread: ClaudeAdapterShape["readThread"] = Effect.fn("readThread")(
     function* (threadId) {
       const context = yield* requireSession(threadId);
@@ -5742,6 +5769,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     respondToRequest,
     respondToUserInput,
     stopSession,
+    stopSubagent,
     listSessions,
     hasSession,
     stopAll,

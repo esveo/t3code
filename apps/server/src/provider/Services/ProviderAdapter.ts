@@ -147,6 +147,11 @@ export interface ProviderAdapterShape<TError> {
   ) => Effect.Effect<ProviderUploadFeedbackResult, TError>;
 
   /**
+   * Fork: stop one running subagent of a session. Omitted when unsupported.
+   */
+  readonly stopSubagent?: (threadId: ThreadId, agentId: string) => Effect.Effect<void, TError>;
+
+  /**
    * Stop all sessions owned by this adapter.
    */
   readonly stopAll: () => Effect.Effect<void, TError>;

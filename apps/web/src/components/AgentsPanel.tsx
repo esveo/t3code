@@ -28,6 +28,10 @@ import { cn } from "~/lib/utils";
 import { orchestrationEnvironment } from "~/state/orchestration";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
+// Fork: agents open as chats.
+import { SubagentChatView } from "~/components/subagentChat/SubagentChatView";
+import { canOpenSubagentChat } from "~/components/subagentChat/subagentChat.logic";
+import { useSubagentChatSupport } from "~/components/subagentChat/useSubagentChatSupport";
 
 /**
  * In-flight states all present as Working (one steady state, per the
@@ -136,8 +140,8 @@ function agentActivityText(agent: RuntimeSubagent): string | null {
   );
 }
 
-/** Flat, non-interactive agent status line. No unfold. */
-function AgentRow({ agent }: { agent: RuntimeSubagent }) {
+/** Flat agent status line. No unfold; opens the agent's chat when onOpen is given. */
+function AgentRow({ agent, onOpen }: { agent: RuntimeSubagent; onOpen?: () => void }) {
   const visuals = STATUS_VISUALS[agent.status];
   const statusLabel =
     agent.kind === "subagent_batch" && agent.status === "idle" ? "Idle" : visuals.label;
@@ -154,8 +158,15 @@ function AgentRow({ agent }: { agent: RuntimeSubagent }) {
     agent.activationCount > 1 ? `run ${agent.activationCount}` : null,
   ].filter((value): value is string => value !== null);
 
+  const Row = onOpen ? "button" : "div";
   return (
-    <div className="grid h-[3.875rem] grid-cols-[0.375rem_minmax(0,1fr)_auto] grid-rows-[1.25rem_1.125rem_1rem] items-center gap-x-2 rounded-md px-1.5 py-1">
+    <Row
+      {...(onOpen ? { type: "button" as const, onClick: onOpen } : {})}
+      className={cn(
+        "grid h-[3.875rem] w-full grid-cols-[0.375rem_minmax(0,1fr)_auto] grid-rows-[1.25rem_1.125rem_1rem] items-center gap-x-2 rounded-md px-1.5 py-1 text-left",
+        onOpen && "hover:bg-accent/40",
+      )}
+    >
       <span className="col-start-1 row-start-1 flex items-center">
         <StatusDot status={agent.status} />
       </span>
@@ -187,7 +198,7 @@ function AgentRow({ agent }: { agent: RuntimeSubagent }) {
         {metadata.join(" · ")}
       </span>
       <span className="sr-only">{statusLabel}</span>
-    </div>
+    </Row>
   );
 }
 
@@ -530,6 +541,23 @@ export function AgentsPanel({
   environmentId?: EnvironmentId | null;
   threadId?: ThreadId | null;
 }) {
+  const [openAgentId, setOpenAgentId] = useState<string | null>(null);
+  const chatSupported = useSubagentChatSupport(environmentId, threadId);
+  const openAgent = openAgentId
+    ? model.directAgents.find((agent) => agent.id === openAgentId)
+    : undefined;
+  if (openAgent && environmentId !== null && threadId !== null) {
+    return (
+      <SubagentChatView
+        key={openAgent.id}
+        agent={openAgent}
+        environmentId={environmentId}
+        threadId={threadId}
+        onBack={() => setOpenAgentId(null)}
+      />
+    );
+  }
+
   if (!model.hasAgents) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
@@ -561,7 +589,13 @@ export function AgentsPanel({
                 Direct spawns
               </div>
               {model.directAgents.map((agent) => (
-                <AgentRow key={agent.id} agent={agent} />
+                <AgentRow
+                  key={agent.id}
+                  agent={agent}
+                  {...(chatSupported && canOpenSubagentChat(agent)
+                    ? { onOpen: () => setOpenAgentId(agent.id) }
+                    : {})}
+                />
               ))}
             </section>
           ) : null}
