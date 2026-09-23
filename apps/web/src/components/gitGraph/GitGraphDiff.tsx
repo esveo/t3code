@@ -313,10 +313,7 @@ function CollapseButton({
     <Button
       size="icon-micro"
       variant="ghost"
-      className={cn(
-        "-ms-0.5 [--control-icon-color:currentColor] bg-transparent hover:bg-foreground/10",
-        getDiffCollapseIconClassName(fileDiff),
-      )}
+      className="-ms-0.5"
       aria-label={collapsed ? `Expand ${filePath}` : `Collapse ${filePath}`}
       aria-expanded={!collapsed}
       disabled={fileDiff.cacheKey?.endsWith(":pending") === true}
@@ -325,7 +322,11 @@ function CollapseButton({
         onToggle();
       }}
     >
-      {collapsed ? <ChevronRightIcon className="size-4" /> : <ChevronDownIcon className="size-4" />}
+      {collapsed ? (
+        <ChevronRightIcon className={cn("size-4", getDiffCollapseIconClassName(fileDiff))} />
+      ) : (
+        <ChevronDownIcon className={cn("size-4", getDiffCollapseIconClassName(fileDiff))} />
+      )}
     </Button>
   );
 }

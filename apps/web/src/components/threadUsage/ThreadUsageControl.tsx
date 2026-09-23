@@ -87,7 +87,7 @@ export function ThreadUsageControl(props: {
         render={
           <ComposerControl
             size={size}
-            className="shrink-0 gap-1.5 whitespace-nowrap"
+            className="shrink-0 whitespace-nowrap"
             type="button"
             aria-label={triggerLabel}
             data-chat-context-window-control
@@ -137,6 +137,8 @@ export function ThreadUsageControl(props: {
         tooltipStyle
         side="top"
         align="start"
+        // Upstream #13193 replaces viewportClassName with a padding prop; after
+        // that sync this becomes padding="none" (same look: no inner padding).
         viewportClassName="p-0"
         className="w-72 max-w-none text-left whitespace-normal"
       >

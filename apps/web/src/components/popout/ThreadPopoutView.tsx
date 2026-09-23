@@ -54,7 +54,7 @@ export function ThreadPopoutView({ threadRef }: { threadRef: ScopedThreadRef }) 
 
   return (
     <SidebarProvider defaultOpen={false}>
-      <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
+      <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh">
         {renderState === "missing" ? (
           <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center text-muted-foreground text-sm">
             This thread is no longer available. You can close this window.

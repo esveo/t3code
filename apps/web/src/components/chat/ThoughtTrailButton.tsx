@@ -40,9 +40,8 @@ export const ThoughtTrailButton = memo(function ThoughtTrailButton({
                 <Button
                   type="button"
                   size="icon-xs"
-                  variant="ghost"
+                  variant="ghost-muted"
                   aria-label={TRIGGER_LABEL}
-                  className="text-muted-foreground hover:text-foreground"
                   data-chat-thought-trail-button
                 />
               }
@@ -59,6 +58,8 @@ export const ThoughtTrailButton = memo(function ThoughtTrailButton({
         tooltipStyle
         side="top"
         align="start"
+        // Upstream #13193 replaces viewportClassName with a padding prop; after
+        // that sync this becomes padding="none" (same look: no inner padding).
         viewportClassName="p-0"
         // Wide enough for whole sentences: a trail of clipped fragments reads
         // worse than the trace it stands in for.

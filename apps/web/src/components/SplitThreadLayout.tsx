@@ -357,14 +357,14 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
   // the shared layout says, and whatever it navigates to.
   if (isPopoutWindow()) {
     return (
-      <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
+      <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh">
         <ThreadRouteView target={target} bare />
       </SidebarInset>
     );
   }
 
   return (
-    <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
+    <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh">
       <div ref={gridRef} data-chat-grid className="relative min-h-0 min-w-0 flex-1">
         {orderedPanes.map(({ leaf, rect }) => (
           <div

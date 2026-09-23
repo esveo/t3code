@@ -134,58 +134,60 @@ function ForkUpdateMenu({
             {tooltip}
           </TooltipPopup>
         </Tooltip>
-        <PopoverPopup align="end" aria-label="Builds" className="w-80 p-0 text-xs" side="top">
-          <div className="border-b border-border px-3 py-2">
-            <div className="font-medium">Running</div>
-            <div className="truncate text-muted-foreground">{state.currentVersion}</div>
-            <div className="truncate text-muted-foreground">
-              Service {service.runningVersion ?? "unknown"}
+        <PopoverPopup align="end" aria-label="Builds" side="top" width="md">
+          <div className="text-xs">
+            <div className="border-b border-border px-3 py-2">
+              <div className="font-medium">Running</div>
+              <div className="truncate text-muted-foreground">{state.currentVersion}</div>
+              <div className="truncate text-muted-foreground">
+                Service {service.runningVersion ?? "unknown"}
+              </div>
             </div>
-          </div>
-          {hasOffer ? (
-            <ul className="max-h-72 overflow-y-auto py-1">
-              {builds.map((build) => (
-                <ForkBuildRow
-                  build={build}
-                  busy={busy}
-                  confirmDelete={confirmDeleteSlug === build.slug}
-                  key={build.slug}
-                  onDelete={() =>
-                    confirmDeleteSlug === build.slug
-                      ? act("delete", build.slug)
-                      : setConfirmDeleteSlug(build.slug)
-                  }
-                  onInstall={() => act("install", build.slug)}
-                  pending={pendingSlug === build.slug}
-                />
-              ))}
-              {pendingRestart !== null ? (
-                <li className="flex items-center gap-2 px-3 py-2">
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-medium">Service restart pending</div>
-                    <div className="truncate text-muted-foreground">{pendingRestart}</div>
-                  </div>
-                  <Button disabled={busy} onClick={installPending} size="xs">
-                    Restart
-                  </Button>
-                </li>
-              ) : null}
-            </ul>
-          ) : (
-            <div className="px-3 py-2 text-muted-foreground">
-              No builds waiting. Run <code>fork-app.sh prepare</code> on a branch.
+            {hasOffer ? (
+              <ul className="max-h-72 overflow-y-auto py-1">
+                {builds.map((build) => (
+                  <ForkBuildRow
+                    build={build}
+                    busy={busy}
+                    confirmDelete={confirmDeleteSlug === build.slug}
+                    key={build.slug}
+                    onDelete={() =>
+                      confirmDeleteSlug === build.slug
+                        ? act("delete", build.slug)
+                        : setConfirmDeleteSlug(build.slug)
+                    }
+                    onInstall={() => act("install", build.slug)}
+                    pending={pendingSlug === build.slug}
+                  />
+                ))}
+                {pendingRestart !== null ? (
+                  <li className="flex items-center gap-2 px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium">Service restart pending</div>
+                      <div className="truncate text-muted-foreground">{pendingRestart}</div>
+                    </div>
+                    <Button disabled={busy} onClick={installPending} size="xs">
+                      Restart
+                    </Button>
+                  </li>
+                ) : null}
+              </ul>
+            ) : (
+              <div className="px-3 py-2 text-muted-foreground">
+                No builds waiting. Run <code>fork-app.sh prepare</code> on a branch.
+              </div>
+            )}
+            <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-1.5">
+              <span className="truncate text-muted-foreground">
+                {state.checkedAt
+                  ? `Checked ${new Date(state.checkedAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`
+                  : "Follows origin/fork"}
+              </span>
+              <Button disabled={isChecking} onClick={check} size="xs" variant="ghost-muted">
+                <RefreshCwIcon />
+                Check now
+              </Button>
             </div>
-          )}
-          <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-1.5">
-            <span className="truncate text-muted-foreground">
-              {state.checkedAt
-                ? `Checked ${new Date(state.checkedAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}`
-                : "Follows origin/fork"}
-            </span>
-            <Button disabled={isChecking} onClick={check} size="xs" variant="ghost-muted">
-              <RefreshCwIcon />
-              Check now
-            </Button>
           </div>
         </PopoverPopup>
       </Popover>

@@ -2038,11 +2038,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 {thread.branch ? (
                   <>
                     <ThreadWorktreeIndicator thread={thread} />
-                    <MiddleTruncate
-                      value={thread.branch}
-                      showTitle={false}
-                      className="flex-1 text-muted-foreground/40"
-                    />
+                    <span className="flex min-w-0 flex-1 text-muted-foreground/40">
+                      <MiddleTruncate value={thread.branch} showTitle={false} />
+                    </span>
                   </>
                 ) : (
                   <span className="flex-1" />
@@ -4633,8 +4631,6 @@ export default function Sidebar() {
                               key={item.value}
                               hideIndicator
                               value={item}
-                              className="h-8 min-h-8 py-0 font-medium"
-                              contentClassName="flex min-w-0 items-center gap-2"
                               onContextMenu={(event) => {
                                 if (project) handleProjectSettings(event, project);
                               }}
@@ -4659,7 +4655,7 @@ export default function Sidebar() {
                                   tabIndex={-1}
                                   aria-hidden="true"
                                   title={`Project settings for ${project.displayName}`}
-                                  className="ml-auto size-6 [--control-icon-color:currentColor] text-icon-muted focus-visible:bg-accent focus-visible:text-foreground"
+                                  className="ml-auto"
                                   onPointerDown={(event) => event.stopPropagation()}
                                   onClick={(event) => {
                                     void handleProjectSettings(event, project);

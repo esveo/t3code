@@ -47,14 +47,18 @@ export function PromptCacheControl(props: {
         render={
           <ComposerControl
             size={size}
-            className={cn("shrink-0 whitespace-nowrap", state.kind === "cold" && "opacity-60")}
+            className="shrink-0 whitespace-nowrap"
             type="button"
             aria-label={label}
             data-chat-prompt-cache-control
           />
         }
       >
-        <ComposerControlIcon icon={state.kind === "warm" ? TimerIcon : TimerOffIcon} size={size} />
+        <ComposerControlIcon
+          icon={state.kind === "warm" ? TimerIcon : TimerOffIcon}
+          size={size}
+          className={cn(state.kind === "cold" && "opacity-60")}
+        />
         {state.kind === "warm" ? (
           <span data-composer-control-label className="tabular-nums">
             {state.minutesLeft}m
