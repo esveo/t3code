@@ -206,24 +206,24 @@ function ThreadInbox({ threadRef, cwd }: { threadRef: ScopedThreadRef; cwd: stri
       return;
     }
     if (event.metaKey || event.ctrlKey || event.altKey || isTyping(event.target)) return;
-    const key = event.key;
-    if (key === "j" || key === "ArrowDown") {
+    const pressed = event.key;
+    if (pressed === "j" || pressed === "ArrowDown") {
       event.preventDefault();
       select(ordered[Math.min(ordered.length - 1, currentIndex + 1)] ?? null);
-    } else if (key === "k" || key === "ArrowUp") {
+    } else if (pressed === "k" || pressed === "ArrowUp") {
       event.preventDefault();
       goPrevious();
-    } else if (key === "f") {
+    } else if (pressed === "f") {
       setView({ mode: view.mode === "list" ? "focus" : "list", expanded: true });
-    } else if (current && /^[1-9]$/.test(key)) {
-      const option = current.options[Number(key) - 1];
+    } else if (current && /^[1-9]$/.test(pressed)) {
+      const option = current.options[Number(pressed) - 1];
       if (option) setDraft(current.id, { optionId: option.id });
-    } else if (current && (key === "y" || key === "Y")) {
+    } else if (current && (pressed === "y" || pressed === "Y")) {
       if (current.recommendedOptionId) {
         setDraft(current.id, { optionId: current.recommendedOptionId });
         goNext();
       }
-    } else if (current && key === "e") {
+    } else if (current && pressed === "e") {
       event.preventDefault();
       setNotesOpen((open) => ({ ...open, [current.id]: true }));
       setView({ expanded: true });

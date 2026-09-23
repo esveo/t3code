@@ -912,10 +912,14 @@ const makeProviderService = Effect.fn("makeProviderService")(function* (
     if (access.device) capabilities.add("device");
     // Fork: thread orchestration, an environment-wide opt-in.
     const orchestration = yield* serverSettings.getSettings.pipe(
-      Effect.map((settings) => settings.enableThreadOrchestration),
-      Effect.orElseSucceed(() => false),
+      Effect.map((settings) => ({
+        threads: settings.enableThreadOrchestration,
+        decisions: settings.enableThreadOrchestration && settings.enableThreadDecisions,
+      })),
+      Effect.orElseSucceed(() => ({ threads: false, decisions: false })),
     );
-    if (orchestration) capabilities.add("threads");
+    if (orchestration.threads) capabilities.add("threads");
+    if (orchestration.decisions) capabilities.add("decisions");
     return capabilities;
   });
 

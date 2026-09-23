@@ -1171,6 +1171,11 @@ export const ServerSettings = Schema.Struct({
    */
   enableThreadOrchestration: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /**
+   * Fork: coordinators ask for decisions in the Inbox panel instead of
+   * numbering questions in chat. Needs thread orchestration; opt-in while new.
+   */
+  enableThreadDecisions: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /**
    * Whether this server may install and run T3's device helper processes.
    * Kept separate from agent access so enabling the user's Device panel does
    * not also grant providers control of simulators and emulators.
@@ -1512,6 +1517,7 @@ export const ServerSettingsPatch = Schema.Struct({
   ),
   enableAgentDeviceAccess: Schema.optionalKey(Schema.Boolean),
   enableThreadOrchestration: Schema.optionalKey(Schema.Boolean),
+  enableThreadDecisions: Schema.optionalKey(Schema.Boolean),
   enableDeviceSupport: Schema.optionalKey(Schema.Boolean),
   deviceOnboardingCompleted: Schema.optionalKey(Schema.Boolean),
   deviceHosts: Schema.optionalKey(SshDeviceHostConfigs),

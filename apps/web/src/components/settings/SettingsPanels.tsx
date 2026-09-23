@@ -169,6 +169,7 @@ import {
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { ThreadOrchestrationSettingRow } from "../threadOrchestration/ThreadOrchestrationSettingRow";
+import { ThreadDecisionsSettingRow } from "../threadInbox/ThreadDecisionsSettingRow";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
 import { AgentStageSettingRow } from "../agentStage/AgentStageSetting";
@@ -2915,6 +2916,7 @@ export function GeneralSettingsPanel() {
 
         {/* Fork: thread orchestration. */}
         <ThreadOrchestrationSettingRow />
+        <ThreadDecisionsSettingRow />
 
         <SettingsRow
           serverScoped

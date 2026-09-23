@@ -193,7 +193,7 @@ const SURFACE_DISABLED_REASONS = {
   agents: "Agents are only available from a thread.",
   agentStage: "Enable the agent stage in Settings > General.",
   threadOverview: "Turn on thread orchestration in Settings > General.",
-  threadInbox: "Turn on thread orchestration in Settings > General.",
+  threadInbox: "Turn on thread orchestration and coordinator decisions in Settings > General.",
   device: "Devices are only available from a thread.",
 } as const;
 
@@ -221,7 +221,7 @@ const SURFACE_UNAVAILABLE_HINTS = {
   agents: "Available from a thread.",
   agentStage: "Enable it in Settings > General.",
   threadOverview: "Turn on thread orchestration in Settings.",
-  threadInbox: "Available from a coordinator thread.",
+  threadInbox: "Turn on coordinator decisions in Settings.",
   device: "Available from a thread.",
 } as const;
 

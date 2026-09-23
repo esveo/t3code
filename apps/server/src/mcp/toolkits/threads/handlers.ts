@@ -216,6 +216,19 @@ const make = Effect.gen(function* () {
     return thread.value;
   });
 
+  /** The calling coordinator, when the user also turned on decisions (Settings). */
+  const requireDecisions = Effect.gen(function* () {
+    const coordinator = yield* requireCoordinator;
+    yield* McpInvocationContext.requireMcpCapability("decisions").pipe(
+      Effect.mapError(() =>
+        failure(
+          "Decisions are turned off, so ask the user in chat instead. The user can turn them on in Settings.",
+        ),
+      ),
+    );
+    return coordinator;
+  });
+
   const requireChild = Effect.fn("ThreadsToolkit.requireChild")(function* (
     coordinator: OrchestrationThreadShell,
     threadId: string,
@@ -725,7 +738,7 @@ const make = Effect.gen(function* () {
 
     upsert_decision: (input) =>
       Effect.gen(function* () {
-        const coordinator = yield* requireCoordinator;
+        const coordinator = yield* requireDecisions;
         const source = input.sourceThreadId
           ? yield* requireChild(coordinator, input.sourceThreadId)
           : null;
@@ -750,7 +763,7 @@ const make = Effect.gen(function* () {
 
     resolve_decision: (input) =>
       Effect.gen(function* () {
-        const coordinator = yield* requireCoordinator;
+        const coordinator = yield* requireDecisions;
         yield* ThreadDecisions.withService((decisions) =>
           decisions.resolve(coordinator.id, input.id, input.reason),
         ).pipe(Effect.mapError((error) => failure(error.message)));
@@ -759,7 +772,7 @@ const make = Effect.gen(function* () {
 
     list_decisions: (input) =>
       Effect.gen(function* () {
-        const coordinator = yield* requireCoordinator;
+        const coordinator = yield* requireDecisions;
         const status = input.status ?? "open";
         const all = yield* ThreadDecisions.withService((decisions) =>
           decisions.list(coordinator.id),

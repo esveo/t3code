@@ -5056,6 +5056,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           append: buildRuntimeInstructions({
             harness: "Claude Code",
             threadOrchestration: mcpSession?.capabilities.has("threads") === true,
+            threadDecisions: mcpSession?.capabilities.has("decisions") === true,
           }),
         },
         settingSources: [...CLAUDE_SETTING_SOURCES],

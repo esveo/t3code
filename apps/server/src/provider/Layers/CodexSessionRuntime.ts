@@ -81,6 +81,7 @@ function configuredMcpToolAvailability(
     device: mcpCapabilities.has("device"),
     // Fork: thread orchestration.
     threads: mcpCapabilities.has("threads"),
+    decisions: mcpCapabilities.has("decisions"),
   };
 }
 

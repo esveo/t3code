@@ -105,6 +105,7 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
     readonly threads?: ReadonlyArray<OrchestrationThreadShell>;
     readonly messages?: Readonly<Record<string, ReadonlyArray<OrchestrationMessage>>>;
     readonly branches?: ReadonlyArray<{ name: string; isRemote?: boolean; remoteName?: string }>;
+    readonly capabilities?: ReadonlyArray<McpInvocationContext.McpCapability>;
   } = {},
 ) {
   const commands = yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]);
@@ -194,7 +195,9 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
         threadId: caller.id,
         providerSessionId: "session-1",
         providerInstanceId: ProviderInstanceId.make("claudeAgent"),
-        capabilities: new Set<McpInvocationContext.McpCapability>(["pull-requests", "threads"]),
+        capabilities: new Set<McpInvocationContext.McpCapability>(
+          options.capabilities ?? ["pull-requests", "threads", "decisions"],
+        ),
         issuedAt: 1,
       }),
       Effect.provide(dependencies),
@@ -716,6 +719,14 @@ describe("threads toolkit", () => {
           status: "resolved",
           resolvedReason: "Hat sich erledigt.",
         });
+      }),
+    );
+
+    it.effect("refuses decisions while the user has them turned off", () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({ capabilities: ["pull-requests", "threads"] });
+        const error = yield* harness.call("list_decisions", {}).pipe(Effect.flip);
+        expect(String(error)).toMatch(/Decisions are turned off/);
       }),
     );
 
