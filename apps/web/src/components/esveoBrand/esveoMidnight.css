@@ -96,6 +96,9 @@ html[data-theme-id="esveo-midnight"].dark {
     isolation: isolate;
     overflow: hidden;
     border-width: 0;
+    /* Pinned here and derived below, so the tile's corners stay concentric
+       with the ring instead of cutting into it. */
+    border-radius: var(--radius-2xl);
     background: var(--esveo-ring);
   }
 
@@ -138,7 +141,7 @@ html[data-theme-id="esveo-midnight"].dark {
     position: absolute;
     z-index: -1;
     inset: 1px;
-    border-radius: calc(1rem - 1px);
+    border-radius: calc(var(--radius-2xl) - 1px);
     pointer-events: none;
     background: var(--esveo-tile);
   }
