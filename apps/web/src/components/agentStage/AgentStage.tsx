@@ -13,6 +13,7 @@ import {
   MessageSquare,
   MessagesSquare,
   PencilLine,
+  Radar,
   Search,
   Terminal,
   TriangleAlert,
@@ -31,6 +32,7 @@ import {
   useSyncExternalStore,
 } from "react";
 
+import { Button } from "~/components/ui/button";
 import { cn } from "~/lib/utils";
 
 import { ComposerPendingApprovalActions } from "../chat/ComposerPendingApprovalActions";
@@ -47,6 +49,12 @@ import {
   type StageStation,
 } from "./agentStage.logic";
 import type { AgentStageMode } from "./agentStageStore";
+
+/** Where the user talks to an agent: its thread, or a subagent's chat. */
+export interface StageOpenAction {
+  readonly label: string;
+  readonly onOpen: () => void;
+}
 
 export interface StageApprovalHandlers {
   readonly respondingRequestIds: ReadonlyArray<ApprovalRequestId>;
@@ -67,6 +75,7 @@ const STATION_ICONS: Record<StageStation, LucideIcon> = {
   browser: Globe,
   tool: Wrench,
   delegate: Users,
+  monitoring: Radar,
   waiting: Hand,
 };
 
@@ -285,6 +294,7 @@ export const AgentStage = memo(function AgentStage({
   onHide = null,
   onShow = null,
   onShowAll = null,
+  openAction = null,
 }: {
   model: StageModel;
   selectedId: string;
@@ -299,6 +309,8 @@ export const AgentStage = memo(function AgentStage({
   onHide?: ((agentId: string) => void) | null;
   onShow?: ((agentId: string) => void) | null;
   onShowAll?: (() => void) | null;
+  /** How to open the selected agent's conversation; null where there is none. */
+  openAction?: ((agent: StageAgent) => StageOpenAction | null) | null;
 }) {
   const sceneRef = useRef<HTMLDivElement | null>(null);
   const [side, setSide] = useState(0);
@@ -364,7 +376,11 @@ export const AgentStage = memo(function AgentStage({
               waiting={model.attention.length}
             />
 
-            <SelectedAgentCard agent={selected} width={cardWidth} />
+            <SelectedAgentCard
+              agent={selected}
+              width={cardWidth}
+              open={openAction?.(selected) ?? null}
+            />
 
             {model.agents.map((agent, index) => {
               const station = drawn.get(agent.id) ?? agent.station;
@@ -841,7 +857,15 @@ function StageRecapLine({ agent }: { agent: StageAgent }) {
   );
 }
 
-function SelectedAgentCard({ agent, width }: { agent: StageAgent; width: number }) {
+function SelectedAgentCard({
+  agent,
+  width,
+  open,
+}: {
+  agent: StageAgent;
+  width: number;
+  open: StageOpenAction | null;
+}) {
   const Icon = STATION_ICONS[agent.station];
   const monospace =
     agent.station === "command" || agent.station === "edit" || agent.station === "read";
@@ -909,6 +933,11 @@ function SelectedAgentCard({ agent, width }: { agent: StageAgent; width: number 
             </li>
           ))}
         </ol>
+      ) : null}
+      {open !== null ? (
+        <Button size="xs" variant="outline" className="self-start" onClick={open.onOpen}>
+          {open.label}
+        </Button>
       ) : null}
     </div>
   );

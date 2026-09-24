@@ -42,6 +42,7 @@ export type StageStation =
   | "browser"
   | "tool"
   | "delegate"
+  | "monitoring"
   | "waiting";
 
 /** Clockwise order around the ring, starting at the top. */
@@ -55,6 +56,7 @@ export const STAGE_STATIONS: ReadonlyArray<{ readonly id: StageStation; readonly
     { id: "browser", label: "Browser" },
     { id: "tool", label: "Tools" },
     { id: "delegate", label: "Subagents" },
+    { id: "monitoring", label: "Monitoring" },
     { id: "waiting", label: "Waiting" },
     { id: "writing", label: "Answering" },
     { id: "idle", label: "Idle" },
@@ -152,6 +154,12 @@ export interface StageInput {
   /** The thread's title and project, for the main agent's sprite. */
   readonly threadTitle?: string | undefined;
   readonly project?: StageProject | null | undefined;
+  /**
+   * The server's read of work that outlives the turn, from the thread shell:
+   * "monitoring" when watch loops (Monitor, background shells) are all that
+   * is left running.
+   */
+  readonly backgroundLiveness?: "working" | "monitoring" | null | undefined;
 }
 
 const RECENT_LIMIT = 5;
@@ -164,13 +172,17 @@ export function deriveStageModel(input: StageInput): StageModel {
     : (input.latestTurn?.turnId ?? null);
   const turnStartedAt = input.latestTurn?.startedAt ?? null;
 
-  const subagents = foldSubagentActivities(input.activities, { sessionLive: running }).filter(
+  // Background subagents outlive the turn that started them, so only a dead
+  // session orphans them; the chat's agent panel draws the same line.
+  const sessionLive = stageSessionLive(input.session);
+  const subagents = foldSubagentActivities(input.activities, { sessionLive }).filter(
     (agent) =>
       agent.kind !== "workflow" &&
       (isActiveSubagentStatus(agent.status) ||
         (turnStartedAt !== null && agent.updatedAt >= turnStartedAt)),
   );
   const toolsByAgent = collectAttributedTools(input.activities);
+  const progressByAgent = collectLatestProgress(input.activities);
   const liveSubagentCount = subagents.filter((agent) =>
     isActiveSubagentStatus(agent.status),
   ).length;
@@ -189,9 +201,28 @@ export function deriveStageModel(input: StageInput): StageModel {
     ...subagents
       .slice()
       .sort((a, b) => a.firstSeenAt.localeCompare(b.firstSeenAt) || a.id.localeCompare(b.id))
-      .map((agent) => deriveSubagent(agent, toolsByAgent.get(agent.id) ?? null)),
+      .map((agent) =>
+        deriveSubagent(
+          agent,
+          toolsByAgent.get(agent.id) ?? null,
+          progressByAgent.get(agent.id) ?? null,
+        ),
+      ),
   ];
-  return { agents, running, attention: deriveAttention(pending, subagents) };
+  return {
+    agents,
+    running: agents.some((agent) => agent.live),
+    attention: deriveAttention(pending, subagents),
+  };
+}
+
+function stageSessionLive(session: OrchestrationSession | null): boolean {
+  return (
+    session !== null &&
+    session.status !== "stopped" &&
+    session.status !== "interrupted" &&
+    session.status !== "error"
+  );
 }
 
 const APPROVAL_TITLES: Record<string, string> = {
@@ -378,6 +409,32 @@ function deriveMainAgent(
     };
   }
 
+  // The turn is over, but work it sent to the background still runs.
+  if (liveSubagentCount > 0 || input.backgroundLiveness === "working") {
+    return {
+      ...base,
+      station: "delegate",
+      live: true,
+      headline:
+        liveSubagentCount > 0
+          ? `Waiting for ${liveSubagentCount} ${liveSubagentCount === 1 ? "subagent" : "subagents"}`
+          : "Background work",
+      detail: null,
+      since: input.latestTurn?.completedAt ?? null,
+    };
+  }
+  if (input.backgroundLiveness === "monitoring") {
+    const watch = latestOpenWatchTask(input.activities);
+    return {
+      ...base,
+      station: "monitoring",
+      live: true,
+      headline: "Monitoring",
+      detail: watch?.detail ?? null,
+      since: watch?.since ?? input.latestTurn?.completedAt ?? null,
+    };
+  }
+
   return {
     ...base,
     station: "idle",
@@ -393,6 +450,36 @@ function deriveMainAgent(
     detail: null,
     since: null,
   };
+}
+
+/**
+ * The newest watch loop that has not ended, for what the monitoring headline
+ * is about. Whether anything is watched at all is the server's call; this
+ * only names it.
+ */
+function latestOpenWatchTask(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): { readonly detail: string | null; readonly since: string } | null {
+  const open = new Map<string, { detail: string | null; since: string }>();
+  for (const activity of activities) {
+    if (!activity.kind.startsWith("task.")) continue;
+    const payload = asRecord(activity.payload);
+    const taskId = asString(payload?.taskId);
+    if (payload === null || taskId === null) continue;
+    if (activity.kind === "task.completed") {
+      open.delete(taskId);
+    } else if (
+      activity.kind === "task.started" &&
+      payload.agentKind === "background" &&
+      asString(payload.agentId) === null
+    ) {
+      open.set(taskId, {
+        detail: asString(payload.detail) ?? asString(payload.title),
+        since: activity.createdAt,
+      });
+    }
+  }
+  return [...open.values()].at(-1) ?? null;
 }
 
 interface StationTiming {
@@ -529,7 +616,7 @@ function stationForWorkEntry(entry: WorkLogEntry): StageStation {
     case "edit":
       return "edit";
     case "command":
-      return "command";
+      return isSearchCommand(entry.command) ? "search" : "command";
     case "browser":
     case "device":
       return "browser";
@@ -559,6 +646,36 @@ function workEntryDetail(entry: WorkLogEntry): string | null {
 export function stationForToolName(
   name: string | null | undefined,
   surface?: "browser" | "computer" | undefined,
+  /** The command or its description, which tells a search in the shell from other work. */
+  command?: string | null | undefined,
+): StageStation {
+  const station = stationForToolTitle(name, surface);
+  return station === "command" && isSearchCommand(command) ? "search" : station;
+}
+
+const SEARCH_COMMAND = /^(grep|egrep|rg|ag|ack|find|fd|ls|tree|locate|git\s+(grep|ls-files))\b/;
+const SEARCH_DESCRIPTION = /^(search|find|list|locate|look(ing)?\s+for|grep)\b/i;
+
+/**
+ * A shell call that only looks things up. Agents search with grep and find
+ * through Bash as often as with their search tools, so the first command that
+ * is not a `cd` decides; progress rows also carry the call's description
+ * ("Running Search for …") instead of the command.
+ */
+export function isSearchCommand(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const trimmed = text.trim().replace(/^(running|bash:)\s+/i, "");
+  if (SEARCH_DESCRIPTION.test(trimmed)) return true;
+  const first = trimmed
+    .split(/&&|\|\||;|\|/)
+    .map((part) => part.trim())
+    .find((part) => part.length > 0 && !/^cd\b/.test(part));
+  return first !== undefined && SEARCH_COMMAND.test(first);
+}
+
+function stationForToolTitle(
+  name: string | null | undefined,
+  surface: "browser" | "computer" | undefined,
 ): StageStation {
   if (surface === "browser" || surface === "computer") return "browser";
   const title = (name ?? "").trim().toLowerCase();
@@ -671,7 +788,7 @@ function collectAttributedTools(
       if (from !== null) {
         addStationTime(
           times,
-          stationForToolName(tool.title, tool.surface),
+          stationForToolName(tool.title, tool.surface, tool.command ?? tool.detail),
           from,
           activity.createdAt,
         );
@@ -692,6 +809,37 @@ function collectAttributedTools(
   return result;
 }
 
+/** A subagent's latest progress row: the tool it just started, or a summary. */
+interface SubagentProgress {
+  readonly toolName: string | null;
+  readonly detail: string | null;
+  readonly at: string;
+}
+
+/**
+ * Claude's background subagents stream no tool rows, but announce each tool
+ * they start on task.progress ("Reading src/x.ts"), and every ~30s a summary
+ * in its place. The server keeps one such row per task, so the latest one is
+ * where the agent is now; usage-only ticks live in a row of their own.
+ */
+function collectLatestProgress(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): Map<string, SubagentProgress> {
+  const latest = new Map<string, SubagentProgress>();
+  for (const activity of activities) {
+    if (activity.kind !== "task.progress") continue;
+    const payload = asRecord(activity.payload);
+    const taskId = asString(payload?.taskId);
+    if (payload === null || taskId === null || payload.usageSnapshot === true) continue;
+    latest.set(taskId, {
+      toolName: asString(payload.lastToolName),
+      detail: asString(payload.summary) ?? asString(payload.detail),
+      at: activity.createdAt,
+    });
+  }
+  return latest;
+}
+
 function toolStatus(value: unknown, kind: string): AttributedTool["status"] {
   if (
     value === "inProgress" ||
@@ -708,7 +856,11 @@ function subagentLabel(agent: RuntimeSubagent): string {
   return agent.title && agent.title !== agent.id ? agent.title : (agent.role ?? "Subagent");
 }
 
-function deriveSubagent(agent: RuntimeSubagent, work: AttributedWork | null): StageAgent {
+function deriveSubagent(
+  agent: RuntimeSubagent,
+  work: AttributedWork | null,
+  progress: SubagentProgress | null,
+): StageAgent {
   const tool = work?.tool ?? null;
   const timing = work?.timing ?? null;
   const started = agent.startedAt ?? agent.firstSeenAt;
@@ -741,20 +893,39 @@ function deriveSubagent(agent: RuntimeSubagent, work: AttributedWork | null): St
     if (tool !== null && tool.status === "inProgress") {
       return {
         ...base,
-        station: stationForToolName(tool.title, tool.surface),
+        station: stationForToolName(tool.title, tool.surface, tool.command ?? tool.detail),
         live: true,
         headline: tool.title ?? "Using a tool",
         detail: tool.command ?? tool.detail,
         since: timing?.activeSince ?? started,
       };
     }
+    // No tool rows: the latest progress row names the tool it started, which
+    // is where it works until the next row says otherwise.
+    if (work === null && progress?.toolName) {
+      return {
+        ...base,
+        station: stationForToolName(progress.toolName, undefined, progress.detail),
+        live: true,
+        headline: progress.toolName,
+        detail: progress.detail,
+        since: progress.at,
+      };
+    }
+    // Without any tool signal the stage cannot tell thinking from tool use.
+    const headline =
+      work === null
+        ? "Working"
+        : agent.lastToolName
+          ? `Thinking after ${agent.lastToolName}`
+          : "Thinking";
     return {
       ...base,
       station: "thinking",
       live: true,
-      headline: agent.lastToolName ? `Thinking after ${agent.lastToolName}` : "Thinking",
+      headline,
       detail: agent.progress,
-      since: timing?.boundary ?? started,
+      since: timing?.boundary ?? progress?.at ?? started,
     };
   }
   if (agent.status === "waiting") {
@@ -851,6 +1022,8 @@ export function stageStuckAfterMs(station: StageStation): number {
   if (station === "waiting") return 120_000;
   if (station === "command") return 300_000;
   if (station === "delegate") return 600_000;
+  // Watch loops run for hours by design; standing there is the job.
+  if (station === "monitoring") return Number.POSITIVE_INFINITY;
   return 180_000;
 }
 

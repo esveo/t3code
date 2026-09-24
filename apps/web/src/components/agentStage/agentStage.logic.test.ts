@@ -15,6 +15,7 @@ import {
   applyStageVisibility,
   deriveStageModel,
   deriveStageRecap,
+  isSearchCommand,
   MAIN_AGENT_ID,
   stageElapsedMs,
   stageInitials,
@@ -246,6 +247,149 @@ describe("deriveStageModel", () => {
       ["idle", false, "Done"],
       ["idle", false, "Done"],
     ]);
+  });
+
+  it("keeps background subagents working after the turn, until the session dies", () => {
+    const activities = [
+      activity({
+        kind: "task.started",
+        payload: { taskId: "task-1", taskType: "local_agent", title: "Audit" },
+      }),
+      activity({
+        kind: "tool.started",
+        payload: { title: "Bash", agentId: "task-1", toolCallId: "call-1" },
+      }),
+    ];
+    const afterTurn = deriveStageModel({
+      activities,
+      messages: [message("assistant", "Started it.", false)],
+      session: session("ready"),
+      latestTurn: latestTurn("completed"),
+    });
+    expect(afterTurn.running).toBe(true);
+    expect(afterTurn.agents.map((agent) => [agent.station, agent.live, agent.headline])).toEqual([
+      ["delegate", true, "Waiting for 1 subagent"],
+      ["command", true, "Bash"],
+    ]);
+
+    const dead = deriveStageModel({
+      activities,
+      messages: [],
+      session: session("stopped"),
+      latestTurn: latestTurn("completed"),
+    });
+    expect(dead.running).toBe(false);
+    expect(dead.agents.map((agent) => [agent.station, agent.live])).toEqual([
+      ["idle", false],
+      ["idle", false],
+    ]);
+  });
+});
+
+describe("background work after the turn", () => {
+  it("says working, not thinking, for a subagent that reports no tools", () => {
+    const model = deriveStageModel({
+      activities: [
+        activity({
+          kind: "task.started",
+          payload: { taskId: "task-1", taskType: "local_agent", title: "Audit" },
+        }),
+      ],
+      messages: [],
+      session: session("ready"),
+      latestTurn: latestTurn("completed"),
+    });
+    expect(model.agents[1]).toEqual(
+      expect.objectContaining({ station: "thinking", live: true, headline: "Working" }),
+    );
+  });
+
+  it("follows a subagent through the tools its progress rows announce", () => {
+    const started = activity({
+      kind: "task.started",
+      payload: { taskId: "task-1", taskType: "local_agent", title: "Audit" },
+    });
+    const progress = (payload: Record<string, unknown>) =>
+      activity({
+        kind: "task.progress",
+        createdAt: "2026-09-21T10:00:40.000Z",
+        payload: { taskId: "task-1", ...payload },
+      });
+    const reading = deriveStageModel({
+      activities: [
+        started,
+        progress({ lastToolName: "Read", detail: "Reading src/auth/login.ts" }),
+        activity({
+          kind: "task.progress",
+          payload: { taskId: "task-1", usageSnapshot: true, typedUsage: { totalTokens: 10 } },
+        }),
+      ],
+      messages: [],
+      session: session("ready"),
+      latestTurn: latestTurn("completed"),
+    });
+    expect(reading.agents[1]).toEqual(
+      expect.objectContaining({
+        station: "read",
+        headline: "Read",
+        detail: "Reading src/auth/login.ts",
+        since: "2026-09-21T10:00:40.000Z",
+      }),
+    );
+
+    const summarized = deriveStageModel({
+      activities: [started, progress({ summary: "Checking the login flow" })],
+      messages: [],
+      session: session("ready"),
+      latestTurn: latestTurn("completed"),
+    });
+    expect(summarized.agents[1]).toEqual(
+      expect.objectContaining({
+        station: "thinking",
+        headline: "Working",
+        detail: "Checking the login flow",
+      }),
+    );
+  });
+
+  it("parks the main agent at monitoring while a watch loop runs", () => {
+    const model = deriveStageModel({
+      activities: [
+        activity({
+          kind: "task.started",
+          createdAt: "2026-09-21T10:00:30.000Z",
+          payload: { taskId: "watch-1", taskType: "monitor", detail: "CI checks on #41" },
+        }),
+      ],
+      messages: [],
+      session: session("ready"),
+      latestTurn: latestTurn("completed"),
+      backgroundLiveness: "monitoring",
+    });
+    expect(model.running).toBe(true);
+    expect(model.agents).toEqual([
+      expect.objectContaining({
+        station: "monitoring",
+        live: true,
+        headline: "Monitoring",
+        detail: "CI checks on #41",
+        since: "2026-09-21T10:00:30.000Z",
+      }),
+    ]);
+    expect(stageIsStuck(model.agents[0]!, Date.parse("2026-09-22T10:00:00.000Z"))).toBe(false);
+  });
+
+  it("keeps background work the fold does not list, such as a workflow run", () => {
+    const model = deriveStageModel({
+      activities: [],
+      messages: [],
+      session: session("ready"),
+      latestTurn: latestTurn("completed"),
+      backgroundLiveness: "working",
+    });
+    expect(model.agents[0]).toEqual(
+      expect.objectContaining({ station: "delegate", live: true, headline: "Background work" }),
+    );
   });
 });
 
@@ -722,5 +866,42 @@ describe("stageInitials", () => {
     expect(stageInitials("Refactor")).toBe("RE");
     expect(stageInitials("v2 release")).toBe("VR");
     expect(stageInitials("   ")).toBe("");
+  });
+});
+
+describe("isSearchCommand", () => {
+  it("tells lookups in the shell from other commands", () => {
+    expect(isSearchCommand("grep -rn foo src | head")).toBe(true);
+    expect(isSearchCommand("cd /repo && rg --files apps")).toBe(true);
+    expect(isSearchCommand("Running cd /repo && find . -name '*.ts'")).toBe(true);
+    expect(isSearchCommand("Bash: git grep -n agentId")).toBe(true);
+    expect(isSearchCommand("Running Search for subagent handling in adapters")).toBe(true);
+    expect(isSearchCommand("cd /repo && npx vp test run src")).toBe(false);
+    expect(isSearchCommand("Running Inspect Grok background tasks")).toBe(false);
+    expect(isSearchCommand(null)).toBe(false);
+  });
+
+  it("puts a subagent's grep through Bash at searching", () => {
+    const model = deriveStageModel({
+      activities: [
+        activity({
+          kind: "task.started",
+          payload: { taskId: "task-1", taskType: "local_agent", title: "Audit" },
+        }),
+        activity({
+          kind: "task.progress",
+          payload: {
+            taskId: "task-1",
+            lastToolName: "Bash",
+            detail: "Running cd /repo && grep -rn agentId apps",
+          },
+        }),
+      ],
+      messages: [],
+      session: session("ready"),
+      latestTurn: latestTurn("completed"),
+    });
+    expect(model.agents[1]!.station).toBe("search");
+    expect(stationForToolName("Bash", undefined, "npm test")).toBe("command");
   });
 });

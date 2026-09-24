@@ -33,6 +33,10 @@ import { SubagentChatView } from "~/components/subagentChat/SubagentChatView";
 import { SubagentChatLink } from "~/components/subagentChat/SubagentChatLink";
 import { canOpenSubagentChat } from "~/components/subagentChat/subagentChat.logic";
 import { useSubagentChatSupport } from "~/components/subagentChat/useSubagentChatSupport";
+import {
+  subagentChatKey,
+  useSubagentChatOpenStore,
+} from "~/components/subagentChat/subagentChatOpenStore";
 
 /**
  * In-flight states all present as Working (one steady state, per the
@@ -535,7 +539,10 @@ export function AgentsPanel({
   environmentId?: EnvironmentId | null;
   threadId?: ThreadId | null;
 }) {
-  const [openAgentId, setOpenAgentId] = useState<string | null>(null);
+  const chatKey = subagentChatKey(environmentId, threadId);
+  const openAgentId = useSubagentChatOpenStore((state) => state.openByThread[chatKey] ?? null);
+  const setOpenAgentId = (agentId: string | null) =>
+    useSubagentChatOpenStore.getState().setOpen(chatKey, agentId);
   const chatSupported = useSubagentChatSupport(environmentId, threadId);
   const openAgent = openAgentId
     ? model.directAgents.find((agent) => agent.id === openAgentId)
