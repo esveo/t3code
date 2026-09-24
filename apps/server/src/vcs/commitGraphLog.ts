@@ -25,6 +25,11 @@ export function commitGraphLogArgs(input: { readonly limit: number }): ReadonlyA
     "log",
     `--format=${LOG_FORMAT}`,
     "--decorate=full",
+    // The layout expects every child above its parents. Plain `--all` only sorts
+    // by commit date, which lists a parent first when both share a second.
+    "--date-order",
+    // `log.showSignature` would print gpg output into the sha field.
+    "--no-show-signature",
     "--exclude=refs/t3/*",
     "--all",
     // One extra commit answers "is there more behind the window" without a second call.
@@ -50,6 +55,7 @@ function parseRecord(record: string): VcsCommitGraphEntry | null {
 }
 
 const HEAD_ARROW = "HEAD -> ";
+const TAG_PREFIX = "tag: ";
 
 /** Classifies one decoration, e.g. `refs/remotes/origin/main` -> remote `origin/main`. */
 function parseDecoration(decoration: string): VcsCommitGraphRef | null {
@@ -62,6 +68,9 @@ function parseDecoration(decoration: string): VcsCommitGraphRef | null {
     return { kind: "head", name: target.replace(/^refs\/heads\//, "") };
   }
   if (trimmed === "HEAD") return { kind: "head", name: "HEAD" };
+  // Git prefixes tags, e.g. `tag: refs/tags/v1`.
+  if (trimmed.startsWith(TAG_PREFIX))
+    return { kind: "tag", name: trimmed.slice(TAG_PREFIX.length).replace(/^refs\/tags\//, "") };
   if (trimmed.startsWith("refs/t3/")) return null;
   if (trimmed.startsWith("refs/heads/"))
     return { kind: "branch", name: trimmed.slice("refs/heads/".length) };

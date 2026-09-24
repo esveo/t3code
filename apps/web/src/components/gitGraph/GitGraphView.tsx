@@ -1,6 +1,6 @@
 import type { EnvironmentId, VcsCommitGraphEntry, VcsCommitGraphRef } from "@t3tools/contracts";
 import { GitBranchIcon, GitCommitHorizontalIcon, XIcon } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { DiffStatLabel } from "~/components/chat/DiffStatLabel";
 
@@ -14,7 +14,11 @@ import { vcsEnvironment } from "~/state/vcs";
 import { layoutCommitGraph } from "./commitGraphLayout";
 import { edgePath, LANE_PADDING, LANE_WIDTH, ROW_HEIGHT } from "./edgePath";
 import { GitGraphDiff } from "./GitGraphDiff";
-import { gitGraphIsFresh, gitGraphStatusKey } from "./gitGraphRefresh.logic";
+import {
+  GIT_GRAPH_FRESH_MS,
+  gitGraphRefreshDelay,
+  gitGraphStatusKey,
+} from "./gitGraphRefresh.logic";
 import { gitGraphDiffRange, nextGitGraphSelection, WORKTREE_ID } from "./gitGraphSelection";
 
 const DOT_RADIUS = 3.5;
@@ -82,10 +86,33 @@ export function GitGraphView({
   // would show the old commits. The live status says when to read again.
   const statusKey = gitGraphStatusKey(status.data);
   const { refresh: refreshGraph, isPending: graphPending, dataUpdatedAt: graphUpdatedAt } = graph;
+  // The status the last read saw; null until this panel has read once.
+  const readStatusKeyRef = useRef<string | null>(null);
   useEffect(() => {
-    if (statusKey === null || graphPending) return;
-    if (gitGraphIsFresh(graphUpdatedAt, Date.now())) return;
-    refreshGraph();
+    if (graphPending) return;
+    const now = Date.now();
+    if (
+      readStatusKeyRef.current === null &&
+      graphUpdatedAt !== null &&
+      now - graphUpdatedAt < GIT_GRAPH_FRESH_MS
+    ) {
+      // A read that just landed saw the status beside it; a cached one from
+      // an earlier visit falls through and is read again.
+      readStatusKeyRef.current = statusKey;
+      return;
+    }
+    const delay = gitGraphRefreshDelay({
+      statusKey,
+      readKey: readStatusKeyRef.current,
+      dataUpdatedAt: graphUpdatedAt,
+      now,
+    });
+    if (delay === null) return;
+    const timer = window.setTimeout(() => {
+      readStatusKeyRef.current = statusKey;
+      refreshGraph();
+    }, delay);
+    return () => window.clearTimeout(timer);
   }, [graphPending, graphUpdatedAt, refreshGraph, statusKey]);
   const showWorktree = status.data?.hasWorkingTreeChanges === true && headSha !== null;
 

@@ -81,6 +81,7 @@ import { previewBridge } from "./preview/previewBridge";
 import { PierreEntryIcon } from "./chat/PierreEntryIcon";
 import { resolvePullRequestState } from "./pullRequest/pullRequestPresentation";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
+import { useIsActiveChatPane } from "./split/chatPane";
 
 interface RightPanelTabsProps {
   mode: PreviewPanelMode;
@@ -513,7 +514,10 @@ function RightPanelEmptyState(props: {
   useEffect(() => {
     shortcutActionsRef.current = availableActions;
   });
+  // Fork: split panes each render a launcher; only the active one answers.
+  const isActivePane = useIsActiveChatPane();
   useEffect(() => {
+    if (!isActivePane) return;
     const handler = (event: KeyboardEvent) => {
       const action = surfaceShortcutActionForKey(shortcutActionsRef.current, event);
       if (!action) return;
@@ -526,7 +530,7 @@ function RightPanelEmptyState(props: {
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, []);
+  }, [isActivePane]);
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
