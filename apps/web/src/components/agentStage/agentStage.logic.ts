@@ -182,6 +182,7 @@ export function deriveStageModel(input: StageInput): StageModel {
         (turnStartedAt !== null && agent.updatedAt >= turnStartedAt)),
   );
   const toolsByAgent = collectAttributedTools(input.activities);
+  const progressByAgent = collectLatestProgress(input.activities);
   const liveSubagentCount = subagents.filter((agent) =>
     isActiveSubagentStatus(agent.status),
   ).length;
@@ -200,7 +201,13 @@ export function deriveStageModel(input: StageInput): StageModel {
     ...subagents
       .slice()
       .sort((a, b) => a.firstSeenAt.localeCompare(b.firstSeenAt) || a.id.localeCompare(b.id))
-      .map((agent) => deriveSubagent(agent, toolsByAgent.get(agent.id) ?? null)),
+      .map((agent) =>
+        deriveSubagent(
+          agent,
+          toolsByAgent.get(agent.id) ?? null,
+          progressByAgent.get(agent.id) ?? null,
+        ),
+      ),
   ];
   return {
     agents,
@@ -772,6 +779,37 @@ function collectAttributedTools(
   return result;
 }
 
+/** A subagent's latest progress row: the tool it just started, or a summary. */
+interface SubagentProgress {
+  readonly toolName: string | null;
+  readonly detail: string | null;
+  readonly at: string;
+}
+
+/**
+ * Claude's background subagents stream no tool rows, but announce each tool
+ * they start on task.progress ("Reading src/x.ts"), and every ~30s a summary
+ * in its place. The server keeps one such row per task, so the latest one is
+ * where the agent is now; usage-only ticks live in a row of their own.
+ */
+function collectLatestProgress(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): Map<string, SubagentProgress> {
+  const latest = new Map<string, SubagentProgress>();
+  for (const activity of activities) {
+    if (activity.kind !== "task.progress") continue;
+    const payload = asRecord(activity.payload);
+    const taskId = asString(payload?.taskId);
+    if (payload === null || taskId === null || payload.usageSnapshot === true) continue;
+    latest.set(taskId, {
+      toolName: asString(payload.lastToolName),
+      detail: asString(payload.summary) ?? asString(payload.detail),
+      at: activity.createdAt,
+    });
+  }
+  return latest;
+}
+
 function toolStatus(value: unknown, kind: string): AttributedTool["status"] {
   if (
     value === "inProgress" ||
@@ -788,7 +826,11 @@ function subagentLabel(agent: RuntimeSubagent): string {
   return agent.title && agent.title !== agent.id ? agent.title : (agent.role ?? "Subagent");
 }
 
-function deriveSubagent(agent: RuntimeSubagent, work: AttributedWork | null): StageAgent {
+function deriveSubagent(
+  agent: RuntimeSubagent,
+  work: AttributedWork | null,
+  progress: SubagentProgress | null,
+): StageAgent {
   const tool = work?.tool ?? null;
   const timing = work?.timing ?? null;
   const started = agent.startedAt ?? agent.firstSeenAt;
@@ -828,8 +870,19 @@ function deriveSubagent(agent: RuntimeSubagent, work: AttributedWork | null): St
         since: timing?.activeSince ?? started,
       };
     }
-    // Without a single tool row the stage cannot tell thinking from tool use
-    // (Claude's background subagents report nothing until they finish).
+    // No tool rows: the latest progress row names the tool it started, which
+    // is where it works until the next row says otherwise.
+    if (work === null && progress?.toolName) {
+      return {
+        ...base,
+        station: stationForToolName(progress.toolName),
+        live: true,
+        headline: progress.toolName,
+        detail: progress.detail,
+        since: progress.at,
+      };
+    }
+    // Without any tool signal the stage cannot tell thinking from tool use.
     const headline =
       work === null
         ? "Working"
@@ -842,7 +895,7 @@ function deriveSubagent(agent: RuntimeSubagent, work: AttributedWork | null): St
       live: true,
       headline,
       detail: agent.progress,
-      since: timing?.boundary ?? started,
+      since: timing?.boundary ?? progress?.at ?? started,
     };
   }
   if (agent.status === "waiting") {

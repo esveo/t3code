@@ -303,6 +303,54 @@ describe("background work after the turn", () => {
     );
   });
 
+  it("follows a subagent through the tools its progress rows announce", () => {
+    const started = activity({
+      kind: "task.started",
+      payload: { taskId: "task-1", taskType: "local_agent", title: "Audit" },
+    });
+    const progress = (payload: Record<string, unknown>) =>
+      activity({
+        kind: "task.progress",
+        createdAt: "2026-09-21T10:00:40.000Z",
+        payload: { taskId: "task-1", ...payload },
+      });
+    const reading = deriveStageModel({
+      activities: [
+        started,
+        progress({ lastToolName: "Read", detail: "Reading src/auth/login.ts" }),
+        activity({
+          kind: "task.progress",
+          payload: { taskId: "task-1", usageSnapshot: true, typedUsage: { totalTokens: 10 } },
+        }),
+      ],
+      messages: [],
+      session: session("ready"),
+      latestTurn: latestTurn("completed"),
+    });
+    expect(reading.agents[1]).toEqual(
+      expect.objectContaining({
+        station: "read",
+        headline: "Read",
+        detail: "Reading src/auth/login.ts",
+        since: "2026-09-21T10:00:40.000Z",
+      }),
+    );
+
+    const summarized = deriveStageModel({
+      activities: [started, progress({ summary: "Checking the login flow" })],
+      messages: [],
+      session: session("ready"),
+      latestTurn: latestTurn("completed"),
+    });
+    expect(summarized.agents[1]).toEqual(
+      expect.objectContaining({
+        station: "thinking",
+        headline: "Working",
+        detail: "Checking the login flow",
+      }),
+    );
+  });
+
   it("parks the main agent at monitoring while a watch loop runs", () => {
     const model = deriveStageModel({
       activities: [
