@@ -10,6 +10,22 @@
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <script data-fork="esveo-default-theme">
+      // Fork: esveo Midnight is the default theme. A client that never picked
+      // one gets it seeded here, before the theme boot below reads storage,
+      // following the system appearance like the stock default does.
+      try {
+        if (window.localStorage.getItem("t3code:theme") === null) {
+          window.localStorage.setItem("t3code:theme", "esveo-midnight");
+          if (
+            window.localStorage.getItem("t3code:theme-appearance-mode") === null &&
+            window.localStorage.getItem("t3code:theme-follow-system") === null
+          ) {
+            window.localStorage.setItem("t3code:theme-appearance-mode", "system");
+          }
+        }
+      } catch {}
+    </script>
     <script>
       (() => {
         const LIGHT_BACKGROUND = "#ffffff";

@@ -205,3 +205,6 @@ export const ESVEO_MIDNIGHT_THEME: ThemeDefinition = {
     },
   },
 };
+
+/** Fork-only: the esveo themes in the order theme pickers list them, ahead of T3 Code's own. */
+export const ESVEO_THEMES: ReadonlyArray<ThemeDefinition> = [ESVEO_MIDNIGHT_THEME, ESVEO_THEME];

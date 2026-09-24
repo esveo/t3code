@@ -1,7 +1,7 @@
 // Fork: the esveo themes live in their own file to keep upstream palette edits mergeable.
-import { ESVEO_MIDNIGHT_THEME, ESVEO_THEME } from "./esveoTheme.ts";
+import { ESVEO_MIDNIGHT_THEME, ESVEO_THEME, ESVEO_THEMES } from "./esveoTheme.ts";
 
-export { ESVEO_MIDNIGHT_THEME, ESVEO_THEME };
+export { ESVEO_MIDNIGHT_THEME, ESVEO_THEME, ESVEO_THEMES };
 
 export const BUILT_IN_THEME_IDS = [
   "t3-chat",
