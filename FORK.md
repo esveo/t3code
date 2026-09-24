@@ -1,13 +1,22 @@
-# Private fork
+# esveo's fork
 
-**This checkout is not the T3 Code project itself but Paul's private fork of
-`pingdotgg/t3code`.** It exists to add features Paul wants for himself (for
-example the agent stage in `apps/web/src/components/agentStage/`) on
-top of upstream, which is rebased in regularly. `AGENTS.md` is upstream's
-guide for its maintainers; follow it for code and architecture, but these
-rules win wherever they differ.
+**This checkout is not the T3 Code project itself but esveo's fork of
+`pingdotgg/t3code`, maintained by Paul.** It exists to add features Paul wants
+for himself (for example the agent stage in
+`apps/web/src/components/agentStage/`) on top of upstream, which is rebased in
+regularly. `AGENTS.md` is upstream's guide for its maintainers; follow it for
+code and architecture, but these rules win wherever they differ.
 
-- Remotes: `origin` = `github.com/esveo/t3code` (private), `upstream` =
+**Working in someone else's clone?** The repository is public, and the rules
+below about the `fork` branch, the board, the README, the prebuilt app and the
+background service describe the maintainer's own setup. They apply only when
+`origin` is `github.com/esveo/t3code` and the person you work for maintains it.
+In any other clone, never create issues, board items, pull requests or comments
+on `esveo/t3code` unless that person asks, and follow
+[docs/fork/setup.md](docs/fork/setup.md) to run the fork. The code rules
+(staying mergeable with upstream, scoped checks, Node 26) apply everywhere.
+
+- Remotes: `origin` = `github.com/esveo/t3code` (public), `upstream` =
   `github.com/pingdotgg/t3code` (read-only; pushing is disabled). `gh` defaults
   to the fork. Never open issues, PRs, discussions, or comments on `upstream`,
   and never push there.
@@ -15,8 +24,9 @@ rules win wherever they differ.
   changelogs, triage, PR evidence uploads, or CI babysitting. Commit on a
   feature branch; open a PR on the fork only when Paul asks.
 - The user runs the fork's desktop app from prebuilt slots in
-  `~/Documents/private/t3code-app` (see `scripts/fork-app.sh`) and switches
-  builds themselves.
+  `$T3CODE_FORK_APP_ROOT`, by default `~/Documents/private/t3code-app` (see
+  `scripts/fork-app.sh`), and switches builds themselves. Paths below that
+  start with `~/Documents/private/t3code-app` mean that root.
 - Setting all of this up from a fresh checkout — app, server, service launcher,
   cloud config, client pairing — is written down in
   [docs/fork/setup.md](docs/fork/setup.md). Keep it accurate when the setup
