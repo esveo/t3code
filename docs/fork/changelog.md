@@ -2,6 +2,7 @@
 
 Every feature and fix this fork adds on top of [T3 Code](https://github.com/pingdotgg/t3code), each with the commits that made it.
 
+- Thread tools for coordinators take a project's title, list the providers and models a thread can start with and check them, adopt or release an existing thread on request, and tell a child the user's language ([c291b9b](https://github.com/esveo/t3code/commit/c291b9b9453f14bff9f6479f1f4edd2779c52dac)).
 - The coordinator Inbox shows where a question comes from, explains a card on request, holds tasks to tick off beside decisions, and takes questions from child threads, and answers reach the coordinator with their question and context ([e361e24](https://github.com/esveo/t3code/commit/e361e24e78d69d7d9747eca2ef5f42d151b812d9)).
 - A coordinator hears about its children less often and more briefly: updates wait out a turn change, come bundled and short, and a child that only watches something counts as finished ([aed2218](https://github.com/esveo/t3code/commit/aed221898e20e8424bd03d372bbddf9bb9129321), [238aaa0](https://github.com/esveo/t3code/commit/238aaa0c4525cf23c643e743cdd2c790b07cc7f2), [8949fed](https://github.com/esveo/t3code/commit/8949fed6b6b893823096ce60c16b7c0c300dad51)).
 - Thread notification toasts are on by default ([369415c](https://github.com/esveo/t3code/commit/369415cfcf67d18beafe72cca3a02afca6f8edda)).
