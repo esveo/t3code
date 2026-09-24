@@ -592,6 +592,12 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     toggleMode,
   ]);
 
+  // Fork: a project pick someone asked for lasts one palette session. Actions
+  // close the palette without onOpenChange, so this follows the state itself.
+  useEffect(() => {
+    if (!state.open) clearPendingProjectPick();
+  }, [state.open]);
+
   useEffect(
     () =>
       onOpenCommandPalette((detail) => {
@@ -622,7 +628,6 @@ export function CommandPalette({ children }: { children: ReactNode }) {
             toggleMode("command");
             return;
           }
-          if (!open) clearPendingProjectPick();
           setOpen(open);
         }}
       >
