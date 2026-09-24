@@ -53,3 +53,4 @@ Every feature and fix this fork adds on top of [T3 Code](https://github.com/ping
 - Fix: fork builds send no usage data to upstream's PostHog, and agents in other clones leave the esveo board alone ([cbad604](https://github.com/esveo/t3code/commit/cbad6041f3aac48b962c15f68453c9c8ef3f0a32), [b6bda9c](https://github.com/esveo/t3code/commit/b6bda9cfa046d6382a7d03c6cea8e1a65dbb2781))
 - Fix: an artifact's live watch shows as monitoring instead of an agent at work ([2d039d2](https://github.com/esveo/t3code/commit/2d039d22c375e91a01ac9d5d0bad13d327050438))
 - Public README with a tour of the main features in screenshots and GIFs; this list moved here from it ([cb787b8](https://github.com/esveo/t3code/commit/cb787b864e873676ce884beaa2bdb1c02ae447b0))
+- FORK.md describes the fork as esveo's, open to everyone at esveo ([0a973e6](https://github.com/esveo/t3code/commit/0a973e67aaadca6c1ce1ab2688d65d09327bd620))
