@@ -289,9 +289,9 @@ export interface DesktopUpdateState {
   message: string | null;
   errorContext: "check" | "download" | "install" | null;
   canRetry: boolean;
-  /** Private fork: the t3 service's own update, present only in fork builds. */
+  /** Fork: the t3 service's own update, present only in fork builds. */
   forkService?: DesktopForkServiceState | undefined;
-  /** Private fork: the newest prepared build of each branch, waiting to be switched to. */
+  /** Fork: the newest prepared build of each branch, waiting to be switched to. */
   forkBuilds?: ReadonlyArray<DesktopForkBuild> | undefined;
 }
 
@@ -1302,7 +1302,7 @@ export interface DesktopBridge {
   checkForUpdate: () => Promise<DesktopUpdateCheckResult>;
   downloadUpdate: () => Promise<DesktopUpdateActionResult>;
   installUpdate: () => Promise<DesktopUpdateActionResult>;
-  /** Private fork: installs or deletes one branch's prepared build. */
+  /** Fork: installs or deletes one branch's prepared build. */
   forkBuildAction?: (action: DesktopForkBuildAction) => Promise<DesktopUpdateActionResult>;
   onUpdateState: (listener: (state: DesktopUpdateState) => void) => () => void;
   /** Present when the desktop shell accepts `t3 app` activation requests. */

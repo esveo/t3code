@@ -1,4 +1,4 @@
-// Private fork: install or delete one branch's prepared build. See
+// Fork: install or delete one branch's prepared build. See
 // ../../updates/ForkAppUpdates.ts.
 import { DesktopForkBuildActionSchema, DesktopUpdateActionResultSchema } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";

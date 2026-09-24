@@ -1,4 +1,4 @@
-// Private fork: the sidebar's update button as a drop-up that lists every
+// Fork: the sidebar's update button as a drop-up that lists every
 // branch's waiting build, each with its own update and delete.
 import type { DesktopForkBuild, DesktopUpdateState } from "@t3tools/contracts";
 import { RefreshCwIcon, Trash2Icon } from "lucide-react";
