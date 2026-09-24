@@ -33,9 +33,11 @@ vi.mock("@effect/atom-react", () => ({
   useAtomValue: () => ({
     status: state.live ? "live" : "disconnected",
     snapshot: Option.some({
+      projects: [{ id: "project-1", title: "Webshop", workspaceRoot: "/src/webshop" }],
       threads: [
         {
           id: "thread-1",
+          projectId: "project-1",
           title: "Fix the login form",
           archivedAt: state.archivedAt,
           hasPendingUserInput: state.input,
@@ -136,8 +138,8 @@ describe("thread notifications", () => {
     await render();
     expect(state.add).toHaveBeenCalledTimes(1);
     const toast = state.add.mock.calls[0]?.[0];
-    expect(toast?.title).toBe("Thread completed");
-    expect(toast?.description).toBe("Fix the login form");
+    expect(toast?.title).toBe("Fix the login form");
+    expect(toast?.description).toBe("Thread completed · Webshop");
     toast?.actionProps.onClick();
     expect(state.close).toHaveBeenCalledWith("toast-1");
     expect(state.navigate).toHaveBeenCalledWith({
@@ -173,7 +175,9 @@ describe("thread notifications", () => {
     await render();
     await render();
     expect(state.add).toHaveBeenCalledTimes(1);
-    expect(state.add).toHaveBeenLastCalledWith(expect.objectContaining({ title }));
+    expect(state.add).toHaveBeenLastCalledWith(
+      expect.objectContaining({ description: `${title} · Webshop` }),
+    );
     expect(state.sound).toHaveBeenCalledWith("input", expect.any(Function));
     expect(state.notification).not.toHaveBeenCalled();
 
