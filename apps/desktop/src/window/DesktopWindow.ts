@@ -523,7 +523,11 @@ export const make = Effect.gen(function* () {
     flushMainWindowBounds = flushBoundsPersist;
 
     yield* previewManager.setMainWindow(window);
-    window.webContents.on("will-attach-webview", (event, webPreferences, params) => {
+    const guardWebviewAttach = (
+      event: Electron.Event,
+      webPreferences: Electron.WebPreferences,
+      params: Record<string, string>,
+    ) => {
       if (
         typeof params.partition !== "string" ||
         !previewManager.isBrowserPartition(params.partition)
@@ -535,7 +539,8 @@ export const make = Effect.gen(function* () {
       webPreferences.nodeIntegration = false;
       webPreferences.nodeIntegrationInSubFrames = false;
       webPreferences.contextIsolation = false;
-    });
+    };
+    window.webContents.on("will-attach-webview", guardWebviewAttach);
 
     const contextMenuContents = new WeakSet<Electron.WebContents>();
     const installContextMenu = (
@@ -614,6 +619,7 @@ export const make = Effect.gen(function* () {
         // window's guards: no foreign page may load into it or open from it.
         popup.webContents.setWindowOpenHandler(handleWindowOpen);
         popup.webContents.on("will-navigate", guardNavigation);
+        popup.webContents.on("will-attach-webview", guardWebviewAttach);
       });
     };
     installContextMenu(window, window.webContents);
