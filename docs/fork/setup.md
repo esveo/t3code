@@ -104,6 +104,10 @@ checkout's server version plus a branch-and-commit prerelease tag, for example
 since the branch's last one built (or, before that, since the one the service
 runs), it builds nothing and records that version for the branch.
 
+Unlike upstream's release, the fork server sends no product usage data: its
+telemetry is off unless `T3CODE_TELEMETRY_ENABLED=true` is set, and even then it
+reports to upstream's PostHog project, so leave it off.
+
 It deliberately does not switch or restart anything: that is
 `scripts/fork-app.sh restart-service <version>`, which the app's update menu
 runs once the service is set up.

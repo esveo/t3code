@@ -169,7 +169,7 @@ Full glossary with file links: `docs/internals/glossary.md`
 - Don't verify with browsers or computer use unless the user explicitly agrees or requests it.
 - Security is important, but should not be over-indexed on, especially for dev mode/maintainer-only features.
 
-## Private fork
+## Fork
 
-This checkout is Paul's private fork of `pingdotgg/t3code`, not upstream. Read
+This checkout is esveo's fork of `pingdotgg/t3code`, not upstream. Read
 `FORK.md` before working; its rules override this file.
