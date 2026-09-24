@@ -5083,6 +5083,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...(existingResumeSessionId ? { resume: existingResumeSessionId } : {}),
         ...(newSessionId ? { sessionId: newSessionId } : {}),
         includePartialMessages: true,
+        // fork: background subagents stream no tool rows; the ~30s summaries
+        // on task_progress are the only live line the agent stage can show.
+        agentProgressSummaries: true,
         canUseTool,
         onUserDialog,
         supportedDialogKinds: ["resume_return"],
