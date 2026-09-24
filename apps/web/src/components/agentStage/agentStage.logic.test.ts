@@ -247,6 +247,42 @@ describe("deriveStageModel", () => {
       ["idle", false, "Done"],
     ]);
   });
+
+  it("keeps background subagents working after the turn, until the session dies", () => {
+    const activities = [
+      activity({
+        kind: "task.started",
+        payload: { taskId: "task-1", taskType: "local_agent", title: "Audit" },
+      }),
+      activity({
+        kind: "tool.started",
+        payload: { title: "Bash", agentId: "task-1", toolCallId: "call-1" },
+      }),
+    ];
+    const afterTurn = deriveStageModel({
+      activities,
+      messages: [message("assistant", "Started it.", false)],
+      session: session("ready"),
+      latestTurn: latestTurn("completed"),
+    });
+    expect(afterTurn.running).toBe(true);
+    expect(afterTurn.agents.map((agent) => [agent.station, agent.live, agent.headline])).toEqual([
+      ["delegate", true, "Waiting for 1 subagent"],
+      ["command", true, "Bash"],
+    ]);
+
+    const dead = deriveStageModel({
+      activities,
+      messages: [],
+      session: session("stopped"),
+      latestTurn: latestTurn("completed"),
+    });
+    expect(dead.running).toBe(false);
+    expect(dead.agents.map((agent) => [agent.station, agent.live])).toEqual([
+      ["idle", false],
+      ["idle", false],
+    ]);
+  });
 });
 
 const at = (seconds: string) => `2026-09-21T10:0${seconds}.000Z`;

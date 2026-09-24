@@ -164,7 +164,10 @@ export function deriveStageModel(input: StageInput): StageModel {
     : (input.latestTurn?.turnId ?? null);
   const turnStartedAt = input.latestTurn?.startedAt ?? null;
 
-  const subagents = foldSubagentActivities(input.activities, { sessionLive: running }).filter(
+  // Background subagents outlive the turn that started them, so only a dead
+  // session orphans them; the chat's agent panel draws the same line.
+  const sessionLive = stageSessionLive(input.session);
+  const subagents = foldSubagentActivities(input.activities, { sessionLive }).filter(
     (agent) =>
       agent.kind !== "workflow" &&
       (isActiveSubagentStatus(agent.status) ||
@@ -191,7 +194,20 @@ export function deriveStageModel(input: StageInput): StageModel {
       .sort((a, b) => a.firstSeenAt.localeCompare(b.firstSeenAt) || a.id.localeCompare(b.id))
       .map((agent) => deriveSubagent(agent, toolsByAgent.get(agent.id) ?? null)),
   ];
-  return { agents, running, attention: deriveAttention(pending, subagents) };
+  return {
+    agents,
+    running: running || liveSubagentCount > 0,
+    attention: deriveAttention(pending, subagents),
+  };
+}
+
+function stageSessionLive(session: OrchestrationSession | null): boolean {
+  return (
+    session !== null &&
+    session.status !== "stopped" &&
+    session.status !== "interrupted" &&
+    session.status !== "error"
+  );
 }
 
 const APPROVAL_TITLES: Record<string, string> = {
@@ -375,6 +391,18 @@ function deriveMainAgent(
       headline: "Thinking",
       detail: streaming?.role === "reasoning" ? tailSnippet(streaming.text) : null,
       since: restingAt,
+    };
+  }
+
+  // The turn is over, but subagents it sent to the background still work.
+  if (liveSubagentCount > 0) {
+    return {
+      ...base,
+      station: "delegate",
+      live: true,
+      headline: `Waiting for ${liveSubagentCount} ${liveSubagentCount === 1 ? "subagent" : "subagents"}`,
+      detail: null,
+      since: input.latestTurn?.completedAt ?? null,
     };
   }
 
