@@ -8,8 +8,10 @@ import {
   Coffee,
   Eye,
   EyeOff,
+  Gauge,
   Globe,
   Hand,
+  MessageCircleQuestionMark,
   MessageSquare,
   MessagesSquare,
   PencilLine,
@@ -45,6 +47,7 @@ import {
   STAGE_STATIONS,
   type StageAgent,
   type StageAttention,
+  type StageFinding,
   type StageModel,
   type StageStation,
 } from "./agentStage.logic";
@@ -329,6 +332,7 @@ export const AgentStage = memo(function AgentStage({
 
   const drawn = useDrawnStations(model.agents);
   const needsUser = new Set(model.attention.map((item) => item.agentId));
+  const flagged = new Set(model.findings.map((finding) => finding.agentId));
   const half = side / 2;
   const ring = Math.max(half - LABEL_MARGIN, 0);
   // Up to the orbits' inner edge, never below what a narrow panel can spare.
@@ -449,7 +453,14 @@ export const AgentStage = memo(function AgentStage({
                               {agent.initials}
                             </span>
                           ) : null}
-                          {agent.alerts.length > 0 ? (
+                          {flagged.has(agent.id) ? (
+                            <span
+                              aria-hidden
+                              className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full border border-background bg-warning text-[10px] leading-none font-bold text-background"
+                            >
+                              !
+                            </span>
+                          ) : agent.alerts.length > 0 ? (
                             <span
                               aria-hidden
                               className="absolute -top-0.5 -right-0.5 size-2.5 rounded-full border border-background bg-warning"
@@ -465,6 +476,10 @@ export const AgentStage = memo(function AgentStage({
           </div>
         ) : null}
       </div>
+
+      {model.findings.length > 0 ? (
+        <StageFindings findings={model.findings} agents={model.agents} onSelect={onSelect} />
+      ) : null}
 
       <div className="flex h-9 shrink-0 items-center gap-1.5 overflow-x-auto px-3 pb-2 [scrollbar-width:none]">
         {model.agents.map((agent, index) => (
@@ -798,6 +813,70 @@ function StageAttentionBar({
   );
 }
 
+const FINDING_ICONS: Record<StageFinding["kind"], LucideIcon> = {
+  risky: TriangleAlert,
+  question: MessageCircleQuestionMark,
+  context: Gauge,
+};
+
+/**
+ * Where the user may want to step in, newest first, under the ring. Quieter
+ * than the requests bar above it: nothing waits on these, so they only point
+ * at the agent they are about.
+ */
+function StageFindings({
+  findings,
+  agents,
+  onSelect,
+}: {
+  findings: ReadonlyArray<StageFinding>;
+  agents: ReadonlyArray<StageAgent>;
+  onSelect: (agentId: string) => void;
+}) {
+  const labels = new Map(agents.map((agent) => [agent.id, agent.label] as const));
+  return (
+    <ul className="flex max-h-32 shrink-0 flex-col overflow-y-auto border-t border-border px-1.5 py-1">
+      {findings.map((finding) => {
+        const Icon = FINDING_ICONS[finding.kind];
+        return (
+          <li key={finding.id}>
+            <button
+              type="button"
+              onClick={() => onSelect(finding.agentId)}
+              className="flex w-full min-w-0 items-start gap-1.5 rounded-md px-1.5 py-1 text-left hover:bg-accent"
+            >
+              <Icon
+                className={cn(
+                  "mt-px size-3.5 shrink-0",
+                  finding.kind === "risky" ? "text-warning" : "text-muted-foreground",
+                )}
+              />
+              <span className="flex min-w-0 flex-1 flex-col">
+                <span className="flex min-w-0 items-baseline gap-1.5 text-xs">
+                  <span className="truncate font-medium">{finding.title}</span>
+                  <span className="shrink-0 truncate text-[10px] text-muted-foreground">
+                    {labels.get(finding.agentId) ?? ""}
+                  </span>
+                </span>
+                {finding.detail ? (
+                  <span
+                    className={cn(
+                      "truncate text-[11px] text-muted-foreground",
+                      finding.kind === "risky" && "font-mono",
+                    )}
+                  >
+                    {finding.detail}
+                  </span>
+                ) : null}
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 /**
  * How long the agent has stood where it stands. Past what its station makes
  * sense for, it turns into the one thing the stage can say that the timeline
@@ -869,13 +948,6 @@ function SelectedAgentCard({
   const Icon = STATION_ICONS[agent.station];
   const monospace =
     agent.station === "command" || agent.station === "edit" || agent.station === "read";
-  // The same step can repeat (two reads of one file), so keys count occurrences.
-  const seen = new Map<string, number>();
-  const recent = agent.recent.map((line) => {
-    const occurrence = (seen.get(line) ?? 0) + 1;
-    seen.set(line, occurrence);
-    return { key: `${line}#${occurrence}`, line };
-  });
   return (
     <div
       className="absolute top-1/2 left-1/2 z-[1] flex -translate-x-1/2 -translate-y-1/2 flex-col gap-1.5 overflow-hidden rounded-xl border border-border bg-card p-2.5 text-card-foreground shadow-sm"
@@ -925,15 +997,6 @@ function SelectedAgentCard({
           <span className="truncate">{alert.text}</span>
         </div>
       ))}
-      {recent.length > 0 ? (
-        <ol className="flex flex-col gap-0.5 border-t border-border pt-1.5 text-[10px] text-muted-foreground">
-          {recent.map((entry) => (
-            <li key={entry.key} className="truncate">
-              {entry.line}
-            </li>
-          ))}
-        </ol>
-      ) : null}
       {open !== null ? (
         <Button size="xs" variant="outline" className="self-start" onClick={open.onOpen}>
           {open.label}

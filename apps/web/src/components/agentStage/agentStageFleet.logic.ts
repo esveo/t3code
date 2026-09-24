@@ -4,6 +4,7 @@ import {
   stageInitials,
   type StageAgent,
   type StageAttention,
+  type StageFinding,
   type StageModel,
   type StageProject,
 } from "./agentStage.logic";
@@ -55,6 +56,8 @@ export function shellHasLiveWork(shell: FleetThreadShell): boolean {
 export function deriveFleetStageModel(input: FleetInput): StageModel {
   const agents: StageAgent[] = [];
   const attention: StageAttention[] = [];
+  // Only the open thread's activities are loaded, so only it has findings.
+  const findings: StageFinding[] = [];
   const loaded = input.loaded;
   if (loaded !== null) {
     const thread = input.threads.find((candidate) => candidate.key === loaded.key);
@@ -72,6 +75,9 @@ export function deriveFleetStageModel(input: FleetInput): StageModel {
       // Its requests keep the request behind them, so they stay answerable.
       for (const item of loaded.model.attention) {
         attention.push({ ...item, agentId: loaded.key });
+      }
+      for (const finding of loaded.model.findings) {
+        findings.push({ ...finding, agentId: loaded.key });
       }
     }
   }
@@ -96,6 +102,7 @@ export function deriveFleetStageModel(input: FleetInput): StageModel {
     agents,
     running: agents.some((agent) => agent.live),
     attention: attention.sort((left, right) => left.since.localeCompare(right.since)),
+    findings,
   };
 }
 
@@ -108,7 +115,6 @@ function deriveShellAgent(thread: FleetThread): StageAgent {
     role: thread.project?.title ?? null,
     project: thread.project,
     initials: stageInitials(shell.title),
-    recent: [],
     thought: null,
     stationTimes: [],
     steps: 0,
