@@ -14,6 +14,7 @@ import {
 import { cn } from "../lib/cn";
 import { AppText as Text } from "./AppText";
 import { SymbolView } from "./AppSymbol";
+import { EsveoActionFill } from "../features/esveoBrand/EsveoMidnight";
 
 const COMPOSER_TOOLBAR_GAP = 8;
 const COMPOSER_TOOLBAR_FADE_WIDTH = 18;
@@ -243,6 +244,7 @@ export function ComposerActionButton(props: {
               : "bg-primary",
         )}
       >
+        <EsveoActionFill active={props.variant !== "danger" && !props.disabled} />
         <SymbolView
           name={props.icon}
           size={16}

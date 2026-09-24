@@ -90,6 +90,8 @@ import { flattenThemeColor } from "../../lib/mobileTheme";
 import { PresentationSource } from "../../components/NativePresentation";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Animated, { FadeIn, type SharedValue } from "react-native-reanimated";
+// Fork: esveo Midnight's tile and live ring on the user's bubbles.
+import { EsveoUserBubbleBackdrop, useEsveoLiveUserMessage } from "../esveoBrand/EsveoMidnight";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { IOS_NAV_BAR_HEIGHT } from "../../lib/layoutMetrics";
 import { useFontFamily } from "../../lib/useFontFamily";
@@ -1566,6 +1568,7 @@ function renderFeedEntry(
                   : null),
             }}
           >
+            <EsveoUserBubbleBackdrop messageId={message.id} />
             {entry.pendingMessage?.attachments.map((attachment) =>
               attachment.type === "image" && attachment.uploadedAttachmentId ? (
                 <MessageAttachmentImage
@@ -2282,6 +2285,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   // One definition of "still live", shared with the fold derivation: two
   // copies of this test are what let a row and the fold beside it disagree.
   const unsettledTurnId = deriveUnsettledTurnId(props.latestTurn ?? null);
+  useEsveoLiveUserMessage(props.feed, props.activeWorkStartedAt !== null);
   // LegendList does not invalidate visible rows when only the renderItem closure changes.
   // Include turn completion so unchanged message rows reveal their footer and spacing
   // even when the final message update arrives before the turn settles.
