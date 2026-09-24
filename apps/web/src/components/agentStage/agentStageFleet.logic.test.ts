@@ -70,6 +70,16 @@ const running = (key: string, extra: Partial<FleetThreadShell> = {}) =>
 
 const loadedModel: StageModel = {
   running: true,
+  findings: [
+    {
+      id: "risky:main:call-1",
+      kind: "risky",
+      agentId: "main",
+      title: "Force push",
+      detail: "git push -f",
+      since: "2026-09-21T10:00:20.000Z",
+    },
+  ],
   attention: [
     {
       id: "question:q-1",
@@ -164,6 +174,16 @@ describe("deriveFleetStageModel", () => {
     expect(model.agents.map((agent) => [agent.id, agent.station, agent.headline])).toEqual([
       ["a", "monitoring", "Monitoring"],
       ["bb", "delegate", "Background work"],
+    ]);
+  });
+
+  it("keeps the open thread's findings on its sprite", () => {
+    const model = deriveFleetStageModel({
+      threads: [running("a")],
+      loaded: { key: "a", model: loadedModel },
+    });
+    expect(model.findings.map((finding) => [finding.agentId, finding.title])).toEqual([
+      ["a", "Force push"],
     ]);
   });
 

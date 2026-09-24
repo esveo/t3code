@@ -24,6 +24,14 @@ import type {
 
 import { liveWorkEntryLabel } from "../chat/MessagesTimeline.logic";
 import { deriveWorkLogEntries, type WorkLogEntry } from "../../session-logic";
+import {
+  contextFinding,
+  riskyCommandTitle,
+  trailingQuestion,
+  type StageFinding,
+} from "./agentStageFindings.logic";
+
+export type { StageFinding } from "./agentStageFindings.logic";
 
 /**
  * The stage reduces a thread to one question per agent: where is it right
@@ -141,6 +149,8 @@ export interface StageModel {
   readonly running: boolean;
   /** Open requests, oldest first: what the user has to answer for work to go on. */
   readonly attention: ReadonlyArray<StageAttention>;
+  /** Where the user may want to step in, newest first; nothing waits on these. */
+  readonly findings: ReadonlyArray<StageFinding>;
 }
 
 export interface StageInput {
@@ -185,6 +195,10 @@ export function deriveStageModel(input: StageInput): StageModel {
   ).length;
 
   const pending = derivePendingRequests(input.activities);
+  const entries =
+    turnId === null
+      ? []
+      : deriveWorkLogEntries(input.activities).filter((entry) => entry.turnId === turnId);
 
   const main = deriveMainAgent(input, {
     running,
@@ -192,6 +206,7 @@ export function deriveStageModel(input: StageInput): StageModel {
     turnStartedAt,
     liveSubagentCount,
     pending,
+    entries,
   });
   const agents = [
     main,
@@ -210,7 +225,101 @@ export function deriveStageModel(input: StageInput): StageModel {
     agents,
     running: agents.some((agent) => agent.live),
     attention: deriveAttention(pending, subagents),
+    findings: deriveFindings(input, {
+      running,
+      turnId,
+      entries,
+      pending,
+      subagentIds: agents.slice(1).map((agent) => agent.id),
+      toolsByAgent,
+      progressByAgent,
+    }),
   };
+}
+
+/** How many risky commands one agent lists before the oldest drop off. */
+const RISKY_PER_AGENT = 3;
+
+function deriveFindings(
+  input: StageInput,
+  context: {
+    running: boolean;
+    turnId: string | null;
+    entries: ReadonlyArray<WorkLogEntry>;
+    pending: { userInputs: ReadonlyArray<PendingUserInput> };
+    subagentIds: ReadonlyArray<string>;
+    toolsByAgent: ReadonlyMap<string, AttributedWork>;
+    progressByAgent: ReadonlyMap<string, SubagentProgress>;
+  },
+): ReadonlyArray<StageFinding> {
+  const findings: StageFinding[] = [];
+  const risky = (agentId: string, key: string, command: string, at: string) => {
+    const title = riskyCommandTitle(command);
+    if (title === null) return null;
+    return {
+      id: `risky:${agentId}:${key}`,
+      kind: "risky" as const,
+      agentId,
+      title,
+      detail: command,
+      since: at,
+    };
+  };
+
+  const mainRisky = context.entries.flatMap((entry) => {
+    const finding = entry.command
+      ? risky(MAIN_AGENT_ID, entry.id, entry.command, entry.createdAt)
+      : null;
+    return finding === null ? [] : [finding];
+  });
+  findings.push(...mainRisky.slice(-RISKY_PER_AGENT));
+
+  for (const agentId of context.subagentIds) {
+    const calls = context.toolsByAgent.get(agentId)?.commands ?? [];
+    const found = calls.flatMap((call) => {
+      const finding = risky(agentId, call.key, call.command, call.at);
+      return finding === null ? [] : [finding];
+    });
+    const progress = context.progressByAgent.get(agentId);
+    const announced =
+      progress?.toolName && progress.detail
+        ? risky(
+            agentId,
+            `progress:${progress.at}`,
+            progress.detail.replace(/^running\s+/i, ""),
+            progress.at,
+          )
+        : null;
+    if (announced !== null) found.push(announced);
+    findings.push(...found.slice(-RISKY_PER_AGENT));
+  }
+
+  if (
+    !context.running &&
+    input.latestTurn?.state === "completed" &&
+    context.pending.userInputs.length === 0
+  ) {
+    const answer = input.messages.findLast(
+      (message) =>
+        message.turnId === context.turnId && message.role === "assistant" && !message.streaming,
+    );
+    const question = answer === undefined ? null : trailingQuestion(answer.text);
+    if (answer !== undefined && question !== null) {
+      findings.push({
+        id: `question:${answer.id}`,
+        kind: "question",
+        agentId: MAIN_AGENT_ID,
+        title: "The answer ends with a question",
+        detail: question,
+        since: answer.updatedAt,
+      });
+    }
+  }
+
+  const contextFull = contextFinding(input.activities, MAIN_AGENT_ID);
+  if (contextFull !== null) findings.push(contextFull);
+
+  return findings.sort((left, right) => right.since.localeCompare(left.since));
 }
 
 function stageSessionLive(session: OrchestrationSession | null): boolean {
@@ -286,13 +395,11 @@ function deriveMainAgent(
       approvals: ReadonlyArray<PendingApproval>;
       userInputs: ReadonlyArray<PendingUserInput>;
     };
+    /** The turn's work-log rows. */
+    entries: ReadonlyArray<WorkLogEntry>;
   },
 ): StageAgent {
-  const { running, turnId, turnStartedAt, liveSubagentCount, pending } = context;
-  const entries =
-    turnId === null
-      ? []
-      : deriveWorkLogEntries(input.activities).filter((entry) => entry.turnId === turnId);
+  const { running, turnId, turnStartedAt, liveSubagentCount, pending, entries } = context;
   const steps = entries.filter(
     (entry) => entry.agentSpawn !== undefined || workLogEntryIsToolLike(entry),
   );
@@ -706,6 +813,12 @@ interface AttributedWork {
   readonly timing: StationTiming;
   /** Every finished call, oldest first: the alerts read the tail, the recap counts all. */
   readonly steps: ReadonlyArray<StageStep>;
+  /** Shell commands it ran, oldest first, one per call: what the findings screen. */
+  readonly commands: ReadonlyArray<{
+    readonly key: string;
+    readonly command: string;
+    readonly at: string;
+  }>;
 }
 
 /**
@@ -725,6 +838,7 @@ function collectAttributedTools(
       boundary: string | null;
       activeSince: string | null;
       steps: Array<StageStep & { toolCallId: string | null }>;
+      commands: Map<string, { key: string; command: string; at: string }>;
     }
   >();
   for (const activity of activities) {
@@ -755,6 +869,16 @@ function collectAttributedTools(
     };
     const times = previous?.times ?? new Map<StageStation, number>();
     const steps = previous?.steps ?? [];
+    const commands =
+      previous?.commands ?? new Map<string, { key: string; command: string; at: string }>();
+    if (tool.command !== null) {
+      const key = toolCallId ?? activity.id;
+      commands.set(key, {
+        key,
+        command: tool.command,
+        at: commands.get(key)?.at ?? activity.createdAt,
+      });
+    }
     let boundary = previous?.boundary ?? null;
     let activeSince = previous?.activeSince ?? null;
     if (status !== "inProgress") {
@@ -791,7 +915,7 @@ function collectAttributedTools(
       boundary = activity.createdAt;
       activeSince = null;
     }
-    latest.set(agentId, { toolCallId, tool, times, boundary, activeSince, steps });
+    latest.set(agentId, { toolCallId, tool, times, boundary, activeSince, steps, commands });
   }
   const result = new Map<string, AttributedWork>();
   for (const [agentId, entry] of latest) {
@@ -799,6 +923,7 @@ function collectAttributedTools(
       tool: entry.tool,
       timing: { times: entry.times, boundary: entry.boundary, activeSince: entry.activeSince },
       steps: entry.steps.map(({ label, failed }) => ({ label, failed })),
+      commands: [...entry.commands.values()],
     });
   }
   return result;

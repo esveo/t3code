@@ -904,3 +904,58 @@ describe("isSearchCommand", () => {
     expect(stationForToolName("Bash", undefined, "npm test")).toBe("command");
   });
 });
+
+describe("stage findings", () => {
+  it("flags a risky command in the turn and a question the answer ends on", () => {
+    const model = deriveStageModel({
+      activities: [
+        activity({
+          kind: "tool.completed",
+          createdAt: "2026-09-21T10:00:20.000Z",
+          payload: {
+            itemType: "command_execution",
+            status: "completed",
+            toolCallId: "call-1",
+            title: "Run command",
+            data: { command: "git push --force origin main" },
+          },
+        }),
+      ],
+      messages: [message("assistant", "Pushed.\n\nShould I open a PR?", false)],
+      session: session("ready"),
+      latestTurn: latestTurn("completed"),
+    });
+    expect(model.findings.map((finding) => [finding.kind, finding.agentId, finding.title])).toEqual(
+      [
+        ["risky", MAIN_AGENT_ID, "Force push"],
+        ["question", MAIN_AGENT_ID, "The answer ends with a question"],
+      ],
+    );
+  });
+
+  it("flags a subagent announcing a risky command, and no question while running", () => {
+    const model = deriveStageModel({
+      activities: [
+        activity({
+          kind: "task.started",
+          payload: { taskId: "task-1", taskType: "local_agent", title: "Cleanup" },
+        }),
+        activity({
+          kind: "task.progress",
+          payload: { taskId: "task-1", lastToolName: "Bash", detail: "Running rm -rf dist" },
+        }),
+      ],
+      messages: [message("assistant", "Anything else?", true)],
+      session: session("running"),
+      latestTurn: latestTurn("running"),
+    });
+    expect(model.findings).toEqual([
+      expect.objectContaining({
+        kind: "risky",
+        agentId: "task-1",
+        title: "Deletes files recursively",
+        detail: "rm -rf dist",
+      }),
+    ]);
+  });
+});
