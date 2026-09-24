@@ -118,6 +118,7 @@ import {
 import { type ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
 import { spawnAndCollect } from "../providerSnapshot.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
+import { claudeTaskType } from "./claudeWatchTaskType.ts";
 const encodeUnknownJsonStringExit = Schema.encodeUnknownExit(Schema.fromJsonString(Schema.Unknown));
 const decodeUnknownJsonStringExit = Schema.decodeUnknownExit(Schema.fromJsonString(Schema.Unknown));
 const encodeHistoryArgs = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -3840,10 +3841,11 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             )
           : undefined;
         const owningAgentId = launchingTool?.agentId;
+        const taskType = claudeTaskType(message.task_type, launchingTool?.toolName);
         if (
           context.turnState &&
           classifyTaskAgentKind({
-            taskType: message.task_type,
+            taskType,
             ...(owningAgentId ? { agentId: owningAgentId } : {}),
           }) === "agent"
         ) {
@@ -3878,7 +3880,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           toolUseId: message.tool_use_id,
           description: message.description,
           subagentType: message.subagent_type,
-          taskType: message.task_type,
+          taskType,
           workflowName: message.workflow_name,
           skipTranscript: message.skip_transcript === true,
           runHandles: context.taskAgents.get(message.task_id)?.runHandles,
@@ -3893,7 +3895,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           payload: {
             taskId: RuntimeTaskId.make(message.task_id),
             description: message.description,
-            ...(message.task_type ? { taskType: message.task_type } : {}),
+            ...(taskType ? { taskType } : {}),
             ...(owningAgentId ? { agentId: owningAgentId } : {}),
             ...(message.description ? { title: message.description } : {}),
             ...(message.subagent_type ? { role: message.subagent_type } : {}),
