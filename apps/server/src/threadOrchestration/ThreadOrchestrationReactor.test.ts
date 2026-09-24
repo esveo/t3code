@@ -31,23 +31,31 @@ const settled = shell({
 describe("childUpdateFor", () => {
   it("stays quiet while the child works", () => {
     expect(
-      childUpdateFor({ child: running, latestAnswerId: "m1", requestActivityId: undefined }),
+      childUpdateFor({
+        child: running,
+        latestPromptId: null,
+        latestAnswerId: "m1",
+        requestActivityId: undefined,
+      }),
     ).toBe(null);
   });
 
   it("keys a finished child by its latest answer, so one finish is reported once", () => {
     const first = childUpdateFor({
       child: settled,
+      latestPromptId: null,
       latestAnswerId: "m1",
       requestActivityId: undefined,
     });
     const again = childUpdateFor({
       child: settled,
+      latestPromptId: null,
       latestAnswerId: "m1",
       requestActivityId: undefined,
     });
     const next = childUpdateFor({
       child: settled,
+      latestPromptId: null,
       latestAnswerId: "m2",
       requestActivityId: undefined,
     });
@@ -58,7 +66,7 @@ describe("childUpdateFor", () => {
 
   it("reports a child once, after its background tasks and the turn they wake", () => {
     const update = (child: OrchestrationThreadShell, latestAnswerId: string) =>
-      childUpdateFor({ child, latestAnswerId, requestActivityId: undefined });
+      childUpdateFor({ child, latestPromptId: null, latestAnswerId, requestActivityId: undefined });
     // The turn ends with an interim answer while eight subagents run on.
     const turnEndedWithSubagents = shell({ ...settled, backgroundLiveness: "working" });
     expect(update(turnEndedWithSubagents, "interim")).toBe(null);
@@ -74,14 +82,24 @@ describe("childUpdateFor", () => {
   it("reports a blocked child once per request it waits on", () => {
     const waiting = shell({ ...running, hasPendingUserInput: true });
     expect(
-      childUpdateFor({ child: waiting, latestAnswerId: null, requestActivityId: "a1" }),
+      childUpdateFor({
+        child: waiting,
+        latestPromptId: null,
+        latestAnswerId: null,
+        requestActivityId: "a1",
+      }),
     ).toEqual({
       key: "waiting:a1",
       state: "waiting",
     });
     // A session write while it waits is not a new request.
     expect(
-      childUpdateFor({ child: waiting, latestAnswerId: null, requestActivityId: undefined }),
+      childUpdateFor({
+        child: waiting,
+        latestPromptId: null,
+        latestAnswerId: null,
+        requestActivityId: undefined,
+      }),
     ).toBe(null);
   });
 
@@ -93,11 +111,38 @@ describe("childUpdateFor", () => {
       } as OrchestrationThreadShell["session"],
     });
     expect(
-      childUpdateFor({ child: failed, latestAnswerId: null, requestActivityId: undefined }),
+      childUpdateFor({
+        child: failed,
+        latestPromptId: null,
+        latestAnswerId: null,
+        requestActivityId: undefined,
+      }),
     ).toEqual({
       key: "failed:2026-09-23T10:03:00.000Z",
       state: "failed",
     });
+  });
+});
+
+describe("childUpdateFor follow-ups", () => {
+  it("reports a retry that fails again without a new answer", () => {
+    const failed = shell({
+      session: {
+        status: "error",
+        updatedAt: "2026-09-23T10:03:00.000Z",
+      } as OrchestrationThreadShell["session"],
+    });
+    const update = (latestPromptId: string) =>
+      childUpdateFor({
+        child: failed,
+        latestPromptId,
+        latestAnswerId: "a1",
+        requestActivityId: undefined,
+      });
+    // The coordinator's send_to_thread adds a new prompt before each retry.
+    expect(update("u2")?.key).not.toBe(update("u1")?.key);
+    // A repeated session write within one retry stays one update.
+    expect(update("u2")?.key).toBe(update("u2")?.key);
   });
 });
 

@@ -76,11 +76,13 @@ export interface ChildUpdate {
 
 /**
  * What a child's current shell should tell its coordinator, or null while it
- * is still working. A settled child is keyed by its latest answer, a blocked
- * one by the request it waits on.
+ * is still working. A settled child is keyed by its latest prompt and answer,
+ * a blocked one by the request it waits on. The prompt makes each follow-up a
+ * result of its own: a retry that fails again without a new answer is news.
  */
 export function childUpdateFor(input: {
   readonly child: OrchestrationThreadShell;
+  readonly latestPromptId: string | null;
   readonly latestAnswerId: string | null;
   readonly requestActivityId: string | undefined;
 }): ChildUpdate | null {
@@ -91,7 +93,10 @@ export function childUpdateFor(input: {
   }
   // A failure that ends a turn before its first answer still has to be reported once.
   const anchor = input.latestAnswerId ?? input.child.session?.updatedAt ?? input.child.updatedAt;
-  return { key: `${state}:${anchor}`, state };
+  return {
+    key: input.latestPromptId ? `${state}:${input.latestPromptId}:${anchor}` : `${state}:${anchor}`,
+    state,
+  };
 }
 
 /**
@@ -119,6 +124,10 @@ export function coordinatorHasUpdate(input: {
       tagged.state === input.state
     );
   });
+}
+
+function latestOf(first: string, second: string | undefined): string {
+  return second !== undefined && Date.parse(second) > Date.parse(first) ? second : first;
 }
 
 function clampAnswer(text: string): string {
@@ -209,13 +218,15 @@ const make = Effect.gen(function* () {
     if (Option.isNone(parent) || parent.value.archivedAt !== null) return;
 
     const detail = yield* snapshots.getThreadDetailById(child.value.id);
-    const latestAnswer = Option.isSome(detail)
-      ? (detail.value.messages.findLast(
-          (message) => message.role === "assistant" && !message.streaming && message.text.trim(),
-        ) ?? null)
-      : null;
+    const messages = Option.isSome(detail) ? detail.value.messages : [];
+    const latestAnswer =
+      messages.findLast(
+        (message) => message.role === "assistant" && !message.streaming && message.text.trim(),
+      ) ?? null;
+    const latestPrompt = messages.findLast((message) => message.role === "user") ?? null;
     const update = childUpdateFor({
       child: child.value,
+      latestPromptId: latestPrompt?.id ?? null,
       latestAnswerId: latestAnswer?.id ?? null,
       requestActivityId: request.requestActivityId,
     });
@@ -228,7 +239,10 @@ const make = Effect.gen(function* () {
           coordinatorMessages: coordinatorDetail.value.messages,
           childId: child.value.id,
           state: update.state,
-          since: latestAnswer?.createdAt ?? child.value.session?.updatedAt ?? child.value.updatedAt,
+          since: latestOf(
+            latestAnswer?.createdAt ?? child.value.session?.updatedAt ?? child.value.updatedAt,
+            latestPrompt?.createdAt,
+          ),
         });
       if (sent) {
         reported.set(child.value.id, update.key);
