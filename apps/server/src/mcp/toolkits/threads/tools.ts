@@ -57,7 +57,7 @@ export class ChildThreadNotFoundError extends Schema.TaggedError<ChildThreadNotF
   { threadId: Schema.String },
 ) {
   override get message(): string {
-    return `Thread ${this.threadId} is not one of your threads. read_thread can still read it; to message or stop it, ask the user to assign it to you (sidebar: right-click the thread, Assign to coordinator). Call list_threads for your threads' ids.`;
+    return `Thread ${this.threadId} is not one of your threads. read_thread can still read it; to message or stop it, ask the user to assign it to you (sidebar: right-click the thread, Assign to coordinator), or adopt it with adopt_thread when the user asked you to take it over. Call list_threads for your threads' ids.`;
   }
 }
 
@@ -174,17 +174,26 @@ export const CreateThreadInput = Schema.Struct({
   project: Schema.optional(
     TrimmedNonEmptyString.annotate({
       description:
-        "Project to start the thread in, by id or workspace path from list_projects. Defaults to your project. In another project the worktree starts from that repository's current commit, and worktree: false means its main checkout.",
+        "Project to start the thread in, by id, workspace path or title from list_projects. Defaults to your project. In another project the worktree starts from that repository's current commit, and worktree: false means its main checkout.",
     }),
   ),
   provider: Schema.optional(
     TrimmedNonEmptyString.annotate({
       description:
-        "Provider instance id to run the thread on (for example claudeAgent or codex). Defaults to yours.",
+        "Provider to run the thread on, one of list_projects' providers (for example claudeAgent or codex). Defaults to yours.",
     }),
   ),
   model: Schema.optional(
-    TrimmedNonEmptyString.annotate({ description: "Model id for the thread. Defaults to yours." }),
+    TrimmedNonEmptyString.annotate({
+      description:
+        "Model for the thread, one of the provider's models from list_projects. Defaults to yours, or to the provider's default when you name another provider.",
+    }),
+  ),
+  language: Schema.optional(
+    TrimmedNonEmptyString.annotate({
+      description:
+        "The language the user writes to you in, for example German. The thread answers the user in it; without it, it answers in the language of your prompt.",
+    }),
   ),
   attachments: attachmentsParameter,
 });
@@ -216,7 +225,8 @@ export const ListThreadsInput = Schema.Struct({
   ),
   project: Schema.optional(
     TrimmedNonEmptyString.annotate({
-      description: "Only threads of this project, by id or workspace path from list_projects.",
+      description:
+        "Only threads of this project, by id, workspace path or title from list_projects.",
     }),
   ),
   includeArchived: Schema.optional(
@@ -338,10 +348,24 @@ export const ProjectSummary = Schema.Struct({
 });
 export type ProjectSummary = typeof ProjectSummary.Type;
 
+export const ProviderSummary = Schema.Struct({
+  provider: Schema.String.annotate({ description: "Pass it as start_thread's provider." }),
+  name: Schema.String,
+  models: Schema.Array(Schema.String).annotate({
+    description:
+      "Model ids for start_thread's model. Empty when the provider decides its models at runtime; then any model id is passed on.",
+  }),
+  current: Schema.Boolean.annotate({ description: "True for the provider this thread runs on." }),
+});
+export type ProviderSummary = typeof ProviderSummary.Type;
+
 const ListProjectsTool = Tool.make("list_projects", {
   description:
-    "List the projects of this T3 Code environment, to start a thread in another repository with start_thread's project.",
-  success: Schema.Struct({ projects: Schema.Array(ProjectSummary) }),
+    "List the projects of this T3 Code environment and the providers with their models, to start a thread in another repository or on another model with start_thread.",
+  success: Schema.Struct({
+    projects: Schema.Array(ProjectSummary),
+    providers: Schema.Array(ProviderSummary),
+  }),
   failure: ThreadsToolError,
   dependencies,
 })
@@ -405,6 +429,41 @@ const SettleThreadTool = Tool.make("settle_thread", {
   dependencies,
 })
   .annotate(Tool.Title, "Settle threads")
+  .annotate(Tool.Readonly, false)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, whileThreadsOn);
+
+export const AdoptThreadInput = Schema.Struct({
+  threadId: TrimmedNonEmptyString.annotate({
+    description: "Id of the thread, for example from list_threads with scope all.",
+  }),
+  detach: Schema.optional(
+    Schema.Boolean.annotate({
+      description:
+        "true: release one of your threads instead, so it is no longer yours and stops reporting to you.",
+    }),
+  ),
+});
+export type AdoptThreadInput = typeof AdoptThreadInput.Type;
+
+export const AdoptThreadResult = Schema.Struct({
+  thread: ChildThreadSummary,
+  previousParentThreadId: Schema.NullOr(Schema.String).annotate({
+    description: "The coordinator it belonged to before, if any.",
+  }),
+});
+export type AdoptThreadResult = typeof AdoptThreadResult.Type;
+
+const AdoptThreadTool = Tool.make("adopt_thread", {
+  description: `Make an existing thread one of yours, as the user can with Assign to coordinator in the sidebar: you can then message and stop it, and its updates reach you. Only do this when the user explicitly asks you to take a thread over; otherwise just read it with read_thread. With detach: true it releases one of your threads again. ${LINKING}`,
+  parameters: AdoptThreadInput,
+  success: AdoptThreadResult,
+  failure: ThreadsToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Adopt a thread")
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
@@ -578,6 +637,7 @@ export const ThreadsToolkit = Toolkit.make(
   ReadThreadTool,
   StopThreadTool,
   SettleThreadTool,
+  AdoptThreadTool,
   UpsertDecisionTool,
   ResolveDecisionTool,
   ListDecisionsTool,
