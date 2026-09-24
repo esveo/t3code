@@ -225,15 +225,33 @@ function readForkState(root: string, now: number) {
   return { service, builds: sortForkBuilds(builds) };
 }
 
-function scriptEnv() {
-  return {
-    ...process.env,
-    PATH: `${process.env.PATH ?? ""}:/usr/bin:/bin:/usr/sbin:/sbin`,
-  };
+/** fork-app.sh runs directly; on Windows, fork-app.ps1 runs through PowerShell 7. */
+function spawnScript(
+  platform: NodeJS.Platform,
+  script: string,
+  args: readonly string[],
+  options: Pick<NodeChildProcess.SpawnOptions, "detached" | "stdio">,
+) {
+  if (platform === "win32") {
+    return NodeChildProcess.spawn(
+      "pwsh.exe",
+      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, ...args],
+      { ...options, windowsHide: true },
+    );
+  }
+  return NodeChildProcess.spawn(script, args, {
+    ...options,
+    env: { ...process.env, PATH: `${process.env.PATH ?? ""}:/usr/bin:/bin:/usr/sbin:/sbin` },
+  });
 }
 
 /** Runs a fork-app.sh command to completion; resolves with its exit code. */
-function runScript(script: string, args: readonly string[], logPath: string) {
+function runScript(
+  platform: NodeJS.Platform,
+  script: string,
+  args: readonly string[],
+  logPath: string,
+) {
   return Effect.callback<number>((resume) => {
     let log: number;
     try {
@@ -242,10 +260,7 @@ function runScript(script: string, args: readonly string[], logPath: string) {
       resume(Effect.succeed(-1));
       return;
     }
-    const child = NodeChildProcess.spawn(script, args, {
-      stdio: ["ignore", log, log],
-      env: scriptEnv(),
-    });
+    const child = spawnScript(platform, script, args, { stdio: ["ignore", log, log] });
     const done = (code: number) => {
       NodeFS.closeSync(log);
       resume(Effect.succeed(code));
@@ -354,7 +369,7 @@ export const makeForkUpdates = (input: { readonly root: string; readonly script:
             // No log yet.
           }
         });
-        yield* runScript(input.script, ["watch"], watchLog);
+        yield* runScript(environment.platform, input.script, ["watch"], watchLog);
         yield* refresh(false);
       }),
     );
@@ -403,10 +418,9 @@ export const makeForkUpdates = (input: { readonly root: string; readonly script:
         const failed = yield* Effect.sync(() => {
           // Detached so the scripts outlive this process when `restart` stops the app.
           const spawnDetached = (args: readonly string[], log: number | "ignore") => {
-            const child = NodeChildProcess.spawn(input.script, args, {
+            const child = spawnScript(environment.platform, input.script, args, {
               detached: true,
               stdio: ["ignore", log, log],
-              env: scriptEnv(),
             });
             child.unref();
           };
@@ -441,7 +455,7 @@ export const makeForkUpdates = (input: { readonly root: string; readonly script:
           return { accepted: false, completed: false, state: known };
         }
         yield* Effect.sync(() => NodeFS.mkdirSync(logDir, { recursive: true }));
-        const code = yield* runScript(input.script, ["delete", slug], appLog);
+        const code = yield* runScript(environment.platform, input.script, ["delete", slug], appLog);
         const state = yield* refresh(false);
         return code === 0
           ? { accepted: true, completed: true, state }

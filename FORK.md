@@ -29,6 +29,11 @@ everywhere.
   `$T3CODE_FORK_APP_ROOT`, by default `~/Documents/private/t3code-app` (see
   `scripts/fork-app.sh`), and switches builds themselves. Paths below that
   start with `~/Documents/private/t3code-app` mean that root.
+- On Windows, `scripts\fork-app.ps1` (PowerShell 7) stands in for
+  `scripts/fork-app.sh` with the same app commands; everything said below
+  about one applies to the other. The Windows app has no service of its own,
+  so it has no server commands. See
+  [docs/fork/setup.md](docs/fork/setup.md#windows).
 - Setting all of this up from a fresh checkout — app, server, service launcher,
   cloud config, client pairing — is written down in
   [docs/fork/setup.md](docs/fork/setup.md). Keep it accurate when the setup
