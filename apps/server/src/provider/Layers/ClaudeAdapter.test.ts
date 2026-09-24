@@ -2134,6 +2134,89 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  // Fork: the SDK reports a Monitor watch as "local_bash"; the launching
+  // tool_use names it, so the adapter reports it as a "monitor" task.
+  it.effect("reports a task started by the Monitor tool as a monitor task", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+
+      const taskEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.filter((event) => event.type === "task.started"),
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "watch a file",
+        attachments: [],
+      });
+
+      const emitToolUse = (index: number, id: string, name: string) => {
+        harness.query.emit({
+          type: "stream_event",
+          session_id: "sdk-session-monitor",
+          uuid: `stream-${id}`,
+          parent_tool_use_id: null,
+          event: {
+            type: "content_block_start",
+            index,
+            content_block: { type: "tool_use", id, name, input: {} },
+          },
+        } as unknown as SDKMessage);
+        harness.query.emit({
+          type: "stream_event",
+          session_id: "sdk-session-monitor",
+          uuid: `stream-stop-${id}`,
+          parent_tool_use_id: null,
+          event: { type: "content_block_stop", index },
+        } as unknown as SDKMessage);
+        harness.query.emit({
+          type: "assistant",
+          session_id: "sdk-session-monitor",
+          uuid: `assistant-${id}`,
+          parent_tool_use_id: null,
+          message: {
+            id: `assistant-message-${id}`,
+            content: [{ type: "tool_use", id, name, input: {} }],
+          },
+        } as unknown as SDKMessage);
+      };
+      const emitTaskStarted = (taskId: string, toolUseId: string) =>
+        harness.query.emit({
+          type: "system",
+          subtype: "task_started",
+          task_id: taskId,
+          tool_use_id: toolUseId,
+          description: "wait for a file",
+          is_backgrounded: true,
+          task_type: "local_bash",
+          uuid: `${taskId}-uuid`,
+          session_id: "sdk-session-monitor",
+        } as unknown as SDKMessage);
+
+      emitToolUse(0, "toolu_monitor", "Monitor");
+      emitTaskStarted("task-monitor", "toolu_monitor");
+      emitToolUse(1, "toolu_bash", "Bash");
+      emitTaskStarted("task-bash", "toolu_bash");
+
+      const taskTypes = Array.from(yield* Fiber.join(taskEventsFiber)).map((event) =>
+        event.type === "task.started" ? event.payload.taskType : undefined,
+      );
+      assert.deepEqual(taskTypes, ["monitor", "local_bash"]);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("classifies Claude Task tool invocations as collaboration agent work", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
