@@ -869,13 +869,6 @@ function SelectedAgentCard({
   const Icon = STATION_ICONS[agent.station];
   const monospace =
     agent.station === "command" || agent.station === "edit" || agent.station === "read";
-  // The same step can repeat (two reads of one file), so keys count occurrences.
-  const seen = new Map<string, number>();
-  const recent = agent.recent.map((line) => {
-    const occurrence = (seen.get(line) ?? 0) + 1;
-    seen.set(line, occurrence);
-    return { key: `${line}#${occurrence}`, line };
-  });
   return (
     <div
       className="absolute top-1/2 left-1/2 z-[1] flex -translate-x-1/2 -translate-y-1/2 flex-col gap-1.5 overflow-hidden rounded-xl border border-border bg-card p-2.5 text-card-foreground shadow-sm"
@@ -925,15 +918,6 @@ function SelectedAgentCard({
           <span className="truncate">{alert.text}</span>
         </div>
       ))}
-      {recent.length > 0 ? (
-        <ol className="flex flex-col gap-0.5 border-t border-border pt-1.5 text-[10px] text-muted-foreground">
-          {recent.map((entry) => (
-            <li key={entry.key} className="truncate">
-              {entry.line}
-            </li>
-          ))}
-        </ol>
-      ) : null}
       {open !== null ? (
         <Button size="xs" variant="outline" className="self-start" onClick={open.onOpen}>
           {open.label}

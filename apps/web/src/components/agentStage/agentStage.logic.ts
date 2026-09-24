@@ -120,8 +120,6 @@ export interface StageAgent {
   readonly headline: string;
   /** Command, file, reasoning snippet: the thing the headline is about. */
   readonly detail: string | null;
-  /** Latest steps, newest last. */
-  readonly recent: ReadonlyArray<string>;
   /** The latest reasoning of the turn, for the bubble above the sprite. */
   readonly thought: string | null;
   /**
@@ -162,7 +160,6 @@ export interface StageInput {
   readonly backgroundLiveness?: "working" | "monitoring" | null | undefined;
 }
 
-const RECENT_LIMIT = 5;
 const SNIPPET_LIMIT = 220;
 
 export function deriveStageModel(input: StageInput): StageModel {
@@ -305,7 +302,6 @@ function deriveMainAgent(
       label: liveWorkEntryLabel(entry, input.workspaceRoot, false),
       failed: workEntryDisplayIndicatesToolFailure(entry),
     }));
-  const recent = toolSteps.slice(-RECENT_LIMIT).map((step) => step.label);
   const turnState = input.latestTurn?.state;
   const timing = deriveMainTiming(steps, turnStartedAt, {
     // Once the turn is over, the tail after the last step was the answer,
@@ -320,7 +316,6 @@ function deriveMainAgent(
     role: null,
     project: input.project ?? null,
     initials: input.threadTitle === undefined ? null : stageInitials(input.threadTitle),
-    recent,
     thought: latestThought(input.messages, turnId),
     stationTimes: sortStationTimes(timing.times),
     steps: toolSteps.length,
@@ -879,7 +874,6 @@ function deriveSubagent(
     role: agent.role,
     project: null,
     initials: null,
-    recent: agent.recentActivity.slice(-RECENT_LIMIT).map((entry) => entry.summary),
     thought: agent.progress,
     stationTimes: timing === null ? [] : sortStationTimes(timing.times),
     steps: steps.length,

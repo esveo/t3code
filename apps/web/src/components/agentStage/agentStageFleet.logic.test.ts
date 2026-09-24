@@ -93,7 +93,6 @@ const loadedModel: StageModel = {
       live: true,
       headline: "Running npm test",
       detail: "npm test",
-      recent: ["Read a.ts"],
       thought: null,
       stationTimes: [{ station: "read", ms: 4_000 }],
       steps: 1,
@@ -132,7 +131,6 @@ describe("deriveFleetStageModel", () => {
         initials: "TA",
         detail: "npm test",
         stationTimes: [{ station: "read", ms: 4_000 }],
-        recent: ["Read a.ts"],
       }),
     );
     expect(model.agents[1]).toEqual(

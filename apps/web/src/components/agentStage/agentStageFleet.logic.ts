@@ -108,7 +108,6 @@ function deriveShellAgent(thread: FleetThread): StageAgent {
     role: thread.project?.title ?? null,
     project: thread.project,
     initials: stageInitials(shell.title),
-    recent: [],
     thought: null,
     stationTimes: [],
     steps: 0,

@@ -151,7 +151,6 @@ describe("deriveStageModel", () => {
     expect(main.station).toBe("thinking");
     expect(main.detail).toBe("Now I should check the tests.");
     expect(main.thought).toBe("Now I should check the tests.");
-    expect(main.recent).toHaveLength(1);
   });
 
   it("answers while the assistant message streams", () => {
