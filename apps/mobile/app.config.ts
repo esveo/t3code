@@ -2,6 +2,7 @@ import type { ExpoConfig } from "expo/config";
 
 import { BRAND_ASSET_PATHS } from "../../scripts/lib/brand-assets.ts";
 import { loadRepoEnv } from "../../scripts/lib/public-config.ts";
+import { withEsveoAndroid } from "./esveo.config.ts";
 
 type AppVariant = "development" | "preview" | "production";
 
@@ -460,4 +461,4 @@ const config: ExpoConfig = {
   owner: "pingdotgg",
 };
 
-export default config;
+export default withEsveoAndroid(config, repoEnv);
