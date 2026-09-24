@@ -4,9 +4,7 @@ import {
   type ThreadDecision,
   MessageId,
   ThreadId,
-  type ModelSelection,
   type OrchestrationThreadShell,
-  ProviderInstanceId,
   type VcsListRefsResult,
 } from "@t3tools/contracts";
 import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
@@ -27,11 +25,15 @@ import * as GitWorkflowService from "../../../git/GitWorkflowService.ts";
 import * as OrchestrationEngine from "../../../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ProjectSetupScriptRunner from "../../../project/ProjectSetupScriptRunner.ts";
+import * as ProviderRegistry from "../../../provider/Services/ProviderRegistry.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as ThreadDecisions from "../../../threadDecisions/ThreadDecisions.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { describeMessageAttachments, makeThreadAttachments } from "./attachments.ts";
 import { suggestBranches } from "./branchSuggestions.ts";
+import { childTaskText } from "./childTask.ts";
+import { chooseModelSelection, listProviderModels } from "./modelChoice.ts";
+import { matchProject } from "./projectMatch.ts";
 import {
   ChildThreadNotFoundError,
   type ChildThreadSummary,
@@ -186,6 +188,7 @@ const make = Effect.gen(function* () {
   const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
   const setupScripts = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
+  const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const crypto = yield* Crypto.Crypto;
   const threadAttachments = yield* makeThreadAttachments;
 
@@ -299,7 +302,7 @@ const make = Effect.gen(function* () {
     return suggestBranches(baseRef, refs);
   });
 
-  /** The coordinator's project, or another one named by id or workspace path. */
+  /** The coordinator's project, or another one named by id, workspace path or title. */
   const resolveTargetProject = Effect.fn("ThreadsToolkit.resolveTargetProject")(function* (
     coordinator: OrchestrationThreadShell,
     target: string | undefined,
@@ -307,20 +310,13 @@ const make = Effect.gen(function* () {
     const projects = yield* snapshots
       .getProjectShells()
       .pipe(Effect.catchCause(failWith("Could not read the projects")));
-    const wanted = target?.trim().replace(/\/+$/, "");
-    const project = wanted
-      ? projects.find(
-          (candidate) =>
-            candidate.id === wanted || candidate.workspaceRoot.replace(/\/+$/, "") === wanted,
-        )
-      : projects.find((candidate) => candidate.id === coordinator.projectId);
-    if (!project) {
-      return yield* failure(
-        wanted
-          ? `No project matches ${wanted}. Call list_projects for their ids.`
-          : "This thread's project was not found.",
-      );
+    if (target) {
+      const matched = matchProject(projects, target);
+      if ("error" in matched) return yield* failure(matched.error);
+      return matched.project;
     }
+    const project = projects.find((candidate) => candidate.id === coordinator.projectId);
+    if (!project) return yield* failure("This thread's project was not found.");
     return project;
   });
 
@@ -480,24 +476,23 @@ const make = Effect.gen(function* () {
             );
           }
         }
+        const chosen = chooseModelSelection({
+          providers: input.provider || input.model ? yield* providerRegistry.getProviders : [],
+          current: coordinator.modelSelection,
+          provider: input.provider,
+          model: input.model,
+        });
+        if ("error" in chosen) return yield* failure(chosen.error);
+        const modelSelection = chosen.selection;
         const attachmentSources = yield* resolveAttachments(coordinator, input.attachments);
 
-        const modelSelection: ModelSelection =
-          input.provider || input.model
-            ? {
-                instanceId: input.provider
-                  ? ProviderInstanceId.make(input.provider)
-                  : coordinator.modelSelection.instanceId,
-                model: input.model ?? coordinator.modelSelection.model,
-              }
-            : coordinator.modelSelection;
         const threadId = ThreadId.make(yield* uuid);
         const messageId = MessageId.make(yield* uuid);
         const attachments = yield* threadAttachments.claim(threadId, attachmentSources);
         const text = wrapFromCoordinator({
           coordinatorThreadId: coordinator.id,
           coordinatorTitle: coordinator.title,
-          text: input.prompt,
+          text: childTaskText({ prompt: input.prompt, language: input.language }),
         });
         const child = {
           id: threadId,
@@ -621,6 +616,7 @@ const make = Effect.gen(function* () {
         const projects = yield* snapshots
           .getProjectShells()
           .pipe(Effect.catchCause(failWith("Could not list the projects")));
+        const providers = yield* providerRegistry.getProviders;
         return {
           projects: projects.map((project) => ({
             projectId: project.id,
@@ -628,6 +624,7 @@ const make = Effect.gen(function* () {
             workspaceRoot: project.workspaceRoot,
             current: project.id === coordinator.projectId,
           })),
+          providers: listProviderModels(providers, coordinator.modelSelection.instanceId),
         };
       }),
 
@@ -739,6 +736,53 @@ const make = Effect.gen(function* () {
         });
         const results = yield* Effect.forEach(input.threadIds, settleOne);
         return { results };
+      }),
+
+    // Same command as the sidebar's Assign to coordinator; the decider checks
+    // the rules again (one level deep, no cycles).
+    adopt_thread: (input) =>
+      Effect.gen(function* () {
+        const coordinator = yield* requireCoordinator;
+        const threadId = ThreadId.make(input.threadId);
+        if (threadId === coordinator.id) {
+          return yield* failure("A thread cannot adopt itself.");
+        }
+        const thread = input.detach
+          ? yield* requireChild(coordinator, input.threadId)
+          : yield* snapshots.getThreadShellById(threadId).pipe(
+              Effect.catchCause(failWith("Could not read the thread")),
+              Effect.flatMap((found) =>
+                Option.isSome(found)
+                  ? Effect.succeed(found.value)
+                  : Effect.fail(new ThreadNotFoundError({ threadId: input.threadId })),
+              ),
+            );
+        const parentThreadId = input.detach ? null : coordinator.id;
+        if (!input.detach && thread.parentThreadId !== coordinator.id) {
+          const snapshot = yield* snapshots
+            .getShellSnapshot()
+            .pipe(Effect.catchCause(failWith("Could not list the threads")));
+          if (snapshot.threads.some((candidate) => candidate.parentThreadId === thread.id)) {
+            return yield* failure(
+              `${thread.title} coordinates threads of its own, so it cannot become one of yours.`,
+            );
+          }
+        }
+        if ((thread.parentThreadId ?? null) !== parentThreadId) {
+          yield* dispatch(
+            {
+              type: "thread.parent.set",
+              commandId: yield* commandId("parent-set"),
+              threadId: thread.id,
+              parentThreadId,
+            },
+            input.detach ? "Could not release the thread" : "Could not adopt the thread",
+          );
+        }
+        return {
+          thread: { ...summarizeChildThread(thread, coordinator.id), child: !input.detach },
+          previousParentThreadId: thread.parentThreadId ?? null,
+        };
       }),
 
     upsert_decision: (input) =>

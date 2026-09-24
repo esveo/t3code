@@ -8,12 +8,14 @@ import {
   EnvironmentId,
   MessageId,
   ProjectId,
+  ProviderDriverKind,
   ProviderInstanceId,
   ThreadId,
   type OrchestrationCommand,
   type OrchestrationMessage,
   type OrchestrationProjectShell,
   type OrchestrationThreadShell,
+  type ServerProvider,
 } from "@t3tools/contracts";
 import { parseTaggedThreadMessage } from "@t3tools/shared/threadOrchestration";
 import { describe, expect, it } from "@effect/vitest";
@@ -35,6 +37,7 @@ import {
 import { ProjectionSnapshotQuery } from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import { SqlitePersistenceMemory } from "../../../persistence/Layers/Sqlite.ts";
 import { ProjectSetupScriptRunner } from "../../../project/ProjectSetupScriptRunner.ts";
+import { makeProviderRegistryLayer } from "../../../provider/testUtils/providerRegistryMock.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as ThreadDecisions from "../../../threadDecisions/ThreadDecisions.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -106,6 +109,7 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
     readonly messages?: Readonly<Record<string, ReadonlyArray<OrchestrationMessage>>>;
     readonly branches?: ReadonlyArray<{ name: string; isRemote?: boolean; remoteName?: string }>;
     readonly decisions?: boolean;
+    readonly providers?: ReadonlyArray<ServerProvider>;
   } = {},
 ) {
   const commands = yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]);
@@ -176,6 +180,7 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
       runForThread: () => Effect.succeed({ status: "no-script" as const }),
     }),
     Layer.succeedContext(settingsContext),
+    makeProviderRegistryLayer(options.providers ?? []),
     Layer.succeed(Crypto.Crypto, {
       ...testCrypto,
       randomUUIDv4: Effect.sync(() => `uuid-${++uuidCounter}`),
@@ -835,4 +840,167 @@ describe("threads toolkit", () => {
       }),
     );
   });
+});
+
+describe("threads toolkit: projects, models, language and adoption", () => {
+  const provider = (id: string, models: ReadonlyArray<string>): ServerProvider => ({
+    instanceId: ProviderInstanceId.make(id),
+    driver: ProviderDriverKind.make(id),
+    enabled: true,
+    installed: true,
+    version: "1.0.0",
+    status: "ready",
+    auth: { status: "authenticated" },
+    checkedAt: "2026-09-23T10:00:00.000Z",
+    models: models.map((slug, index) => ({
+      slug,
+      name: slug,
+      isCustom: false,
+      isDefault: index === 0,
+      capabilities: null,
+    })),
+    slashCommands: [],
+    skills: [],
+  });
+  const providers = [provider("claudeAgent", ["opus", "sonnet"]), provider("codex", ["gpt-5"])];
+  const createOf = (commands: ReadonlyArray<OrchestrationCommand>) =>
+    commands.find((command) => command.type === "thread.create") as Extract<
+      OrchestrationCommand,
+      { type: "thread.create" }
+    >;
+
+  it.effect("starts a thread in a project named by its title", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* harness.call("start_thread", {
+        title: "Docs",
+        prompt: "Document it.",
+        project: "docs SITE",
+        worktree: false,
+      });
+      expect(createOf(yield* Ref.get(harness.commands)).projectId).toBe("project-2");
+      const error = yield* harness
+        .call("start_thread", { title: "Nowhere", prompt: "x", project: "Blog" })
+        .pipe(Effect.flip);
+      expect(error.message).toBe(
+        "No project matches Blog. Projects: Project (project-1), Docs site (project-2).",
+      );
+    }),
+  );
+
+  it.effect("lists providers with their models and checks start_thread's pick", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ providers });
+      const listed = yield* harness.call("list_projects", {});
+      expect(listed.providers).toEqual([
+        { provider: "claudeAgent", name: "claudeAgent", models: ["opus", "sonnet"], current: true },
+        { provider: "codex", name: "codex", models: ["gpt-5"], current: false },
+      ]);
+
+      yield* harness.call("start_thread", {
+        title: "On Codex",
+        prompt: "Review.",
+        provider: "codex",
+        worktree: false,
+      });
+      expect(createOf(yield* Ref.get(harness.commands)).modelSelection).toEqual({
+        instanceId: "codex",
+        model: "gpt-5",
+      });
+
+      const error = yield* harness
+        .call("start_thread", { title: "Bad", prompt: "x", model: "gpt-5", worktree: false })
+        .pipe(Effect.flip);
+      expect(error.message).toBe("gpt-5 is not a model of claudeAgent. Models: opus, sonnet.");
+      // A refused pick creates nothing.
+      expect(types(yield* Ref.get(harness.commands))).toEqual([
+        "thread.create",
+        "thread.turn.start",
+      ]);
+    }),
+  );
+
+  it.effect("tells the thread to answer in the user's language", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* harness.call("start_thread", {
+        title: "Fix",
+        prompt: "Fix the bug.",
+        language: "German",
+        worktree: false,
+      });
+      const turn = (yield* Ref.get(harness.commands))[1] as Extract<
+        OrchestrationCommand,
+        { type: "thread.turn.start" }
+      >;
+      expect(parseTaggedThreadMessage(turn.message.text)?.body).toContain(
+        "Write your answers to the user in German",
+      );
+    }),
+  );
+
+  it.effect("adopts a thread on request and releases it again", () =>
+    Effect.gen(function* () {
+      const stranger = makeThread({ id: ThreadId.make("stranger"), title: "Old work" });
+      const other = makeThread({
+        id: ThreadId.make("other-child"),
+        title: "Someone else's",
+        parentThreadId: ThreadId.make("other-coordinator"),
+      });
+      const child = makeThread({ id: CHILD_ID, title: "Mine", parentThreadId: COORDINATOR_ID });
+      const harness = yield* makeHarness({ threads: [stranger, other, child] });
+
+      const adopted = yield* harness.call("adopt_thread", { threadId: "stranger" });
+      expect(adopted).toMatchObject({
+        thread: { threadId: "stranger", child: true },
+        previousParentThreadId: null,
+      });
+      const moved = yield* harness.call("adopt_thread", { threadId: "other-child" });
+      expect(moved.previousParentThreadId).toBe("other-coordinator");
+      // Already one of its threads: nothing to change.
+      yield* harness.call("adopt_thread", { threadId: CHILD_ID });
+      const released = yield* harness.call("adopt_thread", { threadId: CHILD_ID, detach: true });
+      expect(released.thread.child).toBe(false);
+
+      expect(
+        (yield* Ref.get(harness.commands)).map((command) =>
+          command.type === "thread.parent.set"
+            ? [command.threadId, command.parentThreadId]
+            : command.type,
+        ),
+      ).toEqual([
+        ["stranger", COORDINATOR_ID],
+        ["other-child", COORDINATOR_ID],
+        [CHILD_ID, null],
+      ]);
+    }),
+  );
+
+  it.effect("refuses to adopt itself, unknown threads or other coordinators", () =>
+    Effect.gen(function* () {
+      const lead = makeThread({ id: ThreadId.make("lead"), title: "Lead" });
+      const leadsChild = makeThread({
+        id: ThreadId.make("leads-child"),
+        parentThreadId: ThreadId.make("lead"),
+      });
+      const stranger = makeThread({ id: ThreadId.make("stranger") });
+      const harness = yield* makeHarness({ threads: [lead, leadsChild, stranger] });
+      const refuse = (input: { threadId: string; detach?: boolean }) =>
+        harness.call("adopt_thread", input).pipe(Effect.flip);
+
+      expect((yield* refuse({ threadId: COORDINATOR_ID })).message).toBe(
+        "A thread cannot adopt itself.",
+      );
+      expect(yield* refuse({ threadId: "missing" })).toMatchObject({
+        _tag: "ThreadNotFoundError",
+      });
+      expect((yield* refuse({ threadId: "lead" })).message).toBe(
+        "Lead coordinates threads of its own, so it cannot become one of yours.",
+      );
+      expect(yield* refuse({ threadId: "stranger", detach: true })).toMatchObject({
+        _tag: "ChildThreadNotFoundError",
+      });
+      expect(yield* Ref.get(harness.commands)).toEqual([]);
+    }),
+  );
 });
