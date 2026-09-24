@@ -16,6 +16,20 @@ the background service instead, so restarting the app never stops running
 agents. That also means a feature with a server side needs both halves built,
 or the client asks for something the server cannot answer.
 
+## Quick version
+
+With the [prerequisites](#prerequisites) in place, these commands build and
+launch the app and build the server. Steps 4 and 5 below then point the
+background service at the fork server and pair your clients.
+
+```bash
+git clone https://github.com/esveo/t3code.git && cd t3code
+npx pnpm@11.10.0 install
+scripts/fork-app.sh prepare          # build the desktop app
+scripts/fork-app.sh restart fork     # launch it
+scripts/fork-app.sh prepare-server   # build the fork server
+```
+
 ## Prerequisites
 
 - **macOS.** `scripts/fork-app.sh` is zsh, and the server half edits a

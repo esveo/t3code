@@ -1,53 +1,96 @@
-Feature requests are tracked [here](https://github.com/orgs/esveo/projects/3).
+<p align="center">
+  <img src="assets/fork/esveo-code-macos-icon.svg" width="112" alt="esveo code icon">
+</p>
 
-Fork of [T3 Code](https://github.com/pingdotgg/t3code) with features and fixes:
+<h1 align="center">esveo code</h1>
 
-- Thread notification toasts lead with the session's name, beside the project's logo with a status badge ([e7e89e0](https://github.com/esveo/t3code/commit/e7e89e0117279a0b0f9d5d173f0ec19d99a30424), [394f628](https://github.com/esveo/t3code/commit/394f628e6fcf078a1bdc9f10aa0ccadd73149297))
-- The stage marks agents worth a look, for a risky command, an answer ending in a question or a nearly full context, and lists these findings under the ring ([d1d0c6b](https://github.com/esveo/t3code/commit/d1d0c6b70570d41d9e8f1b4a20454a15106542b8)).
-- The stage follows subagents from tool to tool, shell searches included, with Claude's progress summaries in between ([a8c6510](https://github.com/esveo/t3code/commit/a8c6510877284a526ac7e7c63c8f34f472250f2c), [f56d060](https://github.com/esveo/t3code/commit/f56d0609c349984d9d3127d448915967a7681ce4), [d781065](https://github.com/esveo/t3code/commit/d781065d6a3798d357f8c2ebe2672f36ff9d47cd)).
-- The stage opens a subagent's chat or another thread from the selected agent's card ([91de790](https://github.com/esveo/t3code/commit/91de790541671e4574d36e8d393c9f2fdd0ed7da)).
-- The stage shows watch loops at a Monitoring station ([66436c1](https://github.com/esveo/t3code/commit/66436c1f74663bc79dab35ed36254bbc10f9fe4d)).
-- Fix: the stage keeps background subagents working after the turn instead of setting everyone idle ([6e0be26](https://github.com/esveo/t3code/commit/6e0be264a664b337e405e3ee3b68e754e0cf386f)).
-- esveo Midnight is the default theme and leads the theme picker, followed by esveo and the T3 themes ([5b3e19c](https://github.com/esveo/t3code/commit/5b3e19cc5bd9ed2f30c859ed8f99a1ccf0937a9b)).
-- Thread notifications open the thread in a new pane beside the current one with ⌥⌘O, and the thread itself with ⌥⌘T ([42e1182](https://github.com/esveo/t3code/commit/42e1182eb2c86fa6ae0e637d7abe954e5481b54a), [84724fd](https://github.com/esveo/t3code/commit/84724fdbeeb5126af8682ede37b7b9ff48d61275), [0ad0104](https://github.com/esveo/t3code/commit/0ad0104512c85c881475b073fcb2331983f7ece3), [ec2873f](https://github.com/esveo/t3code/commit/ec2873f007c9647fe3a915a2bc72195a57bc312b), [45d1aec](https://github.com/esveo/t3code/commit/45d1aec4ff7c7197123493a2d30cdb1e843cd03c)).
-- esveo Midnight gradients: your messages, the send buttons, the current sidebar thread and the toasts wear esveo's blue brand gradients, and a light circles the message the agent is working on ([6569298](https://github.com/esveo/t3code/commit/6569298f9d058bdb55af09ba0db12262935ac67b), [7b15866](https://github.com/esveo/t3code/commit/7b15866bd3fa498f37ce2985cfa73b0bfd43cba4), [7611962](https://github.com/esveo/t3code/commit/761196286c87c59c4506d2b7522e3a86697313a5), [1e1f6ae](https://github.com/esveo/t3code/commit/1e1f6ae141108a0d1f6dca1468d25a10096a4ea1), [8504ac8](https://github.com/esveo/t3code/commit/8504ac85634b3f0a9893146dc839b6eaabe4bfee), [5bc06a6](https://github.com/esveo/t3code/commit/5bc06a6ba28cc82c3e6d9e5c9e39ef2095c4eab9), [d985fc8](https://github.com/esveo/t3code/commit/d985fc864de1c1e951d699388191b2972425f690)).
-- esveo Midnight: a second esveo theme with a calmer, deeper navy dark mode, crisp text and vivid Sky accents ([4c9b06c](https://github.com/esveo/t3code/commit/4c9b06cdedda64ab82bf94c63ebba0608553bdc2)).
-- esveo branding: app icons (the esveo e in curly braces) and name in the Dock, an esveo theme in Settings → Appearance, and an "esveo code" lockup top left in the sidebar ([df8b427](https://github.com/esveo/t3code/commit/df8b42770f9beb8368b657935334f4384d5964db), [9edac6e](https://github.com/esveo/t3code/commit/9edac6e2b508df6332c1c373198a62720418a697), [064aa7d](https://github.com/esveo/t3code/commit/064aa7d2ed6d17da60f91dda96e9b9ff52afcbbe), [c5e51f4](https://github.com/esveo/t3code/commit/c5e51f4f71365bee5c75a2e87ea6cd2f9d7d9aaf), [d90fd15](https://github.com/esveo/t3code/commit/d90fd15ba75983bf87929f487e31bdd2ac3d40be))
-- The sidebar groups threads by project, a project run that waits on you leads the list, and its header starts a new thread on hover ([654ed3d](https://github.com/esveo/t3code/commit/654ed3d4fa8b95a3e1751195a562619086cf4e38), [c68bbe7](https://github.com/esveo/t3code/commit/c68bbe7d2ccf4037671f897433d36f6e2c93eaf2), [481cf1d](https://github.com/esveo/t3code/commit/481cf1d7e86192f4a118856ec017f35e4577a57e), [9f274e6](https://github.com/esveo/t3code/commit/9f274e6cc7daa0d23c07ffd3e500113d85d8aa93), [3a52f9d](https://github.com/esveo/t3code/commit/3a52f9dbb9c97e1e0235c435c5cddd5e3f994970)).
-- The update button is a menu that offers every branch's build, with a delete button and the size of each ([725ad52](https://github.com/esveo/t3code/commit/725ad52276cacf8d30248fe9970890fcb09bf1a6), [4334d6e](https://github.com/esveo/t3code/commit/4334d6e05a433ed1b8c10a27d6e79ef9ffea74e4), [8c73a5d](https://github.com/esveo/t3code/commit/8c73a5dc1faee1e7e3472a76a40519ce5320462e), [a7ac6e7](https://github.com/esveo/t3code/commit/a7ac6e79a506ac0532191df3271a89d59dd15fc1), [9dcecc2](https://github.com/esveo/t3code/commit/9dcecc270b65c61b5e86d1943861694711bd33ed), [b520a3a](https://github.com/esveo/t3code/commit/b520a3a9918d9cc619ded9809eaf0fa2cfe60af4), [1ba88dd](https://github.com/esveo/t3code/commit/1ba88dd1ed0f1b4a3ee90217016b9379bd5ee1a5), [5e0f198](https://github.com/esveo/t3code/commit/5e0f19872259ecb594b97a38a6d893469048060b)).
-- Fix: the macOS Dock icon matches the blue favicon ([f61eb0e](https://github.com/esveo/t3code/commit/f61eb0e7895ffeee7c91cabb760a31509ebfb910)).
-- Split view: threads side by side, arranged by drag and drop ([2187e3f](https://github.com/esveo/t3code/commit/2187e3f3806fbcde1ff88f46996463c5b75fe0c6), [5cb5bdb](https://github.com/esveo/t3code/commit/5cb5bdb6624ab3914b0d208c78fce88f97fec1ce), [7cdf86e](https://github.com/esveo/t3code/commit/7cdf86eabd53d9957a465091d845d19ce120c5fa), [263c6b2](https://github.com/esveo/t3code/commit/263c6b2a7abe3af8962a6096358e0d58193244cb), [4429f8a](https://github.com/esveo/t3code/commit/4429f8abc4cf1b99b8d3e1fdf16f471ea90a25b5), [fee0284](https://github.com/esveo/t3code/commit/fee02842eb784b9131c5b9469d10c1ac922563bc), [ad634fc](https://github.com/esveo/t3code/commit/ad634fc9dcf6836b3dd744f23061803103edd6ed))
-- Double-clicking a split divider evens out its panes ([b139481](https://github.com/esveo/t3code/commit/b1394819061fca9f0f15d83bd50ae314e08f26d2))
-- Dragging a split divider pushes its neighbours aside ([97140f8](https://github.com/esveo/t3code/commit/97140f8dad997841f79504d4263f21f699ae0dff))
-- Split panes pop out into their own window ([505658f](https://github.com/esveo/t3code/commit/505658fa5fbf08c1d85dcfc7bee9c79d4bdb3233), [4d6816d](https://github.com/esveo/t3code/commit/4d6816d69b619a9feafe112deba25c6b3f621398), [06aba2e](https://github.com/esveo/t3code/commit/06aba2e053f4a63ae596ea1d8fca0e6b27e2f2b2), [b520a3a](https://github.com/esveo/t3code/commit/b520a3a9918d9cc619ded9809eaf0fa2cfe60af4), [5e0f198](https://github.com/esveo/t3code/commit/5e0f19872259ecb594b97a38a6d893469048060b), [a128a0f](https://github.com/esveo/t3code/commit/a128a0f400039646ad555eac3fa97fcfe214c98b))
-- Auto arrange lays out pinned and active threads in a grid ([5f262e2](https://github.com/esveo/t3code/commit/5f262e2e87c593665bda44180928867f9dc37e42), [fd33715](https://github.com/esveo/t3code/commit/fd3371511d99b57efe08ec54b02f4815e287babe), [884db0d](https://github.com/esveo/t3code/commit/884db0dc214be1e10fe0d2420fc05ad6d8397bc7), [3f89773](https://github.com/esveo/t3code/commit/3f897730dd9b3510823612d068c5df5f10badca5), [c6f1f7d](https://github.com/esveo/t3code/commit/c6f1f7d3207f4503a1a62feaf6e3290c86667e50), [6b497f3](https://github.com/esveo/t3code/commit/6b497f35956f1b58df6a95ae85e7e6c0e8ed6d6e), [b25144a](https://github.com/esveo/t3code/commit/b25144a94b05f2ef40e10207996ff66e227ea415), [d01434e](https://github.com/esveo/t3code/commit/d01434e7467adbf4590a7897b8a49fc084da649f))
-- The current turn's prompt stays pinned above the timeline ([701656b](https://github.com/esveo/t3code/commit/701656bc2b9e52855f3669d7000801ea685ef44d))
-- A turn's thinking read back as a trail under its answer ([f8402c9](https://github.com/esveo/t3code/commit/f8402c95b72e507c3138e689621e05f5c29472f9), [157570c](https://github.com/esveo/t3code/commit/157570c810c681ac5fa424961cc45a5789e4146b), [63a2129](https://github.com/esveo/t3code/commit/63a2129ef1a82bd40a299576c31a5dde1a558d49), [bad9f7a](https://github.com/esveo/t3code/commit/bad9f7a6fe1e55fb63af211cb9c42b187b71c6ac), [e227f28](https://github.com/esveo/t3code/commit/e227f2830661dbced9c1288761be9640acf92cce))
-- The composer shows the minutes left before the prompt cache expires, and a warning once it has ([a854e37](https://github.com/esveo/t3code/commit/a854e37245c778af12bf1a1dec5a2a111acf4ba7), [7824f98](https://github.com/esveo/t3code/commit/7824f98b2c99d23937e01a519301045ec7dc8734))
-- Context usage sits with the composer controls ([ae7cbda](https://github.com/esveo/t3code/commit/ae7cbdaab001bd0ca5882ab2047b1df6bc4580fd), [712a93d](https://github.com/esveo/t3code/commit/712a93d4e683d771bbd94806b60059b3d9dc5809))
-- The usage button opens on a context tab and a cost tab ([a7539dd](https://github.com/esveo/t3code/commit/a7539ddb433ef04ef8ebc9f6594f0dec8ec1f70f), [c7be438](https://github.com/esveo/t3code/commit/c7be438d1afdb4f0c80084609231f451d9ad6c34), [d96d4e3](https://github.com/esveo/t3code/commit/d96d4e3dcd0495011afdc01262f6a774a1edfb19))
-- Threads, subagents and workflows continue after a server restart, on by default ([ee6ff3c](https://github.com/esveo/t3code/commit/ee6ff3c35b8cc402b15845fe42251af2ac71014d), [a4a1c8e](https://github.com/esveo/t3code/commit/a4a1c8e8341bb83798ca63b5fa7876bd90d9f7bf), [cefb759](https://github.com/esveo/t3code/commit/cefb7594aaabf3c13513fb6210a8ae67ecf0fbf8))
-- Subagents open as their own chat from the Agents panel, live, with messages relayed through the main agent and a stop button ([59046be](https://github.com/esveo/t3code/commit/59046bea5032ef2f6a9fce6a67a9e18b13c30716), [2bb9257](https://github.com/esveo/t3code/commit/2bb9257de5cede69f9d3f3160bd2263a08eb9270), [4e4fd9e](https://github.com/esveo/t3code/commit/4e4fd9e64124999346dbf61a600accb050dc5158))
-- Thread orchestration (opt-in): a coordinator starts child threads across projects, grouped under it, with a Threads panel ([dcf7083](https://github.com/esveo/t3code/commit/dcf70839ea89d5149ecf48bf8cf0c8eb6d0dd86a), [001a801](https://github.com/esveo/t3code/commit/001a801ce78414cf572e7a26d1632c6de03714e3), [3c7c22c](https://github.com/esveo/t3code/commit/3c7c22ceb874a89a5d7df0db3280ef66607459af), [a5c0a71](https://github.com/esveo/t3code/commit/a5c0a714f223254b41fc7215a5df670329b3c581), [f135e13](https://github.com/esveo/t3code/commit/f135e13bdbb85ac3c5b7fb94684c840eb4baf7f2), [dc67d16](https://github.com/esveo/t3code/commit/dc67d16258c26388446ddc9f4d60cfb56d316d91), [9cf0b86](https://github.com/esveo/t3code/commit/9cf0b865b9a377dc6273dc624890e052752914d8), [397868e](https://github.com/esveo/t3code/commit/397868e4c2ac680b742e6a8bd4c851a1163f4ccc), [99298e3](https://github.com/esveo/t3code/commit/99298e38bb22786ae7981663e3176fd35c0347f7), Fix: [7b61af1](https://github.com/esveo/t3code/commit/7b61af16095593e1c5a399d40350121a71712661), [ea78e5f](https://github.com/esveo/t3code/commit/ea78e5ffede1737050cc0b2120de17d1674e7431), [f4a3444](https://github.com/esveo/t3code/commit/f4a3444208e85f50ca1583c1bdbd7b0bf2d5fe2f), [d2b2510](https://github.com/esveo/t3code/commit/d2b2510f0448812622a6e2750a0d108aa461f238))
-- Thread orchestration: attachments reach child threads, and an unknown base branch gets suggestions ([dde75e2](https://github.com/esveo/t3code/commit/dde75e26e1b88e6a4361f5a8fc9c273ea5979c50))
-- Thread orchestration: an existing thread can be put under a coordinator, and coordinators find and read any thread ([0fa40f0](https://github.com/esveo/t3code/commit/0fa40f017cff8ef45dd0adbd7736d6aa026af550))
-- Thread orchestration: coordinators settle their finished threads with `settle_thread` ([9eb8d21](https://github.com/esveo/t3code/commit/9eb8d210521f7fedf5169775ca98308815f7ac23))
-- Thread orchestration (opt-in): coordinators put open decisions into an Inbox tab of the right panel ([c5a4103](https://github.com/esveo/t3code/commit/c5a41032a5591bce07a05dfa2cf6882d015c7bf6), [c464fe2](https://github.com/esveo/t3code/commit/c464fe214183ab2c023f90281c8434cc45d6596a), Fix: [00ce1be](https://github.com/esveo/t3code/commit/00ce1be454f40d8d0f6bba192176eaf4a5ff757e), [6e12711](https://github.com/esveo/t3code/commit/6e12711b1a856765f9448a1e277deb59aa990289))
-- Fix: settling a child after a server restart no longer reports its old finish to the coordinator again ([50e43f4](https://github.com/esveo/t3code/commit/50e43f403c239418fca8d5d00386db5ffbdf5e5c))
-- Fix: a child thread counts as done only once its subagents and background tasks have finished ([bbb4d1c](https://github.com/esveo/t3code/commit/bbb4d1c0a9fe9caa0426ee21523976b74c72b8f1))
-- Git graph of the current repository in the right panel ([e07fc06](https://github.com/esveo/t3code/commit/e07fc068c1ef7d22ed30e5afabd0809a4d8066cc), [2763366](https://github.com/esveo/t3code/commit/2763366ca96635f7a9eb87b04d7de23abc5ece93), [f4b9ee5](https://github.com/esveo/t3code/commit/f4b9ee5b498b3329e689a4e1217816dd7ceb944e), [d0a34e5](https://github.com/esveo/t3code/commit/d0a34e5424002086c29d9925c9df9fb208ef8ad7), [0ed45d5](https://github.com/esveo/t3code/commit/0ed45d5b4404ed951e49cf4e928a24f4f8fcdf7a), [6484f06](https://github.com/esveo/t3code/commit/6484f06ab7cd62c0df128b4c8bdc58fc32c40c1f), [2525645](https://github.com/esveo/t3code/commit/2525645a67056042319bcdc22657bd94778c66a8), [dfea87e](https://github.com/esveo/t3code/commit/dfea87e541709eb6fda8c998c80c26d74af60ecc), [35c9351](https://github.com/esveo/t3code/commit/35c935181a8418414aab6f129671595c898026f4), [b1ec957](https://github.com/esveo/t3code/commit/b1ec9572c2ea2bdd6d16c580adf2edb53d24976f))
-- Diff commits, ranges and uncommitted changes from the git graph ([7b8f7a5](https://github.com/esveo/t3code/commit/7b8f7a5ada90b4d59a4a790790ba451b6713352c))
-- Agent stage: a working thread watched as sprites on a stage ([cde6598](https://github.com/esveo/t3code/commit/cde6598772024a3574e1e621c853b61c24d7f049), [cdb6ef5](https://github.com/esveo/t3code/commit/cdb6ef507ef4857a3d9fffc73a74f15d226c87d0), [84d5e89](https://github.com/esveo/t3code/commit/84d5e897c4b5545d817d057d3fc1e059cd8786ca), [e70986c](https://github.com/esveo/t3code/commit/e70986c2a91696f40cb5d5cfbd7019ea69a9d376), [d75971d](https://github.com/esveo/t3code/commit/d75971d5b4a256a985858d980055341a3f25f25f), [cd00cb0](https://github.com/esveo/t3code/commit/cd00cb03d45010342ba209d0eec81ed3cc7a5b16), [76fdcf8](https://github.com/esveo/t3code/commit/76fdcf84bcff2a21b7a6e94bd329cefc8b67384b))
-- The stage answers the requests waiting on you and shows the turn's time per station ([0f7ab6a](https://github.com/esveo/t3code/commit/0f7ab6ad791652af6a85717f7f85b987b6f86848))
-- The stage shows every thread, hides agents, recaps the turn, and its sprites wear the project icon ([84f4393](https://github.com/esveo/t3code/commit/84f4393ed422ba6ad8dcfc629b14f8067ac7f4a9), [8520ae1](https://github.com/esveo/t3code/commit/8520ae16f6b1db497d714ffd6e388056e6705d01), [dd6cf0a](https://github.com/esveo/t3code/commit/dd6cf0ae158559112a03b7598c6ed8c232cff32b), [5fed420](https://github.com/esveo/t3code/commit/5fed420df396b11a035b04a5b7ace6da25b852e2))
-- Sidebar thread cards are two lines, the provider icon trailing the title, switchable in Settings → Appearance ([037a9e7](https://github.com/esveo/t3code/commit/037a9e7c1a2533ada93c2002a692ed91b2ab5b4d), [1db943d](https://github.com/esveo/t3code/commit/1db943d756c898c78b77e98c932220f7a2c1883c), [920ac3a](https://github.com/esveo/t3code/commit/920ac3a9e960d40fefc92253eeba9c4613108093))
-- Fix: prompts lost to an early Claude interrupt carry into the next turn ([acfe170](https://github.com/esveo/t3code/commit/acfe170c157f0127a44a9ece44860a2d077ed846))
-- Fix: paste reaches the composer in the desktop app with nothing focused ([17e8cc6](https://github.com/esveo/t3code/commit/17e8cc6f3ba6640ad1f2c141fea808957005e23c))
-- Fix: paste works after clicking a copy button ([4ff61ba](https://github.com/esveo/t3code/commit/4ff61bae5136bc12500c868f090ebf6050fdb7f1))
-- Fork app: prebuilt slots, switched with an update button ([a6263b1](https://github.com/esveo/t3code/commit/a6263b17ce999ad54e265fc9af72bf69fe054924), [c4bf257](https://github.com/esveo/t3code/commit/c4bf257446c02952869882c4b565818f7eecce6c), [ed5a25c](https://github.com/esveo/t3code/commit/ed5a25c50a6769fea435998789b5d9a9345d14fc), [00b6967](https://github.com/esveo/t3code/commit/00b6967c5687349f425e02c224b0cfd3abb022f8), [5bdf346](https://github.com/esveo/t3code/commit/5bdf34663fa1cd35a6f54bec90faef5bebe4ac8c), [a4f5a00](https://github.com/esveo/t3code/commit/a4f5a00f5f2b43ae2f25daa91d134c1cf51a2cc7))
-- Fork server: built as a t3 runtime, restarted with the app by one update button ([2731460](https://github.com/esveo/t3code/commit/27314606a31f076b97330287821901da3c46774d), [c8cacc2](https://github.com/esveo/t3code/commit/c8cacc24aa66dea691dc041b7fe5b6220a08bcce), [42775fa](https://github.com/esveo/t3code/commit/42775fa59f26973d50ba5c98420959e125ea2c2e), [b5e7760](https://github.com/esveo/t3code/commit/b5e7760f60dc71818f9d3f3b4b0e4e43ff563e8d), [4adb157](https://github.com/esveo/t3code/commit/4adb157fd607007caa54c1e1da1ded6413d65560))
-- Fork watcher: prepares a build whenever `fork` moves ([244f216](https://github.com/esveo/t3code/commit/244f2162c324398161dcb598ec1cd5ffbc5c76f1), [b726f39](https://github.com/esveo/t3code/commit/b726f398a51d6b001013425a3e6bf3f58951e9c6), [c6a2768](https://github.com/esveo/t3code/commit/c6a2768feb5c257dfb9ce3a2c10d971a72c0347e), [365ab45](https://github.com/esveo/t3code/commit/365ab45eeca1607c13e55e9cb9d395d0df263df3), [d611ecc](https://github.com/esveo/t3code/commit/d611ecc9624a33b0986e7423b24336aaee193802), [1ba88dd](https://github.com/esveo/t3code/commit/1ba88dd1ed0f1b4a3ee90217016b9379bd5ee1a5))
-- The fork's own UI uses upstream's component variants instead of restyling them ([a904f22](https://github.com/esveo/t3code/commit/a904f22e5053fbad46425d59a557669e6a36c8f9))
-- Setup guide in [docs/fork/setup.md](docs/fork/setup.md) ([a98e8f6](https://github.com/esveo/t3code/commit/a98e8f684047a0ae20aa139adf0e138d8565c83f))
-- Fix: fork builds send no usage data to upstream's PostHog, and agents in other clones leave the esveo board alone ([cbad604](https://github.com/esveo/t3code/commit/cbad6041f3aac48b962c15f68453c9c8ef3f0a32), [b6bda9c](https://github.com/esveo/t3code/commit/b6bda9cfa046d6382a7d03c6cea8e1a65dbb2781))
-- Fix: an artifact's live watch shows as monitoring instead of an agent at work ([2d039d2](https://github.com/esveo/t3code/commit/2d039d22c375e91a01ac9d5d0bad13d327050438))
+<p align="center">
+  esveo's fork of <a href="https://github.com/pingdotgg/t3code">T3 Code</a>, the harness harness for Claude Code, Codex and more.
+</p>
+
+<p align="center">
+  <a href="#getting-started">Getting started</a> ·
+  <a href="#features">Features</a> ·
+  <a href="docs/fork/changelog.md">Changelog</a> ·
+  <a href="https://github.com/pingdotgg/t3code">Upstream</a>
+</p>
+
+## Getting started
+
+Setting up the app, the server and your clients is described in [docs/fork/setup.md](docs/fork/setup.md).
+
+## Features
+
+### Split view
+
+Drag a thread next to the one you have open.
+
+<p align="center">
+  <img src="docs/fork/media/split-view.gif" alt="Dragging a second thread from the sidebar onto the right half of the chat" width="100%">
+</p>
+
+### Git graph
+
+The repository's commit graph in the side panel. Click a commit to see its diff, or <kbd>⌘</kbd>-click a second one to diff the range.
+
+<p align="center">
+  <img src="docs/fork/media/git-graph.webp" alt="The git graph with a range diff between two commits" width="100%">
+</p>
+
+### Context, cost and cache
+
+The composer shows context usage, the thread's cost and how long the prompt cache stays warm.
+
+<table>
+  <tr>
+    <td width="33%"><img src="docs/fork/media/usage-context.webp" alt="Context tab of the usage popover"></td>
+    <td width="33%"><img src="docs/fork/media/usage-cost.webp" alt="Cost tab of the usage popover"></td>
+    <td width="33%"><img src="docs/fork/media/prompt-cache.webp" alt="Prompt cache timer tooltip"></td>
+  </tr>
+</table>
+
+### Subagent chats
+
+The Agents panel lists every subagent. Click one to open its chat, live while it runs.
+
+<p align="center">
+  <img src="docs/fork/media/subagent-chat.gif" alt="Opening the Agents panel and a subagent's chat" width="100%">
+</p>
+
+### Thread orchestration
+
+A coordinator thread starts child threads in any project, waits for them and collects their results.
+
+<p align="center">
+  <img src="docs/fork/media/orchestration.gif" alt="A coordinator starts three child threads across three projects" width="100%">
+</p>
+
+### Agent stage
+
+Watch every agent move between thinking, reading, editing, terminal and subagents.
+
+<p align="center">
+  <img src="docs/fork/media/agent-stage.gif" alt="The agent stage with several threads at work" width="100%">
+</p>
+
+### Thought trail
+
+Read back the thinking behind any answer.
+
+<p align="center">
+  <img src="docs/fork/media/thinking-trail.webp" alt="The thought trail under an answer" width="80%">
+</p>
+
+### esveo themes
+
+_esveo_ and _esveo Midnight_, each in light and dark.
+
+<p align="center">
+  <img src="docs/fork/media/themes.webp" alt="esveo Midnight in dark and light" width="100%">
+</p>
+
+### And more
+
+- Threads, subagents and workflows survive a server restart.
+- Two-line thread cards, grouped by project.
+- Prompts lost to an early interrupt carry over to the next turn.
