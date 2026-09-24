@@ -31,7 +31,7 @@ describe("parseCommitGraphLog", () => {
       record([
         "abc123",
         "def456 789abc",
-        "HEAD -> refs/heads/main, refs/remotes/origin/main, refs/tags/v1",
+        "HEAD -> refs/heads/main, refs/remotes/origin/main, tag: refs/tags/v1",
         "Ada",
         "2026-09-18T10:00:00+02:00",
         "feat: thing",
@@ -129,6 +129,7 @@ const makeTmpDir = (): Effect.Effect<
 const git = (
   cwd: string,
   args: ReadonlyArray<string>,
+  env?: NodeJS.ProcessEnv,
 ): Effect.Effect<string, GitCommandError, GitVcsDriver.GitVcsDriver> =>
   Effect.gen(function* () {
     const driver = yield* GitVcsDriver.GitVcsDriver;
@@ -137,19 +138,20 @@ const git = (
       cwd,
       args,
       timeoutMs: 10_000,
+      ...(env ? { env: { ...process.env, ...env } } : {}),
     });
     return result.stdout.trim();
   });
 
 /** Each commit touches its own file, so the merge in the fixture stays conflict-free. */
-const commit = (cwd: string, message: string) =>
+const commit = (cwd: string, message: string, env?: NodeJS.ProcessEnv) =>
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem.FileSystem;
     const pathService = yield* Path.Path;
     const fileName = `${message.replace(/\s+/g, "-")}.txt`;
     yield* fileSystem.writeFileString(pathService.join(cwd, fileName), `${message}\n`);
     yield* git(cwd, ["add", "."]);
-    yield* git(cwd, ["commit", "-m", message]);
+    yield* git(cwd, ["commit", "-m", message], env);
   });
 
 /** main: initial -> a -> merge(side), plus a T3 checkpoint ref off to the side. */
@@ -223,6 +225,49 @@ describe("listCommitGraph", () => {
         "merge side",
         "side work",
       ]);
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
+  it.effect("lists every child above its parents when commits share a second", () =>
+    Effect.gen(function* () {
+      const cwd = yield* makeTmpDir();
+      const driver = yield* GitVcsDriver.GitVcsDriver;
+      yield* driver.initRepo({ cwd });
+      yield* git(cwd, ["config", "user.email", "test@test.com"]);
+      yield* git(cwd, ["config", "user.name", "Test"]);
+      const sameSecond = {
+        GIT_AUTHOR_DATE: "2026-01-01T10:00:00Z",
+        GIT_COMMITTER_DATE: "2026-01-01T10:00:00Z",
+      };
+      // Without an explicit order, `git log --all` walks this history as
+      // p, z, a, y, root: `a` comes out before its child `y`.
+      yield* commit(cwd, "root", sameSecond);
+      yield* commit(cwd, "a", sameSecond);
+      const base = yield* git(cwd, ["branch", "--show-current"]);
+      yield* git(cwd, ["checkout", "-b", "y-branch"]);
+      yield* commit(cwd, "y", sameSecond);
+      yield* git(cwd, ["checkout", base]);
+      yield* commit(cwd, "p", sameSecond);
+      yield* git(cwd, ["tag", "v1"]);
+      yield* git(cwd, ["checkout", "y-branch"]);
+      yield* commit(cwd, "z", sameSecond);
+
+      const graph = yield* driver.listCommitGraph({ cwd });
+
+      const rowOf = new Map(graph.commits.map((entry, index) => [entry.sha, index]));
+      for (const entry of graph.commits) {
+        for (const parent of entry.parents) {
+          assert.ok(
+            (rowOf.get(parent) ?? Infinity) > (rowOf.get(entry.sha) ?? -1),
+            `${entry.subject} sits above its parent`,
+          );
+        }
+      }
+      const tagged = graph.commits.find((entry) => entry.subject === "p");
+      assert.deepStrictEqual(
+        tagged?.refs.filter((ref) => ref.kind === "tag"),
+        [{ kind: "tag", name: "v1" }],
+      );
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   );
 
