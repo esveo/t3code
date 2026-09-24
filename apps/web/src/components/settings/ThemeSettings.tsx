@@ -41,7 +41,7 @@ import { Button } from "../ui/button";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { ThemeImportDialog } from "./ThemeImportDialog";
-import { ESVEO_MIDNIGHT_THEME, ESVEO_THEME } from "@t3tools/shared/themePalettes";
+import { ESVEO_THEMES } from "@t3tools/shared/themePalettes";
 import { searchableSetting } from "./settingsSearch";
 import { useThemeEditorStore } from "./themeEditorStore";
 import {
@@ -61,8 +61,6 @@ const MAINTAINER_THEMES: ReadonlyArray<ThemeDefinition> = [
   OCEAN_THEME,
   EMBER_THEME,
   IRIS_THEME,
-  ESVEO_THEME,
-  ESVEO_MIDNIGHT_THEME,
 ];
 
 function collectionVariantLabels(themes: ReadonlyArray<ThemeDefinition>): ReadonlyArray<string> {
@@ -768,6 +766,28 @@ export function ThemeLibrary({
       .entries(),
   ];
 
+  const renderMaintainerCard = (maintainerTheme: ThemeDefinition) => {
+    const card = getThemeCardDefinition(maintainerTheme);
+    return (
+      <ThemeLibraryCard
+        activeModes={pickedModesFor(maintainerTheme.id)}
+        isActive={false}
+        key={maintainerTheme.id}
+        onDuplicate={() =>
+          openThemeEditor({
+            editingThemeId: null,
+            seedThemeId: maintainerTheme.id,
+            seedName: `${maintainerTheme.label} copy`,
+            initialAppearance,
+          })
+        }
+        onUse={() => persistTheme(maintainerTheme.id)}
+        onUseMode={handlePairPick(maintainerTheme.id)}
+        theme={card}
+      />
+    );
+  };
+
   const renderPairGrid = () => (
     // One shared provider so every tooltip in the grid hands off instantly to
     // the next hovered trigger instead of stacking on top of it. The card
@@ -778,6 +798,8 @@ export function ThemeLibrary({
         className="grid w-full gap-2"
         style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 16rem), 1fr))" }}
       >
+        {/* Fork: the esveo themes lead the library, ahead of T3 Code's. */}
+        {ESVEO_THEMES.map(renderMaintainerCard)}
         {STANDARD_THEME_CARDS.map((standardTheme) => (
           <ThemeLibraryCard
             activeModes={pickedModesFor(null)}
@@ -796,27 +818,7 @@ export function ThemeLibrary({
             theme={standardTheme}
           />
         ))}
-        {MAINTAINER_THEMES.map((maintainerTheme) => {
-          const card = getThemeCardDefinition(maintainerTheme);
-          return (
-            <ThemeLibraryCard
-              activeModes={pickedModesFor(maintainerTheme.id)}
-              isActive={false}
-              key={maintainerTheme.id}
-              onDuplicate={() =>
-                openThemeEditor({
-                  editingThemeId: null,
-                  seedThemeId: maintainerTheme.id,
-                  seedName: `${maintainerTheme.label} copy`,
-                  initialAppearance,
-                })
-              }
-              onUse={() => persistTheme(maintainerTheme.id)}
-              onUseMode={handlePairPick(maintainerTheme.id)}
-              theme={card}
-            />
-          );
-        })}
+        {MAINTAINER_THEMES.map(renderMaintainerCard)}
         {environmentThemes
           .filter(
             // A saved theme with the same id wins resolution, so its card is
