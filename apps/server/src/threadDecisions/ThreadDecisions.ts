@@ -20,6 +20,7 @@ import {
 } from "@t3tools/contracts";
 import {
   applyReply,
+  decisionKind,
   formatDecisionReplies,
   isMeaningfulReply,
   reopenDecision,
@@ -146,9 +147,9 @@ export const make = Effect.gen(function* () {
 
   const upsert: ThreadDecisions["Service"]["upsert"] = (coordinatorId, input) =>
     update(coordinatorId, (decisions, now) => {
-      const invalid = validateDecisionInput(input);
-      if (invalid) return Effect.fail(failure(invalid));
       const existing = decisions.find((decision) => decision.id === input.id) ?? null;
+      const invalid = validateDecisionInput(input, decisionKind(existing, input));
+      if (invalid) return Effect.fail(failure(invalid));
       const decision = upsertDecision(existing, input, coordinatorId, now);
       // New information from the coordinator is what a snooze waits for.
       const woken = decisions

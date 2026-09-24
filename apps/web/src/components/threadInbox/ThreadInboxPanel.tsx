@@ -5,7 +5,7 @@
  * decision, and "Next" moves on to the next unanswered one in either. Replies
  * collect in the outbox and go to the coordinator together.
  */
-import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -22,7 +22,6 @@ import { Toggle, ToggleGroup } from "~/components/ui/toggle-group";
 import { cn } from "~/lib/utils";
 import { useThreadShell, useThreadShells } from "~/state/entities";
 import { useAtomCommand } from "~/state/use-atom-command";
-import { useOpenThread } from "../threadOrchestration/useOpenThread";
 import { DecisionCard } from "./DecisionCard";
 import {
   type DecisionDraft,
@@ -66,7 +65,6 @@ function ThreadInbox({ threadRef, cwd }: { threadRef: ScopedThreadRef; cwd: stri
   const clearDrafts = useThreadInboxStore((state) => state.clearDrafts);
   const setViewInStore = useThreadInboxStore((state) => state.setView);
   const act = useAtomCommand(threadInboxEnvironment.act);
-  const openThread = useOpenThread();
   const [notesOpen, setNotesOpen] = useState<Readonly<Record<string, boolean>>>({});
   const [showSettled, setShowSettled] = useState(false);
   const [collapsed, setCollapsed] = useState<Readonly<Record<string, boolean>>>({});
@@ -257,7 +255,6 @@ function ThreadInbox({ threadRef, cwd }: { threadRef: ScopedThreadRef; cwd: stri
         if (draft) void send([{ decision, draft }]);
       }}
       onSnooze={() => snooze(decision, true)}
-      onOpenThread={(threadId) => openThread(scopeThreadRef(threadRef.environmentId, threadId))}
     />
   );
 
@@ -462,7 +459,7 @@ function ThreadInbox({ threadRef, cwd }: { threadRef: ScopedThreadRef; cwd: stri
                         >
                           Unsnooze
                         </Button>
-                      ) : decision.status === "resolved" ? (
+                      ) : decision.status === "resolved" || decision.kind === "task" ? (
                         <Button size="xs" variant="ghost-muted" onClick={() => reopen(decision)}>
                           Reopen
                         </Button>

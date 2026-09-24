@@ -428,11 +428,18 @@ export const UpsertDecisionInput = Schema.Struct({
     description:
       "Stable id you choose (for example stichtag). Calling upsert_decision again with it updates the decision; for one that was answered or resolved it asks again.",
   }),
+  kind: Schema.optional(
+    Schema.Literals(["decision", "task"]).annotate({
+      description:
+        "decision (default): the user picks an option. task: a step only the user can do (enter a deploy key, click through a console, create an account); it takes no options, the user checks it off with an optional note, and you get Done back. Keeps the kind it has when left out.",
+    }),
+  ),
   title: TrimmedNonEmptyString.annotate({
     description: "A few words naming what is to decide; the row the user sees in the Inbox.",
   }),
   question: TrimmedNonEmptyString.annotate({
-    description: "The question itself in one or two sentences, in the user's language.",
+    description:
+      "The question itself in one or two sentences, in the user's language; for a task, what to do.",
   }),
   context: Schema.optional(
     Schema.String.annotate({
@@ -440,10 +447,12 @@ export const UpsertDecisionInput = Schema.Struct({
         "Markdown the user needs to decide and nothing more: facts, risks, numbers, a draft to approve.",
     }),
   ),
-  options: Schema.NonEmptyArray(DecisionOptionInput).annotate({
-    description:
-      "The answers to choose from; for a yes/no question both. The user can always answer in their own words instead.",
-  }),
+  options: Schema.optional(
+    Schema.Array(DecisionOptionInput).annotate({
+      description:
+        "The answers to choose from, required for a decision; for a yes/no question both. The user can always answer in their own words instead. Leave out for a task.",
+    }),
+  ),
   recommended: Schema.optional(
     Schema.Struct({
       optionId: TrimmedNonEmptyString,
@@ -457,13 +466,14 @@ export const UpsertDecisionInput = Schema.Struct({
   ),
   sourceThreadId: Schema.optional(
     TrimmedNonEmptyString.annotate({
-      description: "Your thread the question comes from, when it is not your own.",
+      description:
+        "Your thread the question comes from, when it is not your own. Ignored in a thread a coordinator started: that thread is the source.",
     }),
   ),
   routeToThreadId: Schema.optional(
     TrimmedNonEmptyString.annotate({
       description:
-        "Your thread the answer is for. The answer still reaches you; pass it on with send_to_thread.",
+        "Your thread the answer is for. The answer still reaches you; pass it on with send_to_thread. Ignored in a thread a coordinator started: the answer is for that thread.",
     }),
   ),
   dependsOn: Schema.optional(
@@ -476,6 +486,7 @@ export type UpsertDecisionInput = typeof UpsertDecisionInput.Type;
 
 export const DecisionSummary = Schema.Struct({
   id: Schema.String,
+  kind: Schema.Literals(["decision", "task"]),
   title: Schema.String,
   status: Schema.Literals(["open", "answered", "resolved"]),
   urgency: Schema.Literals(["now", "today", "later"]),
@@ -485,16 +496,24 @@ export const DecisionSummary = Schema.Struct({
     description: "The user put it aside until your next change.",
   }),
   askedBack: Schema.Boolean.annotate({
-    description: "The user asked for pros and cons instead of answering.",
+    description: "The user asked for pros and cons or an explanation instead of answering.",
+  }),
+  sourceThreadId: Schema.NullOr(Schema.String).annotate({
+    description:
+      "The thread the question comes from; one of your threads may have asked it itself.",
   }),
 });
 export type DecisionSummary = typeof DecisionSummary.Type;
 
 const DECISIONS_USE =
   "Use decisions whenever you need the user to decide or approve something, instead of numbering questions in a chat message: they stay visible in the user's Inbox until answered, however many updates arrive in between.";
+const TASKS_USE =
+  'When the user has to do something by hand rather than choose (enter a deploy key, approve in a console), pass kind "task" instead of dressing it up as a decision with a single option.';
+const CHILD_DECISIONS =
+  "In a thread a coordinator started, the item goes to the coordinator's Inbox with this thread as its source; the answer reaches the coordinator, which passes it on to you, and you see only your own items.";
 
 const UpsertDecisionTool = Tool.make("upsert_decision", {
-  description: `Ask the user for a decision, or update one you asked before. ${DECISIONS_USE} It shows in the Inbox tab beside this thread with its options, your recommendation and context. The user's answers arrive as one message tagged t3_decisions; answers for one of your threads name it, so pass them on. Mention in chat only briefly that something waits in the Inbox.`,
+  description: `Ask the user for a decision, or update one you asked before. ${DECISIONS_USE} ${TASKS_USE} It shows in the Inbox tab of the coordinator with its options, your recommendation and context. The user's answers arrive as one message tagged t3_decisions; answers for one of your threads name it, so pass them on. Mention in chat only briefly that something waits in the Inbox. ${CHILD_DECISIONS}`,
   parameters: UpsertDecisionInput,
   success: Schema.Struct({
     decisionId: Schema.String,
@@ -512,7 +531,7 @@ const UpsertDecisionTool = Tool.make("upsert_decision", {
 
 const ResolveDecisionTool = Tool.make("resolve_decision", {
   description:
-    "Withdraw an open decision that no longer needs the user, for example because another result settled it. It leaves the Inbox with your reason.",
+    "Withdraw an open decision or task that no longer needs the user, for example because another result settled it. It leaves the Inbox with your reason.",
   parameters: Schema.Struct({
     id: TrimmedNonEmptyString,
     reason: TrimmedNonEmptyString.annotate({
@@ -532,7 +551,7 @@ const ResolveDecisionTool = Tool.make("resolve_decision", {
 
 const ListDecisionsTool = Tool.make("list_decisions", {
   description:
-    "List your decisions and what the user answered, instead of repeating open questions in chat.",
+    "List your decisions and tasks and what the user answered, instead of repeating open questions in chat.",
   parameters: Schema.Struct({
     status: Schema.optional(
       Schema.Literals(["open", "answered", "resolved", "all"]).annotate({

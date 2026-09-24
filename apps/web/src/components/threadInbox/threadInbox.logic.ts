@@ -15,6 +15,10 @@ export interface DecisionDraft {
   readonly optionId?: string | undefined;
   readonly text?: string | undefined;
   readonly askBack?: boolean | undefined;
+  /** Asks the coordinator to explain the item in plain words. */
+  readonly explain?: boolean | undefined;
+  /** Checks off a task. */
+  readonly done?: boolean | undefined;
   readonly dismissReason?: string | undefined;
 }
 
@@ -121,6 +125,8 @@ export function hasDraft(draft: DecisionDraft | undefined): boolean {
   return (
     draft.optionId !== undefined ||
     draft.askBack === true ||
+    draft.explain === true ||
+    draft.done === true ||
     draft.dismissReason !== undefined ||
     (draft.text?.trim().length ?? 0) > 0
   );
@@ -134,6 +140,8 @@ export function draftToReply(decisionId: string, draft: DecisionDraft): ThreadDe
     ...(draft.optionId !== undefined ? { optionId: draft.optionId } : {}),
     ...(text ? { text } : {}),
     ...(draft.askBack ? { askBack: true } : {}),
+    ...(draft.explain ? { explain: true } : {}),
+    ...(draft.done ? { done: true } : {}),
     ...(draft.dismissReason !== undefined ? { dismissReason: draft.dismissReason } : {}),
   };
 }
@@ -144,7 +152,9 @@ export function describeDraft(decision: ThreadDecision, draft: DecisionDraft): s
   if (draft.dismissReason !== undefined) {
     return draft.dismissReason.trim() ? `Done: ${draft.dismissReason.trim()}` : "Done";
   }
+  if (draft.explain) return text ? `Asks to explain: ${text}` : "Asks to explain";
   if (draft.askBack) return text ? `Asks back: ${text}` : "Asks for pros and cons";
+  if (draft.done) return text ? `Done – ${text}` : "Done";
   const option = decision.options.find((candidate) => candidate.id === draft.optionId);
   if (option) return text ? `${option.label} – ${text}` : option.label;
   return text;
@@ -158,7 +168,8 @@ export function describeSettled(decision: ThreadDecision): string {
   }
   if (decision.status === "answered" && decision.answer) {
     const option = decision.options.find((candidate) => candidate.id === decision.answer?.optionId);
-    return [option?.label, decision.answer.text].filter((part) => part).join(" – ") || "Answered";
+    const choice = decision.kind === "task" ? "Done" : option?.label;
+    return [choice, decision.answer.text].filter((part) => part).join(" – ") || "Answered";
   }
   return "Snoozed until the coordinator's next update";
 }
