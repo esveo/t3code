@@ -3,6 +3,7 @@ import {
   CHILD_THREAD_STATE_LABELS,
   FROM_COORDINATOR_TAG,
   parseTaggedThreadMessage,
+  parseThreadUpdates,
   type TaggedThreadMessage as ParsedTaggedThreadMessage,
 } from "@t3tools/shared/threadOrchestration";
 import { ChevronRightIcon } from "lucide-react";
@@ -41,6 +42,26 @@ export function TaggedThreadMessage<Row extends TaggedRow>(props: {
         : props.row,
     [props.row, tagged],
   );
+  const bundle = useMemo(
+    () => (tagged ? null : parseThreadUpdates(props.row.message.text)),
+    [props.row.message.text, tagged],
+  );
+  if (bundle) {
+    // Updates of several children that arrived together as one turn.
+    return (
+      <div className="flex flex-col gap-1.5">
+        {bundle.map((update) => (
+          <ThreadUpdateCard
+            key={`${update.threadId}:${update.state ?? ""}`}
+            update={update}
+            environmentId={props.environmentId}
+            threadRef={props.threadRef}
+            markdownCwd={props.markdownCwd}
+          />
+        ))}
+      </div>
+    );
+  }
   if (!tagged) return props.renderUserRow(props.row);
   if (tagged.tag === FROM_COORDINATOR_TAG) {
     return (

@@ -3,9 +3,15 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   answersLatestPrompt,
+  childBackgroundFor,
   childUpdateBody,
+  childUpdateDetail,
   childUpdateFor,
+  clampAnswer,
+  coordinatorHasUpdate,
 } from "./ThreadOrchestrationReactor.ts";
+import { ThreadId } from "@t3tools/contracts";
+import { wrapThreadUpdate } from "@t3tools/shared/threadOrchestration";
 
 const shell = (overrides: Partial<OrchestrationThreadShell>) =>
   ({
@@ -168,5 +174,116 @@ describe("childUpdateBody", () => {
     );
     expect(childUpdateBody({ state: "done", latestAnswer: null })).toBe("(It gave no answer.)");
     expect(childUpdateBody({ state: "waiting", latestAnswer: null })).toContain("send_to_thread");
+  });
+});
+
+describe("childBackgroundFor", () => {
+  const ended = shell({ ...settled, backgroundLiveness: "monitoring" });
+  const background = (liveTaskTypes: ReadonlyArray<string | undefined>, stalled = false) =>
+    childBackgroundFor({ child: ended, liveTaskTypes, stalled });
+
+  it("tells watches from work that holds the child up", () => {
+    expect(background(["monitor", "monitor_ws"])).toEqual({ kind: "watches", count: 2 });
+    // A background shell is a build or a test run as often as a log tail.
+    expect(background(["monitor", "local_bash"])).toEqual({ kind: "work", stalled: false });
+    expect(background(["local_agent"], true)).toEqual({ kind: "work", stalled: true });
+    expect(background([undefined])).toEqual({ kind: "work", stalled: false });
+    expect(childBackgroundFor({ child: settled, liveTaskTypes: [], stalled: false })).toEqual({
+      kind: "none",
+    });
+    // While the turn runs, the child works whatever runs beside it.
+    expect(
+      childBackgroundFor({
+        child: shell({ ...running, backgroundLiveness: "monitoring" }),
+        liveTaskTypes: ["monitor"],
+        stalled: false,
+      }),
+    ).toEqual({ kind: "none" });
+  });
+
+  it("reports a child with only watches left as done, and says they run", () => {
+    const watches = background(["monitor_ws"]);
+    const update = childUpdateFor({
+      child: ended,
+      latestPromptId: null,
+      latestAnswerId: "m1",
+      requestActivityId: undefined,
+      background: watches,
+    });
+    expect(update).toEqual({ key: "done:m1", state: "done" });
+    expect(childUpdateDetail({ child: ended, background: watches })).toBe(
+      "Finished; 1 watch still running",
+    );
+  });
+
+  it("reports a child stuck on background work only once it stalled", () => {
+    const working = shell({ ...settled, backgroundLiveness: "working" });
+    const update = (stalled: boolean) =>
+      childUpdateFor({
+        child: working,
+        latestPromptId: "u1",
+        latestAnswerId: "m1",
+        requestActivityId: undefined,
+        background: { kind: "work", stalled },
+      });
+    expect(update(false)).toBe(null);
+    expect(update(true)).toEqual({ key: "stalled:u1:m1", state: "working" });
+    expect(childUpdateDetail({ child: working, background: { kind: "work", stalled: true } })).toBe(
+      "Waiting on its subagents, no activity for 30 min",
+    );
+    expect(
+      childUpdateBody({
+        state: "working",
+        latestAnswer: "Started the migration.",
+        background: { kind: "work", stalled: true },
+      }),
+    ).toContain("You get another update when they finish");
+  });
+});
+
+describe("clampAnswer", () => {
+  it("keeps a short answer whole", () => {
+    expect(clampAnswer("  Fixed it.  ")).toBe("Fixed it.");
+  });
+
+  it("cuts a long answer at its last paragraph or sentence that fits", () => {
+    const paragraphs = `${"a".repeat(70)}.\n\n${"b".repeat(20)}. ${"c".repeat(40)}`;
+    expect(clampAnswer(paragraphs, 100)).toBe(
+      `${"a".repeat(70)}.\n… (64 more characters; read_thread returns all of it)`,
+    );
+    const sentences = `${"a".repeat(60)}. ${"b".repeat(20)}. ${"c".repeat(40)}`;
+    expect(clampAnswer(sentences, 100).split("\n")[0]).toBe(
+      `${"a".repeat(60)}. ${"b".repeat(20)}.`,
+    );
+    // No sentence end in reach: cut at a word.
+    const words = Array.from({ length: 40 }, () => "word").join(" ");
+    expect(clampAnswer(words, 22).split("\n")[0]).toBe("word word word word");
+  });
+});
+
+describe("coordinatorHasUpdate", () => {
+  it("finds an update inside a bundle of several children", () => {
+    const block = (threadId: string) =>
+      wrapThreadUpdate({
+        threadId,
+        title: threadId,
+        state: "done",
+        detail: "Finished",
+        text: "ok",
+      });
+    const message = {
+      role: "user" as const,
+      text: `${block("child-a")}\n\n${block("child-b")}`,
+      createdAt: "2026-09-23T10:05:00.000Z",
+    };
+    const has = (childId: string) =>
+      coordinatorHasUpdate({
+        coordinatorMessages: [message],
+        childId: ThreadId.make(childId),
+        state: "done",
+        since: "2026-09-23T10:00:00.000Z",
+      });
+    expect(has("child-b")).toBe(true);
+    expect(has("child-c")).toBe(false);
   });
 });

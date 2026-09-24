@@ -8,7 +8,7 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
-import { resolveChildThreadState } from "@t3tools/shared/threadOrchestration";
+import { parseThreadUpdates, resolveChildThreadState } from "@t3tools/shared/threadOrchestration";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -54,6 +54,104 @@ const engineLayer = it.layer(
       Layer.provideMerge(NodeServices.layer),
     ),
 );
+
+/** A started reactor, a coordinator and `count` children, with helpers to drive them. */
+const coordinatorWithChildren = (name: string, count: number) =>
+  Effect.gen(function* () {
+    const engine = yield* OrchestrationEngineService;
+    const snapshots = yield* ProjectionSnapshotQuery;
+    const liveness = yield* ThreadBackgroundLiveness.ThreadBackgroundLivenessService;
+    const reactor = yield* ThreadOrchestrationReactor.ThreadOrchestrationReactor;
+    yield* reactor.start();
+    const createdAt = "2026-09-23T16:00:00.000Z";
+    const projectId = ProjectId.make(`project-${name}`);
+    const coordinatorId = ThreadId.make(`${name}-coordinator`);
+    const childIds = Array.from({ length: count }, (_, index) =>
+      ThreadId.make(`${name}-child-${index}`),
+    );
+    const modelSelection = { instanceId: ProviderInstanceId.make("claudeAgent"), model: "opus" };
+    yield* engine.dispatch({
+      type: "project.create",
+      commandId: CommandId.make(`cmd-${name}-project`),
+      projectId,
+      title: name,
+      workspaceRoot: `/tmp/project-${name}`,
+      defaultModelSelection: modelSelection,
+      createdAt,
+    });
+    for (const threadId of [coordinatorId, ...childIds]) {
+      yield* engine.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make(`cmd-${name}-create-${threadId}`),
+        threadId,
+        projectId,
+        ...(threadId === coordinatorId ? {} : { parentThreadId: coordinatorId }),
+        title: threadId,
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        createdAt,
+      });
+    }
+    const answer = (threadId: ThreadId, id: string, text: string, at = createdAt) =>
+      Effect.gen(function* () {
+        yield* engine.dispatch({
+          type: "thread.message.assistant.delta",
+          commandId: CommandId.make(`cmd-${id}-delta`),
+          threadId,
+          messageId: MessageId.make(id),
+          delta: text,
+          createdAt: at,
+        });
+        yield* engine.dispatch({
+          type: "thread.message.assistant.complete",
+          commandId: CommandId.make(`cmd-${id}-complete`),
+          threadId,
+          messageId: MessageId.make(id),
+          createdAt: at,
+        });
+      });
+    const sessionWrite = (threadId: ThreadId, status: "ready" | "running", tag: string) =>
+      engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make(`cmd-${name}-session-${threadId}-${tag}`),
+        threadId,
+        session: {
+          threadId,
+          status,
+          providerName: "claudeAgent",
+          providerInstanceId: modelSelection.instanceId,
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: createdAt,
+        },
+        createdAt,
+      });
+    const updates = snapshots
+      .getThreadDetailById(coordinatorId)
+      .pipe(
+        Effect.map((detail) =>
+          Option.getOrThrow(detail).messages.filter((message) =>
+            message.text.includes("t3_thread_update"),
+          ),
+        ),
+      );
+    return { engine, liveness, reactor, childIds, answer, sessionWrite, updates };
+  });
+
+/** Lets the turn-end debounce and the bundle window pass, and waits for the updates. */
+const deliverUpdates = (
+  reactor: ThreadOrchestrationReactor.ThreadOrchestrationReactor["Service"],
+) =>
+  Effect.gen(function* () {
+    yield* TestClock.adjust(ThreadOrchestrationReactor.TURN_END_DEBOUNCE);
+    yield* reactor.drain;
+    yield* TestClock.adjust(ThreadOrchestrationReactor.UPDATE_BUNDLE_WINDOW);
+    yield* reactor.drain;
+  });
 
 engineLayer("thread orchestration", (it) => {
   it.effect("a child thread keeps its coordinator through later updates", () =>
@@ -292,7 +390,7 @@ engineLayer("thread orchestration", (it) => {
         },
         createdAt,
       });
-      yield* reactor.drain;
+      yield* deliverUpdates(reactor);
       assert.strictEqual((yield* updates).length, 0);
 
       // The subagent ends and no turn follows: the grace period reports the child.
@@ -318,10 +416,10 @@ engineLayer("thread orchestration", (it) => {
         },
         createdAt,
       });
-      yield* reactor.drain;
+      yield* deliverUpdates(reactor);
       assert.strictEqual((yield* updates).length, 0);
       yield* TestClock.adjust(Duration.seconds(30));
-      yield* reactor.drain;
+      yield* deliverUpdates(reactor);
       const reported = yield* updates;
       assert.strictEqual(reported.length, 1);
       assert.include(reported[0]!.text, 'state="done"');
@@ -343,9 +441,9 @@ engineLayer("thread orchestration", (it) => {
         },
         createdAt: "2026-09-23T12:01:00.000Z",
       });
-      yield* reactor.drain;
+      yield* deliverUpdates(reactor);
       assert.strictEqual((yield* updates).length, 1);
-    }).pipe(Effect.provide(TestClock.layer())),
+    }),
   );
 
   it.effect("an existing thread moves under a coordinator and out again", () =>
@@ -461,7 +559,7 @@ engineLayer("thread orchestration", (it) => {
         },
         createdAt,
       });
-      yield* reactor.drain;
+      yield* deliverUpdates(reactor);
       const coordinatorDetail = Option.getOrThrow(
         yield* snapshots.getThreadDetailById(coordinatorId),
       );
@@ -571,7 +669,7 @@ engineLayer("thread orchestration", (it) => {
         threadId,
         parentThreadId: coordinatorId,
       });
-      yield* reactor.drain;
+      yield* deliverUpdates(reactor);
       assert.strictEqual(yield* stateOf, "working");
       assert.strictEqual((yield* updates).length, 0);
 
@@ -599,15 +697,15 @@ engineLayer("thread orchestration", (it) => {
         createdAt,
       });
       yield* TestClock.adjust(Duration.seconds(30));
-      yield* reactor.drain;
+      yield* deliverUpdates(reactor);
       assert.strictEqual(yield* stateOf, "done");
       yield* sessionReady("ready-again", "2026-09-23T12:01:00.000Z");
-      yield* reactor.drain;
+      yield* deliverUpdates(reactor);
       const reported = yield* updates;
       assert.strictEqual(reported.length, 1);
       assert.include(reported[0]!.text, 'state="done"');
       assert.include(reported[0]!.text, `thread_id="${threadId}"`);
-    }).pipe(Effect.provide(TestClock.layer())),
+    }),
   );
 
   it.effect("a finished child is reported once across settling and server restarts", () =>
@@ -707,7 +805,7 @@ engineLayer("thread orchestration", (it) => {
             );
             yield* reactor.start();
             const result = yield* effect;
-            yield* reactor.drain;
+            yield* deliverUpdates(reactor);
             return result;
           }),
         );
@@ -763,6 +861,158 @@ engineLayer("thread orchestration", (it) => {
         }),
       );
       assert.strictEqual(yield* updates, 2);
+    }),
+  );
+
+  it.effect("a child with only watches left is reported done, and the update says they run", () =>
+    Effect.gen(function* () {
+      const { liveness, reactor, childIds, answer, sessionWrite, updates } =
+        yield* coordinatorWithChildren("watches", 1);
+      const childId = childIds[0]!;
+      yield* answer(childId, "watches-answer", "Published the report artifact.");
+      liveness.recordTaskLiveness({
+        threadId: childId,
+        taskId: "artifact-watch",
+        taskType: "monitor_ws",
+        status: undefined,
+        kind: "started",
+      });
+      yield* sessionWrite(childId, "ready", "ready");
+      yield* deliverUpdates(reactor);
+      const reported = yield* updates;
+      assert.strictEqual(reported.length, 1);
+      const update = parseThreadUpdates(reported[0]!.text)![0]!;
+      assert.strictEqual(update.state, "done");
+      assert.strictEqual(update.detail, "Finished; 1 watch still running");
+    }),
+  );
+
+  it.effect("a child held up by a background command is reported once it stalls", () =>
+    Effect.gen(function* () {
+      const { engine, liveness, reactor, childIds, answer, sessionWrite, updates } =
+        yield* coordinatorWithChildren("stall", 1);
+      const childId = childIds[0]!;
+      yield* answer(childId, "stall-answer", "The build runs in the background.");
+      liveness.recordTaskLiveness({
+        threadId: childId,
+        taskId: "build",
+        taskType: "local_bash",
+        status: undefined,
+        kind: "started",
+      });
+      yield* sessionWrite(childId, "ready", "ready");
+      yield* deliverUpdates(reactor);
+      assert.strictEqual((yield* updates).length, 0);
+
+      // Activity of the child restarts the clock.
+      yield* TestClock.adjust(Duration.minutes(20));
+      yield* engine.dispatch({
+        type: "thread.activity.append",
+        commandId: CommandId.make("cmd-stall-progress"),
+        threadId: childId,
+        activity: {
+          id: EventId.make("stall-progress"),
+          tone: "info",
+          kind: "task.progress",
+          summary: "Building",
+          payload: { taskId: "build" },
+          turnId: null,
+          createdAt: "2026-09-23T16:20:00.000Z",
+        },
+        createdAt: "2026-09-23T16:20:00.000Z",
+      });
+      yield* TestClock.adjust(Duration.minutes(20));
+      yield* deliverUpdates(reactor);
+      assert.strictEqual((yield* updates).length, 0);
+
+      yield* TestClock.adjust(Duration.minutes(10));
+      yield* deliverUpdates(reactor);
+      const stalled = yield* updates;
+      assert.strictEqual(stalled.length, 1);
+      const update = parseThreadUpdates(stalled[0]!.text)![0]!;
+      assert.strictEqual(update.state, "working");
+      assert.strictEqual(update.detail, "Waiting on background commands, no activity for 30 min");
+
+      // The command ends and the turn it wakes finishes: the coordinator hears the result.
+      liveness.recordTaskLiveness({
+        threadId: childId,
+        taskId: "build",
+        taskType: "local_bash",
+        status: "completed",
+        kind: "completed",
+      });
+      yield* answer(childId, "stall-final", "The build passed.", "2026-09-23T16:55:00.000Z");
+      yield* sessionWrite(childId, "ready", "ready-final");
+      yield* deliverUpdates(reactor);
+      const all = yield* updates;
+      assert.strictEqual(all.length, 2);
+      assert.include(all[1]!.text, 'state="done"');
+      assert.include(all[1]!.text, "The build passed.");
+    }),
+  );
+
+  it.effect("a turn followed by a new one within the debounce is not reported", () =>
+    Effect.gen(function* () {
+      const { engine, reactor, childIds, answer, sessionWrite, updates } =
+        yield* coordinatorWithChildren("debounce", 1);
+      const childId = childIds[0]!;
+      yield* answer(childId, "debounce-interim", "Interim result.");
+      yield* sessionWrite(childId, "ready", "ready");
+      yield* TestClock.adjust(Duration.seconds(1));
+      // A queued message starts the next turn right away; the provider is slow to pick it up.
+      yield* engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-debounce-queued"),
+        threadId: childId,
+        message: {
+          messageId: MessageId.make("debounce-queued"),
+          role: "user",
+          text: "Also check the tests.",
+          attachments: [],
+        },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        createdAt: "2026-09-23T16:01:00.000Z",
+      });
+      yield* deliverUpdates(reactor);
+      assert.strictEqual((yield* updates).length, 0);
+      yield* sessionWrite(childId, "running", "running");
+      yield* deliverUpdates(reactor);
+      assert.strictEqual((yield* updates).length, 0);
+
+      yield* answer(childId, "debounce-final", "Final result.", "2026-09-23T16:05:00.000Z");
+      yield* sessionWrite(childId, "ready", "ready-final");
+      yield* deliverUpdates(reactor);
+      const reported = yield* updates;
+      assert.strictEqual(reported.length, 1);
+      assert.include(reported[0]!.text, "Final result.");
+    }),
+  );
+
+  it.effect("children finishing close together reach their coordinator as one turn", () =>
+    Effect.gen(function* () {
+      const { reactor, childIds, answer, sessionWrite, updates } = yield* coordinatorWithChildren(
+        "bundle",
+        2,
+      );
+      const [first, second] = childIds as [ThreadId, ThreadId];
+      yield* answer(first, "bundle-a", "First is done.");
+      yield* answer(second, "bundle-b", "Second is done.");
+      yield* sessionWrite(first, "ready", "ready-a");
+      yield* TestClock.adjust(Duration.seconds(1));
+      yield* sessionWrite(second, "ready", "ready-b");
+      yield* deliverUpdates(reactor);
+      const reported = yield* updates;
+      assert.strictEqual(reported.length, 1);
+      assert.deepEqual(
+        parseThreadUpdates(reported[0]!.text)?.map((update) => update.threadId),
+        [first, second],
+      );
+
+      // Neither finish is reported again.
+      yield* sessionWrite(first, "ready", "ready-a-again");
+      yield* deliverUpdates(reactor);
+      assert.strictEqual((yield* updates).length, 1);
     }),
   );
 

@@ -5,6 +5,9 @@ import {
   describeChildThread,
   parseTaggedThreadMessage,
   parseThreadLinkHref,
+  parseThreadUpdates,
+  plainTextOfThreadMessage,
+  readableThreadMessage,
   resolveChildThreadState,
   threadLinkHref,
   wrapFromCoordinator,
@@ -120,6 +123,39 @@ describe("tagged thread messages", () => {
 
   it("leaves ordinary messages alone", () => {
     expect(parseTaggedThreadMessage("Please <t3_thread_update> look")).toBe(null);
+    expect(parseThreadUpdates("Please <t3_thread_update> look")).toBe(null);
+  });
+
+  it("reads updates of several children that arrived as one turn", () => {
+    const first = wrapThreadUpdate({
+      threadId: "t-1",
+      title: "API",
+      state: "done",
+      detail: "Finished",
+      text: "Endpoint added.",
+    });
+    const second = wrapThreadUpdate({
+      threadId: "t-2",
+      title: "UI",
+      state: "failed",
+      detail: "Out of tokens",
+      text: "(It gave no answer.)",
+    });
+    const bundle = `${first}\n\n${second}`;
+    // A bundle is not one update whose body holds the next.
+    expect(parseTaggedThreadMessage(bundle)).toBe(null);
+    expect(parseThreadUpdates(bundle)?.map((update) => [update.threadId, update.body])).toEqual([
+      ["t-1", "Endpoint added."],
+      ["t-2", "(It gave no answer.)"],
+    ]);
+    expect(parseThreadUpdates(first)).toHaveLength(1);
+    expect(parseThreadUpdates(`${bundle}\nAnd a note.`)).toBe(null);
+    expect(plainTextOfThreadMessage(bundle)).toBe(
+      "API · Done · Finished; UI · Failed · Out of tokens",
+    );
+    expect(readableThreadMessage(bundle)).toBe(
+      "**API · Done · Finished**\n\nEndpoint added.\n\n**UI · Failed · Out of tokens**\n\n(It gave no answer.)",
+    );
   });
 });
 
