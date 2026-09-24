@@ -59,6 +59,7 @@ import {
 import { cn, isMacPlatform, isWindowsPlatform } from "~/lib/utils";
 import { shellEnvironment } from "~/state/shell";
 import { useAtomCommand } from "~/state/use-atom-command";
+import { useIsActiveChatPane } from "../split/chatPane";
 
 type OpenInOption = {
   label: string;
@@ -272,8 +273,10 @@ export const OpenInPicker = memo(function OpenInPicker({
     [keybindings],
   );
 
+  // Fork: split panes each render a picker; only the active one opens.
+  const isActivePane = useIsActiveChatPane();
   useEffect(() => {
-    if (!enableShortcut) return;
+    if (!enableShortcut || !isActivePane) return;
     const handler = (e: globalThis.KeyboardEvent) => {
       if (!isOpenFavoriteEditorShortcut(e, keybindings)) return;
       if (!openInCwd) return;
@@ -284,7 +287,7 @@ export const OpenInPicker = memo(function OpenInPicker({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [enableShortcut, keybindings, openInCwd, openInEditor, preferredEditor]);
+  }, [enableShortcut, isActivePane, keybindings, openInCwd, openInEditor, preferredEditor]);
 
   const editorItems = (
     <>
