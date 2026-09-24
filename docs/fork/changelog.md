@@ -2,6 +2,7 @@
 
 Every feature and fix this fork adds on top of [T3 Code](https://github.com/pingdotgg/t3code), each with the commits that made it.
 
+- The coordinator Inbox shows where a question comes from, explains a card on request, holds tasks to tick off beside decisions, and takes questions from child threads, and answers reach the coordinator with their question and context ([e361e24](https://github.com/esveo/t3code/commit/e361e24e78d69d7d9747eca2ef5f42d151b812d9)).
 - A coordinator hears about its children less often and more briefly: updates wait out a turn change, come bundled and short, and a child that only watches something counts as finished ([aed2218](https://github.com/esveo/t3code/commit/aed221898e20e8424bd03d372bbddf9bb9129321), [238aaa0](https://github.com/esveo/t3code/commit/238aaa0c4525cf23c643e743cdd2c790b07cc7f2), [8949fed](https://github.com/esveo/t3code/commit/8949fed6b6b893823096ce60c16b7c0c300dad51)).
 - Thread notification toasts are on by default ([369415c](https://github.com/esveo/t3code/commit/369415cfcf67d18beafe72cca3a02afca6f8edda)).
 - Thread notification toasts lead with the session's name, beside the project's logo with a status badge ([e7e89e0](https://github.com/esveo/t3code/commit/e7e89e0117279a0b0f9d5d173f0ec19d99a30424), [394f628](https://github.com/esveo/t3code/commit/394f628e6fcf078a1bdc9f10aa0ccadd73149297))

@@ -9,7 +9,7 @@ The t3-code MCP server lets you coordinate other threads: start_thread starts a 
 
 // Fork: the coordinator's Inbox, only for sessions granted the "decisions" MCP capability.
 const THREAD_DECISIONS_INSTRUCTIONS = `<thread_decisions>
-When you need the user to decide or approve something, record each question with upsert_decision instead of numbering questions in a chat message: it stays in the user's Inbox beside this thread until answered, however many updates arrive, and the answers come back together in one t3_decisions message. Withdraw a question that settled itself with resolve_decision, and check what is still open with list_decisions instead of repeating it in chat.
+When you need the user to decide or approve something, record each question with upsert_decision instead of numbering questions in a chat message: it stays in the user's Inbox until answered, however many updates arrive, and the answers come back together in one t3_decisions message. When the user has to do something by hand, such as entering a deploy key, record it as a task (kind "task") rather than as a decision; the user checks it off. Withdraw an item that settled itself with resolve_decision, and check what is still open with list_decisions instead of repeating it in chat. In a thread a coordinator started, your items go to the coordinator's Inbox and their answers come to you through the coordinator.
 </thread_decisions>`;
 
 /** Shared runtime context; omit model and effort when the harness manages them dynamically. */
