@@ -205,37 +205,36 @@ export const make = Effect.gen(function* () {
 
   const act: ThreadDecisions["Service"]["act"] = (action) =>
     action.type === "submit"
-      ? Effect.gen(function* () {
-          const replies = action.replies.filter(isMeaningfulReply);
-          if (replies.length === 0) return;
-          const decisions = yield* list(action.threadId);
-          const entries: Array<{ decision: ThreadDecision; reply: (typeof replies)[number] }> = [];
-          for (const reply of replies) {
-            const decision = decisions.find((candidate) => candidate.id === reply.decisionId);
-            const invalid = validateReply(decision, reply);
-            if (invalid || !decision) return yield* failure(invalid ?? "Unknown decision.");
-            entries.push({ decision, reply });
-          }
-          const links = new Map<ThreadId, string>();
-          for (const { decision } of entries) {
-            if (decision.routeToThreadId && !links.has(decision.routeToThreadId)) {
-              links.set(decision.routeToThreadId, yield* routeLink(decision.routeToThreadId));
+      ? // One lock from reading to saving: a double submit or a coordinator
+        // asking again in between must not be answered with a stale reply.
+        writes.withPermits(1)(
+          Effect.gen(function* () {
+            const replies = action.replies.filter(isMeaningfulReply);
+            if (replies.length === 0) return;
+            const decisions = yield* list(action.threadId);
+            const entries: Array<{ decision: ThreadDecision; reply: (typeof replies)[number] }> =
+              [];
+            for (const reply of replies) {
+              const decision = decisions.find((candidate) => candidate.id === reply.decisionId);
+              const invalid = validateReply(decision, reply);
+              if (invalid || !decision) return yield* failure(invalid ?? "Unknown decision.");
+              entries.push({ decision, reply });
             }
-          }
-          const text = formatDecisionReplies(entries, (threadId) => links.get(threadId) ?? null);
-          // The message goes out first: a reply recorded but never delivered
-          // would vanish from the Inbox without reaching the coordinator.
-          yield* sendReplies(action.threadId, text);
-          yield* update(action.threadId, (current, now) =>
-            Effect.succeed({
-              changed: entries.flatMap(({ reply }) => {
-                const decision = current.find((candidate) => candidate.id === reply.decisionId);
-                return decision ? [applyReply(decision, reply, now)] : [];
-              }),
-              result: undefined,
-            }),
-          );
-        })
+            const links = new Map<ThreadId, string>();
+            for (const { decision } of entries) {
+              if (decision.routeToThreadId && !links.has(decision.routeToThreadId)) {
+                links.set(decision.routeToThreadId, yield* routeLink(decision.routeToThreadId));
+              }
+            }
+            const text = formatDecisionReplies(entries, (threadId) => links.get(threadId) ?? null);
+            // The message goes out first: a reply recorded but never delivered
+            // would vanish from the Inbox without reaching the coordinator.
+            yield* sendReplies(action.threadId, text);
+            const now = yield* nowIso;
+            yield* save(entries.map(({ decision, reply }) => applyReply(decision, reply, now)));
+            yield* PubSub.publish(changes, action.threadId);
+          }),
+        )
       : update(action.threadId, (decisions, now) =>
           Effect.map(find(decisions, action.decisionId), (decision) => {
             const changed =

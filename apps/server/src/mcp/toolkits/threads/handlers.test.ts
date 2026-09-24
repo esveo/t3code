@@ -111,8 +111,12 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
   const commands = yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]);
   const caller = options.caller ?? makeThread({});
   const threads = [caller, ...(options.threads ?? [])];
+  // Yields like the real engine, whose dispatch waits on the command queue.
   const dispatch: OrchestrationEngineShape["dispatch"] = (command) =>
-    Ref.update(commands, (recorded) => [...recorded, command]).pipe(Effect.as({ sequence: 1 }));
+    Effect.yieldNow.pipe(
+      Effect.andThen(Ref.update(commands, (recorded) => [...recorded, command])),
+      Effect.as({ sequence: 1 }),
+    );
   // Built once, so a switch flipped by a test holds for the calls after it.
   const settingsContext = yield* Layer.build(
     ServerSettings.layerTest({
@@ -783,6 +787,27 @@ describe("threads toolkit", () => {
           })
           .pipe(Effect.flip);
         expect(again.message).toMatch(/no longer open/);
+      }),
+    );
+
+    it.effect("sends a double submit to the coordinator once", () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({ threads: [child] });
+        yield* harness.call("upsert_decision", kodierung);
+        const before = (yield* Ref.get(harness.commands)).length;
+        const submit = harness.decisions
+          .act({
+            type: "submit",
+            threadId: COORDINATOR_ID,
+            replies: [{ decisionId: "kodierung", optionId: "yes" }],
+          })
+          .pipe(Effect.result);
+        const results = yield* Effect.all([submit, submit], { concurrency: "unbounded" });
+        expect(results.filter((result) => result._tag === "Success")).toHaveLength(1);
+        const turns = (yield* Ref.get(harness.commands))
+          .slice(before)
+          .filter((command) => command.type === "thread.turn.start");
+        expect(turns).toHaveLength(1);
       }),
     );
 
