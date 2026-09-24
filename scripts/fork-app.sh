@@ -503,6 +503,12 @@ write_server_info() {
 # Each runtime is ~200 MB. Keeps release versions, the one the service runs,
 # the one it ran before, every branch's newest, and the launcher's own.
 prune_server_versions() {
+  # The runtimes are global, but the keep list below only knows this root's
+  # builds: a scratch root would delete every other branch's server.
+  if [[ "$ROOT" != "$HOME/Documents/private/t3code-app" ]]; then
+    echo "Not pruning servers from the scratch root $ROOT."
+    return 0
+  fi
   local keep=(
     "$(active_server_version)"
     "$(cat "$RUNTIME_DIR/.fork-previous-version" 2>/dev/null || true)"
@@ -512,7 +518,9 @@ prune_server_versions() {
     keep+=("$(json_field "$info" version)")
   done
   local plist="$HOME/Library/LaunchAgents/com.t3tools.t3code.service.plist"
-  keep+=(${(f)"$(sed -n 's|.*/runtime/versions/\([^/<]*\)/.*|\1|p' "$plist" 2>/dev/null)"})
+  # Before the service is set up there is no plist; that must not end the script.
+  [[ -f "$plist" ]] &&
+    keep+=(${(f)"$(sed -n 's|.*/runtime/versions/\([^/<]*\)/.*|\1|p' "$plist")"})
   local dir
   for dir in "$RUNTIME_DIR"/versions/*-fork.*(N/); do
     (( ${keep[(Ie)${dir:t}]} )) && continue
