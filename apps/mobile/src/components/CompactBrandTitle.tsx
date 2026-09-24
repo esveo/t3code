@@ -6,8 +6,8 @@ import { AppText as Text } from "./AppText";
 import { T3Wordmark } from "./T3Wordmark";
 import { IPAD_HOME_TITLE_OFFSET } from "../lib/layoutMetrics";
 import { resolveMobileStageLabel } from "../lib/mobileBranding";
-import { IS_ESVEO_BUILD } from "../features/esveo/esveoBuild";
-import { EsveoCompactBrandTitle } from "../features/esveo/EsveoBrand";
+import { IS_ESVEO_BUILD } from "../features/esveoBrand/esveoBuild";
+import { EsveoCompactBrandTitle } from "../features/esveoBrand/EsveoBrand";
 
 /**
  * Horizontal correction applied to content rendered in the brand title slot,

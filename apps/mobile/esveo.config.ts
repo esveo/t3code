@@ -39,7 +39,7 @@ export function withEsveoAndroid(config: ExpoConfig, env: Record<string, string 
     scheme: "esveo-code",
     // Upstream's OTA channel would ship upstream's JS bundle into this binary.
     updates: { ...esveo.updates, enabled: false },
-    // Read by src/features/esveo/esveoBuild.ts to swap in the esveo lockup.
+    // Read by src/features/esveoBrand/esveoBuild.ts to swap in the esveo lockup.
     extra: { ...esveo.extra, esveo: true },
     android: {
       ...esveo.android,

@@ -3,8 +3,8 @@ import { Image } from "expo-image";
 import { View } from "react-native";
 
 import { AppText as Text } from "./AppText";
-import { IS_ESVEO_BUILD } from "../features/esveo/esveoBuild";
-import { EsveoBrandMark } from "../features/esveo/EsveoBrand";
+import { IS_ESVEO_BUILD } from "../features/esveoBrand/esveoBuild";
+import { EsveoBrandMark } from "../features/esveoBrand/EsveoBrand";
 
 const appVariant = Constants.expoConfig?.extra?.appVariant;
 const BRAND_MARK_SOURCE =
