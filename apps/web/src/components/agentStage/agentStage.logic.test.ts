@@ -15,6 +15,7 @@ import {
   applyStageVisibility,
   deriveStageModel,
   deriveStageRecap,
+  isSearchCommand,
   MAIN_AGENT_ID,
   stageElapsedMs,
   stageInitials,
@@ -865,5 +866,42 @@ describe("stageInitials", () => {
     expect(stageInitials("Refactor")).toBe("RE");
     expect(stageInitials("v2 release")).toBe("VR");
     expect(stageInitials("   ")).toBe("");
+  });
+});
+
+describe("isSearchCommand", () => {
+  it("tells lookups in the shell from other commands", () => {
+    expect(isSearchCommand("grep -rn foo src | head")).toBe(true);
+    expect(isSearchCommand("cd /repo && rg --files apps")).toBe(true);
+    expect(isSearchCommand("Running cd /repo && find . -name '*.ts'")).toBe(true);
+    expect(isSearchCommand("Bash: git grep -n agentId")).toBe(true);
+    expect(isSearchCommand("Running Search for subagent handling in adapters")).toBe(true);
+    expect(isSearchCommand("cd /repo && npx vp test run src")).toBe(false);
+    expect(isSearchCommand("Running Inspect Grok background tasks")).toBe(false);
+    expect(isSearchCommand(null)).toBe(false);
+  });
+
+  it("puts a subagent's grep through Bash at searching", () => {
+    const model = deriveStageModel({
+      activities: [
+        activity({
+          kind: "task.started",
+          payload: { taskId: "task-1", taskType: "local_agent", title: "Audit" },
+        }),
+        activity({
+          kind: "task.progress",
+          payload: {
+            taskId: "task-1",
+            lastToolName: "Bash",
+            detail: "Running cd /repo && grep -rn agentId apps",
+          },
+        }),
+      ],
+      messages: [],
+      session: session("ready"),
+      latestTurn: latestTurn("completed"),
+    });
+    expect(model.agents[1]!.station).toBe("search");
+    expect(stationForToolName("Bash", undefined, "npm test")).toBe("command");
   });
 });

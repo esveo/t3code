@@ -616,7 +616,7 @@ function stationForWorkEntry(entry: WorkLogEntry): StageStation {
     case "edit":
       return "edit";
     case "command":
-      return "command";
+      return isSearchCommand(entry.command) ? "search" : "command";
     case "browser":
     case "device":
       return "browser";
@@ -646,6 +646,36 @@ function workEntryDetail(entry: WorkLogEntry): string | null {
 export function stationForToolName(
   name: string | null | undefined,
   surface?: "browser" | "computer" | undefined,
+  /** The command or its description, which tells a search in the shell from other work. */
+  command?: string | null | undefined,
+): StageStation {
+  const station = stationForToolTitle(name, surface);
+  return station === "command" && isSearchCommand(command) ? "search" : station;
+}
+
+const SEARCH_COMMAND = /^(grep|egrep|rg|ag|ack|find|fd|ls|tree|locate|git\s+(grep|ls-files))\b/;
+const SEARCH_DESCRIPTION = /^(search|find|list|locate|look(ing)?\s+for|grep)\b/i;
+
+/**
+ * A shell call that only looks things up. Agents search with grep and find
+ * through Bash as often as with their search tools, so the first command that
+ * is not a `cd` decides; progress rows also carry the call's description
+ * ("Running Search for …") instead of the command.
+ */
+export function isSearchCommand(text: string | null | undefined): boolean {
+  if (!text) return false;
+  const trimmed = text.trim().replace(/^(running|bash:)\s+/i, "");
+  if (SEARCH_DESCRIPTION.test(trimmed)) return true;
+  const first = trimmed
+    .split(/&&|\|\||;|\|/)
+    .map((part) => part.trim())
+    .find((part) => part.length > 0 && !/^cd\b/.test(part));
+  return first !== undefined && SEARCH_COMMAND.test(first);
+}
+
+function stationForToolTitle(
+  name: string | null | undefined,
+  surface: "browser" | "computer" | undefined,
 ): StageStation {
   if (surface === "browser" || surface === "computer") return "browser";
   const title = (name ?? "").trim().toLowerCase();
@@ -758,7 +788,7 @@ function collectAttributedTools(
       if (from !== null) {
         addStationTime(
           times,
-          stationForToolName(tool.title, tool.surface),
+          stationForToolName(tool.title, tool.surface, tool.command ?? tool.detail),
           from,
           activity.createdAt,
         );
@@ -863,7 +893,7 @@ function deriveSubagent(
     if (tool !== null && tool.status === "inProgress") {
       return {
         ...base,
-        station: stationForToolName(tool.title, tool.surface),
+        station: stationForToolName(tool.title, tool.surface, tool.command ?? tool.detail),
         live: true,
         headline: tool.title ?? "Using a tool",
         detail: tool.command ?? tool.detail,
@@ -875,7 +905,7 @@ function deriveSubagent(
     if (work === null && progress?.toolName) {
       return {
         ...base,
-        station: stationForToolName(progress.toolName),
+        station: stationForToolName(progress.toolName, undefined, progress.detail),
         live: true,
         headline: progress.toolName,
         detail: progress.detail,
