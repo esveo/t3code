@@ -194,7 +194,7 @@ function EnvironmentNotifications({
           data: {
             hideCopyButton: true,
             ...shortcuts.data,
-            leadingIcon: (
+            leadingAvatar: (
               <ThreadToastIdentity
                 project={project ? { ...project, environmentId } : null}
                 statusIcon={
