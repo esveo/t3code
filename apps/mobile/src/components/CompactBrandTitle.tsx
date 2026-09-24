@@ -6,6 +6,8 @@ import { AppText as Text } from "./AppText";
 import { T3Wordmark } from "./T3Wordmark";
 import { IPAD_HOME_TITLE_OFFSET } from "../lib/layoutMetrics";
 import { resolveMobileStageLabel } from "../lib/mobileBranding";
+import { IS_ESVEO_BUILD } from "../features/esveo/esveoBuild";
+import { EsveoCompactBrandTitle } from "../features/esveo/EsveoBrand";
 
 /**
  * Horizontal correction applied to content rendered in the brand title slot,
@@ -26,6 +28,7 @@ export function CompactBrandTitle(
 ) {
   const stageLabel = resolveMobileStageLabel(Constants.expoConfig?.extra?.appVariant);
   const titleOffset = brandTitleOffset();
+  if (IS_ESVEO_BUILD) return <EsveoCompactBrandTitle marginLeft={titleOffset} />;
 
   return (
     <View
