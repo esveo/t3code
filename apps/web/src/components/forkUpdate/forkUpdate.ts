@@ -1,4 +1,4 @@
-// Private fork: the app and the t3 service update together through one
+// Fork: the app and the t3 service update together through one
 // drop-up menu that offers every branch's waiting build.
 // See apps/desktop/src/updates/ForkAppUpdates.ts.
 import type { DesktopForkBuild, DesktopUpdateState } from "@t3tools/contracts";

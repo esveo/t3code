@@ -1,20 +1,22 @@
 # esveo's fork
 
 **This checkout is not the T3 Code project itself but esveo's fork of
-`pingdotgg/t3code`, maintained by Paul.** It exists to add features Paul wants
-for himself (for example the agent stage in
-`apps/web/src/components/agentStage/`) on top of upstream, which is rebased in
-regularly. `AGENTS.md` is upstream's guide for its maintainers; follow it for
+`pingdotgg/t3code`.** Everyone at esveo can use it and work on it; Paul
+maintains it. It adds the features esveo wants (for example the agent stage in
+`apps/web/src/components/agentStage/`) on top of upstream, which is merged in
+every day. `AGENTS.md` is upstream's guide for its maintainers; follow it for
 code and architecture, but these rules win wherever they differ.
 
-**Working in someone else's clone?** The repository is public, and the rules
-below about the `fork` branch, the board, the README, the prebuilt app and the
-background service describe the maintainer's own setup. They apply only when
-`origin` is `github.com/esveo/t3code` and the person you work for maintains it.
-In any other clone, never create issues, board items, pull requests or comments
-on `esveo/t3code` unless that person asks, and follow
-[docs/fork/setup.md](docs/fork/setup.md) to run the fork. The code rules
-(staying mergeable with upstream, scoped checks, Node 26) apply everywhere.
+"The user" below is the esveo colleague you work for. Everyone runs the fork
+the same way, so the rules about the `fork` branch, the board, the changelog,
+the prebuilt app and the background service apply to each of them alike.
+
+**Not working for someone at esveo?** The repository is public. In a clone
+whose user has no push access to `github.com/esveo/t3code`, never create
+issues, board items, pull requests or comments there unless that person asks,
+and follow [docs/fork/setup.md](docs/fork/setup.md) to run the fork. The code
+rules (staying mergeable with upstream, scoped checks, Node 26) apply
+everywhere.
 
 - Remotes: `origin` = `github.com/esveo/t3code` (public), `upstream` =
   `github.com/pingdotgg/t3code` (read-only; pushing is disabled). `gh` defaults
@@ -22,7 +24,7 @@ on `esveo/t3code` unless that person asks, and follow
   and never push there.
 - Upstream's maintainer workflows do not apply: no releases, version bumps,
   changelogs, triage, PR evidence uploads, or CI babysitting. Commit on a
-  feature branch; open a PR on the fork only when Paul asks.
+  feature branch; open a PR on the fork only when the user asks.
 - The user runs the fork's desktop app from prebuilt slots in
   `$T3CODE_FORK_APP_ROOT`, by default `~/Documents/private/t3code-app` (see
   `scripts/fork-app.sh`), and switches builds themselves. Paths below that
@@ -34,24 +36,26 @@ on `esveo/t3code` unless that person asks, and follow
 
 ## The `fork` branch
 
-`fork` is what the user runs. Everything that should go live is merged into it,
-and nothing else: feature work happens on its own branch, so several features
-can be in flight without disturbing the build the user works in all day.
+`fork` is what everyone at esveo runs: each colleague's app picks it up on its
+own (see [Staying current with `fork`](#staying-current-with-fork)).
+Everything that should go live is merged into it, and nothing else: feature
+work happens on its own branch, so several features can be in flight without
+disturbing the build people work in all day.
 
 - Build features on a branch of their own, off `fork`. Never commit to `fork`
   directly, and never to `main`.
 - A feature is live when it is merged into `fork` and a build prepared from
   `fork` (see below). Merge, do not rebase `fork` onto anything: its history is
-  the record of what the user has been running.
+  the record of what everyone has been running.
 - Only merge a feature the user asked to go live. Ask when in doubt — an
-  unfinished branch in `fork` is a broken app for the rest of the day.
+  unfinished branch in `fork` is a broken app for everyone at esveo.
 - Upstream reaches `fork` by itself: every morning at 06:00 the "Upstream-Sync"
   Copilot automation (repo → Agents → Automations) merges upstream's `main`,
   resolves conflicts, typechecks and opens a PR into `fork`, and
   `fork-copilot-automerge.yml` merges it on its next check (every 15 minutes
   until 09:00) when its title says it is green.
-  What Copilot cannot resolve stays open as a PR that mentions Paul. Rebase
-  feature branches onto `fork` to pick upstream up.
+  What Copilot cannot resolve stays open as a PR that mentions Paul, the
+  maintainer. Rebase feature branches onto `fork` to pick upstream up.
 
 ## Staying mergeable with upstream
 
@@ -93,8 +97,8 @@ item is an issue in `esveo/t3code`, with the status `Ideen`, `In Arbeit` or
   saying why and which branch holds the work.
 - **Ideas on the side:** when the user mentions something for later, add it as
   an issue in `Ideen` instead of losing it.
-- Touch only the items of your own work, and only the primary agent updates
-  the board, not its subagents. Name the issue in the handover.
+- The board is shared by everyone at esveo. Touch only the items of your own
+  work, and only the primary agent updates the board, not its subagents. Name the issue in the handover.
 
 ```bash
 # Create an issue and put it on the board (prints the item id)
