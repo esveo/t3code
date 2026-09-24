@@ -164,7 +164,8 @@ const CHILD_THREAD_STATES = new Set<string>(Object.keys(CHILD_THREAD_STATE_LABEL
 
 export function parseTaggedThreadMessage(text: string): TaggedThreadMessage | null {
   const match = TAGGED_MESSAGE_PATTERN.exec(text.trim());
-  if (!match) return null;
+  // Several update blocks in one message are a bundle: parseThreadUpdates.
+  if (!match || match[3]!.includes(`</${match[1]}>`)) return null;
   const attributes = new Map<string, string>();
   for (const [, name, value] of match[2]!.matchAll(ATTRIBUTE_PATTERN)) {
     attributes.set(name!, unescapeAttribute(value!));
@@ -182,6 +183,22 @@ export function parseTaggedThreadMessage(text: string): TaggedThreadMessage | nu
   };
 }
 
+const THREAD_UPDATE_BLOCK_PATTERN = new RegExp(
+  `<${THREAD_UPDATE_TAG}(?:\\s+[a-z_]+="[^"]*")*>[\\s\\S]*?</${THREAD_UPDATE_TAG}>`,
+  "g",
+);
+
+/**
+ * The child updates of a coordinator message: one, or several that arrived
+ * together as one turn. Null for any other message.
+ */
+export function parseThreadUpdates(text: string): ReadonlyArray<TaggedThreadMessage> | null {
+  const blocks = text.match(THREAD_UPDATE_BLOCK_PATTERN);
+  if (!blocks || text.replace(THREAD_UPDATE_BLOCK_PATTERN, "").trim() !== "") return null;
+  const updates = blocks.map(parseTaggedThreadMessage);
+  return updates.every((update) => update !== null) ? updates : null;
+}
+
 function escapeAttribute(value: string): string {
   return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("\n", " ");
 }
@@ -193,8 +210,15 @@ function unescapeAttribute(value: string): string {
 /** A tagged message as one line of plain text, for previews that cannot render the card. */
 export function plainTextOfThreadMessage(text: string): string {
   const tagged = parseTaggedThreadMessage(text);
-  if (!tagged) return text;
+  if (!tagged) {
+    const updates = parseThreadUpdates(text);
+    return updates ? updates.map((update) => plainTextOfUpdate(update)).join("; ") : text;
+  }
   if (tagged.tag === FROM_COORDINATOR_TAG) return tagged.body;
+  return plainTextOfUpdate(tagged);
+}
+
+function plainTextOfUpdate(tagged: TaggedThreadMessage): string {
   const state = tagged.state ? CHILD_THREAD_STATE_LABELS[tagged.state] : null;
   return [tagged.title, state, tagged.detail].filter(Boolean).join(" · ");
 }
@@ -205,9 +229,10 @@ export function plainTextOfThreadMessage(text: string): string {
  */
 export function readableThreadMessage(text: string): string {
   const tagged = parseTaggedThreadMessage(text);
-  if (!tagged) return text;
-  if (tagged.tag === FROM_COORDINATOR_TAG) {
+  if (tagged?.tag === FROM_COORDINATOR_TAG) {
     return tagged.title ? `_From ${tagged.title}_\n\n${tagged.body}` : tagged.body;
   }
-  return `**${plainTextOfThreadMessage(text)}**\n\n${tagged.body}`;
+  const updates = tagged ? [tagged] : parseThreadUpdates(text);
+  if (!updates) return text;
+  return updates.map((update) => `**${plainTextOfUpdate(update)}**\n\n${update.body}`).join("\n\n");
 }

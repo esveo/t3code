@@ -5,6 +5,7 @@
  */
 import type {
   ThreadDecision,
+  ThreadDecisionKind,
   ThreadDecisionReply,
   ThreadDecisionUrgency,
   ThreadId,
@@ -15,16 +16,20 @@ export const DECISIONS_TAG = "t3_decisions";
 /** What the coordinator passes to upsert_decision. */
 export interface ThreadDecisionInput {
   readonly id: string;
+  /** Defaults to the kind the item already has, else decision. */
+  readonly kind?: ThreadDecisionKind | undefined;
   readonly title: string;
   readonly question: string;
   readonly context?: string | undefined;
-  readonly options: ReadonlyArray<{
-    readonly id: string;
-    readonly label: string;
-    readonly detail?: string | undefined;
-    readonly pros?: ReadonlyArray<string> | undefined;
-    readonly cons?: ReadonlyArray<string> | undefined;
-  }>;
+  readonly options?:
+    | ReadonlyArray<{
+        readonly id: string;
+        readonly label: string;
+        readonly detail?: string | undefined;
+        readonly pros?: ReadonlyArray<string> | undefined;
+        readonly cons?: ReadonlyArray<string> | undefined;
+      }>
+    | undefined;
   readonly recommended?:
     | { readonly optionId: string; readonly reason?: string | undefined }
     | undefined;
@@ -34,13 +39,21 @@ export interface ThreadDecisionInput {
   readonly dependsOn?: ReadonlyArray<string> | undefined;
 }
 
-/** Why the input cannot become a decision, or null when it can. */
-export function validateDecisionInput(input: ThreadDecisionInput): string | null {
-  if (input.options.length === 0) {
-    return "A decision needs at least one option. For a yes/no question pass both.";
+/** Why the input cannot become a decision or task, or null when it can. */
+export function validateDecisionInput(
+  input: ThreadDecisionInput,
+  kind: ThreadDecisionKind,
+): string | null {
+  const options = input.options ?? [];
+  if (kind === "task") {
+    if (options.length > 0 || input.recommended) {
+      return 'A task has no options: the user checks it off. To let the user choose, leave out kind "task".';
+    }
+  } else if (options.length === 0) {
+    return 'A decision needs at least one option. For a yes/no question pass both; for a step only the user can do, pass kind "task".';
   }
   const ids = new Set<string>();
-  for (const option of input.options) {
+  for (const option of options) {
     if (ids.has(option.id)) return `Option id ${option.id} is used twice.`;
     ids.add(option.id);
   }
@@ -49,6 +62,14 @@ export function validateDecisionInput(input: ThreadDecisionInput): string | null
   }
   if (input.dependsOn?.includes(input.id)) return "A decision cannot depend on itself.";
   return null;
+}
+
+/** The kind an upsert gives the item: as passed, else as it was, else a decision. */
+export function decisionKind(
+  existing: ThreadDecision | null,
+  input: ThreadDecisionInput,
+): ThreadDecisionKind {
+  return input.kind ?? existing?.kind ?? "decision";
 }
 
 const blankToNull = (value: string | undefined): string | null =>
@@ -67,10 +88,11 @@ export function upsertDecision(
   return {
     id: input.id,
     coordinatorThreadId,
+    kind: decisionKind(existing, input),
     title: input.title,
     question: input.question,
     context: blankToNull(input.context),
-    options: input.options.map((option) => ({
+    options: (input.options ?? []).map((option) => ({
       id: option.id,
       label: option.label,
       detail: blankToNull(option.detail),
@@ -135,6 +157,8 @@ export function isMeaningfulReply(reply: ThreadDecisionReply): boolean {
   return (
     reply.optionId !== undefined ||
     reply.askBack === true ||
+    reply.explain === true ||
+    reply.done === true ||
     reply.dismissReason !== undefined ||
     (reply.text?.trim().length ?? 0) > 0
   );
@@ -149,7 +173,7 @@ export function applyReply(
   if (reply.dismissReason !== undefined) {
     return resolveDecision(decision, reply.dismissReason, "user", now);
   }
-  if (reply.askBack === true) {
+  if (reply.askBack === true || reply.explain === true) {
     return { ...decision, askedBackAt: now, snoozedAt: null, updatedAt: now };
   }
   return {
@@ -171,6 +195,9 @@ export function validateReply(
 ): string | null {
   if (!decision) return `Decision ${reply.decisionId} was not found.`;
   if (decision.status !== "open") return `"${decision.title}" is no longer open.`;
+  if (reply.done === true && decision.kind !== "task") {
+    return `"${decision.title}" is a decision, not a task to check off.`;
+  }
   if (
     reply.optionId !== undefined &&
     !decision.options.some((option) => option.id === reply.optionId)
@@ -180,23 +207,50 @@ export function validateReply(
   return null;
 }
 
+/** How much of the context the reply repeats, so the coordinator still knows after compacting. */
+export const REPLY_CONTEXT_MAX_LENGTH = 300;
+
+/** The context in one line, cut at a word near the limit. */
+export function shortenContext(context: string, max = REPLY_CONTEXT_MAX_LENGTH): string {
+  const line = context.replace(/\s+/g, " ").trim();
+  if (line.length <= max) return line;
+  const cut = line.slice(0, max);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).trimEnd()} …`;
+}
+
+function describeAskBack(decision: ThreadDecision, reply: ThreadDecisionReply): string {
+  const asks = [
+    reply.explain === true
+      ? decision.kind === "task"
+        ? "explain this in plain words – what is it for and how do I do it?"
+        : "explain this in plain words – what is it about and what happens with each option?"
+      : null,
+    reply.askBack === true ? "what speaks for and against each option?" : null,
+  ].filter((ask) => ask !== null);
+  return `Asks back: ${asks.join(" And ")}`;
+}
+
 function describeReply(decision: ThreadDecision, reply: ThreadDecisionReply): string {
   const text = reply.text?.trim() ?? "";
   if (reply.dismissReason !== undefined) {
     const reason = reply.dismissReason.trim();
     return `Dismissed${reason ? `: ${reason}` : "."}`;
   }
-  if (reply.askBack === true) {
-    return `Asks back: what speaks for and against each option?${text ? ` ${text}` : ""}`;
+  if (reply.askBack === true || reply.explain === true) {
+    return `${describeAskBack(decision, reply)}${text ? ` ${text}` : ""}`;
   }
+  if (reply.done === true) return `Done${text ? `: ${text}` : "."}`;
   const option = decision.options.find((candidate) => candidate.id === reply.optionId);
   if (option) return `Answer: ${option.label} (${option.id})${text ? `. ${text}` : ""}`;
   return `Answer in their own words: ${text}`;
 }
 
 /**
- * The message a submit sends to the coordinator: one entry per reply, with
- * the thread the answer is for, so the coordinator can pass it on.
+ * The message a submit sends to the coordinator: one entry per reply with the
+ * question and a short context, so it still makes sense after the coordinator
+ * compacted its history, and the thread the answer is for, so the coordinator
+ * can pass it on.
  */
 export function formatDecisionReplies(
   entries: ReadonlyArray<{
@@ -206,12 +260,16 @@ export function formatDecisionReplies(
   routeLink: (threadId: ThreadId) => string | null,
 ): string {
   const lines = entries.flatMap(({ decision, reply }) => {
+    const asksBack = reply.askBack === true || reply.explain === true;
     const route =
-      decision.routeToThreadId && reply.askBack !== true && reply.dismissReason === undefined
+      decision.routeToThreadId && !asksBack && reply.dismissReason === undefined
         ? routeLink(decision.routeToThreadId)
         : null;
+    const task = decision.kind === "task";
     return [
-      `- ${decision.id} · ${decision.title}`,
+      `- ${decision.id} · ${decision.title}${task ? " (task)" : ""}`,
+      `  ${task ? "Task" : "Question"}: ${decision.question}`,
+      ...(decision.context ? [`  Context: ${shortenContext(decision.context)}`] : []),
       `  ${describeReply(decision, reply)}`,
       ...(route ? [`  For ${route}: pass it on.`] : []),
     ];

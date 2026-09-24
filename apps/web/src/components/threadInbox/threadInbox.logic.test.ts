@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   describeDraft,
+  describeSettled,
   draftToReply,
   groupDecisions,
   nextUndrafted,
@@ -15,6 +16,7 @@ const CHILD = ThreadId.make("child");
 function decision(overrides: Partial<ThreadDecision> & { id: string }): ThreadDecision {
   return {
     coordinatorThreadId: ThreadId.make("coordinator"),
+    kind: "decision",
     title: overrides.id,
     question: "?",
     context: null,
@@ -111,5 +113,20 @@ describe("drafts", () => {
     );
     expect(describeDraft(entry, { askBack: true })).toBe("Asks for pros and cons");
     expect(describeDraft(entry, { dismissReason: "geklärt" })).toBe("Done: geklärt");
+  });
+
+  it("checks off a task and asks for an explanation", () => {
+    const task = decision({ id: "key", kind: "task", options: [] });
+    expect(draftToReply("key", { done: true, text: " eingetragen " })).toEqual({
+      decisionId: "key",
+      done: true,
+      text: "eingetragen",
+    });
+    expect(describeDraft(task, { done: true })).toBe("Done");
+    expect(describeDraft(task, { explain: true })).toBe("Asks to explain");
+    expect(draftToReply("key", { explain: true })).toEqual({ decisionId: "key", explain: true });
+    expect(
+      describeSettled({ ...task, status: "answered", answer: { optionId: null, text: null } }),
+    ).toBe("Done");
   });
 });

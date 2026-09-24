@@ -816,6 +816,90 @@ describe("threads toolkit", () => {
       }),
     );
 
+    it.effect("lets a child ask in its coordinator's Inbox, for itself", () =>
+      Effect.gen(function* () {
+        const coordinator = makeThread({});
+        const asking = yield* makeHarness({ caller: child, threads: [coordinator] });
+        const own = yield* asking.call("upsert_decision", {
+          ...kodierung,
+          sourceThreadId: undefined,
+          routeToThreadId: undefined,
+        });
+        expect(own).toEqual({ decisionId: "kodierung", open: 1 });
+        // The coordinator's own item in the same Inbox: the child neither sees nor takes it.
+        yield* asking.decisions.upsert(COORDINATOR_ID, {
+          id: "backup",
+          title: "Backup",
+          question: "Snapshot?",
+          options: [{ id: "yes", label: "Ja" }],
+        });
+        const listed = yield* asking.call("list_decisions", {});
+        expect(listed.decisions).toMatchObject([{ id: "kodierung", sourceThreadId: CHILD_ID }]);
+        const taken = yield* asking
+          .call("upsert_decision", { ...kodierung, id: "backup" })
+          .pipe(Effect.flip);
+        expect(String(taken)).toMatch(/already used in your coordinator's Inbox/);
+        const foreign = yield* asking
+          .call("resolve_decision", { id: "backup", reason: "Nicht meins." })
+          .pipe(Effect.flip);
+        expect(String(foreign)).toMatch(/No decision backup of yours/);
+
+        const stored = (yield* asking.decisions.list(COORDINATOR_ID)).find(
+          (decision) => decision.id === "kodierung",
+        );
+        expect(stored).toMatchObject({ sourceThreadId: CHILD_ID, routeToThreadId: CHILD_ID });
+        yield* asking.decisions.act({
+          type: "submit",
+          threadId: COORDINATOR_ID,
+          replies: [{ decisionId: "kodierung", optionId: "yes" }],
+        });
+        const turn = (yield* Ref.get(asking.commands)).at(-1) as Extract<
+          OrchestrationCommand,
+          { type: "thread.turn.start" }
+        >;
+        expect(turn.threadId).toBe(COORDINATOR_ID);
+        expect(turn.message.text).toContain("For [FF2 Dev-DB](t3-thread:child): pass it on.");
+      }),
+    );
+
+    it.effect("keeps tasks apart from decisions and reports them done", () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness({ threads: [child] });
+        const withOptions = yield* harness
+          .call("upsert_decision", {
+            id: "deploy-key",
+            kind: "task",
+            title: "Deploy-Key",
+            question: "Deploy-Key eintragen.",
+            options: [{ id: "ok", label: "Erledigt" }],
+          })
+          .pipe(Effect.flip);
+        expect(String(withOptions)).toMatch(/A task has no options/);
+        yield* harness.call("upsert_decision", {
+          id: "deploy-key",
+          kind: "task",
+          title: "Deploy-Key",
+          question: "Deploy-Key eintragen.",
+          routeToThreadId: CHILD_ID,
+        });
+        yield* harness.decisions.act({
+          type: "submit",
+          threadId: COORDINATOR_ID,
+          replies: [{ decisionId: "deploy-key", done: true }],
+        });
+        const turn = (yield* Ref.get(harness.commands)).at(-1) as Extract<
+          OrchestrationCommand,
+          { type: "thread.turn.start" }
+        >;
+        expect(turn.message.text).toContain("- deploy-key · Deploy-Key (task)\n");
+        expect(turn.message.text).toContain("  Done.\n  For [FF2 Dev-DB](t3-thread:child)");
+        const listed = yield* harness.call("list_decisions", { status: "answered" });
+        expect(listed.decisions).toMatchObject([
+          { id: "deploy-key", kind: "task", answer: "Done" },
+        ]);
+      }),
+    );
+
     it.effect("wakes snoozed decisions when the coordinator changes one", () =>
       Effect.gen(function* () {
         const harness = yield* makeHarness({ threads: [child] });

@@ -12,20 +12,22 @@ import {
   type OrchestrationThreadShell,
   type ThreadId,
 } from "@t3tools/contracts";
-import { makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
+import { type DrainableWorker, makeDrainableWorker } from "@t3tools/shared/DrainableWorker";
 import {
   type ChildThreadState,
   describeChildThread,
-  parseTaggedThreadMessage,
+  parseThreadUpdates,
   resolveChildThreadState,
-  THREAD_UPDATE_TAG,
   wrapThreadUpdate,
 } from "@t3tools/shared/threadOrchestration";
 import * as Cause from "effect/Cause";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import type * as Scope from "effect/Scope";
@@ -33,6 +35,7 @@ import * as Stream from "effect/Stream";
 
 import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as ThreadBackgroundLiveness from "../orchestration/ThreadBackgroundLiveness.ts";
 import { forkParked } from "../serverActivation.ts";
 import * as ServerSettings from "../serverSettings.ts";
 
@@ -52,8 +55,36 @@ export class ThreadOrchestrationReactor extends Context.Service<
  */
 const BACKGROUND_SETTLE_GRACE = "30 seconds";
 
-/** The coordinator reads the child's answer from the update; long ones stay readable. */
-const UPDATE_ANSWER_MAX_LENGTH = 6_000;
+/**
+ * A turn that ends is reported only when no new one starts right after it: a
+ * queued message or a woken agent carries straight on, and the coordinator
+ * hears about the turn that really ends.
+ */
+export const TURN_END_DEBOUNCE = Duration.seconds(3);
+
+/**
+ * Updates for one coordinator that come in within this window arrive as one
+ * turn with one block per child, instead of a turn each.
+ */
+export const UPDATE_BUNDLE_WINDOW = Duration.seconds(2);
+
+/**
+ * A child whose turn ended but whose subagents or background commands show no
+ * activity for this long is reported anyway, so the coordinator is not left
+ * waiting on work that may hang.
+ */
+export const BACKGROUND_STALL_LIMIT = Duration.minutes(30);
+
+/**
+ * Background tasks that only watch (Monitor tool, MCP and artifact watches).
+ * They run until stopped, so they never hold up a child's result. Background
+ * shells (`local_bash`, `shell`) count as work: they are builds and test runs
+ * as often as log tails, and the agent is woken when they end.
+ */
+const WATCH_TASK_TYPES: ReadonlySet<string> = new Set(["monitor", "monitor_mcp", "monitor_ws"]);
+
+/** The update carries a summary of the child's answer; read_thread has the rest. */
+const UPDATE_ANSWER_MAX_LENGTH = 1_200;
 
 type UpdateRequest =
   | {
@@ -61,12 +92,74 @@ type UpdateRequest =
       readonly threadId: ThreadId;
       /** Set when the event was a new approval or question: the request it announces. */
       readonly requestActivityId?: string;
+      /** Set when the child's background work showed no activity for BACKGROUND_STALL_LIMIT. */
+      readonly stalled?: boolean;
     }
   | {
       /** A coordinator was settled or brought back; its children follow. */
       readonly kind: "settle-children" | "unsettle-children";
       readonly threadId: ThreadId;
+    }
+  | {
+      /** The bundle window of this coordinator closed: send what it collected. */
+      readonly kind: "flush";
+      readonly threadId: ThreadId;
     };
+
+/**
+ * What still runs in a child after its turn ended: nothing, only watches, or
+ * real work (subagents, workflows, background commands) that holds it up.
+ */
+export type ChildBackground =
+  | { readonly kind: "none" }
+  | { readonly kind: "watches"; readonly count: number }
+  | { readonly kind: "work"; readonly stalled: boolean };
+
+function turnIsRunning(child: Pick<OrchestrationThreadShell, "session" | "latestTurn">): boolean {
+  return (
+    child.session?.status === "starting" ||
+    child.session?.status === "running" ||
+    child.latestTurn?.state === "running"
+  );
+}
+
+export function childBackgroundFor(input: {
+  readonly child: Pick<OrchestrationThreadShell, "session" | "latestTurn" | "backgroundLiveness">;
+  readonly liveTaskTypes: ReadonlyArray<string | undefined>;
+  readonly stalled: boolean;
+}): ChildBackground {
+  if (input.child.backgroundLiveness == null || turnIsRunning(input.child)) return { kind: "none" };
+  const watchesOnly =
+    input.liveTaskTypes.length > 0 &&
+    input.liveTaskTypes.every((type) => type !== undefined && WATCH_TASK_TYPES.has(type));
+  return watchesOnly
+    ? { kind: "watches", count: input.liveTaskTypes.length }
+    : { kind: "work", stalled: input.stalled };
+}
+
+/** The child as its coordinator sees it: watches do not keep it working. */
+function asReported(
+  child: OrchestrationThreadShell,
+  background: ChildBackground,
+): OrchestrationThreadShell {
+  return background.kind === "watches" ? { ...child, backgroundLiveness: null } : child;
+}
+
+/** The detail line of an update, with what still runs in the child. */
+export function childUpdateDetail(input: {
+  readonly child: OrchestrationThreadShell;
+  readonly background: ChildBackground;
+}): string {
+  const detail = describeChildThread(asReported(input.child, input.background));
+  if (input.background.kind === "watches") {
+    const { count } = input.background;
+    return `${detail}; ${count} ${count === 1 ? "watch" : "watches"} still running`;
+  }
+  if (input.background.kind === "work" && input.background.stalled) {
+    return `${detail}, no activity for ${Duration.toMinutes(BACKGROUND_STALL_LIMIT)} min`;
+  }
+  return detail;
+}
 
 export interface ChildUpdate {
   /** Identifies what the update reports, so the same finish is never reported twice. */
@@ -85,16 +178,20 @@ export function childUpdateFor(input: {
   readonly latestPromptId: string | null;
   readonly latestAnswerId: string | null;
   readonly requestActivityId: string | undefined;
+  readonly background?: ChildBackground;
 }): ChildUpdate | null {
-  const state = resolveChildThreadState(input.child);
-  if (state === "working") return null;
+  const background = input.background ?? { kind: "none" };
+  const state = resolveChildThreadState(asReported(input.child, background));
+  const stalled = state === "working" && background.kind === "work" && background.stalled;
+  if (state === "working" && !stalled) return null;
   if (state === "waiting") {
     return input.requestActivityId ? { key: `waiting:${input.requestActivityId}`, state } : null;
   }
   // A failure that ends a turn before its first answer still has to be reported once.
   const anchor = input.latestAnswerId ?? input.child.session?.updatedAt ?? input.child.updatedAt;
+  const kind = stalled ? "stalled" : state;
   return {
-    key: input.latestPromptId ? `${state}:${input.latestPromptId}:${anchor}` : `${state}:${anchor}`,
+    key: input.latestPromptId ? `${kind}:${input.latestPromptId}:${anchor}` : `${kind}:${anchor}`,
     state,
   };
 }
@@ -117,11 +214,8 @@ export function coordinatorHasUpdate(input: {
   const since = Date.parse(input.since);
   return input.coordinatorMessages.some((message) => {
     if (message.role !== "user" || Date.parse(message.createdAt) < since) return false;
-    const tagged = parseTaggedThreadMessage(message.text);
-    return (
-      tagged?.tag === THREAD_UPDATE_TAG &&
-      tagged.threadId === input.childId &&
-      tagged.state === input.state
+    return (parseThreadUpdates(message.text) ?? []).some(
+      (update) => update.threadId === input.childId && update.state === input.state,
     );
   });
 }
@@ -142,27 +236,52 @@ function latestOf(first: string, second: string | undefined): string {
   return second !== undefined && Date.parse(second) > Date.parse(first) ? second : first;
 }
 
-function clampAnswer(text: string): string {
-  return text.length > UPDATE_ANSWER_MAX_LENGTH
-    ? `${text.slice(0, UPDATE_ANSWER_MAX_LENGTH)}\n… (${text.length - UPDATE_ANSWER_MAX_LENGTH} more characters; read_thread returns all of it)`
-    : text;
+/**
+ * The start of a long answer, cut at the last paragraph or sentence end that
+ * fits, so the summary never stops mid-sentence when it can avoid it.
+ */
+export function clampAnswer(text: string, maxLength = UPDATE_ANSWER_MAX_LENGTH): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= maxLength) return trimmed;
+  const window = trimmed.slice(0, maxLength);
+  const atLeast = Math.floor(maxLength / 2);
+  const lastEnd = (pattern: RegExp) => {
+    let end = -1;
+    for (const match of window.matchAll(pattern)) {
+      const at = match.index + match[0].trimEnd().length;
+      if (at >= atLeast) end = at;
+    }
+    return end;
+  };
+  const cut = [/\n\s*\n/g, /[.!?:](?=\s)/g, /\s/g].map(lastEnd).find((end) => end > 0);
+  const summary = window.slice(0, cut ?? maxLength).trimEnd();
+  return `${summary}\n… (${trimmed.length - summary.length} more characters; read_thread returns all of it)`;
 }
 
 export function childUpdateBody(input: {
   readonly state: ChildThreadState;
   readonly latestAnswer: string | null;
+  readonly background?: ChildBackground;
 }): string {
   if (input.state === "waiting") {
     return "It is blocked until the user answers in that thread. If you know the answer, tell it with send_to_thread.";
   }
-  return input.latestAnswer?.trim() ? clampAnswer(input.latestAnswer) : "(It gave no answer.)";
+  const answer = input.latestAnswer?.trim()
+    ? clampAnswer(input.latestAnswer)
+    : "(It gave no answer.)";
+  if (input.background?.kind === "work" && input.background.stalled) {
+    return `${answer}\n\n(Its turn ended, but its subagents or background commands still run without any sign of activity. You get another update when they finish; stop_thread ends them.)`;
+  }
+  return answer;
 }
 
 const make = Effect.gen(function* () {
   const engine = yield* OrchestrationEngine.OrchestrationEngineService;
   const snapshots = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
+  const liveness = yield* ThreadBackgroundLiveness.ThreadBackgroundLivenessService;
   const crypto = yield* Crypto.Crypto;
+  const scope = yield* Effect.scope;
   const uuid = crypto.randomUUIDv4.pipe(Effect.orDie);
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
 
@@ -170,6 +289,12 @@ const make = Effect.gen(function* () {
   const reported = new Map<ThreadId, string>();
   /** Threads with a background-settle check scheduled, so a burst of task ends schedules one. */
   const settleChecks = new Set<ThreadId>();
+  /** Report checks waiting out TURN_END_DEBOUNCE; a new turn of the thread cancels its check. */
+  const turnEndChecks = new Map<ThreadId, Fiber.Fiber<void>>();
+  /** Children held up by background work, with the time of their last activity. */
+  const stallWatches = new Map<ThreadId, number>();
+  /** Update blocks collected per coordinator until its bundle window closes. */
+  const outbox = new Map<ThreadId, Array<string>>();
 
   /**
    * Settling a coordinator settles its children, and bringing it back brings
@@ -236,11 +361,22 @@ const make = Effect.gen(function* () {
         (message) => message.role === "assistant" && !message.streaming && message.text.trim(),
       ) ?? null;
     const latestPrompt = messages.findLast((message) => message.role === "user") ?? null;
+    const background = childBackgroundFor({
+      child: child.value,
+      liveTaskTypes: liveness.getLiveTaskTypes(child.value.id),
+      stalled: request.stalled === true,
+    });
+    if (background.kind === "work") {
+      if (!background.stalled) yield* watchForStall(child.value.id);
+    } else {
+      stallWatches.delete(child.value.id);
+    }
     const update = childUpdateFor({
       child: child.value,
       latestPromptId: latestPrompt?.id ?? null,
       latestAnswerId: latestAnswer?.id ?? null,
       requestActivityId: request.requestActivityId,
+      background,
     });
     if (update === null || reported.get(child.value.id) === update.key) return;
     if (!reported.has(child.value.id) && update.state !== "waiting") {
@@ -263,6 +399,40 @@ const make = Effect.gen(function* () {
     }
     reported.set(child.value.id, update.key);
 
+    const block = wrapThreadUpdate({
+      threadId: child.value.id,
+      title: child.value.title,
+      state: update.state,
+      detail: childUpdateDetail({ child: child.value, background }),
+      text: childUpdateBody({
+        state: update.state,
+        latestAnswer: answersLatestPrompt(latestAnswer, latestPrompt) ? latestAnswer.text : null,
+        background,
+      }),
+    });
+    const pending = outbox.get(parent.value.id);
+    if (pending) {
+      pending.push(block);
+      return;
+    }
+    outbox.set(parent.value.id, [block]);
+    yield* Effect.sleep(UPDATE_BUNDLE_WINDOW).pipe(
+      Effect.andThen(worker.enqueue({ kind: "flush", threadId: parent.value.id })),
+      Effect.forkIn(scope),
+    );
+  });
+
+  /**
+   * Sends a coordinator the updates its bundle window collected, as one turn.
+   * While the coordinator still runs a turn, the provider hands the message
+   * to that turn or queues it, as it does with the user's messages.
+   */
+  const flush = Effect.fn("ThreadOrchestrationReactor.flush")(function* (coordinatorId: ThreadId) {
+    const blocks = outbox.get(coordinatorId);
+    outbox.delete(coordinatorId);
+    if (!blocks || blocks.length === 0) return;
+    const parent = yield* snapshots.getThreadShellById(coordinatorId);
+    if (Option.isNone(parent) || parent.value.archivedAt !== null) return;
     yield* engine.dispatch({
       type: "thread.turn.start",
       commandId: CommandId.make(`server:thread-orchestration-update:${yield* uuid}`),
@@ -270,18 +440,7 @@ const make = Effect.gen(function* () {
       message: {
         messageId: MessageId.make(yield* uuid),
         role: "user",
-        text: wrapThreadUpdate({
-          threadId: child.value.id,
-          title: child.value.title,
-          state: update.state,
-          detail: describeChildThread(child.value),
-          text: childUpdateBody({
-            state: update.state,
-            latestAnswer: answersLatestPrompt(latestAnswer, latestPrompt)
-              ? latestAnswer.text
-              : null,
-          }),
-        }),
+        text: blocks.join("\n\n"),
         attachments: [],
       },
       modelSelection: parent.value.modelSelection,
@@ -291,23 +450,53 @@ const make = Effect.gen(function* () {
     });
   });
 
-  const worker = yield* makeDrainableWorker((request: UpdateRequest) =>
-    (request.kind === "report"
-      ? report(request)
-      : followCoordinator(
-          request.threadId,
-          request.kind === "settle-children" ? "thread.settle" : "thread.unsettle",
-        )
-    ).pipe(
-      Effect.catchCause((cause) =>
-        Cause.hasInterruptsOnly(cause)
-          ? Effect.failCause(cause)
-          : Effect.logWarning("thread orchestration update failed", {
-              threadId: request.threadId,
-              cause: Cause.pretty(cause),
-            }),
+  /**
+   * Reports a child held up by background work once that work has shown no
+   * activity for BACKGROUND_STALL_LIMIT. Any event of the child resets the
+   * clock (see processEvent); a report that finds it no longer held up ends
+   * the watch.
+   */
+  const watchForStall = (threadId: ThreadId) =>
+    Effect.gen(function* () {
+      if (stallWatches.has(threadId)) return;
+      stallWatches.set(threadId, yield* Clock.currentTimeMillis);
+      yield* Effect.gen(function* () {
+        while (true) {
+          const lastActivity = stallWatches.get(threadId);
+          if (lastActivity === undefined) return;
+          const quietFor = (yield* Clock.currentTimeMillis) - lastActivity;
+          const remaining = Duration.toMillis(BACKGROUND_STALL_LIMIT) - quietFor;
+          if (remaining <= 0) {
+            stallWatches.delete(threadId);
+            yield* worker.enqueue({ kind: "report", threadId, stalled: true });
+            return;
+          }
+          yield* Effect.sleep(Duration.millis(remaining));
+        }
+      }).pipe(Effect.forkIn(scope));
+    });
+
+  // Annotated: report schedules follow-ups on the worker that runs it.
+  const worker: DrainableWorker<UpdateRequest> = yield* makeDrainableWorker(
+    (request: UpdateRequest) =>
+      (request.kind === "report"
+        ? report(request)
+        : request.kind === "flush"
+          ? flush(request.threadId)
+          : followCoordinator(
+              request.threadId,
+              request.kind === "settle-children" ? "thread.settle" : "thread.unsettle",
+            )
+      ).pipe(
+        Effect.catchCause((cause) =>
+          Cause.hasInterruptsOnly(cause)
+            ? Effect.failCause(cause)
+            : Effect.logWarning("thread orchestration update failed", {
+                threadId: request.threadId,
+                cause: Cause.pretty(cause),
+              }),
+        ),
       ),
-    ),
   );
 
   const scheduleSettleCheck = (threadId: ThreadId) => {
@@ -321,16 +510,49 @@ const make = Effect.gen(function* () {
     );
   };
 
+  const scheduleTurnEndCheck = (threadId: ThreadId) => {
+    if (turnEndChecks.has(threadId)) return Effect.void;
+    return Effect.sleep(TURN_END_DEBOUNCE).pipe(
+      Effect.andThen(Effect.sync(() => turnEndChecks.delete(threadId))),
+      Effect.andThen(worker.enqueue({ kind: "report", threadId })),
+      Effect.forkIn(scope),
+      Effect.map((fiber) => {
+        turnEndChecks.set(threadId, fiber);
+      }),
+    );
+  };
+
+  const cancelTurnEndCheck = (threadId: ThreadId) => {
+    const fiber = turnEndChecks.get(threadId);
+    if (fiber === undefined) return Effect.void;
+    turnEndChecks.delete(threadId);
+    return Fiber.interrupt(fiber);
+  };
+
   const processEvent = (event: OrchestrationEvent) => {
+    if (event.aggregateKind === "thread" && stallWatches.has(event.aggregateId as ThreadId)) {
+      return Clock.currentTimeMillis.pipe(
+        Effect.map((now) => {
+          stallWatches.set(event.aggregateId as ThreadId, now);
+        }),
+        Effect.andThen(handleEvent(event)),
+      );
+    }
+    return handleEvent(event);
+  };
+
+  const handleEvent = (event: OrchestrationEvent) => {
     switch (event.type) {
       case "thread.session-set":
         if (
           event.payload.session.status !== "running" &&
           event.payload.session.status !== "starting"
         ) {
-          return worker.enqueue({ kind: "report", threadId: event.payload.threadId });
+          return scheduleTurnEndCheck(event.payload.threadId);
         }
-        break;
+        return cancelTurnEndCheck(event.payload.threadId);
+      case "thread.turn-start-requested":
+        return cancelTurnEndCheck(event.payload.threadId);
       case "thread.activity-appended": {
         const { activity } = event.payload;
         if (activity.kind === "approval.requested" || activity.kind === "user-input.requested") {
@@ -356,6 +578,7 @@ const make = Effect.gen(function* () {
         break;
       case "thread.deleted":
         reported.delete(event.payload.threadId);
+        stallWatches.delete(event.payload.threadId);
         break;
     }
     return Effect.void;

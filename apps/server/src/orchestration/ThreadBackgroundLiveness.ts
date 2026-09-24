@@ -25,6 +25,8 @@ export type ThreadBackgroundLiveness = "working" | "monitoring" | null;
 interface ThreadLivenessState {
   readonly agents: Set<string>;
   readonly monitors: Set<string>;
+  /** Fork: task type of each live task, for getLiveTaskTypes. */
+  readonly types: Map<string, string | undefined>;
 }
 
 // Classification sets are the shared contracts copies (MONITOR_TASK_TYPES:
@@ -72,6 +74,9 @@ export class ThreadBackgroundLivenessService extends Context.Service<
 
     /** Ids of the thread's live background tasks, agents and watch loops alike. */
     readonly getLiveTaskIds: (threadId: string) => ReadonlyArray<string>;
+
+    /** Fork: task types of the thread's live background tasks (undefined when a task has none). */
+    readonly getLiveTaskTypes: (threadId: string) => ReadonlyArray<string | undefined>;
   }
 >()("t3/orchestration/ThreadBackgroundLiveness/ThreadBackgroundLivenessService") {}
 
@@ -83,7 +88,11 @@ export function make(): ThreadBackgroundLivenessService["Service"] {
     if (existing) {
       return existing;
     }
-    const created: ThreadLivenessState = { agents: new Set(), monitors: new Set() };
+    const created: ThreadLivenessState = {
+      agents: new Set(),
+      monitors: new Set(),
+      types: new Map(),
+    };
     stateByThreadId.set(threadId, created);
     return created;
   };
@@ -99,6 +108,7 @@ export function make(): ThreadBackgroundLivenessService["Service"] {
     }
     state.agents.delete(taskId);
     state.monitors.delete(taskId);
+    state.types.delete(taskId);
     if (state.agents.size === 0 && state.monitors.size === 0) {
       stateByThreadId.delete(threadId);
     }
@@ -150,6 +160,7 @@ export function make(): ThreadBackgroundLivenessService["Service"] {
       const bucket =
         taskType !== undefined && MONITOR_TASK_TYPES.has(taskType) ? state.monitors : state.agents;
       bucket.add(input.taskId);
+      state.types.set(input.taskId, taskType);
     },
 
     clearThreadLiveness: (threadId) => {
@@ -174,6 +185,8 @@ export function make(): ThreadBackgroundLivenessService["Service"] {
       const state = stateByThreadId.get(threadId);
       return state ? [...state.agents, ...state.monitors] : [];
     },
+
+    getLiveTaskTypes: (threadId) => [...(stateByThreadId.get(threadId)?.types.values() ?? [])],
   };
 }
 

@@ -2,6 +2,7 @@ import {
   type ChatAttachment,
   CommandId,
   type ThreadDecision,
+  ThreadDecisionsError,
   MessageId,
   ThreadId,
   type OrchestrationThreadShell,
@@ -148,10 +149,12 @@ export function selectListedThreads(
 export function summarizeDecision(decision: ThreadDecision): DecisionSummary {
   const option = decision.options.find((candidate) => candidate.id === decision.answer?.optionId);
   const answer = decision.answer
-    ? [option?.label, decision.answer.text].filter((part) => part).join(" – ") || null
+    ? [option?.label, decision.answer.text].filter((part) => part).join(" – ") ||
+      (decision.kind === "task" ? "Done" : null)
     : null;
   return {
     id: decision.id,
+    kind: decision.kind,
     title: decision.title,
     status: decision.status,
     urgency: decision.urgency,
@@ -159,6 +162,7 @@ export function summarizeDecision(decision: ThreadDecision): DecisionSummary {
     resolvedReason: decision.resolvedReason,
     snoozed: decision.snoozedAt !== null,
     askedBack: decision.askedBackAt !== null,
+    sourceThreadId: decision.sourceThreadId,
   };
 }
 
@@ -226,16 +230,41 @@ const make = Effect.gen(function* () {
     return thread.value;
   });
 
-  /** The calling coordinator, when the user also turned on decisions (Settings). */
+  /**
+   * Whose Inbox the calling thread writes to, when the user also turned on
+   * decisions (Settings): a coordinator its own; a thread a coordinator
+   * started its coordinator's, as `child`, limited to the items it asked.
+   */
   const requireDecisions = Effect.gen(function* () {
-    const coordinator = yield* requireCoordinator;
-    if (!(yield* readSwitches).decisions) {
+    const scope = yield* McpInvocationContext.McpInvocationContext;
+    const switches = yield* readSwitches;
+    if (!switches.threads) return yield* new ThreadOrchestrationDisabledError({});
+    if (!switches.decisions) {
       return yield* failure(
         "Decisions are turned off, so ask the user in chat instead. The user can turn them on in Settings.",
       );
     }
-    return coordinator;
+    const readThread = (threadId: ThreadId) =>
+      snapshots
+        .getThreadShellById(threadId)
+        .pipe(Effect.catchCause(failWith("Could not read this thread")));
+    const thread = yield* readThread(scope.threadId);
+    if (Option.isNone(thread)) return yield* failure(`Thread ${scope.threadId} was not found.`);
+    if (!thread.value.parentThreadId) return { coordinator: thread.value, child: null };
+    const coordinator = yield* readThread(thread.value.parentThreadId);
+    if (Option.isNone(coordinator)) {
+      return yield* failure(
+        "The coordinator that started this thread is gone, so ask the user in your final answer instead.",
+      );
+    }
+    return { coordinator: coordinator.value, child: thread.value };
   });
+
+  /** The items a child sees of its coordinator's Inbox: the ones it asked. */
+  const ownDecisions = (
+    all: ReadonlyArray<ThreadDecision>,
+    child: OrchestrationThreadShell | null,
+  ) => (child ? all.filter((decision) => decision.sourceThreadId === child.id) : all);
 
   const requireChild = Effect.fn("ThreadsToolkit.requireChild")(function* (
     coordinator: OrchestrationThreadShell,
@@ -787,21 +816,39 @@ const make = Effect.gen(function* () {
 
     upsert_decision: (input) =>
       Effect.gen(function* () {
-        const coordinator = yield* requireDecisions;
-        const source = input.sourceThreadId
-          ? yield* requireChild(coordinator, input.sourceThreadId)
-          : null;
-        const route = input.routeToThreadId
-          ? yield* requireChild(coordinator, input.routeToThreadId)
-          : null;
+        const { coordinator, child } = yield* requireDecisions;
+        // A child asks for itself: the item shows it as the source, and the
+        // answer reaches the coordinator with the note to pass it on.
+        const source = child
+          ? child
+          : input.sourceThreadId
+            ? yield* requireChild(coordinator, input.sourceThreadId)
+            : null;
+        const route = child
+          ? child
+          : input.routeToThreadId
+            ? yield* requireChild(coordinator, input.routeToThreadId)
+            : null;
         const { decision, all } = yield* ThreadDecisions.withService((decisions) =>
           Effect.gen(function* () {
+            if (child) {
+              const taken = (yield* decisions.list(coordinator.id)).find(
+                (candidate) => candidate.id === input.id && candidate.sourceThreadId !== child.id,
+              );
+              if (taken) {
+                return yield* Effect.fail(
+                  new ThreadDecisionsError({
+                    message: `The id ${input.id} is already used in your coordinator's Inbox; choose another one.`,
+                  }),
+                );
+              }
+            }
             const decision = yield* decisions.upsert(coordinator.id, {
               ...input,
               sourceThreadId: source?.id,
               routeToThreadId: route?.id,
             });
-            return { decision, all: yield* decisions.list(coordinator.id) };
+            return { decision, all: ownDecisions(yield* decisions.list(coordinator.id), child) };
           }),
         ).pipe(Effect.mapError((error) => failure(error.message)));
         return {
@@ -812,22 +859,34 @@ const make = Effect.gen(function* () {
 
     resolve_decision: (input) =>
       Effect.gen(function* () {
-        const coordinator = yield* requireDecisions;
+        const { coordinator, child } = yield* requireDecisions;
         yield* ThreadDecisions.withService((decisions) =>
-          decisions.resolve(coordinator.id, input.id, input.reason),
+          Effect.gen(function* () {
+            if (child) {
+              const own = ownDecisions(yield* decisions.list(coordinator.id), child);
+              if (!own.some((decision) => decision.id === input.id)) {
+                return yield* Effect.fail(
+                  new ThreadDecisionsError({
+                    message: `No decision ${input.id} of yours. Call list_decisions for the ids of yours.`,
+                  }),
+                );
+              }
+            }
+            return yield* decisions.resolve(coordinator.id, input.id, input.reason);
+          }),
         ).pipe(Effect.mapError((error) => failure(error.message)));
         return { resolved: true };
       }),
 
     list_decisions: (input) =>
       Effect.gen(function* () {
-        const coordinator = yield* requireDecisions;
+        const { coordinator, child } = yield* requireDecisions;
         const status = input.status ?? "open";
         const all = yield* ThreadDecisions.withService((decisions) =>
           decisions.list(coordinator.id),
         ).pipe(Effect.mapError((error) => failure(error.message)));
         return {
-          decisions: all
+          decisions: ownDecisions(all, child)
             .filter((decision) => status === "all" || decision.status === status)
             .map(summarizeDecision),
         };
