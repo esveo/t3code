@@ -16,9 +16,17 @@ import {
 } from "../../state/entities";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { useRightPanelStore } from "../../rightPanelStore";
 import { buildThreadRouteParams } from "../../threadRoutes";
-import { AgentStage } from "./AgentStage";
-import { applyStageVisibility, deriveStageModel, MAIN_AGENT_ID } from "./agentStage.logic";
+import { useSubagentChatSupport } from "../subagentChat/useSubagentChatSupport";
+import { useSubagentChatOpenStore } from "../subagentChat/subagentChatOpenStore";
+import { AgentStage, type StageOpenAction } from "./AgentStage";
+import {
+  applyStageVisibility,
+  deriveStageModel,
+  MAIN_AGENT_ID,
+  type StageAgent,
+} from "./agentStage.logic";
 import { deriveFleetStageModel, type FleetThread } from "./agentStageFleet.logic";
 import { AGENT_STAGE_EVERYTHING_KEY, useAgentStageStore } from "./agentStageStore";
 
@@ -100,33 +108,23 @@ function ThreadAgentStage({
   const show = useAgentStageStore((state) => state.show);
   const showAll = useAgentStageStore((state) => state.showAll);
 
-  const storedSelection = useAgentStageStore((state) => state.selectedByThread[threadKey]);
-  const selectedId = everything
-    ? threadKey
-    : model.agents.some((agent) => agent.id === storedSelection)
-      ? storedSelection!
+  // The everything view keeps its pick under its own key, like its hidden threads.
+  const storedSelection = useAgentStageStore((state) => state.selectedByThread[visibilityKey]);
+  const selectedId = model.agents.some((agent) => agent.id === storedSelection)
+    ? storedSelection!
+    : everything
+      ? threadKey
       : MAIN_AGENT_ID;
   const select = useAgentStageStore((state) => state.select);
-  const navigate = useNavigate();
   const onSelect = useCallback(
     (agentId: string) => {
-      if (everything) {
-        // In the everything view a sprite is a thread: picking it opens it.
-        const target = fleet.refs.get(agentId);
-        if (target !== undefined && agentId !== threadKey) {
-          void navigate({
-            to: "/$environmentId/$threadId",
-            params: buildThreadRouteParams(target),
-          });
-        }
-        return;
-      }
       // Pointing at a hidden agent (from a request, say) brings it back.
-      if (hiddenIds.includes(agentId)) show(threadKey, agentId);
-      select(threadKey, agentId);
+      if (hiddenIds.includes(agentId)) show(visibilityKey, agentId);
+      select(visibilityKey, agentId);
     },
-    [everything, fleet.refs, hiddenIds, navigate, select, show, threadKey],
+    [hiddenIds, select, show, visibilityKey],
   );
+  const openAction = useStageOpenAction(threadRef, everything, fleet.refs);
   const approvals = useStageApprovals(threadRef);
 
   return (
@@ -141,6 +139,7 @@ function ThreadAgentStage({
       onHide={(agentId) => hide(visibilityKey, agentId)}
       onShow={(agentId) => show(visibilityKey, agentId)}
       onShowAll={() => showAll(visibilityKey)}
+      openAction={openAction}
     />
   );
 }
@@ -174,6 +173,47 @@ function useFleetStageModel(
       refs,
     };
   }, [active, loadedKey, loadedModel, projects, shells]);
+}
+
+/**
+ * Where the selected agent can be talked to. A thread sprite opens its
+ * thread; a subagent opens the Agents panel, straight into its chat where the
+ * provider supports one. The open thread's own main agent needs no button:
+ * its chat is right there.
+ */
+function useStageOpenAction(
+  threadRef: ScopedThreadRef,
+  everything: boolean,
+  refs: ReadonlyMap<string, ScopedThreadRef>,
+) {
+  const navigate = useNavigate();
+  const chatSupported = useSubagentChatSupport(threadRef.environmentId, threadRef.threadId);
+  const threadKey = scopedThreadKey(threadRef);
+  return useCallback(
+    (agent: StageAgent): StageOpenAction | null => {
+      if (everything) {
+        const target = refs.get(agent.id);
+        if (target === undefined || agent.id === threadKey) return null;
+        return {
+          label: "Open thread",
+          onOpen: () =>
+            void navigate({
+              to: "/$environmentId/$threadId",
+              params: buildThreadRouteParams(target),
+            }),
+        };
+      }
+      if (agent.kind !== "subagent") return null;
+      return {
+        label: chatSupported ? "Open chat" : "Show in Agents",
+        onOpen: () => {
+          if (chatSupported) useSubagentChatOpenStore.getState().setOpen(threadKey, agent.id);
+          useRightPanelStore.getState().open(threadRef, "agents");
+        },
+      };
+    },
+    [chatSupported, everything, navigate, refs, threadKey, threadRef],
+  );
 }
 
 /**
