@@ -105,12 +105,15 @@ one with the app's update menu. Your job ends with that build prepared.
 
 1. Commit your work on its feature branch (or leave it uncommitted if the user
    prefers; `prepare` includes uncommitted changes of the checkout it runs in).
-2. When the feature should go live, list it in `README.md` first: a separate
+2. When the feature should go live, list it in
+   [docs/fork/changelog.md](docs/fork/changelog.md) first: a separate
    last commit on the feature branch (after any rebase, so the hashes stay)
    that adds one bullet of a single short sentence, followed by the feature's
    commits as links (`[abc1234](https://github.com/esveo/t3code/commit/<full sha>)`).
    Prefix bug fixes with `Fix:`. A fix to a feature already listed adds its
-   commit to that feature's bullet instead of a new one.
+   commit to that feature's bullet instead of a new one. A new main feature
+   also gets a short section under Features in the README, with a screenshot or
+   GIF from demo threads (media in `docs/fork/media/`).
 3. Merge the feature into `fork` and prepare from there. Work the user has not
    asked to ship stays on its branch, and `prepare` from that branch is fine
    for trying it out — just say which branch the prepared build came from.
