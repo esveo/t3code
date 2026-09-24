@@ -2,6 +2,7 @@
 
 Every feature and fix this fork adds on top of [T3 Code](https://github.com/pingdotgg/t3code), each with the commits that made it.
 
+- The mobile app wears esveo Midnight's gradients too, on your messages and the send button, with the light circling the message the agent is working on ([ab9dec5](https://github.com/esveo/t3code/commit/ab9dec5e82f1ce87ca711238c6c18b29b0a67ec1)).
 - Thread notification toasts are on by default ([369415c](https://github.com/esveo/t3code/commit/369415cfcf67d18beafe72cca3a02afca6f8edda)).
 - Thread notification toasts lead with the session's name, beside the project's logo with a status badge ([e7e89e0](https://github.com/esveo/t3code/commit/e7e89e0117279a0b0f9d5d173f0ec19d99a30424), [394f628](https://github.com/esveo/t3code/commit/394f628e6fcf078a1bdc9f10aa0ccadd73149297))
 - The stage marks agents worth a look, for a risky command, an answer ending in a question or a nearly full context, and lists these findings under the ring ([d1d0c6b](https://github.com/esveo/t3code/commit/d1d0c6b70570d41d9e8f1b4a20454a15106542b8)).
