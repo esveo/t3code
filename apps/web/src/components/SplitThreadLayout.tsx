@@ -10,6 +10,7 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type RefObject,
 } from "react";
 
 import ChatView from "./ChatView";
@@ -44,6 +45,7 @@ import {
   setLeafThread,
   type DropZone,
   type LayoutDivider,
+  type LayoutPane,
   type Rect,
   type SplitLeaf,
 } from "./split/splitLayout.logic";
@@ -88,9 +90,6 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
   const rememberedRouteThread = useSplitThreadStore((state) => state.routeThread);
   const setRouteThread = useSplitThreadStore((state) => state.setRouteThread);
   const gridRef = useRef<HTMLDivElement>(null);
-  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
-  const dropTargetRef = useRef<DropTarget | null>(null);
-  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
 
   const routeThreadRef = target.kind === "server" ? target.threadRef : null;
   const isSplit = layout.kind === "split";
@@ -248,59 +247,6 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
     [navigateToThread, routeThreadRef, setActiveLeaf, setLayout],
   );
 
-  // While something is dragged, track the pane and zone under the pointer. The
-  // target lives in a ref: a re-render mid-drag resubscribes these listeners,
-  // and a local would reset to null while the preview still showed the pane.
-  useEffect(() => {
-    if (!drag) {
-      dropTargetRef.current = null;
-      return;
-    }
-    const resolveTarget = (x: number, y: number): DropTarget | null => {
-      const grid = gridRef.current;
-      if (!grid) return null;
-      for (const element of grid.querySelectorAll<HTMLElement>("[data-chat-pane]")) {
-        const rect = element.getBoundingClientRect();
-        if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) continue;
-        const leafId = element.dataset.chatPane;
-        if (!leafId) return null;
-        const zone = resolveDropZone((x - rect.left) / rect.width, (y - rect.top) / rect.height);
-        return { leafId, zone };
-      }
-      return null;
-    };
-    const onMove = (event: PointerEvent) => {
-      const target = resolveTarget(event.clientX, event.clientY);
-      dropTargetRef.current = target;
-      setDropTarget(target);
-      setPointer({ x: event.clientX, y: event.clientY });
-      // A sidebar drag ends inside dnd-kit, whose release handler may run before
-      // ours; hand it the drop so it can skip its own reorder either way.
-      if (drag.kind === "thread") setPendingPaneDrop(target ? () => drop(drag, target) : null);
-    };
-    const onUp = () => {
-      if (drag.kind !== "leaf") return;
-      const target = dropTargetRef.current;
-      if (target) drop(drag, target);
-      setDrag(null);
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
-      dropTargetRef.current = null;
-      setDropTarget(null);
-      setPendingPaneDrop(null);
-      if (drag.kind === "leaf") setDrag(null);
-    };
-    window.addEventListener("pointermove", onMove, true);
-    window.addEventListener("pointerup", onUp, true);
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => {
-      window.removeEventListener("pointermove", onMove, true);
-      window.removeEventListener("pointerup", onUp, true);
-      window.removeEventListener("keydown", onKeyDown, true);
-    };
-  }, [drag, drop, setDrag]);
-
   const startResize = useCallback(
     (divider: LayoutDivider, event: React.PointerEvent<HTMLDivElement>) => {
       const grid = gridRef.current;
@@ -337,21 +283,6 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
     },
     [setLayout],
   );
-
-  // Only while a drag is running: the last target and pointer stay in state
-  // after it ends, which keeps them out of a drag-ending render.
-  const dropHighlight = useMemo(() => {
-    if (!drag || !dropTarget) return null;
-    const pane = panes.find((candidate) => candidate.leaf.id === dropTarget.leafId);
-    if (!pane) return null;
-    const zone = dropZoneRect(dropTarget.zone);
-    return {
-      left: pane.rect.left + zone.left * pane.rect.width,
-      top: pane.rect.top + zone.top * pane.rect.height,
-      width: zone.width * pane.rect.width,
-      height: zone.height * pane.rect.height,
-    };
-  }, [drag, dropTarget, panes]);
 
   // A popout window is one thread's window: it never grows a grid, whatever
   // the shared layout says, and whatever it navigates to.
@@ -440,23 +371,8 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
             }
           />
         ))}
-        {dropHighlight ? (
-          <div
-            aria-hidden
-            className="pointer-events-none absolute z-40 rounded-md border-2 border-primary/60 bg-primary/15 transition-all duration-100"
-            style={rectStyle(dropHighlight)}
-          />
-        ) : null}
+        {drag ? <SplitDragOverlay drag={drag} gridRef={gridRef} panes={panes} drop={drop} /> : null}
       </div>
-      {drag && pointer ? (
-        <div
-          aria-hidden
-          className="pointer-events-none fixed z-50 max-w-64 truncate rounded-md border bg-popover px-2 py-1 text-popover-foreground text-xs shadow-md"
-          style={{ left: pointer.x + 12, top: pointer.y + 12 }}
-        >
-          {drag.title}
-        </div>
-      ) : null}
     </SidebarInset>
   );
 }
@@ -575,4 +491,111 @@ function PaneThreadView({
     );
   }
   return null;
+}
+
+/**
+ * The drop highlight and the dragged title that follows the pointer. Mounted
+ * only while something is dragged, and keeps the pointer in its own state, so
+ * a move re-renders this overlay rather than every pane's chat.
+ */
+function SplitDragOverlay({
+  drag,
+  gridRef,
+  panes,
+  drop,
+}: {
+  readonly drag: SplitDragSource;
+  readonly gridRef: RefObject<HTMLDivElement | null>;
+  readonly panes: ReadonlyArray<LayoutPane>;
+  readonly drop: (source: SplitDragSource, target: DropTarget) => void;
+}) {
+  const setDrag = useSplitThreadStore((state) => state.setDrag);
+  const [dropTarget, setDropTarget] = useState<DropTarget | null>(null);
+  const [pointer, setPointer] = useState<{ x: number; y: number } | null>(null);
+  // The target lives in a ref too: a re-render mid-drag resubscribes these
+  // listeners, and a local would reset to null while the preview still showed the pane.
+  const dropTargetRef = useRef<DropTarget | null>(null);
+
+  useEffect(() => {
+    const resolveTarget = (x: number, y: number): DropTarget | null => {
+      const grid = gridRef.current;
+      if (!grid) return null;
+      for (const element of grid.querySelectorAll<HTMLElement>("[data-chat-pane]")) {
+        const rect = element.getBoundingClientRect();
+        if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) continue;
+        const leafId = element.dataset.chatPane;
+        if (!leafId) return null;
+        const zone = resolveDropZone((x - rect.left) / rect.width, (y - rect.top) / rect.height);
+        return { leafId, zone };
+      }
+      return null;
+    };
+    const onMove = (event: PointerEvent) => {
+      const target = resolveTarget(event.clientX, event.clientY);
+      const previous = dropTargetRef.current;
+      if (previous?.leafId !== target?.leafId || previous?.zone !== target?.zone) {
+        dropTargetRef.current = target;
+        setDropTarget(target);
+        // A sidebar drag ends inside dnd-kit, whose release handler may run before
+        // ours; hand it the drop so it can skip its own reorder either way.
+        if (drag.kind === "thread") setPendingPaneDrop(target ? () => drop(drag, target) : null);
+      }
+      setPointer({ x: event.clientX, y: event.clientY });
+    };
+    const onUp = () => {
+      if (drag.kind !== "leaf") return;
+      const target = dropTargetRef.current;
+      if (target) drop(drag, target);
+      setDrag(null);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      dropTargetRef.current = null;
+      setDropTarget(null);
+      setPendingPaneDrop(null);
+      if (drag.kind === "leaf") setDrag(null);
+    };
+    window.addEventListener("pointermove", onMove, true);
+    window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      window.removeEventListener("pointermove", onMove, true);
+      window.removeEventListener("pointerup", onUp, true);
+      window.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [drag, drop, gridRef, setDrag]);
+
+  const highlight = useMemo(() => {
+    if (!dropTarget) return null;
+    const pane = panes.find((candidate) => candidate.leaf.id === dropTarget.leafId);
+    if (!pane) return null;
+    const zone = dropZoneRect(dropTarget.zone);
+    return {
+      left: pane.rect.left + zone.left * pane.rect.width,
+      top: pane.rect.top + zone.top * pane.rect.height,
+      width: zone.width * pane.rect.width,
+      height: zone.height * pane.rect.height,
+    };
+  }, [dropTarget, panes]);
+
+  return (
+    <>
+      {highlight ? (
+        <div
+          aria-hidden
+          className="pointer-events-none absolute z-40 rounded-md border-2 border-primary/60 bg-primary/15 transition-all duration-100"
+          style={rectStyle(highlight)}
+        />
+      ) : null}
+      {pointer ? (
+        <div
+          aria-hidden
+          className="pointer-events-none fixed z-50 max-w-64 truncate rounded-md border bg-popover px-2 py-1 text-popover-foreground text-xs shadow-md"
+          style={{ left: pointer.x + 12, top: pointer.y + 12 }}
+        >
+          {drag.title}
+        </div>
+      ) : null}
+    </>
+  );
 }
