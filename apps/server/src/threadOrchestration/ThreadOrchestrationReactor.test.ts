@@ -1,7 +1,11 @@
 import type { OrchestrationThreadShell } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { childUpdateBody, childUpdateFor } from "./ThreadOrchestrationReactor.ts";
+import {
+  answersLatestPrompt,
+  childUpdateBody,
+  childUpdateFor,
+} from "./ThreadOrchestrationReactor.ts";
 
 const shell = (overrides: Partial<OrchestrationThreadShell>) =>
   ({
@@ -143,6 +147,17 @@ describe("childUpdateFor follow-ups", () => {
     expect(update("u2")?.key).not.toBe(update("u1")?.key);
     // A repeated session write within one retry stays one update.
     expect(update("u2")?.key).toBe(update("u2")?.key);
+  });
+});
+
+describe("answersLatestPrompt", () => {
+  const at = (createdAt: string) => ({ createdAt });
+  it("passes on an answer only when it came after the latest prompt", () => {
+    expect(answersLatestPrompt(at("2026-09-23T10:02:00Z"), at("2026-09-23T10:01:00Z"))).toBe(true);
+    expect(answersLatestPrompt(at("2026-09-23T10:02:00Z"), null)).toBe(true);
+    // A retry that failed before answering keeps the old answer out of its update.
+    expect(answersLatestPrompt(at("2026-09-23T10:02:00Z"), at("2026-09-23T10:03:00Z"))).toBe(false);
+    expect(answersLatestPrompt(null, at("2026-09-23T10:03:00Z"))).toBe(false);
   });
 });
 

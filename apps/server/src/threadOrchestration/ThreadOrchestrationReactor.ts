@@ -126,6 +126,18 @@ export function coordinatorHasUpdate(input: {
   });
 }
 
+/**
+ * Whether the answer came after the latest prompt. A follow-up that failed or
+ * stopped before answering must not pass the previous answer off as its own.
+ */
+export function answersLatestPrompt<A extends Pick<OrchestrationMessage, "createdAt">>(
+  answer: A | null,
+  prompt: Pick<OrchestrationMessage, "createdAt"> | null,
+): answer is A {
+  if (answer === null) return false;
+  return prompt === null || Date.parse(answer.createdAt) >= Date.parse(prompt.createdAt);
+}
+
 function latestOf(first: string, second: string | undefined): string {
   return second !== undefined && Date.parse(second) > Date.parse(first) ? second : first;
 }
@@ -263,7 +275,12 @@ const make = Effect.gen(function* () {
           title: child.value.title,
           state: update.state,
           detail: describeChildThread(child.value),
-          text: childUpdateBody({ state: update.state, latestAnswer: latestAnswer?.text ?? null }),
+          text: childUpdateBody({
+            state: update.state,
+            latestAnswer: answersLatestPrompt(latestAnswer, latestPrompt)
+              ? latestAnswer.text
+              : null,
+          }),
         }),
         attachments: [],
       },
