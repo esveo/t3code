@@ -544,14 +544,16 @@ export const TaskRunHandles = Schema.Struct({
 export type TaskRunHandles = typeof TaskRunHandles.Type;
 
 /**
- * Watch-loop task types: Monitor-tool tasks plus background shells (a shell
- * that outlives its turn is in practice a watch loop). Canonical single copy —
+ * Watch-loop task types: Monitor-tool tasks, background shells (a shell
+ * that outlives its turn is in practice a watch loop), and live artifact
+ * watches ("monitor_ws", armed when an artifact is published). Canonical single copy —
  * the server liveness registry, ingestion's agentKind stamp, and the client
  * fold's legacy fallback all classify with these sets.
  */
 export const MONITOR_TASK_TYPES: ReadonlySet<string> = new Set([
   "monitor",
   "monitor_mcp",
+  "monitor_ws",
   "local_bash",
   "shell",
 ]);
