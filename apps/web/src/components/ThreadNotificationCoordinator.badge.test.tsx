@@ -71,7 +71,10 @@ let focused = false;
 let visibility = "visible";
 
 function shell(overrides: Partial<typeof thread> = {}) {
-  return { status: "live", snapshot: Option.some({ threads: [{ ...thread, ...overrides }] }) };
+  return {
+    status: "live",
+    snapshot: Option.some({ projects: [], threads: [{ ...thread, ...overrides }] }),
+  };
 }
 function complete(environment = "one", completedAt = "2026-09-13T08:00:00Z") {
   state.shells.set(

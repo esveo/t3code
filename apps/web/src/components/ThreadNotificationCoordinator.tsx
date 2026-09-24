@@ -22,6 +22,7 @@ import {
 } from "../threadNotifications";
 import { resolveSidebarThreadStatus } from "./Sidebar.logic";
 import { threadToastShortcuts } from "./split/threadToastShortcuts";
+import { ThreadToastIdentity } from "./split/ThreadToastIdentity";
 import { revealThreadInSplit } from "./split/splitPanes";
 import { toastManager } from "./ui/toast";
 
@@ -178,36 +179,49 @@ function EnvironmentNotifications({
         document.hasFocus() &&
         (activeEnvironmentId !== environmentId || activeThreadId !== thread.id)
       ) {
+        const project = shell.snapshot.value.projects.find(
+          (candidate) => candidate.id === thread.projectId,
+        );
         const shortcuts = threadToastShortcuts({ environmentId, threadId: thread.id }, () =>
           toastManager.close(toastId),
         );
         const toastId = toastManager.add({
           onClose: shortcuts.disarm,
           type: kind === "completion" ? "success" : status === "failed" ? "error" : "warning",
-          title,
-          description: thread.title,
+          // Fork: the session's name leads, its project's logo and name follow the status.
+          title: thread.title,
+          description: project ? `${title} · ${project.title}` : title,
           data: {
             hideCopyButton: true,
             ...shortcuts.data,
-            leadingIcon:
-              kind === "completion" ? (
-                <CircleCheckIcon
-                  aria-hidden
-                  className="size-4 text-emerald-700 dark:text-emerald-300"
-                />
-              ) : status === "approval" ? (
-                <ShieldQuestionIcon
-                  aria-hidden
-                  className="size-4 text-amber-700 dark:text-amber-300"
-                />
-              ) : status === "failed" ? (
-                <CircleAlertIcon aria-hidden className="size-4 text-red-700 dark:text-red-300" />
-              ) : (
-                <MessageCircleQuestionIcon
-                  aria-hidden
-                  className="size-4 text-indigo-600 dark:text-indigo-300"
-                />
-              ),
+            leadingIcon: (
+              <ThreadToastIdentity
+                project={project ? { ...project, environmentId } : null}
+                statusIcon={
+                  kind === "completion" ? (
+                    <CircleCheckIcon
+                      aria-hidden
+                      className="size-4 text-emerald-700 dark:text-emerald-300"
+                    />
+                  ) : status === "approval" ? (
+                    <ShieldQuestionIcon
+                      aria-hidden
+                      className="size-4 text-amber-700 dark:text-amber-300"
+                    />
+                  ) : status === "failed" ? (
+                    <CircleAlertIcon
+                      aria-hidden
+                      className="size-4 text-red-700 dark:text-red-300"
+                    />
+                  ) : (
+                    <MessageCircleQuestionIcon
+                      aria-hidden
+                      className="size-4 text-indigo-600 dark:text-indigo-300"
+                    />
+                  )
+                }
+              />
+            ),
           },
           actionProps: shortcuts.openThread({
             children: "Open thread",
