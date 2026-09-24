@@ -50,3 +50,4 @@ Fork of [T3 Code](https://github.com/pingdotgg/t3code) with features and fixes:
 - The fork's own UI uses upstream's component variants instead of restyling them ([a904f22](https://github.com/esveo/t3code/commit/a904f22e5053fbad46425d59a557669e6a36c8f9))
 - Setup guide in [docs/fork/setup.md](docs/fork/setup.md) ([a98e8f6](https://github.com/esveo/t3code/commit/a98e8f684047a0ae20aa139adf0e138d8565c83f))
 - Fix: fork builds send no usage data to upstream's PostHog, and agents in other clones leave the esveo board alone ([cbad604](https://github.com/esveo/t3code/commit/cbad6041f3aac48b962c15f68453c9c8ef3f0a32), [b6bda9c](https://github.com/esveo/t3code/commit/b6bda9cfa046d6382a7d03c6cea8e1a65dbb2781))
+- Fix: an artifact's live watch shows as monitoring instead of an agent at work ([2d039d2](https://github.com/esveo/t3code/commit/2d039d22c375e91a01ac9d5d0bad13d327050438))

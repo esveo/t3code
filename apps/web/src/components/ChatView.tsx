@@ -6396,8 +6396,11 @@ export default function ChatView(props: ChatViewProps) {
           variant="ghost"
           disabled={isStoppingBackgroundWork}
           onClick={() => void handleStopBackgroundWork()}
+          title={
+            working ? undefined : "Ends the watch. The session and any published artifact stay."
+          }
         >
-          {isStoppingBackgroundWork ? "Stopping..." : "Stop"}
+          {isStoppingBackgroundWork ? "Stopping..." : working ? "Stop" : "Stop watching"}
         </Button>
       ),
     };
