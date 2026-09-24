@@ -49,6 +49,6 @@ npx expo prebuild --clean --platform android --no-install
 build_tools="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)"
 apk="$OUT_DIR/esveo-code-$(git rev-parse --short HEAD).apk"
 "$build_tools/apksigner" sign --ks "$KEYSTORE" --ks-key-alias esveo-code \
-  --ks-pass "file:$KEYSTORE_PASSWORD_FILE" --key-pass "file:$KEYSTORE_PASSWORD_FILE" \
+  --ks-pass "file:$KEYSTORE_PASSWORD_FILE" \
   --out "$apk" android/app/build/outputs/apk/release/app-release.apk
 echo "$apk"
