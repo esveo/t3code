@@ -13,6 +13,7 @@ import {
   MessageSquare,
   MessagesSquare,
   PencilLine,
+  Radar,
   Search,
   Terminal,
   TriangleAlert,
@@ -67,6 +68,7 @@ const STATION_ICONS: Record<StageStation, LucideIcon> = {
   browser: Globe,
   tool: Wrench,
   delegate: Users,
+  monitoring: Radar,
   waiting: Hand,
 };
 

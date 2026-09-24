@@ -155,6 +155,20 @@ describe("deriveFleetStageModel", () => {
     ]);
   });
 
+  it("sends watch loops to monitoring and other background work to subagents", () => {
+    const model = deriveFleetStageModel({
+      threads: [
+        thread("a", { backgroundLiveness: "monitoring" }),
+        thread("bb", { backgroundLiveness: "working" }),
+      ],
+      loaded: null,
+    });
+    expect(model.agents.map((agent) => [agent.id, agent.station, agent.headline])).toEqual([
+      ["a", "monitoring", "Monitoring"],
+      ["bb", "delegate", "Background work"],
+    ]);
+  });
+
   it("shows no sprite for a thread at rest", () => {
     const model = deriveFleetStageModel({
       threads: [thread("a", { latestTurn: turn("error") })],

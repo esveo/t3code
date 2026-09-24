@@ -285,6 +285,65 @@ describe("deriveStageModel", () => {
   });
 });
 
+describe("background work after the turn", () => {
+  it("says working, not thinking, for a subagent that reports no tools", () => {
+    const model = deriveStageModel({
+      activities: [
+        activity({
+          kind: "task.started",
+          payload: { taskId: "task-1", taskType: "local_agent", title: "Audit" },
+        }),
+      ],
+      messages: [],
+      session: session("ready"),
+      latestTurn: latestTurn("completed"),
+    });
+    expect(model.agents[1]).toEqual(
+      expect.objectContaining({ station: "thinking", live: true, headline: "Working" }),
+    );
+  });
+
+  it("parks the main agent at monitoring while a watch loop runs", () => {
+    const model = deriveStageModel({
+      activities: [
+        activity({
+          kind: "task.started",
+          createdAt: "2026-09-21T10:00:30.000Z",
+          payload: { taskId: "watch-1", taskType: "monitor", detail: "CI checks on #41" },
+        }),
+      ],
+      messages: [],
+      session: session("ready"),
+      latestTurn: latestTurn("completed"),
+      backgroundLiveness: "monitoring",
+    });
+    expect(model.running).toBe(true);
+    expect(model.agents).toEqual([
+      expect.objectContaining({
+        station: "monitoring",
+        live: true,
+        headline: "Monitoring",
+        detail: "CI checks on #41",
+        since: "2026-09-21T10:00:30.000Z",
+      }),
+    ]);
+    expect(stageIsStuck(model.agents[0]!, Date.parse("2026-09-22T10:00:00.000Z"))).toBe(false);
+  });
+
+  it("keeps background work the fold does not list, such as a workflow run", () => {
+    const model = deriveStageModel({
+      activities: [],
+      messages: [],
+      session: session("ready"),
+      latestTurn: latestTurn("completed"),
+      backgroundLiveness: "working",
+    });
+    expect(model.agents[0]).toEqual(
+      expect.objectContaining({ station: "delegate", live: true, headline: "Background work" }),
+    );
+  });
+});
+
 const at = (seconds: string) => `2026-09-21T10:0${seconds}.000Z`;
 const clock = (seconds: string) => Date.parse(at(seconds));
 

@@ -155,11 +155,12 @@ function deriveShellAgent(thread: FleetThread): StageAgent {
     };
   }
   if (shell.backgroundLiveness === "working" || shell.backgroundLiveness === "monitoring") {
+    const working = shell.backgroundLiveness === "working";
     return {
       ...base,
-      station: "delegate",
+      station: working ? "delegate" : "monitoring",
       live: true,
-      headline: shell.backgroundLiveness === "working" ? "Background work" : "Monitoring",
+      headline: working ? "Background work" : "Monitoring",
       detail: null,
       since: null,
     };

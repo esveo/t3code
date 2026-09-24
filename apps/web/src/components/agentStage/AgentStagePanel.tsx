@@ -7,7 +7,13 @@ import type {
 import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
 
-import { useProject, useProjects, useThread, useThreadShells } from "../../state/entities";
+import {
+  useProject,
+  useProjects,
+  useThread,
+  useThreadShell,
+  useThreadShells,
+} from "../../state/entities";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { buildThreadRouteParams } from "../../threadRoutes";
@@ -48,6 +54,7 @@ function ThreadAgentStage({
   const session = thread?.session ?? null;
   const latestTurn = thread?.latestTurn ?? null;
   const threadTitle = thread?.title;
+  const backgroundLiveness = useThreadShell(threadRef)?.backgroundLiveness ?? null;
   const project = useProject(
     thread === null
       ? null
@@ -63,8 +70,18 @@ function ThreadAgentStage({
         workspaceRoot: workspaceRoot ?? undefined,
         threadTitle,
         project,
+        backgroundLiveness,
       }),
-    [activities, latestTurn, messages, project, session, threadTitle, workspaceRoot],
+    [
+      activities,
+      backgroundLiveness,
+      latestTurn,
+      messages,
+      project,
+      session,
+      threadTitle,
+      workspaceRoot,
+    ],
   );
   const mode = useAgentStageStore((state) => state.mode);
   const setMode = useAgentStageStore((state) => state.setMode);

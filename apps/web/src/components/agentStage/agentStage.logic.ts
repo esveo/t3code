@@ -42,6 +42,7 @@ export type StageStation =
   | "browser"
   | "tool"
   | "delegate"
+  | "monitoring"
   | "waiting";
 
 /** Clockwise order around the ring, starting at the top. */
@@ -55,6 +56,7 @@ export const STAGE_STATIONS: ReadonlyArray<{ readonly id: StageStation; readonly
     { id: "browser", label: "Browser" },
     { id: "tool", label: "Tools" },
     { id: "delegate", label: "Subagents" },
+    { id: "monitoring", label: "Monitoring" },
     { id: "waiting", label: "Waiting" },
     { id: "writing", label: "Answering" },
     { id: "idle", label: "Idle" },
@@ -152,6 +154,12 @@ export interface StageInput {
   /** The thread's title and project, for the main agent's sprite. */
   readonly threadTitle?: string | undefined;
   readonly project?: StageProject | null | undefined;
+  /**
+   * The server's read of work that outlives the turn, from the thread shell:
+   * "monitoring" when watch loops (Monitor, background shells) are all that
+   * is left running.
+   */
+  readonly backgroundLiveness?: "working" | "monitoring" | null | undefined;
 }
 
 const RECENT_LIMIT = 5;
@@ -196,7 +204,7 @@ export function deriveStageModel(input: StageInput): StageModel {
   ];
   return {
     agents,
-    running: running || liveSubagentCount > 0,
+    running: agents.some((agent) => agent.live),
     attention: deriveAttention(pending, subagents),
   };
 }
@@ -394,15 +402,29 @@ function deriveMainAgent(
     };
   }
 
-  // The turn is over, but subagents it sent to the background still work.
-  if (liveSubagentCount > 0) {
+  // The turn is over, but work it sent to the background still runs.
+  if (liveSubagentCount > 0 || input.backgroundLiveness === "working") {
     return {
       ...base,
       station: "delegate",
       live: true,
-      headline: `Waiting for ${liveSubagentCount} ${liveSubagentCount === 1 ? "subagent" : "subagents"}`,
+      headline:
+        liveSubagentCount > 0
+          ? `Waiting for ${liveSubagentCount} ${liveSubagentCount === 1 ? "subagent" : "subagents"}`
+          : "Background work",
       detail: null,
       since: input.latestTurn?.completedAt ?? null,
+    };
+  }
+  if (input.backgroundLiveness === "monitoring") {
+    const watch = latestOpenWatchTask(input.activities);
+    return {
+      ...base,
+      station: "monitoring",
+      live: true,
+      headline: "Monitoring",
+      detail: watch?.detail ?? null,
+      since: watch?.since ?? input.latestTurn?.completedAt ?? null,
     };
   }
 
@@ -421,6 +443,36 @@ function deriveMainAgent(
     detail: null,
     since: null,
   };
+}
+
+/**
+ * The newest watch loop that has not ended, for what the monitoring headline
+ * is about. Whether anything is watched at all is the server's call; this
+ * only names it.
+ */
+function latestOpenWatchTask(
+  activities: ReadonlyArray<OrchestrationThreadActivity>,
+): { readonly detail: string | null; readonly since: string } | null {
+  const open = new Map<string, { detail: string | null; since: string }>();
+  for (const activity of activities) {
+    if (!activity.kind.startsWith("task.")) continue;
+    const payload = asRecord(activity.payload);
+    const taskId = asString(payload?.taskId);
+    if (payload === null || taskId === null) continue;
+    if (activity.kind === "task.completed") {
+      open.delete(taskId);
+    } else if (
+      activity.kind === "task.started" &&
+      payload.agentKind === "background" &&
+      asString(payload.agentId) === null
+    ) {
+      open.set(taskId, {
+        detail: asString(payload.detail) ?? asString(payload.title),
+        since: activity.createdAt,
+      });
+    }
+  }
+  return [...open.values()].at(-1) ?? null;
 }
 
 interface StationTiming {
@@ -776,11 +828,19 @@ function deriveSubagent(agent: RuntimeSubagent, work: AttributedWork | null): St
         since: timing?.activeSince ?? started,
       };
     }
+    // Without a single tool row the stage cannot tell thinking from tool use
+    // (Claude's background subagents report nothing until they finish).
+    const headline =
+      work === null
+        ? "Working"
+        : agent.lastToolName
+          ? `Thinking after ${agent.lastToolName}`
+          : "Thinking";
     return {
       ...base,
       station: "thinking",
       live: true,
-      headline: agent.lastToolName ? `Thinking after ${agent.lastToolName}` : "Thinking",
+      headline,
       detail: agent.progress,
       since: timing?.boundary ?? started,
     };
@@ -879,6 +939,8 @@ export function stageStuckAfterMs(station: StageStation): number {
   if (station === "waiting") return 120_000;
   if (station === "command") return 300_000;
   if (station === "delegate") return 600_000;
+  // Watch loops run for hours by design; standing there is the job.
+  if (station === "monitoring") return Number.POSITIVE_INFINITY;
   return 180_000;
 }
 
