@@ -85,6 +85,10 @@ Read back the thinking behind any answer.
 
 Speak into the composer with the microphone button or <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Space</kbd>. Whisper transcribes on the machine that runs the server, in German and English, and no audio leaves it. Turn it on under Settings → General → Voice input; Android phones and older iPhones then dictate through the same model.
 
+<p align="center">
+  <img src="docs/fork/media/dictation.webp" alt="The composer recording a dictation, with cancel, timer and finish beside the send button" width="100%">
+</p>
+
 ### esveo themes
 
 _esveo_ and _esveo Midnight_, each in light and dark.
