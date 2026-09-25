@@ -81,6 +81,10 @@ Read back the thinking behind any answer.
   <img src="docs/fork/media/thinking-trail.webp" alt="The thought trail under an answer" width="80%">
 </p>
 
+### Dictation
+
+Speak into the composer with the microphone button or <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Space</kbd>. Whisper transcribes on the machine that runs the server, in German and English, and no audio leaves it. Turn it on under Settings → General → Voice input; Android phones and older iPhones then dictate through the same model.
+
 ### esveo themes
 
 _esveo_ and _esveo Midnight_, each in light and dark.
