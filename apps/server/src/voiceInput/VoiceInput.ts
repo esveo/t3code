@@ -15,14 +15,17 @@ import * as NodeStreamPromises from "node:stream/promises";
 
 import {
   VoiceInputError,
+  type VoiceInputPrepareInput,
   type VoiceInputPrepareProgress,
   type VoiceInputTranscribeInput,
 } from "@t3tools/contracts";
+import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as Effect from "effect/Effect";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 
 import { ServerConfig } from "../config.ts";
+import { convertM4aToPcm16 } from "./audioConversion.ts";
 import { WhisperTranscriber, type WhisperContextLike } from "./whisperTranscriber.ts";
 
 // Whisper large-v3-turbo, quantized: close to large-v3 quality at a fraction of
@@ -112,14 +115,14 @@ function toVoiceInputError(cause: unknown): VoiceInputError {
   return new VoiceInputError({ message: `Voice input failed: ${detail}` });
 }
 
-/** Streams the model's download and load progress, ending once it is ready. */
-export const prepareRpc = () =>
+/** Streams the model's download progress, ending once it is on disk (or, for a check, missing). */
+export const prepareRpc = (input: VoiceInputPrepareInput) =>
   Stream.unwrap(
     Effect.map(getTranscriber, (whisper) =>
       Stream.callback<VoiceInputPrepareProgress, VoiceInputError>((queue) =>
         Effect.tryPromise({
           try: (signal) =>
-            whisper.prepare((progress) => Queue.offerUnsafe(queue, progress), signal),
+            whisper.prepare((progress) => Queue.offerUnsafe(queue, progress), signal, input),
           catch: toVoiceInputError,
         }).pipe(
           Effect.matchEffect({
@@ -136,11 +139,18 @@ export const transcribeRpc = Effect.fn("voiceInput.transcribe")(function* (
   input: VoiceInputTranscribeInput,
 ) {
   const audio = Buffer.from(input.audioBase64, "base64");
-  if (audio.length === 0 || audio.length % 2 !== 0) {
-    return yield* new VoiceInputError({ message: "The recording is not 16-bit PCM audio." });
+  const isM4a = input.format === "m4a";
+  if (audio.length === 0 || (!isM4a && audio.length % 2 !== 0)) {
+    return yield* new VoiceInputError({ message: "The recording is empty or not 16-bit PCM." });
   }
   const whisper = yield* getTranscriber;
-  const pcm = audio.buffer.slice(audio.byteOffset, audio.byteOffset + audio.byteLength);
+  const platform = yield* HostProcessPlatform;
+  const pcm = isM4a
+    ? yield* Effect.tryPromise({
+        try: () => convertM4aToPcm16(audio, platform),
+        catch: toVoiceInputError,
+      })
+    : audio.buffer.slice(audio.byteOffset, audio.byteOffset + audio.byteLength);
   const text = yield* Effect.tryPromise({
     try: (signal) => whisper.transcribe(pcm, signal),
     catch: toVoiceInputError,

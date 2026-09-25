@@ -1,7 +1,9 @@
 /**
  * Fork: dictation in the composer. The client records the microphone and sends
  * the audio to its environment, which transcribes it locally with Whisper.
- * `prepare` downloads the model when the user turns dictation on.
+ * `prepare` downloads the model when the user turns dictation on; with
+ * `download: false` it only reports whether the model is there, which is how
+ * the mobile app decides to offer dictation.
  */
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/unstable/rpc/Rpc";
@@ -20,8 +22,15 @@ export const VOICE_INPUT_MAX_SECONDS = 5 * 60;
 export const VOICE_INPUT_MAX_AUDIO_BASE64_LENGTH =
   Math.ceil((VOICE_INPUT_MAX_SECONDS * VOICE_INPUT_SAMPLE_RATE * 2) / 3) * 4;
 
+export const VoiceInputPrepareInput = Schema.Struct({
+  /** Defaults to true. False only checks for the model. */
+  download: Schema.optionalKey(Schema.Boolean),
+});
+export type VoiceInputPrepareInput = typeof VoiceInputPrepareInput.Type;
+
 export const VoiceInputPrepareProgress = Schema.Struct({
-  phase: Schema.Literals(["downloading", "ready"]),
+  /** `missing` only answers a check that did not download. */
+  phase: Schema.Literals(["missing", "downloading", "ready"]),
   /** Download progress of the model; both are 0 once it is on disk. */
   receivedBytes: Schema.Number,
   totalBytes: Schema.Number,
@@ -30,6 +39,11 @@ export type VoiceInputPrepareProgress = typeof VoiceInputPrepareProgress.Type;
 
 export const VoiceInputTranscribeInput = Schema.Struct({
   audioBase64: Schema.String.check(Schema.isMaxLength(VOICE_INPUT_MAX_AUDIO_BASE64_LENGTH)),
+  /**
+   * Defaults to `pcm16`. `m4a` is AAC as phones record it; the server converts
+   * it with afconvert (macOS) or ffmpeg.
+   */
+  format: Schema.optionalKey(Schema.Literals(["pcm16", "m4a"])),
 });
 export type VoiceInputTranscribeInput = typeof VoiceInputTranscribeInput.Type;
 
@@ -43,7 +57,7 @@ export class VoiceInputError extends Schema.TaggedError<VoiceInputError>()("Voic
 }) {}
 
 export const WsVoiceInputPrepareRpc = Rpc.make(VOICE_INPUT_WS_METHODS.prepare, {
-  payload: Schema.Struct({}),
+  payload: VoiceInputPrepareInput,
   success: VoiceInputPrepareProgress,
   error: Schema.Union([VoiceInputError, EnvironmentAuthorizationError]),
   stream: true,

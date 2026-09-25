@@ -46,8 +46,21 @@ export class WhisperTranscriber {
     this.dependencies = dependencies;
   }
 
-  /** Resolves once the model is on disk. Cancelling only stops the reporting; the download continues for the next caller. */
-  async prepare(onProgress: ProgressListener, signal?: AbortSignal): Promise<void> {
+  /**
+   * Resolves once the model is on disk. Cancelling only stops the reporting;
+   * the download continues for the next caller. Without `download` it only
+   * reports `ready` or `missing`, unless a download is already running.
+   */
+  async prepare(
+    onProgress: ProgressListener,
+    signal?: AbortSignal,
+    options: { readonly download?: boolean } = {},
+  ): Promise<void> {
+    if (options.download === false && !this.modelFile) {
+      const exists = await this.dependencies.modelExists(this.dependencies.modelPath);
+      onProgress(exists ? READY : MISSING);
+      return;
+    }
     this.listeners.add(onProgress);
     if (this.progress) onProgress(this.progress);
     try {
@@ -161,6 +174,7 @@ export class WhisperTranscriber {
 }
 
 const READY: VoiceInputPrepareProgress = { phase: "ready", receivedBytes: 0, totalBytes: 0 };
+const MISSING: VoiceInputPrepareProgress = { phase: "missing", receivedBytes: 0, totalBytes: 0 };
 
 function abortable<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
   if (!signal) return promise;

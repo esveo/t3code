@@ -98,6 +98,25 @@ describe("WhisperTranscriber", () => {
     expect(loadContext).toHaveBeenCalledTimes(1);
   });
 
+  it("only checks for the model when asked not to download", async () => {
+    const { transcriber, download, downloadModel } = setup();
+    const checks: string[] = [];
+    await transcriber.prepare((progress) => checks.push(progress.phase), undefined, {
+      download: false,
+    });
+    expect(checks).toEqual(["missing"]);
+    expect(downloadModel).not.toHaveBeenCalled();
+
+    const downloading = transcriber.prepare(() => {});
+    // A check during a running download follows it instead of answering "missing".
+    const joining = transcriber.prepare((progress) => checks.push(progress.phase), undefined, {
+      download: false,
+    });
+    download.resolve();
+    await Promise.all([downloading, joining]);
+    expect(checks.at(-1)).toBe("ready");
+  });
+
   it("keeps downloading for others when one caller cancels", async () => {
     const { transcriber, download, loadContext } = setup();
     const controller = new AbortController();

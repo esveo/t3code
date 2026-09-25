@@ -100,6 +100,7 @@ import {
   ComposerDictationToolbar,
 } from "../voice-input/ComposerDictationControl";
 import { useVoiceInputController } from "../voice-input/useVoiceInputController";
+import { useServerVoiceTranscriber } from "../serverVoiceInput/useServerVoiceTranscriber";
 import { resolveVoiceComposerPresentation } from "../voice-input/voiceInputPresentation";
 import {
   type ExistingThreadSettingsRouteSession,
@@ -390,12 +391,15 @@ export const ThreadComposer = memo(function ThreadComposer(props: ThreadComposer
     onUsageLimits:
       usageLimitsOffered && props.draftAttachments.length === 0 ? openUsageLimits : undefined,
   });
+  // Fork: dictation through the environment's Whisper.
+  const serverVoiceTranscriber = useServerVoiceTranscriber(props.environmentId);
   const voiceInput = useVoiceInputController({
     ownerKey: composerOwnerKey,
     draftMessage: props.draftMessage,
     selection: composerMenu.selection,
     onChangeDraftMessage: props.onChangeDraftMessage,
     onChangeSelection: composerMenu.onSelectionChange,
+    fallbackTranscriber: serverVoiceTranscriber,
   });
   const voicePresentation = resolveVoiceComposerPresentation(
     voiceInput.state,

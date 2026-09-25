@@ -3825,8 +3825,8 @@ const makeWsRpcLayer = (
             "rpc.aggregate": "orchestration",
           }),
         // Fork: dictation in the composer.
-        [VOICE_INPUT_WS_METHODS.prepare]: (_input) =>
-          observeRpcStream(VOICE_INPUT_WS_METHODS.prepare, VoiceInput.prepareRpc(), {
+        [VOICE_INPUT_WS_METHODS.prepare]: (input) =>
+          observeRpcStream(VOICE_INPUT_WS_METHODS.prepare, VoiceInput.prepareRpc(input), {
             "rpc.aggregate": "server",
           }),
         [VOICE_INPUT_WS_METHODS.transcribe]: (input) =>
