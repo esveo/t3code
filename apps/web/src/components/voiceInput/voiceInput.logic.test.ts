@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  describeVoiceInputDownload,
   describeVoiceInputPreparation,
   encodePcm16Base64,
   formatVoiceElapsed,
@@ -54,5 +55,20 @@ describe("describeVoiceInputPreparation", () => {
     expect(
       describeVoiceInputPreparation({ phase: "ready", receivedBytes: 0, totalBytes: 0 }),
     ).toBeNull();
+  });
+});
+
+describe("describeVoiceInputDownload", () => {
+  it("shows percent and megabytes once the size is known", () => {
+    expect(
+      describeVoiceInputDownload({
+        phase: "downloading",
+        receivedBytes: 114_815_328,
+        totalBytes: 574_041_195,
+      }),
+    ).toBe("20% · 115 of 574 MB");
+    expect(
+      describeVoiceInputDownload({ phase: "downloading", receivedBytes: 0, totalBytes: 0 }),
+    ).toBe("Starting…");
   });
 });

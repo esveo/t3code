@@ -1,4 +1,6 @@
+import { RegistryContext } from "@effect/atom-react";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { useContext } from "react";
 
 import { usePrimaryEnvironmentId } from "~/state/environments";
 import { useEnvironmentQuery } from "~/state/query";
@@ -8,6 +10,7 @@ import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Switch } from "../ui/switch";
 import { describeVoiceInputPreparation } from "./voiceInput.logic";
+import { startVoiceInputModelDownload } from "./voiceInputDownloadToast";
 import { voiceInputEnvironment } from "./voiceInputState";
 import { useVoiceInputStore } from "./voiceInputStore";
 
@@ -19,6 +22,11 @@ export function VoiceInputSettingRow() {
   const enabled = useVoiceInputStore((state) => state.enabled);
   const setEnabled = useVoiceInputStore((state) => state.setEnabled);
   const environmentId = usePrimaryEnvironmentId();
+  const registry = useContext(RegistryContext);
+  const onCheckedChange = (checked: boolean) => {
+    setEnabled(checked);
+    if (checked && environmentId) startVoiceInputModelDownload(registry, environmentId);
+  };
   return (
     <SettingsRow
       {...searchableSetting("voice-input")}
@@ -26,7 +34,9 @@ export function VoiceInputSettingRow() {
       status={
         enabled && environmentId ? <VoiceInputModelStatus environmentId={environmentId} /> : null
       }
-      control={<Switch checked={enabled} onCheckedChange={setEnabled} aria-label="Voice input" />}
+      control={
+        <Switch checked={enabled} onCheckedChange={onCheckedChange} aria-label="Voice input" />
+      }
     />
   );
 }

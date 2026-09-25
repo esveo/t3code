@@ -42,3 +42,11 @@ export function describeVoiceInputPreparation(
   const percent = Math.floor((progress.receivedBytes / progress.totalBytes) * 100);
   return `Downloading speech model ${percent}%`;
 }
+
+/** Download progress for the toast, whose title already names the download. */
+export function describeVoiceInputDownload(progress: VoiceInputPrepareProgress): string {
+  if (progress.totalBytes <= 0) return "Starting…";
+  const megabytes = (bytes: number) => Math.round(bytes / 1_000_000);
+  const percent = Math.floor((progress.receivedBytes / progress.totalBytes) * 100);
+  return `${percent}% · ${megabytes(progress.receivedBytes)} of ${megabytes(progress.totalBytes)} MB`;
+}
