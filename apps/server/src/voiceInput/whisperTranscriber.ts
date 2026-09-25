@@ -16,6 +16,8 @@ export interface WhisperContextLike {
     readonly promise: Promise<{ readonly result: string; readonly isAborted: boolean }>;
   };
   release(): Promise<void>;
+  /** Settles when the context is gone, released or crashed. */
+  readonly closed: Promise<void>;
 }
 
 export interface WhisperTranscriberDependencies {
@@ -143,10 +145,11 @@ export class WhisperTranscriber {
         this.dependencies.loadContext(this.dependencies.modelPath),
       );
       this.context = context;
-      // A failed load is retried by the next dictation.
-      context.catch(() => {
+      // A failed load, or a context that died later, is loaded again by the next dictation.
+      const forget = () => {
         if (this.context === context) this.context = null;
-      });
+      };
+      context.then((loaded) => loaded.closed.then(forget), forget);
     }
     return this.context;
   }

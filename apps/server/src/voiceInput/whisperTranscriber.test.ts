@@ -16,14 +16,16 @@ function deferred<T>() {
 function fakeContext(transcript = " Hallo Welt ") {
   const stop = vi.fn(async () => {});
   const release = vi.fn(async () => {});
+  const closed = deferred<void>();
   const context: WhisperContextLike = {
     transcribeData: () => ({
       stop,
       promise: Promise.resolve({ result: transcript, isAborted: false }),
     }),
     release,
+    closed: closed.promise,
   };
-  return { context, stop, release };
+  return { context, stop, release, close: closed.resolve };
 }
 
 function setup(options: { exists?: boolean; context?: WhisperContextLike } = {}) {
@@ -183,6 +185,17 @@ describe("WhisperTranscriber", () => {
     }
   });
 
+  it("loads the model again after the loaded context died", async () => {
+    const { context, close } = fakeContext();
+    const { transcriber, loadContext } = setup({ exists: true, context });
+    await transcriber.transcribe(pcm);
+    close();
+    await Promise.resolve();
+
+    await transcriber.transcribe(pcm);
+    expect(loadContext).toHaveBeenCalledTimes(2);
+  });
+
   it("stops the native transcription when the caller cancels", async () => {
     const started = deferred<void>();
     const pending = deferred<{ result: string; isAborted: boolean }>();
@@ -193,6 +206,7 @@ describe("WhisperTranscriber", () => {
         return { stop, promise: pending.promise };
       },
       release: async () => {},
+      closed: new Promise(() => {}),
     };
     const { transcriber } = setup({ exists: true, context });
     const controller = new AbortController();
