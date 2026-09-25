@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { isSilentPcm16, pcm16FromWav } from "./audioConversion.ts";
+import { isSilentPcm16, limitPcm16Duration, pcm16FromWav } from "./audioConversion.ts";
 
 function chunk(id: string, body: Buffer): Buffer {
   const header = Buffer.alloc(8);
@@ -38,5 +38,16 @@ describe("isSilentPcm16", () => {
   it("treats quiet noise as silence and speech-level peaks as speech", () => {
     expect(isSilentPcm16(new Int16Array([0, 120, -300, 640]).buffer)).toBe(true);
     expect(isSilentPcm16(new Int16Array([0, 120, -4000, 20]).buffer)).toBe(false);
+  });
+});
+
+describe("limitPcm16Duration", () => {
+  it("cuts audio past the limit and leaves shorter audio alone", () => {
+    const secondOfPcm = 16_000 * 2;
+    expect(limitPcm16Duration(new ArrayBuffer(secondOfPcm * 3), 2).byteLength).toBe(
+      secondOfPcm * 2,
+    );
+    const short = new ArrayBuffer(secondOfPcm);
+    expect(limitPcm16Duration(short, 2)).toBe(short);
   });
 });

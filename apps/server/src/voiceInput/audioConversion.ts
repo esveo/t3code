@@ -1,6 +1,6 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /**
- * Fork: turns the AAC recordings phones make into the 16 kHz PCM Whisper
+ * Fork: turns the AAC recordings phones and browsers make into the 16 kHz PCM Whisper
  * reads. Node has no AAC decoder, so this shells out to afconvert, which ships
  * with every Mac, and to ffmpeg elsewhere.
  */
@@ -13,6 +13,18 @@ import * as NodeUtil from "node:util";
 import { VOICE_INPUT_SAMPLE_RATE } from "@t3tools/contracts";
 
 const execFile = NodeUtil.promisify(NodeChildProcess.execFile);
+
+let ffmpegAvailable: Promise<boolean> | null = null;
+
+/** Whether `convertM4aToPcm16` works here: always on macOS, elsewhere with ffmpeg on the PATH. */
+export function canConvertM4a(platform: string): Promise<boolean> {
+  if (platform === "darwin") return Promise.resolve(true);
+  ffmpegAvailable ??= execFile("ffmpeg", ["-version"]).then(
+    () => true,
+    () => false,
+  );
+  return ffmpegAvailable;
+}
 
 /** Converts an m4a recording to 16 kHz mono PCM16. */
 export async function convertM4aToPcm16(m4a: Buffer, platform: string): Promise<ArrayBuffer> {
@@ -72,6 +84,12 @@ export function pcm16FromWav(wav: Buffer): ArrayBuffer {
     offset = start + size + (size % 2);
   }
   throw new Error("The converted recording has no audio data.");
+}
+
+/** The first `seconds` of 16 kHz PCM16 audio. */
+export function limitPcm16Duration(pcm: ArrayBuffer, seconds: number): ArrayBuffer {
+  const maxBytes = seconds * VOICE_INPUT_SAMPLE_RATE * 2;
+  return pcm.byteLength > maxBytes ? pcm.slice(0, maxBytes) : pcm;
 }
 
 /** Below this peak (about -34 dBFS) a recording holds no speech. */

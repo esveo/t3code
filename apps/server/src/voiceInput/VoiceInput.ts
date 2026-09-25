@@ -13,6 +13,7 @@ import * as NodeStream from "node:stream";
 import * as NodeStreamPromises from "node:stream/promises";
 
 import {
+  VOICE_INPUT_MAX_SECONDS,
   VoiceInputError,
   type VoiceInputPrepareInput,
   type VoiceInputPrepareProgress,
@@ -24,7 +25,12 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 
 import { ServerConfig } from "../config.ts";
-import { convertM4aToPcm16, isSilentPcm16 } from "./audioConversion.ts";
+import {
+  canConvertM4a,
+  convertM4aToPcm16,
+  isSilentPcm16,
+  limitPcm16Duration,
+} from "./audioConversion.ts";
 import { WhisperTranscriber } from "./whisperTranscriber.ts";
 import { loadWhisperContextInWorker } from "./whisperWorker.ts";
 
@@ -113,14 +119,24 @@ function toVoiceInputError(cause: unknown): VoiceInputError {
   return new VoiceInputError({ message: `Voice input failed: ${detail}` });
 }
 
-/** Streams the model's download progress, ending once it is on disk (or, for a check, missing). */
+/**
+ * Streams the model's download progress and ends once it is on disk. A check
+ * (`download: false`) that finds it missing stays open until it arrives.
+ */
 export const prepareRpc = (input: VoiceInputPrepareInput) =>
   Stream.unwrap(
-    Effect.map(getTranscriber, (whisper) =>
-      Stream.callback<VoiceInputPrepareProgress, VoiceInputError>((queue) =>
+    Effect.gen(function* () {
+      const whisper = yield* getTranscriber;
+      const platform = yield* HostProcessPlatform;
+      const m4a = yield* Effect.promise(() => canConvertM4a(platform));
+      return Stream.callback<VoiceInputPrepareProgress, VoiceInputError>((queue) =>
         Effect.tryPromise({
           try: (signal) =>
-            whisper.prepare((progress) => Queue.offerUnsafe(queue, progress), signal, input),
+            whisper.prepare(
+              (progress) => Queue.offerUnsafe(queue, { ...progress, m4a }),
+              signal,
+              input,
+            ),
           catch: toVoiceInputError,
         }).pipe(
           Effect.matchEffect({
@@ -129,8 +145,8 @@ export const prepareRpc = (input: VoiceInputPrepareInput) =>
           }),
           Effect.forkScoped,
         ),
-      ),
-    ),
+      );
+    }),
   );
 
 export const transcribeRpc = Effect.fn("voiceInput.transcribe")(function* (
@@ -143,16 +159,18 @@ export const transcribeRpc = Effect.fn("voiceInput.transcribe")(function* (
   }
   const whisper = yield* getTranscriber;
   const platform = yield* HostProcessPlatform;
-  const pcm = isM4a
+  const recorded = isM4a
     ? yield* Effect.tryPromise({
         try: () => convertM4aToPcm16(audio, platform),
         catch: toVoiceInputError,
       })
     : audio.buffer.slice(audio.byteOffset, audio.byteOffset + audio.byteLength);
+  // A recording stopped at the limit runs a little over it.
+  const pcm = limitPcm16Duration(recorded, VOICE_INPUT_MAX_SECONDS);
   // Whisper turns silence into phrases like "Thank you.", so silence never reaches it.
   if (isSilentPcm16(pcm)) return { text: "" };
   const text = yield* Effect.tryPromise({
-    try: (signal) => whisper.transcribe(pcm, signal),
+    try: (signal) => whisper.transcribe(pcm, signal, input.language ?? "auto"),
     catch: toVoiceInputError,
   });
   return { text };
