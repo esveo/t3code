@@ -14,6 +14,7 @@ allowBuilds:
   core-js: false
   electron: true
   electron-winstaller: false
+  "@fugood/whisper.node": false
   esbuild: true
   msw: false
   node-pty: true

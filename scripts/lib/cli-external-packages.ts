@@ -31,6 +31,8 @@ export const CLI_RUNTIME_EXTERNAL_PREFIXES = [
   "@yuuang/",
   "@ff-labs/",
   "@clerk/electron-passkeys",
+  // Fork: whisper.cpp for dictation, with its per-platform binary packages.
+  "@fugood/",
   "node-gyp-build",
   "node-addon-api",
   // ws's optional accelerators. Nothing in this repo declares them, so they are

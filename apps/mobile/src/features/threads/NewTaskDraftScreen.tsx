@@ -75,6 +75,7 @@ import {
   ComposerDictationToolbar,
 } from "../voice-input/ComposerDictationControl";
 import { useVoiceInputController } from "../voice-input/useVoiceInputController";
+import { useServerVoiceTranscriber } from "../serverVoiceInput/useServerVoiceTranscriber";
 import { resolveVoiceComposerPresentation } from "../voice-input/voiceInputPresentation";
 import {
   useThreadSettingsSheetPresentation,
@@ -460,6 +461,8 @@ export function NewTaskDraftScreen(props: {
     onChangeDraftMessage: flow.setPrompt,
     onUpdateInteractionMode: flow.planModeEnabled ? flow.setInteractionMode : undefined,
   });
+  // Fork: dictation through the environment's Whisper.
+  const serverVoiceTranscriber = useServerVoiceTranscriber(selectedProject?.environmentId ?? null);
   const voiceInput = useVoiceInputController({
     ownerKey: flow.draftKey,
     draftMessage: flow.prompt,
@@ -467,6 +470,7 @@ export function NewTaskDraftScreen(props: {
     disabled: isIncomingShareTransferPending || isImportingShare || flow.submitting,
     onChangeDraftMessage: flow.setPrompt,
     onChangeSelection: composerMenu.onSelectionChange,
+    fallbackTranscriber: serverVoiceTranscriber,
   });
   const voicePresentation = resolveVoiceComposerPresentation(
     voiceInput.state,

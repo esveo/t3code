@@ -307,7 +307,7 @@ const signMacArchiveContents = Effect.fn("signMacArchiveContents")(function* (in
   const identity = Option.getOrUndefined(signing.identity)?.trim() || "-";
 
   const entitlements = path.join(input.repoRoot, "apps/server/resources/cli-entitlements.plist");
-  const libraries = (yield* fs.readDirectory(input.contentDir, { recursive: true }))
+  const candidates = (yield* fs.readDirectory(input.contentDir, { recursive: true }))
     .filter(
       (entry) =>
         entry.endsWith(".node") ||
@@ -316,6 +316,10 @@ const signMacArchiveContents = Effect.fn("signMacArchiveContents")(function* (in
         entry.endsWith("t3-resource-monitor"),
     )
     .map((entry) => path.join(input.contentDir, entry));
+  // Only files: a package directory can end in `.node` too (@fugood/whisper.node).
+  const libraries = yield* Effect.filter(candidates, (target) =>
+    Effect.map(fs.stat(target), (stat) => stat.type === "File"),
+  );
 
   for (const target of [...libraries, input.executablePath]) {
     yield* runCommand(

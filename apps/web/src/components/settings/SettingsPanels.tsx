@@ -173,6 +173,7 @@ import { ThreadDecisionsSettingRow } from "../threadInbox/ThreadDecisionsSetting
 import { ProjectFavicon } from "../ProjectFavicon";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
 import { AgentStageSettingRow } from "../agentStage/AgentStageSetting";
+import { VoiceInputSettingRow } from "../voiceInput/VoiceInputSettingRow";
 
 const ENVIRONMENT_IDENTIFICATION_LABELS: Record<EnvironmentIdentificationMode, string> = {
   artwork: "Artwork",
@@ -2383,6 +2384,7 @@ export function GeneralSettingsPanel() {
           }
         />
         <AgentStageSettingRow />
+        <VoiceInputSettingRow />
         <SettingsRow
           {...searchableSetting("time-format")}
           description="System default follows your browser or OS clock preference."
