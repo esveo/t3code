@@ -1,7 +1,7 @@
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { CheckIcon, MicIcon, XIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../../keybindings";
@@ -12,7 +12,7 @@ import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useComposerVoiceInput } from "./useComposerVoiceInput";
-import { formatVoiceElapsed } from "./voiceInput.logic";
+import { formatVoiceElapsed, ownsVoiceInputShortcut } from "./voiceInput.logic";
 import { useVoiceInputStore } from "./voiceInputStore";
 import type { VoiceRecording } from "./webVoiceRecorder";
 
@@ -20,6 +20,17 @@ interface ComposerVoiceInputControlProps {
   readonly environmentId: EnvironmentId;
   readonly draftKey: string;
   readonly insertText: (text: string) => boolean;
+  /**
+   * The main composer of its pane, which takes the shortcut while focus is
+   * outside every composer. False for secondary ones like the subagent chat's.
+   */
+  readonly primary: boolean;
+}
+
+const COMPOSER_SURFACE_SELECTOR = '[data-chat-composer-surface="true"]';
+
+function focusedComposer(): Element | null {
+  return document.activeElement?.closest(COMPOSER_SURFACE_SELECTOR) ?? null;
 }
 
 /** Fork: the dictation button in the composer footer, shown when the setting is on. */
@@ -35,68 +46,64 @@ function EnabledComposerVoiceInputControl(props: ComposerVoiceInputControlProps)
   const shortcutLabel = shortcutLabelForCommand(keybindings, "composer.dictate");
   const { phase, toggle, cancel } = voice;
 
+  const rootRef = useRef<HTMLSpanElement>(null);
+  const ownsShortcut = () =>
+    ownsVoiceInputShortcut({
+      ownComposer: rootRef.current?.closest(COMPOSER_SURFACE_SELECTOR) ?? null,
+      focusedComposer: focusedComposer(),
+      isActivePane,
+      isPrimaryComposer: props.primary,
+    });
+  const ownsShortcutRef = useRef(ownsShortcut);
   useEffect(() => {
-    const handler = (event: globalThis.KeyboardEvent) => {
-      if (!isActivePane) return;
-      if (event.key === "Escape" && phase !== "idle") {
-        event.preventDefault();
-        event.stopPropagation();
-        cancel();
-        return;
-      }
+    ownsShortcutRef.current = ownsShortcut;
+  });
+
+  useEffect(() => {
+    const onShortcut = (event: globalThis.KeyboardEvent) => {
       const command = resolveShortcutCommand(event, keybindings, {
         context: { terminalFocus: getTerminalFocusOwner() !== null },
       });
       if (command !== "composer.dictate" || isCommandPaletteOpen()) return;
+      if (!ownsShortcutRef.current()) return;
       event.preventDefault();
       event.stopPropagation();
-      toggle();
+      // Holding the keys repeats them; only the first press toggles.
+      if (!event.repeat) toggle();
     };
-    window.addEventListener("keydown", handler, true);
-    return () => window.removeEventListener("keydown", handler, true);
-  }, [cancel, isActivePane, keybindings, phase, toggle]);
+    window.addEventListener("keydown", onShortcut, true);
+    return () => window.removeEventListener("keydown", onShortcut, true);
+  }, [keybindings, toggle]);
 
-  if (phase === "idle") {
-    const label = shortcutLabel ? `Dictate (${shortcutLabel})` : "Dictate";
-    return (
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={() => void voice.start()}
-              aria-label="Dictate"
-            />
-          }
-        >
-          <MicIcon />
-        </TooltipTrigger>
-        <TooltipPopup>{label}</TooltipPopup>
-      </Tooltip>
-    );
-  }
+  useEffect(() => {
+    if (phase === "idle") return;
+    // Bubble phase: menus, pickers and dialogs close on Escape first, and
+    // mark it handled. Only an Escape nobody wanted cancels the dictation.
+    const onEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      const focused = focusedComposer();
+      const inBody = document.activeElement === null || document.activeElement === document.body;
+      if (!inBody && !focused) return;
+      if (!ownsShortcutRef.current()) return;
+      event.preventDefault();
+      cancel();
+    };
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [cancel, phase]);
 
-  const cancelButton = (
-    <Button
-      type="button"
-      variant="ghost-muted"
-      size="icon-sm"
-      onPointerDown={(event) => event.preventDefault()}
-      onClick={cancel}
-      aria-label="Cancel dictation"
-    >
-      <XIcon />
-    </Button>
+  // An environment without dictation gets no button.
+  if (!voice.supported) return null;
+  return (
+    <span ref={rootRef} className="contents">
+      {renderControls()}
+    </span>
   );
 
-  if (phase === "recording" && voice.recording) {
-    return (
-      <div className="flex items-center gap-1">
-        {cancelButton}
-        <RecordingStatus recording={voice.recording} preparationLabel={voice.preparationLabel} />
+  function renderControls() {
+    if (phase === "idle") {
+      const label = shortcutLabel ? `Dictate (${shortcutLabel})` : "Dictate";
+      return (
         <Tooltip>
           <TooltipTrigger
             render={
@@ -105,30 +112,69 @@ function EnabledComposerVoiceInputControl(props: ComposerVoiceInputControlProps)
                 variant="ghost"
                 size="icon-sm"
                 onPointerDown={(event) => event.preventDefault()}
-                onClick={() => void voice.stop()}
-                aria-label="Finish dictation"
+                onClick={() => void voice.start()}
+                aria-label="Dictate"
               />
             }
           >
-            <CheckIcon />
+            <MicIcon />
           </TooltipTrigger>
-          <TooltipPopup>{shortcutLabel ? `Finish (${shortcutLabel})` : "Finish"}</TooltipPopup>
+          <TooltipPopup>{label}</TooltipPopup>
         </Tooltip>
+      );
+    }
+
+    const cancelButton = (
+      <Button
+        type="button"
+        variant="ghost-muted"
+        size="icon-sm"
+        onPointerDown={(event) => event.preventDefault()}
+        onClick={cancel}
+        aria-label="Cancel dictation"
+      >
+        <XIcon />
+      </Button>
+    );
+
+    if (phase === "recording" && voice.recording) {
+      return (
+        <div className="flex items-center gap-1">
+          {cancelButton}
+          <RecordingStatus recording={voice.recording} preparationLabel={voice.preparationLabel} />
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  onPointerDown={(event) => event.preventDefault()}
+                  onClick={() => void voice.stop()}
+                  aria-label="Finish dictation"
+                />
+              }
+            >
+              <CheckIcon />
+            </TooltipTrigger>
+            <TooltipPopup>{shortcutLabel ? `Finish (${shortcutLabel})` : "Finish"}</TooltipPopup>
+          </Tooltip>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex items-center gap-1">
+        {cancelButton}
+        <span className="flex items-center gap-1.5 text-muted-foreground text-xs">
+          <Spinner size="sm" />
+          {phase === "starting"
+            ? "Starting microphone…"
+            : (voice.preparationLabel ?? "Transcribing…")}
+        </span>
       </div>
     );
   }
-
-  return (
-    <div className="flex items-center gap-1">
-      {cancelButton}
-      <span className="flex items-center gap-1.5 text-muted-foreground text-xs">
-        <Spinner size="sm" />
-        {phase === "starting"
-          ? "Starting microphone…"
-          : (voice.preparationLabel ?? "Transcribing…")}
-      </span>
-    </div>
-  );
 }
 
 /**
