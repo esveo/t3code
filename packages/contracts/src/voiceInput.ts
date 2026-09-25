@@ -1,8 +1,7 @@
 /**
  * Fork: dictation in the composer. The client records the microphone and sends
  * the audio to its environment, which transcribes it locally with Whisper.
- * `prepare` downloads and loads the model while the user is still speaking, so
- * the first dictation only waits for what is left of the download.
+ * `prepare` downloads the model when the user turns dictation on.
  */
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/unstable/rpc/Rpc";
@@ -22,7 +21,7 @@ export const VOICE_INPUT_MAX_AUDIO_BASE64_LENGTH =
   Math.ceil((VOICE_INPUT_MAX_SECONDS * VOICE_INPUT_SAMPLE_RATE * 2) / 3) * 4;
 
 export const VoiceInputPrepareProgress = Schema.Struct({
-  phase: Schema.Literals(["downloading", "loading", "ready"]),
+  phase: Schema.Literals(["downloading", "ready"]),
   /** Download progress of the model; both are 0 once it is on disk. */
   receivedBytes: Schema.Number,
   totalBytes: Schema.Number,

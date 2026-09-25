@@ -69,7 +69,6 @@ describe("WhisperTranscriber", () => {
     expect(first.map((progress) => [progress.phase, progress.receivedBytes])).toEqual([
       ["downloading", 0],
       ["downloading", 500],
-      ["loading", 0],
       ["ready", 0],
     ]);
     // A caller joining mid-download starts from the latest progress.
@@ -86,6 +85,17 @@ describe("WhisperTranscriber", () => {
     const retry = transcriber.transcribe(pcm);
     await expect(retry).rejects.toThrow("offline");
     expect(downloadModel).toHaveBeenCalledTimes(2);
+  });
+
+  it("prepares by downloading only, and loads the model on the first transcription", async () => {
+    const { transcriber, download, loadContext } = setup();
+    const preparing = transcriber.prepare(() => {});
+    download.resolve();
+    await preparing;
+    expect(loadContext).not.toHaveBeenCalled();
+
+    await expect(transcriber.transcribe(pcm)).resolves.toBe("Hallo Welt");
+    expect(loadContext).toHaveBeenCalledTimes(1);
   });
 
   it("keeps downloading for others when one caller cancels", async () => {

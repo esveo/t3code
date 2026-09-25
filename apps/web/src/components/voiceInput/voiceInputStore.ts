@@ -3,7 +3,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 import { resolveStorage } from "../../lib/storage";
 
-/** The dictation setting. Off by default, since the first dictation downloads a 550 MB model. */
+/** The dictation setting. Off by default, since turning it on downloads a 550 MB model. */
 interface VoiceInputStoreState {
   enabled: boolean;
   setEnabled: (enabled: boolean) => void;

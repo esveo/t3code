@@ -52,9 +52,6 @@ describe("describeVoiceInputPreparation", () => {
       describeVoiceInputPreparation({ phase: "downloading", receivedBytes: 42, totalBytes: 0 }),
     ).toBe("Downloading speech model…");
     expect(
-      describeVoiceInputPreparation({ phase: "loading", receivedBytes: 0, totalBytes: 0 }),
-    ).toBe("Loading speech model…");
-    expect(
       describeVoiceInputPreparation({ phase: "ready", receivedBytes: 0, totalBytes: 0 }),
     ).toBeNull();
   });

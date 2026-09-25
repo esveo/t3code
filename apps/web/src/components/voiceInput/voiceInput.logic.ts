@@ -38,7 +38,6 @@ export function describeVoiceInputPreparation(
   progress: VoiceInputPrepareProgress | null,
 ): string | null {
   if (!progress || progress.phase === "ready") return null;
-  if (progress.phase === "loading") return "Loading speech model…";
   if (progress.totalBytes <= 0) return "Downloading speech model…";
   const percent = Math.floor((progress.receivedBytes / progress.totalBytes) * 100);
   return `Downloading speech model ${percent}%`;

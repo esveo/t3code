@@ -7,7 +7,7 @@ import {
 import { connectionAtomRuntime } from "~/connection/runtime";
 
 export const voiceInputEnvironment = {
-  /** Held while a dictation runs, so the model downloads and loads during the recording. */
+  /** Downloads the model; held by the setting while it is on, and by a dictation in case the model is missing. */
   prepare: createEnvironmentRpcSubscriptionAtomFamily(connectionAtomRuntime, {
     label: "environment-data:voice-input:prepare",
     tag: VOICE_INPUT_WS_METHODS.prepare,

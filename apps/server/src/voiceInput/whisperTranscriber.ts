@@ -1,9 +1,9 @@
 // @effect-diagnostics globalTimers:off -- the idle release outlives any single request, so it is not tied to an Effect scope.
 /**
  * Fork: owns the Whisper model for dictation. The model is downloaded once,
- * loaded on first use and released again after a quiet spell, because a
- * loaded model holds about a gigabyte of memory. Transcriptions run one at a
- * time on the single loaded context.
+ * when the user turns dictation on, loaded on first use and released again
+ * after a quiet spell, because a loaded model holds about a gigabyte of
+ * memory. Transcriptions run one at a time on the single loaded context.
  */
 import type { VoiceInputPrepareProgress } from "@t3tools/contracts";
 
@@ -34,6 +34,7 @@ type ProgressListener = (progress: VoiceInputPrepareProgress) => void;
 
 export class WhisperTranscriber {
   private readonly dependencies: WhisperTranscriberDependencies;
+  private modelFile: Promise<void> | null = null;
   private context: Promise<WhisperContextLike> | null = null;
   private progress: VoiceInputPrepareProgress | null = null;
   private readonly listeners = new Set<ProgressListener>();
@@ -45,18 +46,15 @@ export class WhisperTranscriber {
     this.dependencies = dependencies;
   }
 
-  /** Resolves once the model is loaded. Cancelling only stops the reporting; the download continues for the next caller. */
+  /** Resolves once the model is on disk. Cancelling only stops the reporting; the download continues for the next caller. */
   async prepare(onProgress: ProgressListener, signal?: AbortSignal): Promise<void> {
     this.listeners.add(onProgress);
-    if (this.progress && this.progress.phase !== "ready") onProgress(this.progress);
-    this.activeUses += 1;
-    this.clearIdleTimer();
+    if (this.progress) onProgress(this.progress);
     try {
-      await abortable(this.ensureContext(), signal);
+      await abortable(this.ensureModelFile(), signal);
       onProgress(READY);
     } finally {
       this.listeners.delete(onProgress);
-      this.releaseUse();
     }
   }
 
@@ -87,35 +85,45 @@ export class WhisperTranscriber {
     }
   }
 
-  private ensureContext(): Promise<WhisperContextLike> {
-    if (!this.context) {
-      const context = this.loadModel();
-      this.context = context;
-      // A failed download or load is retried by the next dictation.
-      context.catch(() => {
-        if (this.context === context) this.context = null;
+  private ensureModelFile(): Promise<void> {
+    if (!this.modelFile) {
+      const modelFile = this.downloadModelIfMissing();
+      this.modelFile = modelFile;
+      // A failed download is retried by the next caller.
+      modelFile.catch(() => {
+        if (this.modelFile === modelFile) this.modelFile = null;
         this.progress = null;
       });
     }
-    return this.context;
+    return this.modelFile;
   }
 
-  private async loadModel(): Promise<WhisperContextLike> {
+  private async downloadModelIfMissing(): Promise<void> {
     const { modelPath } = this.dependencies;
-    if (!(await this.dependencies.modelExists(modelPath))) {
-      let reportedPercent: number | null = null;
-      await this.dependencies.downloadModel(modelPath, (receivedBytes, totalBytes) => {
-        // One update per percent keeps a 500 MB download from flooding the socket.
-        const percent = totalBytes > 0 ? Math.floor((receivedBytes / totalBytes) * 100) : -1;
-        if (percent === reportedPercent) return;
-        reportedPercent = percent;
-        this.report({ phase: "downloading", receivedBytes, totalBytes });
+    if (await this.dependencies.modelExists(modelPath)) return;
+    let reportedPercent: number | null = null;
+    await this.dependencies.downloadModel(modelPath, (receivedBytes, totalBytes) => {
+      // One update per percent keeps a 500 MB download from flooding the socket.
+      const percent = totalBytes > 0 ? Math.floor((receivedBytes / totalBytes) * 100) : -1;
+      if (percent === reportedPercent) return;
+      reportedPercent = percent;
+      this.report({ phase: "downloading", receivedBytes, totalBytes });
+    });
+    this.progress = null;
+  }
+
+  private ensureContext(): Promise<WhisperContextLike> {
+    if (!this.context) {
+      const context = this.ensureModelFile().then(() =>
+        this.dependencies.loadContext(this.dependencies.modelPath),
+      );
+      this.context = context;
+      // A failed load is retried by the next dictation.
+      context.catch(() => {
+        if (this.context === context) this.context = null;
       });
     }
-    this.report({ phase: "loading", receivedBytes: 0, totalBytes: 0 });
-    const context = await this.dependencies.loadContext(modelPath);
-    this.progress = READY;
-    return context;
+    return this.context;
   }
 
   private report(progress: VoiceInputPrepareProgress): void {
@@ -139,7 +147,6 @@ export class WhisperTranscriber {
     const context = this.context;
     if (this.activeUses > 0 || !context) return;
     this.context = null;
-    this.progress = null;
     try {
       await (await context).release();
     } catch {
