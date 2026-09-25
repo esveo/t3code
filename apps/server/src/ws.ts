@@ -48,6 +48,7 @@ import {
   ORCHESTRATION_WS_METHODS,
   SUBAGENT_CHAT_WS_METHODS,
   THREAD_DECISIONS_WS_METHODS,
+  VOICE_INPUT_WS_METHODS,
   ProjectId,
   type ProjectEntriesFailure,
   type ProjectFileFailure,
@@ -137,6 +138,7 @@ import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration/workflowScriptQuery.ts";
 import * as SubagentChat from "./subagentChat/SubagentChat.ts";
 import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
+import * as VoiceInput from "./voiceInput/VoiceInput.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
@@ -3821,6 +3823,15 @@ const makeWsRpcLayer = (
         [THREAD_DECISIONS_WS_METHODS.act]: (input) =>
           observeRpcEffect(THREAD_DECISIONS_WS_METHODS.act, ThreadDecisions.actRpc(input), {
             "rpc.aggregate": "orchestration",
+          }),
+        // Fork: dictation in the composer.
+        [VOICE_INPUT_WS_METHODS.prepare]: (_input) =>
+          observeRpcStream(VOICE_INPUT_WS_METHODS.prepare, VoiceInput.prepareRpc(), {
+            "rpc.aggregate": "server",
+          }),
+        [VOICE_INPUT_WS_METHODS.transcribe]: (input) =>
+          observeRpcEffect(VOICE_INPUT_WS_METHODS.transcribe, VoiceInput.transcribeRpc(input), {
+            "rpc.aggregate": "server",
           }),
       });
     }),
