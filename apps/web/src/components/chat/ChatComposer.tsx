@@ -985,6 +985,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { serverEnvironment } from "../../state/server";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
 import { useIsActiveChatPane } from "../split/chatPane";
+import { ComposerVoiceInputControl } from "../voiceInput/ComposerVoiceInputControl";
 
 const WORKSPACE_SNAPSHOT_RETRY_COOLDOWN_MS = 10_000;
 
@@ -7043,6 +7044,15 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   }
                   className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
                 >
+                  {/* Fork: dictation. */}
+                  <ComposerVoiceInputControl
+                    environmentId={environmentId}
+                    draftKey={composerTargetKey(composerDraftTarget)}
+                    primary={!props.hideThreadControls}
+                    insertText={(text) =>
+                      insertComposerText(text, "cursor", { ensureLeadingBoundary: true })
+                    }
+                  />
                   {showComposerAttachAction ? (
                     <>
                       <input

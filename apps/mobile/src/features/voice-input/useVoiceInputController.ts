@@ -23,6 +23,7 @@ import {
   voiceInputFreezesEditor,
   type VoiceDraftSnapshot,
   type VoiceInputState,
+  type VoiceTranscriber,
 } from "@t3tools/client-runtime/voice-input";
 import { normalizeVoiceInputDecibels, VOICE_WAVEFORM_SAMPLE_COUNT } from "./voiceInputMetering";
 
@@ -69,6 +70,8 @@ export function useVoiceInputController(input: {
   readonly disabled?: boolean;
   readonly onChangeDraftMessage: (value: string) => void;
   readonly onChangeSelection: (selection: ComposerEditorSelection) => void;
+  /** Fork: used when the device cannot transcribe on its own, e.g. the server's Whisper on Android. */
+  readonly fallbackTranscriber?: VoiceTranscriber | null;
 }) {
   const [state, setState] = useState<VoiceInputState>(INITIAL_STATE);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -103,7 +106,8 @@ export function useVoiceInputController(input: {
   if (!controllerRef.current) {
     controllerRef.current = new VoiceInputController({
       recorder,
-      getTranscriber: getLocalVoiceTranscriber,
+      getTranscriber: () =>
+        getLocalVoiceTranscriber() ?? latestInputRef.current.fallbackTranscriber ?? null,
       requestPermission: async () => {
         const permission = await requestRecordingPermissionsAsync();
         return { granted: permission.granted, canAskAgain: permission.canAskAgain };
@@ -221,7 +225,10 @@ export function useVoiceInputController(input: {
   return {
     // Store screenshots show the dictation button even on simulators, whose
     // on-device transcription is unavailable.
-    isAvailable: getLocalVoiceTranscriber() !== null || getNativeShowcaseScene() !== null,
+    isAvailable:
+      getLocalVoiceTranscriber() !== null ||
+      input.fallbackTranscriber != null ||
+      getNativeShowcaseScene() !== null,
     state,
     audioLevels,
     elapsedSeconds,

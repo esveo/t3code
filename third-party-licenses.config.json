@@ -153,6 +153,104 @@
   ],
   "packageOverrides": [
     {
+      "name": "@fugood/node-whisper-linux-arm64",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2025 ggml / whisper.cpp contributors"]
+      }
+    },
+    {
+      "name": "@fugood/node-whisper-linux-arm64-cuda",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2025 ggml / whisper.cpp contributors"]
+      }
+    },
+    {
+      "name": "@fugood/node-whisper-linux-arm64-vulkan",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2025 ggml / whisper.cpp contributors"]
+      }
+    },
+    {
+      "name": "@fugood/node-whisper-linux-x64",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2025 ggml / whisper.cpp contributors"]
+      }
+    },
+    {
+      "name": "@fugood/node-whisper-linux-x64-cuda",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2025 ggml / whisper.cpp contributors"]
+      }
+    },
+    {
+      "name": "@fugood/node-whisper-linux-x64-vulkan",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2025 ggml / whisper.cpp contributors"]
+      }
+    },
+    {
+      "name": "@fugood/node-whisper-win32-arm64",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2025 ggml / whisper.cpp contributors"]
+      }
+    },
+    {
+      "name": "@fugood/node-whisper-win32-arm64-vulkan",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2025 ggml / whisper.cpp contributors"]
+      }
+    },
+    {
+      "name": "@fugood/node-whisper-win32-x64",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2025 ggml / whisper.cpp contributors"]
+      }
+    },
+    {
+      "name": "@fugood/node-whisper-win32-x64-cuda",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2025 ggml / whisper.cpp contributors"]
+      }
+    },
+    {
+      "name": "@fugood/node-whisper-win32-x64-vulkan",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2025 ggml / whisper.cpp contributors"]
+      }
+    },
+    {
+      "name": "@fugood/node-whisper-darwin-arm64",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2025 ggml / whisper.cpp contributors"]
+      }
+    },
+    {
+      "name": "@fugood/node-whisper-darwin-x64",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2025 ggml / whisper.cpp contributors"]
+      }
+    },
+    {
+      "name": "@fugood/node-whisper-wasm",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2025 ggml / whisper.cpp contributors"]
+      }
+    },
+    {
       "license": "MIT",
       "name": "@react-grab/cli",
       "sourceUrl": "https://github.com/aidenybai/react-grab/tree/main/packages/cli",

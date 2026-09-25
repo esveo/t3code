@@ -400,6 +400,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["sprites stations subagents thinking editing terminal right panel everything"],
   },
   {
+    id: "voice-input",
+    title: "Voice input",
+    to: "/settings/general",
+    searchTerms: [
+      "dictation speech to text microphone whisper transcribe language spracheingabe diktat sprache",
+    ],
+  },
+  {
     id: "provider-update-checks",
     title: "Provider update checks",
     to: "/settings/general",
