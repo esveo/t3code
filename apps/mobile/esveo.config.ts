@@ -52,10 +52,21 @@ export function withEsveoAndroid(config: ExpoConfig, env: Record<string, string 
         backgroundImage: "./assets/esveo/icon-background.png",
       },
     },
-    plugins: esveo.plugins?.map((plugin) =>
-      Array.isArray(plugin) && plugin[0] === "expo-notifications"
-        ? [plugin[0], { ...plugin[1], color: "#68e5de" }]
-        : plugin,
-    ),
+    plugins: esveo.plugins?.map((plugin) => {
+      if (!Array.isArray(plugin)) return plugin;
+      if (plugin[0] === "expo-notifications") {
+        return [plugin[0], { ...plugin[1], color: "#68e5de" }];
+      }
+      // Dictation records on the phone and transcribes with the environment's Whisper, which
+      // needs RECORD_AUDIO. Upstream leaves it out, and its image picker option even blocks it.
+      if (plugin[0] === "expo-audio") {
+        return [plugin[0], { ...plugin[1], recordAudioAndroid: true }];
+      }
+      if (plugin[0] === "expo-image-picker") {
+        const { microphonePermission: _blocksRecordAudio, ...options } = plugin[1] ?? {};
+        return [plugin[0], options];
+      }
+      return plugin;
+    }),
   } satisfies ExpoConfig;
 }
