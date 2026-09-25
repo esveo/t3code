@@ -73,3 +73,14 @@ export function pcm16FromWav(wav: Buffer): ArrayBuffer {
   }
   throw new Error("The converted recording has no audio data.");
 }
+
+/** Below this peak (about -34 dBFS) a recording holds no speech. */
+const SILENCE_PEAK = 650;
+
+export function isSilentPcm16(pcm: ArrayBuffer): boolean {
+  const samples = new Int16Array(pcm, 0, Math.floor(pcm.byteLength / 2));
+  for (const sample of samples) {
+    if (sample > SILENCE_PEAK || sample < -SILENCE_PEAK) return false;
+  }
+  return true;
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { pcm16FromWav } from "./audioConversion.ts";
+import { isSilentPcm16, pcm16FromWav } from "./audioConversion.ts";
 
 function chunk(id: string, body: Buffer): Buffer {
   const header = Buffer.alloc(8);
@@ -31,5 +31,12 @@ describe("pcm16FromWav", () => {
   it("rejects files that are not WAV or carry no samples", () => {
     expect(() => pcm16FromWav(Buffer.from("not a wav file"))).toThrow("not a WAV");
     expect(() => pcm16FromWav(wav(chunk("fmt ", Buffer.alloc(16))))).toThrow("no audio data");
+  });
+});
+
+describe("isSilentPcm16", () => {
+  it("treats quiet noise as silence and speech-level peaks as speech", () => {
+    expect(isSilentPcm16(new Int16Array([0, 120, -300, 640]).buffer)).toBe(true);
+    expect(isSilentPcm16(new Int16Array([0, 120, -4000, 20]).buffer)).toBe(false);
   });
 });

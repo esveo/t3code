@@ -1,4 +1,4 @@
-// @effect-diagnostics nodeBuiltinImport:off globalFetch:off -- the model download streams to disk while hashing; plain Node streams keep that simple.
+// @effect-diagnostics nodeBuiltinImport:off globalFetch:off globalTimers:off -- the model download streams to disk while hashing; plain Node streams keep that simple.
 /**
  * Fork: server side of dictation in the composer. Transcribes locally with
  * whisper.cpp through @fugood/whisper.node (Metal on Apple silicon), so no
@@ -8,7 +8,6 @@
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
-import * as NodeModule from "node:module";
 import * as NodePath from "node:path";
 import * as NodeStream from "node:stream";
 import * as NodeStreamPromises from "node:stream/promises";
@@ -25,8 +24,9 @@ import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 
 import { ServerConfig } from "../config.ts";
-import { convertM4aToPcm16 } from "./audioConversion.ts";
-import { WhisperTranscriber, type WhisperContextLike } from "./whisperTranscriber.ts";
+import { convertM4aToPcm16, isSilentPcm16 } from "./audioConversion.ts";
+import { WhisperTranscriber } from "./whisperTranscriber.ts";
+import { loadWhisperContextInWorker } from "./whisperWorker.ts";
 
 // Whisper large-v3-turbo, quantized: close to large-v3 quality at a fraction of
 // the cost, and good with German and English mixed in one sentence.
@@ -36,22 +36,8 @@ const MODEL = {
   sha256: "394221709cd5ad1f40c46e6031ca61bce88931e6e088c188294c6d5a55ffa7e2",
 } as const;
 const IDLE_RELEASE_MS = 10 * 60 * 1000;
-
-// Native addon, external to the CLI bundle; see NodePtyAdapter for why it is
-// loaded with `require` rather than `import()`.
-const requireForWhisper = NodeModule.createRequire(import.meta.url);
-
-type WhisperModule = {
-  readonly initWhisper: (options: {
-    readonly filePath: string;
-    readonly useGpu: boolean;
-  }) => Promise<WhisperContextLike>;
-};
-
-async function loadContext(modelPath: string): Promise<WhisperContextLike> {
-  const whisper = requireForWhisper("@fugood/whisper.node") as WhisperModule;
-  return whisper.initWhisper({ filePath: modelPath, useGpu: true });
-}
+/** A download that receives nothing for this long is abandoned, so the next attempt can start over. */
+const DOWNLOAD_STALL_MS = 60 * 1000;
 
 async function modelExists(modelPath: string): Promise<boolean> {
   return NodeFSP.stat(modelPath).then(
@@ -66,8 +52,17 @@ async function downloadModel(
 ): Promise<void> {
   await NodeFSP.mkdir(NodePath.dirname(modelPath), { recursive: true });
   const partialPath = `${modelPath}.${process.pid}.part`;
+  const stalled = new AbortController();
+  let stallTimer = setTimeout(() => stalled.abort(), DOWNLOAD_STALL_MS);
+  const resetStallTimer = () => {
+    clearTimeout(stallTimer);
+    stallTimer = setTimeout(
+      () => stalled.abort(new Error("The model download stalled.")),
+      DOWNLOAD_STALL_MS,
+    );
+  };
   try {
-    const response = await fetch(MODEL.url);
+    const response = await fetch(MODEL.url, { signal: stalled.signal });
     if (!response.ok || !response.body) {
       throw new Error(`Model download failed with HTTP ${response.status}.`);
     }
@@ -78,6 +73,7 @@ async function downloadModel(
       transform(chunk: Buffer, _encoding, callback) {
         hash.update(chunk);
         receivedBytes += chunk.length;
+        resetStallTimer();
         onProgress(receivedBytes, totalBytes);
         callback(null, chunk);
       },
@@ -86,12 +82,14 @@ async function downloadModel(
       NodeStream.Readable.fromWeb(response.body),
       meter,
       NodeFS.createWriteStream(partialPath),
+      { signal: stalled.signal },
     );
     if (hash.digest("hex") !== MODEL.sha256) {
       throw new Error("The downloaded speech model is corrupt.");
     }
     await NodeFSP.rename(partialPath, modelPath);
   } finally {
+    clearTimeout(stallTimer);
     await NodeFSP.rm(partialPath, { force: true });
   }
 }
@@ -104,7 +102,7 @@ const getTranscriber = Effect.gen(function* () {
     modelPath: NodePath.join(config.baseDir, "models", "whisper", MODEL.fileName),
     modelExists,
     downloadModel,
-    loadContext,
+    loadContext: loadWhisperContextInWorker,
     idleReleaseMs: IDLE_RELEASE_MS,
   });
   return transcriber;
@@ -151,6 +149,8 @@ export const transcribeRpc = Effect.fn("voiceInput.transcribe")(function* (
         catch: toVoiceInputError,
       })
     : audio.buffer.slice(audio.byteOffset, audio.byteOffset + audio.byteLength);
+  // Whisper turns silence into phrases like "Thank you.", so silence never reaches it.
+  if (isSilentPcm16(pcm)) return { text: "" };
   const text = yield* Effect.tryPromise({
     try: (signal) => whisper.transcribe(pcm, signal),
     catch: toVoiceInputError,
