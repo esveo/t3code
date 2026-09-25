@@ -2,7 +2,8 @@ import { RegistryContext } from "@effect/atom-react";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useContext } from "react";
 
-import { usePrimaryEnvironmentId } from "~/state/environments";
+import { useEnvironments, usePrimaryEnvironmentId } from "~/state/environments";
+import { useOptionalSettingsScope } from "../settings/SettingsScopeContext";
 import { useEnvironmentQuery } from "~/state/query";
 import { SettingsRow } from "../settings/settingsLayout";
 import { searchableSetting } from "../settings/settingsSearch";
@@ -21,7 +22,7 @@ import { useVoiceInputStore } from "./voiceInputStore";
 export function VoiceInputSettingRow() {
   const enabled = useVoiceInputStore((state) => state.enabled);
   const setEnabled = useVoiceInputStore((state) => state.setEnabled);
-  const environmentId = usePrimaryEnvironmentId();
+  const environmentId = useVoiceInputEnvironmentId();
   const registry = useContext(RegistryContext);
   const onCheckedChange = (checked: boolean) => {
     setEnabled(checked);
@@ -62,4 +63,16 @@ function VoiceInputModelStatus(props: { readonly environmentId: EnvironmentId })
       {describeVoiceInputPreparation(preparation.data) ?? "Checking the speech model…"}
     </span>
   );
+}
+
+/**
+ * The environment whose model the setting downloads: the one picked in the
+ * settings scope, else the primary one, else the first known. The desktop app
+ * can run without a primary one.
+ */
+function useVoiceInputEnvironmentId(): EnvironmentId | null {
+  const scopedEnvironmentId = useOptionalSettingsScope()?.scope.environmentIds[0] ?? null;
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const { environments } = useEnvironments();
+  return scopedEnvironmentId ?? primaryEnvironmentId ?? environments[0]?.environmentId ?? null;
 }
