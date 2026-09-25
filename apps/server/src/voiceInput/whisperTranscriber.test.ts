@@ -101,20 +101,56 @@ describe("WhisperTranscriber", () => {
   it("only checks for the model when asked not to download", async () => {
     const { transcriber, download, downloadModel } = setup();
     const checks: string[] = [];
-    await transcriber.prepare((progress) => checks.push(progress.phase), undefined, {
-      download: false,
-    });
-    expect(checks).toEqual(["missing"]);
+    const controller = new AbortController();
+    // A check that finds the model missing waits for someone else to fetch it.
+    const checking = transcriber.prepare(
+      (progress) => checks.push(progress.phase),
+      controller.signal,
+      { download: false },
+    );
+    await vi.waitFor(() => expect(checks).toEqual(["missing"]));
     expect(downloadModel).not.toHaveBeenCalled();
 
     const downloading = transcriber.prepare(() => {});
     // A check during a running download follows it instead of answering "missing".
-    const joining = transcriber.prepare((progress) => checks.push(progress.phase), undefined, {
+    const joining: string[] = [];
+    const joined = transcriber.prepare((progress) => joining.push(progress.phase), undefined, {
       download: false,
     });
     download.resolve();
-    await Promise.all([downloading, joining]);
-    expect(checks.at(-1)).toBe("ready");
+    await Promise.all([checking, downloading, joined]);
+    expect([checks[0], checks.at(-1)]).toEqual(["missing", "ready"]);
+    expect(checks).toContain("downloading");
+    expect(joining.at(-1)).toBe("ready");
+    expect(downloadModel).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops a waiting check when it is cancelled", async () => {
+    const { transcriber } = setup();
+    const controller = new AbortController();
+    const checking = transcriber.prepare(() => {}, controller.signal, { download: false });
+    controller.abort();
+    await expect(checking).rejects.toBeDefined();
+  });
+
+  it("passes the language hint to Whisper", async () => {
+    const languages: string[] = [];
+    const { context } = fakeContext();
+    const { transcriber } = setup({
+      exists: true,
+      context: {
+        ...context,
+        transcribeData: (audio, options) => {
+          languages.push(options.language);
+          return context.transcribeData(audio, options);
+        },
+      },
+    });
+    await transcriber.transcribe(pcm);
+    await transcriber.transcribe(pcm, undefined, "de");
+    // Whisper fails outright on codes it does not know.
+    await transcriber.transcribe(pcm, undefined, "xx");
+    expect(languages).toEqual(["auto", "de", "auto"]);
   });
 
   it("keeps downloading for others when one caller cancels", async () => {

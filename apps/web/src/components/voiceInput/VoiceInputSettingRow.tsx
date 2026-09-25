@@ -1,15 +1,30 @@
+import { RegistryContext } from "@effect/atom-react";
 import type { EnvironmentId } from "@t3tools/contracts";
+import { useContext } from "react";
 
-import { usePrimaryEnvironmentId } from "~/state/environments";
+import { useEnvironments, usePrimaryEnvironmentId } from "~/state/environments";
+import { useOptionalSettingsScope } from "../settings/SettingsScopeContext";
 import { useEnvironmentQuery } from "~/state/query";
 import { SettingsRow } from "../settings/settingsLayout";
 import { searchableSetting } from "../settings/settingsSearch";
 import { Button } from "../ui/button";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { Switch } from "../ui/switch";
 import { describeVoiceInputPreparation } from "./voiceInput.logic";
+import { startVoiceInputModelDownload } from "./voiceInputDownloadToast";
 import { voiceInputEnvironment } from "./voiceInputState";
-import { useVoiceInputStore } from "./voiceInputStore";
+import {
+  VOICE_INPUT_LANGUAGES,
+  type VoiceInputLanguageChoice,
+  useVoiceInputStore,
+} from "./voiceInputStore";
+
+const LANGUAGE_LABELS: Record<VoiceInputLanguageChoice, string> = {
+  auto: "Detect language",
+  de: "Deutsch",
+  en: "English",
+};
 
 /**
  * Fork: the dictation setting. Stored in this browser. Turning it on downloads
@@ -18,16 +33,51 @@ import { useVoiceInputStore } from "./voiceInputStore";
 export function VoiceInputSettingRow() {
   const enabled = useVoiceInputStore((state) => state.enabled);
   const setEnabled = useVoiceInputStore((state) => state.setEnabled);
-  const environmentId = usePrimaryEnvironmentId();
+  const environmentId = useVoiceInputEnvironmentId();
+  const registry = useContext(RegistryContext);
+  const onCheckedChange = (checked: boolean) => {
+    setEnabled(checked);
+    if (checked && environmentId) startVoiceInputModelDownload(registry, environmentId);
+  };
   return (
     <SettingsRow
       {...searchableSetting("voice-input")}
-      description="Adds a microphone button to the composer. Speech is transcribed on the machine running T3 Code with Whisper, so no audio leaves it. Turning this on downloads the speech model (about 550 MB)."
+      description="Adds a microphone button to the composer. Speech is transcribed on the machine running T3 Code with Whisper, so no audio leaves it. Turning this on downloads the speech model (about 550 MB). Pick the language you dictate in when Whisper guesses wrong."
       status={
         enabled && environmentId ? <VoiceInputModelStatus environmentId={environmentId} /> : null
       }
-      control={<Switch checked={enabled} onCheckedChange={setEnabled} aria-label="Voice input" />}
+      control={
+        <span className="flex items-center gap-2">
+          {enabled ? <VoiceInputLanguageSelect /> : null}
+          <Switch checked={enabled} onCheckedChange={onCheckedChange} aria-label="Voice input" />
+        </span>
+      }
     />
+  );
+}
+
+function VoiceInputLanguageSelect() {
+  const language = useVoiceInputStore((state) => state.language);
+  const setLanguage = useVoiceInputStore((state) => state.setLanguage);
+  return (
+    <Select
+      value={language}
+      onValueChange={(value) => {
+        const choice = VOICE_INPUT_LANGUAGES.find((candidate) => candidate === value);
+        if (choice) setLanguage(choice);
+      }}
+    >
+      <SelectTrigger size="sm" className="w-40" aria-label="Dictation language">
+        <SelectValue>{LANGUAGE_LABELS[language]}</SelectValue>
+      </SelectTrigger>
+      <SelectPopup align="end" alignItemWithTrigger={false}>
+        {VOICE_INPUT_LANGUAGES.map((choice) => (
+          <SelectItem key={choice} hideIndicator value={choice}>
+            {LANGUAGE_LABELS[choice]}
+          </SelectItem>
+        ))}
+      </SelectPopup>
+    </Select>
   );
 }
 
@@ -52,4 +102,16 @@ function VoiceInputModelStatus(props: { readonly environmentId: EnvironmentId })
       {describeVoiceInputPreparation(preparation.data) ?? "Checking the speech model…"}
     </span>
   );
+}
+
+/**
+ * The environment whose model the setting downloads: the one picked in the
+ * settings scope, else the primary one, else the first known. The desktop app
+ * can run without a primary one.
+ */
+function useVoiceInputEnvironmentId(): EnvironmentId | null {
+  const scopedEnvironmentId = useOptionalSettingsScope()?.scope.environmentIds[0] ?? null;
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const { environments } = useEnvironments();
+  return scopedEnvironmentId ?? primaryEnvironmentId ?? environments[0]?.environmentId ?? null;
 }

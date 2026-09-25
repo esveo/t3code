@@ -41,6 +41,8 @@ export class WhisperTranscriber {
   private queue: Promise<unknown> = Promise.resolve();
   private activeUses = 0;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Resolves when a download lands, for checks waiting on someone else's download. */
+  private readonly modelArrival = Promise.withResolvers<void>();
 
   constructor(dependencies: WhisperTranscriberDependencies) {
     this.dependencies = dependencies;
@@ -48,8 +50,8 @@ export class WhisperTranscriber {
 
   /**
    * Resolves once the model is on disk. Cancelling only stops the reporting;
-   * the download continues for the next caller. Without `download` it only
-   * reports `ready` or `missing`, unless a download is already running.
+   * the download continues for the next caller. Without `download` it reports
+   * `ready`, or `missing` and then waits for someone else's download.
    */
   async prepare(
     onProgress: ProgressListener,
@@ -57,22 +59,30 @@ export class WhisperTranscriber {
     options: { readonly download?: boolean } = {},
   ): Promise<void> {
     if (options.download === false && !this.modelFile) {
-      const exists = await this.dependencies.modelExists(this.dependencies.modelPath);
-      onProgress(exists ? READY : MISSING);
-      return;
+      if (await this.dependencies.modelExists(this.dependencies.modelPath)) {
+        onProgress(READY);
+        return;
+      }
+      onProgress(MISSING);
     }
     this.listeners.add(onProgress);
     if (this.progress) onProgress(this.progress);
     try {
-      await abortable(this.ensureModelFile(), signal);
+      await abortable(
+        options.download === false ? this.modelArrival.promise : this.ensureModelFile(),
+        signal,
+      );
       onProgress(READY);
     } finally {
       this.listeners.delete(onProgress);
     }
   }
 
-  /** Transcribes 16 kHz mono PCM16 audio, loading the model first when needed. */
-  async transcribe(audio: ArrayBuffer, signal?: AbortSignal): Promise<string> {
+  /**
+   * Transcribes 16 kHz mono PCM16 audio, loading the model first when needed.
+   * `language` is a Whisper language code, or `auto` to detect it.
+   */
+  async transcribe(audio: ArrayBuffer, signal?: AbortSignal, language = "auto"): Promise<string> {
     this.activeUses += 1;
     this.clearIdleTimer();
     try {
@@ -80,7 +90,9 @@ export class WhisperTranscriber {
         signal?.throwIfAborted();
         const context = await abortable(this.ensureContext(), signal);
         signal?.throwIfAborted();
-        const { stop, promise } = context.transcribeData(audio, { language: "auto" });
+        const { stop, promise } = context.transcribeData(audio, {
+          language: resolveWhisperLanguage(language),
+        });
         const onAbort = () => void stop();
         signal?.addEventListener("abort", onAbort, { once: true });
         try {
@@ -102,8 +114,8 @@ export class WhisperTranscriber {
     if (!this.modelFile) {
       const modelFile = this.downloadModelIfMissing();
       this.modelFile = modelFile;
-      // A failed download is retried by the next caller.
-      modelFile.catch(() => {
+      modelFile.then(this.modelArrival.resolve, () => {
+        // A failed download is retried by the next caller.
         if (this.modelFile === modelFile) this.modelFile = null;
         this.progress = null;
       });
@@ -171,6 +183,21 @@ export class WhisperTranscriber {
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = null;
   }
+}
+
+// The languages whisper.cpp knows; any other code makes it fail outright.
+const WHISPER_LANGUAGES = new Set(
+  (
+    "en zh de es ru ko fr ja pt tr pl ca nl ar sv it id hi fi vi he uk el ms cs ro da hu ta no th " +
+    "ur hr bg lt la mi ml cy sk te fa lv bn sr az sl kn et mk br eu is hy ne mn bs kk sq sw gl " +
+    "mr pa si km sn yo so af oc ka be tg sd gu am yi lo uz fo ht ps tk nn mt sa lb my bo tl mg " +
+    "as tt haw ln ha ba jw su yue"
+  ).split(" "),
+);
+
+/** A language hint Whisper understands, else `auto`. */
+export function resolveWhisperLanguage(language: string): string {
+  return WHISPER_LANGUAGES.has(language) ? language : "auto";
 }
 
 const READY: VoiceInputPrepareProgress = { phase: "ready", receivedBytes: 0, totalBytes: 0 };

@@ -7048,6 +7048,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   <ComposerVoiceInputControl
                     environmentId={environmentId}
                     draftKey={composerTargetKey(composerDraftTarget)}
+                    primary={!props.hideThreadControls}
                     insertText={(text) =>
                       insertComposerText(text, "cursor", { ensureLeadingBoundary: true })
                     }

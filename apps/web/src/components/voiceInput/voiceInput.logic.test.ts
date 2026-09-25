@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  describeVoiceInputDownload,
   describeVoiceInputPreparation,
   encodePcm16Base64,
   formatVoiceElapsed,
+  ownsVoiceInputShortcut,
   peakLevel,
 } from "./voiceInput.logic";
 
@@ -25,6 +27,45 @@ describe("encodePcm16Base64", () => {
     const decoded = decodePcm16(encodePcm16Base64(samples));
     expect(decoded).toHaveLength(100_000);
     expect(decoded.at(-1)).toBe(8191);
+  });
+
+  it("cuts a recording that ran past the five-minute limit", () => {
+    const limit = 5 * 60 * 16_000;
+    const base64 = encodePcm16Base64(new Float32Array(limit + 16_000));
+    expect(base64.length).toBe(Math.ceil((limit * 2) / 3) * 4);
+  });
+});
+
+describe("ownsVoiceInputShortcut", () => {
+  const main = { id: "main" } as unknown as Element;
+  const subagent = { id: "subagent" } as unknown as Element;
+
+  it("belongs to the focused composer, whichever pane it is in", () => {
+    const base = { focusedComposer: subagent, isActivePane: true };
+    expect(ownsVoiceInputShortcut({ ...base, ownComposer: main, isPrimaryComposer: true })).toBe(
+      false,
+    );
+    expect(
+      ownsVoiceInputShortcut({ ...base, ownComposer: subagent, isPrimaryComposer: false }),
+    ).toBe(true);
+  });
+
+  it("falls to the main composer of the active pane when no composer has focus", () => {
+    const base = { focusedComposer: null, isActivePane: true };
+    expect(ownsVoiceInputShortcut({ ...base, ownComposer: main, isPrimaryComposer: true })).toBe(
+      true,
+    );
+    expect(
+      ownsVoiceInputShortcut({ ...base, ownComposer: subagent, isPrimaryComposer: false }),
+    ).toBe(false);
+    expect(
+      ownsVoiceInputShortcut({
+        focusedComposer: null,
+        isActivePane: false,
+        ownComposer: main,
+        isPrimaryComposer: true,
+      }),
+    ).toBe(false);
   });
 });
 
@@ -54,5 +95,20 @@ describe("describeVoiceInputPreparation", () => {
     expect(
       describeVoiceInputPreparation({ phase: "ready", receivedBytes: 0, totalBytes: 0 }),
     ).toBeNull();
+  });
+});
+
+describe("describeVoiceInputDownload", () => {
+  it("shows percent and megabytes once the size is known", () => {
+    expect(
+      describeVoiceInputDownload({
+        phase: "downloading",
+        receivedBytes: 114_815_328,
+        totalBytes: 574_041_195,
+      }),
+    ).toBe("20% · 115 of 574 MB");
+    expect(
+      describeVoiceInputDownload({ phase: "downloading", receivedBytes: 0, totalBytes: 0 }),
+    ).toBe("Starting…");
   });
 });
