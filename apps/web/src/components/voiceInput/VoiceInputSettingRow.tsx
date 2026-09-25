@@ -8,12 +8,23 @@ import { useEnvironmentQuery } from "~/state/query";
 import { SettingsRow } from "../settings/settingsLayout";
 import { searchableSetting } from "../settings/settingsSearch";
 import { Button } from "../ui/button";
+import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
 import { Switch } from "../ui/switch";
 import { describeVoiceInputPreparation } from "./voiceInput.logic";
 import { startVoiceInputModelDownload } from "./voiceInputDownloadToast";
 import { voiceInputEnvironment } from "./voiceInputState";
-import { useVoiceInputStore } from "./voiceInputStore";
+import {
+  VOICE_INPUT_LANGUAGES,
+  type VoiceInputLanguageChoice,
+  useVoiceInputStore,
+} from "./voiceInputStore";
+
+const LANGUAGE_LABELS: Record<VoiceInputLanguageChoice, string> = {
+  auto: "Detect language",
+  de: "Deutsch",
+  en: "English",
+};
 
 /**
  * Fork: the dictation setting. Stored in this browser. Turning it on downloads
@@ -31,14 +42,42 @@ export function VoiceInputSettingRow() {
   return (
     <SettingsRow
       {...searchableSetting("voice-input")}
-      description="Adds a microphone button to the composer. Speech is transcribed on the machine running T3 Code with Whisper, so no audio leaves it. Turning this on downloads the speech model (about 550 MB)."
+      description="Adds a microphone button to the composer. Speech is transcribed on the machine running T3 Code with Whisper, so no audio leaves it. Turning this on downloads the speech model (about 550 MB). Pick the language you dictate in when Whisper guesses wrong."
       status={
         enabled && environmentId ? <VoiceInputModelStatus environmentId={environmentId} /> : null
       }
       control={
-        <Switch checked={enabled} onCheckedChange={onCheckedChange} aria-label="Voice input" />
+        <span className="flex items-center gap-2">
+          {enabled ? <VoiceInputLanguageSelect /> : null}
+          <Switch checked={enabled} onCheckedChange={onCheckedChange} aria-label="Voice input" />
+        </span>
       }
     />
+  );
+}
+
+function VoiceInputLanguageSelect() {
+  const language = useVoiceInputStore((state) => state.language);
+  const setLanguage = useVoiceInputStore((state) => state.setLanguage);
+  return (
+    <Select
+      value={language}
+      onValueChange={(value) => {
+        const choice = VOICE_INPUT_LANGUAGES.find((candidate) => candidate === value);
+        if (choice) setLanguage(choice);
+      }}
+    >
+      <SelectTrigger size="sm" className="w-40" aria-label="Dictation language">
+        <SelectValue>{LANGUAGE_LABELS[language]}</SelectValue>
+      </SelectTrigger>
+      <SelectPopup align="end" alignItemWithTrigger={false}>
+        {VOICE_INPUT_LANGUAGES.map((choice) => (
+          <SelectItem key={choice} hideIndicator value={choice}>
+            {LANGUAGE_LABELS[choice]}
+          </SelectItem>
+        ))}
+      </SelectPopup>
+    </Select>
   );
 }
 

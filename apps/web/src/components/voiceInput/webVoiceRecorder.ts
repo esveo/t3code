@@ -3,15 +3,26 @@ import { VOICE_INPUT_SAMPLE_RATE } from "@t3tools/contracts";
 export interface VoiceRecording {
   /** Current input loudness between 0 and 1, for the level meter. */
   readonly level: () => number;
-  /** Ends the recording and returns it as 16 kHz mono samples. */
-  readonly stop: () => Promise<Float32Array>;
+  /** Ends the recording and returns it as the browser encoded it. */
+  readonly stop: () => Promise<Blob>;
   readonly cancel: () => void;
 }
 
 /**
+ * AAC in MP4, which afconvert and ffmpeg decode on the server. Chromium,
+ * Electron and Safari record it; Chromium's WebM and MP4 with Opus are not
+ * readable by afconvert. Without it the recording is sent as PCM instead.
+ */
+const COMPRESSED_MIME_TYPE = "audio/mp4;codecs=mp4a.40.2";
+
+/** Whether a recording can travel compressed as `m4a`. */
+export function isM4aRecording(recording: Blob): boolean {
+  return recording.type.startsWith("audio/mp4") && recording.type.includes("mp4a");
+}
+
+/**
  * Records the microphone with MediaRecorder, which every browser and Electron
- * support, and decodes the result afterwards. Decoding into a 16 kHz context
- * resamples it to what Whisper expects without any audio processing of our own.
+ * support.
  */
 export async function startVoiceRecording(): Promise<VoiceRecording> {
   if (!navigator.mediaDevices?.getUserMedia) {
@@ -25,7 +36,12 @@ export async function startVoiceRecording(): Promise<VoiceRecording> {
   let recorder: MediaRecorder;
   let meterContext: AudioContext;
   try {
-    recorder = new MediaRecorder(stream);
+    recorder = new MediaRecorder(
+      stream,
+      MediaRecorder.isTypeSupported(COMPRESSED_MIME_TYPE)
+        ? { mimeType: COMPRESSED_MIME_TYPE, audioBitsPerSecond: 64_000 }
+        : undefined,
+    );
     meterContext = new AudioContext();
   } catch (error) {
     for (const track of stream.getTracks()) track.stop();
@@ -61,13 +77,20 @@ export async function startVoiceRecording(): Promise<VoiceRecording> {
     stop: async () => {
       release();
       await stopped;
-      const blob = new Blob(chunks, { type: recorder.mimeType });
-      const decoder = new OfflineAudioContext(1, 1, VOICE_INPUT_SAMPLE_RATE);
-      const audio = await decoder.decodeAudioData(await blob.arrayBuffer());
-      return mixToMono(audio);
+      return new Blob(chunks, { type: recorder.mimeType });
     },
     cancel: release,
   };
+}
+
+/**
+ * Decodes a recording to 16 kHz mono samples. Decoding into a 16 kHz context
+ * resamples it to what Whisper expects without any audio processing of our own.
+ */
+export async function decodeVoiceRecording(recording: Blob): Promise<Float32Array> {
+  const decoder = new OfflineAudioContext(1, 1, VOICE_INPUT_SAMPLE_RATE);
+  const audio = await decoder.decodeAudioData(await recording.arrayBuffer());
+  return mixToMono(audio);
 }
 
 function mixToMono(audio: AudioBuffer): Float32Array {

@@ -7,12 +7,19 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { toastManager } from "../ui/toast";
 import {
   describeVoiceInputPreparation,
+  encodeBase64,
   encodePcm16Base64,
   peakLevel,
   VOICE_INPUT_SILENCE_PEAK,
 } from "./voiceInput.logic";
 import { voiceInputEnvironment } from "./voiceInputState";
-import { startVoiceRecording, type VoiceRecording } from "./webVoiceRecorder";
+import { useVoiceInputStore } from "./voiceInputStore";
+import {
+  decodeVoiceRecording,
+  isM4aRecording,
+  startVoiceRecording,
+  type VoiceRecording,
+} from "./webVoiceRecorder";
 
 export type ComposerVoiceInputPhase = "idle" | "starting" | "recording" | "transcribing";
 
@@ -40,6 +47,12 @@ export function useComposerVoiceInput(input: {
   const preparation = useEnvironmentQuery(
     phase === "idle" ? null : voiceInputEnvironment.prepare({ environmentId, input: {} }),
   );
+  // Whether the environment has dictation at all (older and upstream servers
+  // fail the call) and whether it decodes compressed recordings.
+  const status = useEnvironmentQuery(
+    voiceInputEnvironment.prepare({ environmentId, input: { download: false } }),
+  );
+  const acceptsM4a = status.data?.m4a === true;
 
   const cancel = useCallback(() => {
     sessionRef.current += 1;
@@ -87,9 +100,11 @@ export function useComposerVoiceInput(input: {
       return true;
     };
 
+    let recorded: Blob;
     let samples: Float32Array;
     try {
-      samples = await current.stop();
+      recorded = await current.stop();
+      samples = await decodeVoiceRecording(recorded);
     } catch {
       finish({ title: "Couldn't read the recording" });
       return;
@@ -100,9 +115,18 @@ export function useComposerVoiceInput(input: {
       return;
     }
 
+    // Compressed audio is about a tenth of the PCM; the server trims both to the time limit.
+    const audio =
+      acceptsM4a && isM4aRecording(recorded)
+        ? {
+            audioBase64: encodeBase64(new Uint8Array(await recorded.arrayBuffer())),
+            format: "m4a" as const,
+          }
+        : { audioBase64: encodePcm16Base64(samples) };
+    const language = useVoiceInputStore.getState().language;
     const result = await transcribe({
       environmentId,
-      input: { audioBase64: encodePcm16Base64(samples) },
+      input: language === "auto" ? audio : { ...audio, language },
     });
     if (result._tag !== "Success") {
       finish({
@@ -119,14 +143,15 @@ export function useComposerVoiceInput(input: {
     if (!finish()) return;
     if (!insertTextRef.current(`${text} `)) {
       // Never lose what was said: the composer can refuse text, e.g. during an approval.
-      void navigator.clipboard?.writeText(text).catch(() => {});
+      const copied = await copyToClipboard(text);
       toastManager.add({
         type: "info",
-        title: "Dictation copied to the clipboard",
-        description: "The composer did not accept text right now.",
+        title: copied ? "Dictation copied to the clipboard" : "The composer did not accept text",
+        description: copied ? "The composer did not accept text right now." : text,
+        ...(copied ? {} : { timeout: 0 }),
       });
     }
-  }, [environmentId, transcribe]);
+  }, [acceptsM4a, environmentId, transcribe]);
 
   const toggle = useCallback(() => {
     if (phase === "recording") void stop();
@@ -150,6 +175,8 @@ export function useComposerVoiceInput(input: {
   useEffect(() => cancel, [cancel]);
 
   return {
+    /** False when the environment cannot transcribe, e.g. a server without the fork. */
+    supported: status.error === null,
     phase,
     recording,
     /** Download or load progress of the model while it is not ready yet. */
@@ -159,6 +186,16 @@ export function useComposerVoiceInput(input: {
     cancel,
     toggle,
   };
+}
+
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    if (!navigator.clipboard) return false;
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function describeMicrophoneError(error: unknown): string {
