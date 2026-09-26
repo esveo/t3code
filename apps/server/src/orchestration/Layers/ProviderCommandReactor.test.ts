@@ -3252,6 +3252,68 @@ describe("ProviderCommandReactor", () => {
     });
   });
 
+  it("keeps a claude session resumed after a server restart on the next turn", async () => {
+    const claude = ProviderInstanceId.make("claudeAgent");
+    const harness = await createHarness({
+      threadModelSelection: { instanceId: claude, model: "claude-sonnet-4-6" },
+    });
+    const now = "2026-01-01T00:00:00.000Z";
+
+    // The restart continuation resumes the session through ProviderService,
+    // so the reactor never saw its model selection.
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.session.set",
+        commandId: CommandId.make("cmd-session-set-resumed-claude"),
+        threadId: ThreadId.make("thread-1"),
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "ready",
+          providerName: "claudeAgent",
+          providerInstanceId: claude,
+          runtimeMode: "approval-required",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: now,
+        },
+        createdAt: now,
+      }),
+    );
+    harness.runtimeSessions.push({
+      provider: ProviderDriverKind.make("claudeAgent"),
+      providerInstanceId: claude,
+      status: "ready",
+      runtimeMode: "approval-required",
+      model: "claude-sonnet-4-6",
+      threadId: ThreadId.make("thread-1"),
+      cwd: "/tmp/provider-project",
+      resumeCursor: { opaque: "resume-after-restart" },
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    await Effect.runPromise(
+      harness.engine.dispatch({
+        type: "thread.turn.start",
+        commandId: CommandId.make("cmd-turn-start-after-restart"),
+        threadId: ThreadId.make("thread-1"),
+        message: {
+          messageId: asMessageId("user-message-after-restart"),
+          role: "user",
+          text: "still running?",
+          attachments: [],
+        },
+        modelSelection: { instanceId: claude, model: "claude-sonnet-4-6" },
+        interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+        runtimeMode: "approval-required",
+        createdAt: now,
+      }),
+    );
+
+    await waitFor(() => harness.sendTurn.mock.calls.length === 1);
+    expect(harness.startSession.mock.calls.length).toBe(0);
+  });
+
   it("restarts the provider session when runtime mode is updated on the thread", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";
