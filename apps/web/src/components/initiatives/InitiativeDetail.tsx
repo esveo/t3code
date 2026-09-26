@@ -33,6 +33,7 @@ import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Textarea } from "../ui/textarea";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import {
   countStates,
   formatUsd,
@@ -49,6 +50,16 @@ import { InitiativePreflightSection } from "./InitiativePreflightSection";
 import { EstimateLine, InitiativeStatsSection, QuotaList } from "./InitiativeStatsSection";
 import { initiativesEnvironment } from "./initiativesState";
 import { INITIATIVE_STATUS_LABELS } from "./InitiativesPage";
+
+const TAB_LABELS = {
+  overview: "Überblick",
+  sessions: "Sessions",
+  entries: "Einträge",
+  brain: "Gehirn",
+  log: "Protokoll",
+  settings: "Einstellungen",
+} as const;
+type DetailTab = keyof typeof TAB_LABELS;
 
 const STATE_BADGE: Record<
   InitiativeSessionState,
@@ -128,10 +139,14 @@ function LoadedInitiative({
   const released = detail.sessions.filter((session) => session.assignment === "released");
   const counts = countStates(rows);
   const failedStarts = detail.launchJobs.filter((job) => job.status === "failed");
+  const activeRows = rows.filter(
+    (row) => row.state === "running" || row.state === "waiting" || row.state === "stalled",
+  );
+  const [tab, setTab] = useState<DetailTab>("overview");
   const archived = initiative.status === "archived";
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <header className="flex flex-wrap items-center gap-2">
         <h1 className="min-w-0 flex-1 truncate text-xl font-semibold">{initiative.title}</h1>
         {initiative.status !== "active" ? (
@@ -178,162 +193,311 @@ function LoadedInitiative({
           {archived ? "Wieder öffnen" : "Archivieren"}
         </Button>
       </header>
+      <ToggleGroup
+        value={[tab]}
+        onValueChange={(value) => {
+          const next = value[0];
+          if (next && next in TAB_LABELS) setTab(next as DetailTab);
+        }}
+      >
+        {(Object.keys(TAB_LABELS) as Array<DetailTab>).map((key) => (
+          <Toggle key={key} value={key} size="sm">
+            {TAB_LABELS[key]}
+          </Toggle>
+        ))}
+      </ToggleGroup>
 
-      <BriefEditor environmentId={environmentId} initiative={initiative} />
-      <InitiativeCoordinatorSection
-        environmentId={environmentId}
-        initiative={initiative}
-        handoffCommit={
-          detail.brainPages.find((page) => page.layer === "handoff")?.lastCommit ?? null
-        }
-      />
-      <ProjectsSection environmentId={environmentId} initiative={initiative} detail={detail} />
-      {!archived ? (
-        <StartThreadForm environmentId={environmentId} initiative={initiative} detail={detail} />
+      {tab === "overview" ? (
+        <div className="flex flex-col gap-6">
+          {initiative.status === "draft" ? (
+            <p className="rounded-lg border border-border p-2 text-sm text-muted-foreground">
+              Entwurf: Der Einrichtungs-Chat hält Name, Ziel und Anweisungen fest. Mit dem ersten
+              Ziel wird das Vorhaben aktiv.
+            </p>
+          ) : null}
+          <BriefEditor environmentId={environmentId} initiative={initiative} />
+          <InitiativeCoordinatorSection
+            environmentId={environmentId}
+            initiative={initiative}
+            handoffCommit={
+              detail.brainPages.find((page) => page.layer === "handoff")?.lastCommit ?? null
+            }
+          />
+          <section className="flex flex-col gap-2">
+            <h2 className="text-sm font-medium">Laufende Threads</h2>
+            {activeRows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Gerade läuft kein Thread.</p>
+            ) : (
+              <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+                {activeRows.map((row) => (
+                  <SessionListItem
+                    key={row.session.id}
+                    row={row}
+                    homeEnvironmentId={homeEnvironmentId}
+                    onUnassign={(threadId) =>
+                      void act({ type: "unassignThread", initiativeId: initiative.id, threadId })
+                    }
+                  />
+                ))}
+              </ul>
+            )}
+          </section>
+          <InitiativeStatsSection environmentId={environmentId} initiative={initiative} />
+        </div>
       ) : null}
 
-      {failedStarts.length > 0 ? (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium">Fehlgeschlagene Starts</h2>
-          {failedStarts.map((job) => (
-            <div
-              key={job.id}
-              className="flex items-start gap-2 rounded-lg border border-destructive/40 p-2 text-sm"
-            >
-              <div className="min-w-0 flex-1">
-                <p className="font-medium">{job.spec.title}</p>
-                <p className="text-xs text-muted-foreground">{job.error}</p>
-              </div>
-              <Button
-                size="xs"
-                variant="ghost"
-                onClick={() =>
-                  void act({
-                    type: "dismissLaunch",
-                    initiativeId: initiative.id,
-                    launchJobId: job.id,
-                  })
-                }
-              >
-                Ausblenden
-              </Button>
-            </div>
-          ))}
-        </section>
-      ) : null}
-
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-medium">Sessions</h2>
-        {rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            Noch keine Threads. Starte einen oben oder ordne einen der Vorschläge zu.
-          </p>
-        ) : (
-          <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
-            {rows.map((row) => (
-              <SessionListItem
-                key={row.session.id}
-                row={row}
-                homeEnvironmentId={homeEnvironmentId}
-                onUnassign={(threadId) =>
-                  void act({ type: "unassignThread", initiativeId: initiative.id, threadId })
-                }
-              />
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <InitiativeImportSection
-        environmentId={environmentId}
-        initiative={initiative}
-        detail={detail}
-      />
-
-      {suggestions.length > 0 ? (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium">Vorschläge aus den Projekten</h2>
-          <ul className="flex flex-col divide-y divide-border rounded-lg border border-dashed border-border">
-            {suggestions.slice(0, 20).map((shell) => (
-              <li
-                key={`${shell.environmentId}:${shell.id}`}
-                className="flex items-center gap-2 p-2 text-sm"
-              >
-                <span className="min-w-0 flex-1 truncate">{shell.title}</span>
-                <Button
-                  size="xs"
-                  variant="outline"
-                  onClick={() =>
-                    void act({
-                      type: "assignThread",
-                      initiativeId: initiative.id,
-                      threadId: shell.id,
-                      ...(shell.environmentId !== homeEnvironmentId
-                        ? { environmentId: shell.environmentId, title: shell.title }
-                        : {}),
-                    })
-                  }
+      {tab === "sessions" ? (
+        <div className="flex flex-col gap-6">
+          {!archived ? (
+            <StartThreadForm
+              environmentId={environmentId}
+              initiative={initiative}
+              detail={detail}
+            />
+          ) : null}
+          {failedStarts.length > 0 ? (
+            <section className="flex flex-col gap-2">
+              <h2 className="text-sm font-medium">Fehlgeschlagene Starts</h2>
+              {failedStarts.map((job) => (
+                <div
+                  key={job.id}
+                  className="flex items-start gap-2 rounded-lg border border-destructive/40 p-2 text-sm"
                 >
-                  Zuordnen
-                </Button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ) : null}
-
-      <InitiativeEntriesSection
-        environmentId={environmentId}
-        initiative={initiative}
-        entries={detail.entries}
-        links={detail.links}
-      />
-
-      <InitiativeStatsSection environmentId={environmentId} initiative={initiative} />
-
-      <InitiativePreflightSection environmentId={environmentId} initiative={initiative} />
-
-      <InitiativeBrainSection
-        environmentId={environmentId}
-        initiative={initiative}
-        pages={detail.brainPages}
-        brainError={detail.brainError}
-      />
-
-      {released.length > 0 ? (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-medium text-muted-foreground">Aus dem Vorhaben genommen</h2>
-          <ul className="flex flex-col gap-1">
-            {released.map((session) => (
-              <li
-                key={session.id}
-                className="flex items-center gap-2 text-sm text-muted-foreground"
-              >
-                <span className="min-w-0 flex-1 truncate">{session.title}</span>
-                {session.threadId ? (
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium">{job.spec.title}</p>
+                    <p className="text-xs text-muted-foreground">{job.error}</p>
+                  </div>
                   <Button
                     size="xs"
                     variant="ghost"
                     onClick={() =>
                       void act({
-                        type: "assignThread",
+                        type: "dismissLaunch",
                         initiativeId: initiative.id,
-                        threadId: session.threadId as ThreadId,
-                        ...(session.environmentId && session.environmentId !== homeEnvironmentId
-                          ? { environmentId: session.environmentId }
-                          : {}),
+                        launchJobId: job.id,
                       })
                     }
                   >
-                    Wieder zuordnen
+                    Ausblenden
                   </Button>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </section>
+                </div>
+              ))}
+            </section>
+          ) : null}
+
+          <section className="flex flex-col gap-2">
+            <h2 className="text-sm font-medium">Sessions</h2>
+            {rows.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Noch keine Threads. Starte einen oben oder ordne einen der Vorschläge zu.
+              </p>
+            ) : (
+              <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
+                {rows.map((row) => (
+                  <SessionListItem
+                    key={row.session.id}
+                    row={row}
+                    homeEnvironmentId={homeEnvironmentId}
+                    onUnassign={(threadId) =>
+                      void act({ type: "unassignThread", initiativeId: initiative.id, threadId })
+                    }
+                  />
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <InitiativeImportSection
+            environmentId={environmentId}
+            initiative={initiative}
+            detail={detail}
+          />
+
+          {suggestions.length > 0 ? (
+            <section className="flex flex-col gap-2">
+              <h2 className="text-sm font-medium">Vorschläge aus den Projekten</h2>
+              <ul className="flex flex-col divide-y divide-border rounded-lg border border-dashed border-border">
+                {suggestions.slice(0, 20).map((shell) => (
+                  <li
+                    key={`${shell.environmentId}:${shell.id}`}
+                    className="flex items-center gap-2 p-2 text-sm"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{shell.title}</span>
+                    <Button
+                      size="xs"
+                      variant="outline"
+                      onClick={() =>
+                        void act({
+                          type: "assignThread",
+                          initiativeId: initiative.id,
+                          threadId: shell.id,
+                          ...(shell.environmentId !== homeEnvironmentId
+                            ? { environmentId: shell.environmentId, title: shell.title }
+                            : {}),
+                        })
+                      }
+                    >
+                      Zuordnen
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+
+          {released.length > 0 ? (
+            <section className="flex flex-col gap-2">
+              <h2 className="text-sm font-medium text-muted-foreground">
+                Aus dem Vorhaben genommen
+              </h2>
+              <ul className="flex flex-col gap-1">
+                {released.map((session) => (
+                  <li
+                    key={session.id}
+                    className="flex items-center gap-2 text-sm text-muted-foreground"
+                  >
+                    <span className="min-w-0 flex-1 truncate">{session.title}</span>
+                    {session.threadId ? (
+                      <Button
+                        size="xs"
+                        variant="ghost"
+                        onClick={() =>
+                          void act({
+                            type: "assignThread",
+                            initiativeId: initiative.id,
+                            threadId: session.threadId as ThreadId,
+                            ...(session.environmentId && session.environmentId !== homeEnvironmentId
+                              ? { environmentId: session.environmentId }
+                              : {}),
+                          })
+                        }
+                      >
+                        Wieder zuordnen
+                      </Button>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+        </div>
+      ) : null}
+
+      {tab === "entries" ? (
+        <div className="flex flex-col gap-6">
+          <InitiativeEntriesSection
+            environmentId={environmentId}
+            initiative={initiative}
+            entries={detail.entries}
+            links={detail.links}
+          />
+        </div>
+      ) : null}
+
+      {tab === "brain" ? (
+        <div className="flex flex-col gap-6">
+          <InitiativeBrainSection
+            environmentId={environmentId}
+            initiative={initiative}
+            pages={detail.brainPages}
+            brainError={detail.brainError}
+          />
+        </div>
+      ) : null}
+
+      {tab === "log" ? (
+        <div className="flex flex-col gap-6">
+          <LaunchLog detail={detail} />
+          <InitiativePreflightSection environmentId={environmentId} initiative={initiative} />
+        </div>
+      ) : null}
+
+      {tab === "settings" ? (
+        <div className="flex flex-col gap-6">
+          <ProjectsSection environmentId={environmentId} initiative={initiative} detail={detail} />
+          <ProviderExclusions environmentId={environmentId} initiative={initiative} />
+        </div>
       ) : null}
     </div>
+  );
+}
+
+const LAUNCH_STATUS_LABELS = {
+  created: "startet",
+  started: "gestartet",
+  failed: "fehlgeschlagen",
+  dismissed: "ausgeblendet",
+} as const;
+
+/** Every start the initiative made, newest first: who asked for it and how it went. */
+function LaunchLog({ detail }: { readonly detail: InitiativeDetailSnapshot }) {
+  const jobs = detail.launchJobs.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="text-sm font-medium">Starts</h2>
+      <p className="text-xs text-muted-foreground">
+        Jeder Thread, den das Vorhaben gestartet hat, mit wem er angestoßen wurde.
+      </p>
+      {jobs.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Noch keine.</p>
+      ) : (
+        <ul className="flex flex-col divide-y divide-border rounded-lg border border-border text-xs">
+          {jobs.slice(0, 100).map((job) => (
+            <li key={job.id} className="flex flex-wrap items-center gap-x-2 p-2">
+              <span className="tabular-nums text-muted-foreground">
+                {new Date(job.createdAt).toLocaleString("de-DE")}
+              </span>
+              <span className="min-w-0 flex-1 truncate">{job.spec.title}</span>
+              <span className="text-muted-foreground">{job.createdBy}</span>
+              <Badge variant={job.status === "failed" ? "error" : "outline"}>
+                {LAUNCH_STATUS_LABELS[job.status]}
+              </Badge>
+              {job.error ? <p className="w-full text-destructive">{job.error}</p> : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** Providers the initiative's threads must not run on. */
+function ProviderExclusions({
+  environmentId,
+  initiative,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly initiative: Initiative;
+}) {
+  const act = useAct(environmentId);
+  const providers = useServerConfigs().get(environmentId)?.providers ?? [];
+  const excluded = new Set(initiative.providerExclusions);
+  return (
+    <section className="flex flex-col gap-2">
+      <h2 className="text-sm font-medium">Ausgeschlossene Provider</h2>
+      <p className="text-xs text-muted-foreground">
+        Auf einem ausgeschlossenen Provider startet das Vorhaben keine Threads, etwa wenn ein Kunde
+        nur bestimmte Anbieter erlaubt. Agenten können Provider ausschließen, aber nur du kannst sie
+        wieder zulassen.
+      </p>
+      <ToggleGroup
+        multiple
+        value={[...excluded]}
+        onValueChange={(value) =>
+          void act({
+            type: "update",
+            initiativeId: initiative.id,
+            providerExclusions: value.filter((entry): entry is string => typeof entry === "string"),
+          })
+        }
+      >
+        {providers.map((provider) => (
+          <Toggle key={provider.instanceId} value={provider.instanceId} size="sm">
+            {provider.displayName ?? provider.instanceId}
+          </Toggle>
+        ))}
+      </ToggleGroup>
+    </section>
   );
 }
 
@@ -460,21 +624,29 @@ function BriefEditor({
   return (
     <section className="flex flex-col gap-2">
       <h2 className="text-sm font-medium">Steckbrief</h2>
+      <p className="text-xs text-muted-foreground">
+        Der Steckbrief geht jedem Thread des Vorhabens beim Start mit: Name, Ziel und Anweisungen.
+      </p>
       <Input
         value={value.title}
         onChange={(event) => edit({ title: event.target.value })}
-        aria-label="Titel"
+        placeholder="Name, z. B. Relaunch esveo.com"
+        aria-label="Name"
       />
       <Textarea
         value={value.goal}
         onChange={(event) => edit({ goal: event.target.value })}
-        placeholder="Ziel"
+        placeholder={
+          "Ziel: Woran erkennst du, dass es fertig ist? z. B.\n- Neue Startseite ist live\n- Ladezeit unter 1 s"
+        }
         aria-label="Ziel"
       />
       <Textarea
         value={value.instructions}
         onChange={(event) => edit({ instructions: event.target.value })}
-        placeholder="Anweisungen, die jeder Thread des Vorhabens beim Start bekommt (Markdown)"
+        placeholder={
+          "Anweisungen für jeden Thread (Markdown), z. B.\n- Texte auf Deutsch, Du-Form\n- Vor dem Merge ein PR mit Screenshots"
+        }
         aria-label="Anweisungen"
       />
       {draft ? (
@@ -699,7 +871,7 @@ function StartThreadForm({
           </Select>
           <Input
             className="min-w-48 flex-1"
-            placeholder="Titel des Threads"
+            placeholder="Titel, z. B. Kontaktseite bauen"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
           />
@@ -712,13 +884,16 @@ function StartThreadForm({
           />
         ) : null}
         <Textarea
-          placeholder="Auftrag: Was soll der Thread tun, woran erkennt er, dass er fertig ist?"
+          placeholder={
+            "Auftrag: Was soll der Thread tun, woran erkennt er, dass er fertig ist? z. B.\nBaue die Kontaktseite nach dem Entwurf in Figma. Fertig, wenn das Formular sendet und ein PR offen ist."
+          }
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
         />
         <div className="flex items-center justify-end gap-2">
           <span className="text-xs text-muted-foreground">
-            Eigener Worktree, Modus „Auto“, mit dem Steckbrief vorneweg.
+            Eigener Worktree, Modus „Auto“. Der Steckbrief geht automatisch mit, schreib nur den
+            Auftrag.
           </span>
           <Button type="submit" size="sm" disabled={!title.trim() || !prompt.trim() || busy}>
             <PlayIcon />

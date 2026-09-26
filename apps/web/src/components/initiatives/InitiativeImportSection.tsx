@@ -146,6 +146,8 @@ export function InitiativeImportSection({
         <p className="text-xs text-muted-foreground">
           Sessions aus T3, Claude Code (Terminal und Desktop) und Codex, die in den Ordnern dieses
           Vorhabens liefen, lassen sich übernehmen. Erst nur Metadaten; Zusammenfassungen auf Abruf.
+          Übernommene Sessions zählen in Verbrauch und Schätzungen mit, und der Koordinator sieht
+          sie in session_list.
         </p>
       ) : null}
 

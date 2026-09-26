@@ -92,12 +92,15 @@ export function InitiativeCoordinatorSection({
       ) : (
         <p className="text-sm text-muted-foreground">
           Der Koordinator ist ein angepinnter Thread, der die Arbeit verteilt, das Gehirn pflegt und
-          am Ende jedes Turns die Übergabe schreibt.
+          am Ende jedes Turns die Übergabe schreibt. Er bekommt den Steckbrief und die Übergabe; ein
+          Neustart beginnt von der Übergabe, nicht vom alten Chat.
         </p>
       )}
       {handoff.data?.markdown ? (
-        <details className="rounded-lg border border-border p-2 text-sm">
-          <summary className="cursor-pointer text-xs text-muted-foreground">Übergabe</summary>
+        <details open className="rounded-lg border border-border p-2 text-sm">
+          <summary className="cursor-pointer text-xs text-muted-foreground">
+            Übergabe-Dokument
+          </summary>
           <pre className="mt-2 whitespace-pre-wrap font-sans text-sm">{handoff.data.markdown}</pre>
         </details>
       ) : null}
@@ -108,8 +111,8 @@ export function InitiativeCoordinatorSection({
             onChange={(event) => setMessage(event.target.value)}
             placeholder={
               coordinatorId
-                ? "Optional: erste Anweisung an den neuen Koordinator. Ohne sie macht er mit der Übergabe weiter."
-                : "Optional: erste Anweisung an den Koordinator."
+                ? "Optional: erste Anweisung an den neuen Koordinator, z. B. „Prüf die offenen PRs und schlag den nächsten Schritt vor.“ Ohne sie macht er mit der Übergabe weiter."
+                : "Optional: erste Anweisung an den Koordinator, z. B. „Teil das Ziel in drei Threads auf und frag mich vor dem Start.“"
             }
             aria-label="Erste Anweisung"
           />

@@ -280,7 +280,7 @@ function CreateEntryForm({
         <Input
           autoFocus
           className="flex-1"
-          placeholder="Titel"
+          placeholder="Titel, z. B. Kontaktformular braucht Spamschutz"
           value={title}
           onChange={(event) => setTitle(event.target.value)}
         />

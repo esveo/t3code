@@ -4,14 +4,15 @@
  * It reads the environment that hosts the initiatives: the one named in the
  * URL, or the primary one.
  */
-import type { EnvironmentId, InitiativeSummary } from "@t3tools/contracts";
+import { type EnvironmentId, type InitiativeSummary, ThreadId } from "@t3tools/contracts";
 import { SESSION_STATE_LABELS, sessionStateOf } from "@t3tools/initiatives/model";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowLeftIcon, FlagIcon, InboxIcon, PlusIcon } from "lucide-react";
+import { ArrowLeftIcon, FlagIcon, InboxIcon, MessageSquarePlusIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { isElectron } from "~/env";
 import { useNowMinute } from "~/hooks/useNowMinute";
+import { randomUUID } from "~/lib/utils";
 import { useServerConfigs, useThreadShells } from "~/state/entities";
 import { useEnvironments, usePrimaryEnvironmentId } from "~/state/environments";
 import { useEnvironmentQuery } from "~/state/query";
@@ -31,6 +32,7 @@ import { countStates } from "./initiatives.logic";
 import { initiativesEnvironment } from "./initiativesState";
 
 export const INITIATIVE_STATUS_LABELS = {
+  draft: "Entwurf",
   active: "aktiv",
   paused: "pausiert",
   archived: "archiviert",
@@ -241,18 +243,47 @@ function CreateInitiativeForm({
   readonly environmentId: EnvironmentId;
   readonly onCreated: (initiativeId: string) => void;
 }) {
+  const navigate = useNavigate();
   const act = useAtomCommand(initiativesEnvironment.act);
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [goal, setGoal] = useState("");
   const [busy, setBusy] = useState(false);
 
+  // The usual way in: a setup chat that becomes the initiative's coordinator.
+  const startChat = async () => {
+    if (busy) return;
+    setBusy(true);
+    const result = await act({
+      environmentId,
+      input: { type: "createWithChat", key: randomUUID() },
+    });
+    setBusy(false);
+    if (result._tag === "Success" && result.value.id) {
+      void navigate({
+        to: "/$environmentId/$threadId",
+        params: { environmentId, threadId: ThreadId.make(result.value.id) },
+      });
+    }
+  };
+
   if (!open) {
     return (
-      <Button className="self-start" onClick={() => setOpen(true)}>
-        <PlusIcon />
-        Vorhaben anlegen
-      </Button>
+      <div className="flex flex-col gap-1">
+        <div className="flex items-center gap-3">
+          <Button disabled={busy} onClick={() => void startChat()}>
+            <MessageSquarePlusIcon />
+            Vorhaben anlegen
+          </Button>
+          <Button size="sm" variant="link" onClick={() => setOpen(true)}>
+            Ohne Chat anlegen
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Startet einen Chat, der mit dir Name, Ziele, Anweisungen und einen ersten Arbeitsplan
+          klärt und danach das Vorhaben koordiniert.
+        </p>
+      </div>
     );
   }
 
@@ -282,15 +313,21 @@ function CreateInitiativeForm({
     >
       <Input
         autoFocus
-        placeholder="Titel, z. B. Relaunch Website"
+        placeholder="Name, z. B. Relaunch Website"
         value={title}
         onChange={(event) => setTitle(event.target.value)}
       />
       <Textarea
-        placeholder="Ziel: Woran erkennst du, dass das Vorhaben fertig ist?"
+        placeholder={
+          "Ziel: Woran erkennst du, dass das Vorhaben fertig ist? z. B.\n- Neue Startseite ist live"
+        }
         value={goal}
         onChange={(event) => setGoal(event.target.value)}
       />
+      <p className="text-xs text-muted-foreground">
+        Name und Ziel gehen jedem Thread des Vorhabens mit. Anweisungen und Projekte ergänzt du auf
+        der Vorhaben-Seite.
+      </p>
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
           Abbrechen
