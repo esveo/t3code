@@ -16,6 +16,8 @@ import {
   InitiativeBrainPage,
   InitiativeControl,
   InitiativeImportJob,
+  InitiativeQuotaObservation,
+  InitiativeSessionStats,
   TrimmedNonEmptyString,
   InitiativeEntry,
   InitiativeEntryLink,
@@ -122,6 +124,18 @@ export const INITIATIVE_KINDS = {
     initiativeId: (_record: ImportCursor): string | null => null,
     uniqueKey: (record: ImportCursor): string | null => record.path,
   },
+  sessionStats: {
+    schema: InitiativeSessionStats,
+    initiativeId: (record: InitiativeSessionStats): string | null => record.initiativeId,
+    uniqueKey: (record: InitiativeSessionStats): string | null => record.sessionId,
+  },
+  quotaObservation: {
+    schema: InitiativeQuotaObservation,
+    initiativeId: (_record: InitiativeQuotaObservation): string | null => null,
+    uniqueKey: (_record: InitiativeQuotaObservation): string | null => null,
+    groupKey: (record: InitiativeQuotaObservation): string | null =>
+      `${record.accountId}|${record.windowId}`,
+  },
 } as const;
 
 /** The unique key of an Inbox item: its coordinator thread and its id there. */
@@ -178,6 +192,14 @@ const DECODERS = {
   importCursor: {
     json: Schema.decodeUnknownEffect(Schema.fromJsonString(ImportCursor)),
     value: Schema.decodeUnknownEffect(ImportCursor),
+  },
+  sessionStats: {
+    json: Schema.decodeUnknownEffect(Schema.fromJsonString(InitiativeSessionStats)),
+    value: Schema.decodeUnknownEffect(InitiativeSessionStats),
+  },
+  quotaObservation: {
+    json: Schema.decodeUnknownEffect(Schema.fromJsonString(InitiativeQuotaObservation)),
+    value: Schema.decodeUnknownEffect(InitiativeQuotaObservation),
   },
 } as const;
 export type InitiativeRecord<K extends InitiativeKind> =

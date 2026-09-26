@@ -72,6 +72,7 @@ export const INITIATIVE_TOOL_PROFILES = {
   entry_supersede: "coordinator",
   entry_link: "coordinator",
   entry_status: "coordinator",
+  stats_estimate: "participant",
 } as const satisfies Record<string, "any" | InitiativeRole>;
 
 export type InitiativeToolName = keyof typeof INITIATIVE_TOOL_PROFILES;

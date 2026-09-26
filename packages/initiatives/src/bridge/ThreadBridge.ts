@@ -10,6 +10,7 @@ import type {
   OrchestrationThreadShell,
   ProjectId,
   RuntimeMode,
+  ServerProviderUsageLimits,
   ThreadId,
 } from "@t3tools/contracts";
 import type * as Effect from "effect/Effect";
@@ -71,6 +72,23 @@ export interface ThreadBridge {
     threadId: ThreadId,
     pinned: boolean,
   ) => Effect.Effect<void, ThreadBridgeError>;
+  /** How many turns a thread had and when it began and last spoke, for its statistics. */
+  readonly threadActivity: (threadId: ThreadId) => Effect.Effect<
+    {
+      readonly turns: number;
+      readonly firstAt: string | null;
+      readonly lastAt: string | null;
+    } | null,
+    ThreadBridgeError
+  >;
+  /** Every provider instance with its quota windows as it last reported them. */
+  readonly providerUsage: () => Effect.Effect<
+    ReadonlyArray<{
+      readonly instanceId: string;
+      readonly driver: string;
+      readonly usageLimits: ServerProviderUsageLimits | null;
+    }>
+  >;
   /** Hands a thread to another coordinator, whose updates it then reports to. */
   readonly setParent: (
     threadId: ThreadId,

@@ -7,6 +7,7 @@ import {
   type OrchestrationThreadShell,
   ProjectId,
   ProviderInstanceId,
+  type ServerProviderUsageLimits,
   ThreadId,
 } from "@t3tools/contracts";
 import { type ThreadBridge, ThreadBridgeError } from "@t3tools/initiatives/bridge";
@@ -33,6 +34,7 @@ export const testShell = (threadId: string, overrides: Partial<OrchestrationThre
     title: threadId,
     branch: "feature",
     worktreePath: "/worktrees/feature",
+    pullRequests: [],
 
     pinnedAt: null,
     ...overrides,
@@ -48,6 +50,15 @@ export const makeFakeBridge = () => {
   const starts: Array<{ job: InitiativeLaunchJob; prompt: string }> = [];
   const projects = [{ projectId: TEST_PROJECT, title: "Web", workspaceRoot: "/repo/web" }];
   const state = { failNextStart: false, crashAfterCreate: false };
+  const activity = new Map<
+    string,
+    { turns: number; firstAt: string | null; lastAt: string | null }
+  >();
+  const usage: Array<{
+    instanceId: string;
+    driver: string;
+    usageLimits: ServerProviderUsageLimits | null;
+  }> = [];
   const update = (threadId: string, patch: Partial<OrchestrationThreadShell>) => {
     const thread = threads.get(threadId);
     if (thread) threads.set(threadId, { ...thread, ...patch });
@@ -77,6 +88,10 @@ export const makeFakeBridge = () => {
           testShell(job.threadId, {
             title: job.spec.title,
             projectId: job.spec.projectId,
+            modelSelection: {
+              instanceId: ProviderInstanceId.make(job.spec.provider ?? "codex"),
+              model: job.spec.model ?? "gpt-6",
+            },
             ...(job.spec.parentThreadId ? { parentThreadId: job.spec.parentThreadId } : {}),
           }),
         );
@@ -102,8 +117,10 @@ export const makeFakeBridge = () => {
       Effect.sync(() => update(threadId, { pinnedAt: pinned ? "2026-09-26T10:00:00.000Z" : null })),
     setParent: (threadId, parentThreadId) =>
       Effect.sync(() => update(threadId, { parentThreadId: parentThreadId ?? undefined })),
+    threadActivity: (threadId) => Effect.sync(() => activity.get(threadId) ?? null),
+    providerUsage: () => Effect.sync(() => usage),
   };
-  return { bridge, threads, starts, state, projects };
+  return { bridge, threads, starts, state, projects, activity, usage };
 };
 
 /** A brain that keeps its pages in a map and counts commits instead of running git. */
@@ -234,7 +251,15 @@ export const makeTestInitiatives = Effect.gen(function* () {
     digest: (text) => Effect.succeed(`hash:${text.length}`),
     importReaders: readers.readers,
     summarize: readers.summarize,
-    readUsage: () => Effect.succeed({ costUsd: 1.5, totalTokens: 1000 }),
+    readUsage: () =>
+      Effect.succeed({
+        costUsd: 1.5,
+        totalTokens: 1000,
+        input: 600,
+        output: 300,
+        cacheRead: 100,
+        cacheWrite: 0,
+      }),
   });
   const initiatives = yield* boot;
   return { initiatives, boot, store, fake, memory, newId, readers };

@@ -3872,6 +3872,16 @@ const makeWsRpcLayer = (
             Initiatives.importCatalogRpc(input),
             { "rpc.aggregate": "orchestration" },
           ),
+        [INITIATIVES_WS_METHODS.statsReport]: (input) =>
+          observeRpcEffect(INITIATIVES_WS_METHODS.statsReport, Initiatives.statsReportRpc(input), {
+            "rpc.aggregate": "orchestration",
+          }),
+        [INITIATIVES_WS_METHODS.statsEstimate]: (input) =>
+          observeRpcEffect(
+            INITIATIVES_WS_METHODS.statsEstimate,
+            Initiatives.statsEstimateRpc(input),
+            { "rpc.aggregate": "orchestration" },
+          ),
         [INITIATIVES_WS_METHODS.brainRead]: (input) =>
           observeRpcEffect(INITIATIVES_WS_METHODS.brainRead, Initiatives.brainReadRpc(input), {
             "rpc.aggregate": "orchestration",

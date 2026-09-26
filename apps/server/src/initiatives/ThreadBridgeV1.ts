@@ -222,6 +222,31 @@ export const makeThreadBridgeV1 = Effect.gen(function* () {
           parentThreadId,
         });
       }),
+
+    threadActivity: (threadId) =>
+      snapshots.getThreadDetailById(threadId).pipe(
+        Effect.catchCause(bridgeError("Could not read the thread")),
+        Effect.map((detail) => {
+          if (Option.isNone(detail)) return null;
+          const messages = detail.value.messages;
+          return {
+            turns: messages.filter((message) => message.role === "user").length,
+            firstAt: messages[0]?.createdAt ?? null,
+            lastAt: messages.at(-1)?.createdAt ?? null,
+          };
+        }),
+      ),
+
+    providerUsage: () =>
+      providerRegistry.getProviders.pipe(
+        Effect.map((providers) =>
+          providers.map((provider) => ({
+            instanceId: provider.instanceId,
+            driver: provider.driver,
+            usageLimits: provider.usageLimits ?? null,
+          })),
+        ),
+      ),
   };
   return bridge;
 });

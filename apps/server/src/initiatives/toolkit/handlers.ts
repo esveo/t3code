@@ -435,6 +435,15 @@ const make = Effect.gen(function* () {
         return { entryId: entry.id, status: entry.status };
       }),
 
+    stats_estimate: (input) =>
+      Effect.gen(function* () {
+        const { initiatives, caller } = yield* callerFor("stats_estimate");
+        const own = yield* targetOf(caller, undefined);
+        return yield* initiatives.stats
+          .estimate(own.id, input.provider, input.model ?? null)
+          .pipe(Effect.mapError(fromService));
+      }),
+
     entry_list: (input) =>
       Effect.gen(function* () {
         const { initiatives, caller } = yield* callerFor("entry_list");

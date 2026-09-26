@@ -5,7 +5,7 @@
  * threads in it. The author of a change is the calling thread, never a
  * parameter.
  */
-import { TrimmedNonEmptyString } from "@t3tools/contracts";
+import { InitiativeStatsEstimateResult, TrimmedNonEmptyString } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import * as McpSchema from "effect/unstable/ai/McpSchema";
 import * as Tool from "effect/unstable/ai/Tool";
@@ -551,7 +551,24 @@ const EntryStatusTool = writing(
   true,
 );
 
+const StatsEstimateTool = readOnly(
+  Tool.make("stats_estimate", {
+    description:
+      "Estimate what a thread on a provider and model will take, from the finished sessions of all initiatives (API-equivalent USD, tokens, run time, turns as a middle range), with the provider's quota windows now and this initiative's estimated share of them. Use it before starting larger work; the numbers are estimates.",
+    parameters: Schema.Struct({
+      provider: TrimmedNonEmptyString.annotate({
+        description: "Provider instance id, for example codex or claudeAgent.",
+      }),
+      model: Schema.optional(TrimmedNonEmptyString),
+    }),
+    success: InitiativeStatsEstimateResult,
+    failure: InitiativeToolError,
+    dependencies,
+  }).annotate(Tool.Title, "Estimate a thread's cost"),
+);
+
 export const InitiativesToolkit = Toolkit.make(
+  StatsEstimateTool,
   QuestionAskTool,
   EntryCreateTool,
   EntryListTool,

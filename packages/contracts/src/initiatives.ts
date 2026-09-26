@@ -32,6 +32,8 @@ export const INITIATIVES_WS_METHODS = {
   subscribeThreadPreflight: "initiatives.subscribeThreadPreflight",
   preflightReport: "initiatives.preflightReport",
   importCatalog: "initiatives.importCatalog",
+  statsReport: "initiatives.statsReport",
+  statsEstimate: "initiatives.statsEstimate",
 } as const;
 
 /**
@@ -445,6 +447,109 @@ export const InitiativeEntryLink = Schema.Struct({
 });
 export type InitiativeEntryLink = typeof InitiativeEntryLink.Type;
 
+/**
+ * What one session took: tokens and API-equivalent cost from the provider's
+ * transcripts, run time and turns from the thread, how it ended.
+ */
+export const InitiativeSessionStats = Schema.Struct({
+  ...RecordBase,
+  initiativeId: TrimmedNonEmptyString,
+  sessionId: TrimmedNonEmptyString,
+  provider: Schema.String,
+  model: Schema.NullOr(Schema.String),
+  taskType: Schema.NullOr(Schema.String),
+  roleId: Schema.NullOr(Schema.String),
+  tokens: Schema.NullOr(
+    Schema.Struct({
+      input: NonNegativeInt,
+      output: NonNegativeInt,
+      cacheRead: NonNegativeInt,
+      cacheWrite: NonNegativeInt,
+    }),
+  ),
+  /** API-equivalent, not what a subscription billed. */
+  apiUsd: Schema.NullOr(Schema.Number),
+  startedAt: Schema.NullOr(IsoDateTime),
+  endedAt: Schema.NullOr(IsoDateTime),
+  durationMs: Schema.NullOr(NonNegativeInt),
+  turns: Schema.NullOr(NonNegativeInt),
+  outcome: Schema.NullOr(Schema.Literals(["done", "rework", "cancelled"])),
+  measuredAt: IsoDateTime,
+});
+export type InitiativeSessionStats = typeof InitiativeSessionStats.Type;
+
+/** A provider's quota window as it stood at one moment, per account. */
+export const InitiativeQuotaObservation = Schema.Struct({
+  ...RecordBase,
+  provider: Schema.String,
+  accountId: Schema.String,
+  windowId: Schema.String,
+  windowKind: Schema.String,
+  windowLabel: Schema.String,
+  resetsAt: Schema.NullOr(IsoDateTime),
+  windowDurationMins: Schema.NullOr(NonNegativeInt),
+  usedPercent: Schema.Number,
+  checkedAt: IsoDateTime,
+  quality: Schema.Literals(["ok", "partial", "unavailable"]),
+});
+export type InitiativeQuotaObservation = typeof InitiativeQuotaObservation.Type;
+
+const RangeSchema = Schema.NullOr(Schema.Tuple([Schema.Number, Schema.Number]));
+
+export const InitiativeStatsEstimate = Schema.Struct({
+  basis: NonNegativeInt,
+  match: Schema.Literals(["same-model", "same-provider"]),
+  apiUsd: RangeSchema,
+  tokens: RangeSchema,
+  durationMs: RangeSchema,
+  turns: RangeSchema,
+});
+export type InitiativeStatsEstimate = typeof InitiativeStatsEstimate.Type;
+
+/** A quota window now and the initiative's estimated share of it. */
+export const InitiativeQuotaShare = Schema.Struct({
+  provider: Schema.String,
+  accountId: Schema.String,
+  windowId: Schema.String,
+  windowKind: Schema.String,
+  windowLabel: Schema.String,
+  usedPercent: Schema.Number,
+  resetsAt: Schema.NullOr(IsoDateTime),
+  checkedAt: IsoDateTime,
+  quality: Schema.Literals(["ok", "partial", "unavailable"]),
+  method: Schema.Literal("delta"),
+  /** Estimated percentage points of the window this initiative used this period. */
+  initiativePercent: Schema.Number,
+  otherInitiativesPercent: Schema.Number,
+  /** What no measured session explains: other threads, the CLI, the desktop app, gaps. */
+  unattributedPercent: Schema.Number,
+  confidence: Schema.Literals(["low", "medium"]),
+  observations: NonNegativeInt,
+});
+export type InitiativeQuotaShare = typeof InitiativeQuotaShare.Type;
+
+export const InitiativeStatsReport = Schema.Struct({
+  sessions: Schema.Array(
+    Schema.Struct({
+      sessionId: Schema.String,
+      title: Schema.String,
+      stats: InitiativeSessionStats,
+      /** What similar sessions took, leaving this one out: the estimate beside the actual. */
+      estimate: Schema.NullOr(InitiativeStatsEstimate),
+    }),
+  ),
+  quota: Schema.Array(InitiativeQuotaShare),
+  measuredAt: Schema.NullOr(IsoDateTime),
+});
+export type InitiativeStatsReport = typeof InitiativeStatsReport.Type;
+
+export const InitiativeStatsEstimateResult = Schema.Struct({
+  estimate: Schema.NullOr(InitiativeStatsEstimate),
+  /** The provider's windows now, to compare the estimate with what is left. */
+  quota: Schema.Array(InitiativeQuotaShare),
+});
+export type InitiativeStatsEstimateResult = typeof InitiativeStatsEstimateResult.Type;
+
 export const InitiativeSummary = Schema.Struct({
   initiative: Initiative,
   projects: Schema.Array(InitiativeProject),
@@ -649,6 +754,8 @@ export const InitiativesAction = Schema.Union([
     ruleId: TrimmedNonEmptyString,
     enabled: Schema.Boolean,
   }),
+  /** Measures the initiative's sessions again and records the providers' quota. */
+  Schema.Struct({ type: Schema.Literal("statsRefresh"), ...InitiativeRef }),
 ]);
 export type InitiativesAction = typeof InitiativesAction.Type;
 
@@ -733,6 +840,23 @@ export const WsInitiativesPreflightReportRpc = Rpc.make(INITIATIVES_WS_METHODS.p
 export const WsInitiativesImportCatalogRpc = Rpc.make(INITIATIVES_WS_METHODS.importCatalog, {
   payload: InitiativeTarget,
   success: InitiativeImportCatalog,
+  error: InitiativesRpcError,
+});
+
+export const WsInitiativesStatsReportRpc = Rpc.make(INITIATIVES_WS_METHODS.statsReport, {
+  payload: InitiativeTarget,
+  success: InitiativeStatsReport,
+  error: InitiativesRpcError,
+});
+
+/** What a new session on this provider and model would likely take, before it starts. */
+export const WsInitiativesStatsEstimateRpc = Rpc.make(INITIATIVES_WS_METHODS.statsEstimate, {
+  payload: Schema.Struct({
+    initiativeId: Schema.NullOr(TrimmedNonEmptyString),
+    provider: TrimmedNonEmptyString,
+    model: Schema.NullOr(TrimmedNonEmptyString),
+  }),
+  success: InitiativeStatsEstimateResult,
   error: InitiativesRpcError,
 });
 

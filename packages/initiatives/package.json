@@ -19,6 +19,10 @@
       "types": "./src/importers/index.ts",
       "import": "./src/importers/index.ts"
     },
+    "./stats": {
+      "types": "./src/stats/index.ts",
+      "import": "./src/stats/index.ts"
+    },
     "./preflight": {
       "types": "./src/preflight/index.ts",
       "import": "./src/preflight/index.ts"

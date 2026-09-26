@@ -75,6 +75,11 @@ import {
 } from "./InitiativeImport.ts";
 import { makeImportReaders } from "./ImportReaders.ts";
 import { makeClaudeSummarizer } from "./ImportSummarizer.ts";
+import {
+  type InitiativeStats,
+  makeInitiativeStats,
+  type ThreadUsageTotals,
+} from "./InitiativeStats.ts";
 import { InitiativesSql } from "./InitiativesSql.ts";
 import { makeThreadBridgeV1 } from "./ThreadBridgeV1.ts";
 
@@ -133,6 +138,7 @@ export interface InitiativesShape {
   readonly subscribeInbox: Stream.Stream<InitiativesInboxSnapshot, InitiativesError>;
   readonly preflight: Preflight;
   readonly importer: InitiativeImport;
+  readonly stats: InitiativeStats;
   readonly subscribeThreadPreflight: (
     threadId: string,
   ) => Stream.Stream<
@@ -171,9 +177,7 @@ export const makeInitiatives = (options: {
   readonly importReaders: ImportReaders;
   readonly summarize: Summarize;
   /** API-equivalent cost and tokens of one thread, or null when unknown. */
-  readonly readUsage: (
-    threadId: ThreadId,
-  ) => Effect.Effect<{ readonly costUsd: number; readonly totalTokens: number } | null>;
+  readonly readUsage: (threadId: ThreadId) => Effect.Effect<ThreadUsageTotals | null>;
 }) =>
   Effect.gen(function* () {
     const { store, bridge, newId, environmentId } = options;
@@ -185,8 +189,19 @@ export const makeInitiatives = (options: {
     const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
     const usageCache = new Map<
       string,
-      { readonly at: number; readonly value: { costUsd: number; totalTokens: number } | null }
+      { readonly at: number; readonly value: ThreadUsageTotals | null }
     >();
+
+    /** A thread's usage, read at most every few minutes: reading scans its transcripts. */
+    const cachedUsage = (threadId: ThreadId) =>
+      Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis;
+        const cached = usageCache.get(threadId);
+        if (cached && now - cached.at < USAGE_TTL_MS) return cached.value;
+        const value = yield* options.readUsage(threadId);
+        usageCache.set(threadId, { at: now, value });
+        return value;
+      });
 
     const requireInitiative = (initiativeId: string) =>
       store.get("initiative", initiativeId).pipe(
@@ -486,6 +501,13 @@ export const makeInitiatives = (options: {
     );
 
     const jobScope = yield* Effect.scope;
+    const stats = makeInitiativeStats({
+      store,
+      bridge,
+      // The same cache as the usage badge: reading usage scans transcripts.
+      readUsage: (threadId) => cachedUsage(threadId),
+      changed,
+    });
     const importer = makeInitiativeImport({
       store,
       readers: options.importReaders,
@@ -915,6 +937,11 @@ export const makeInitiatives = (options: {
             );
             return { id: String(removed) };
           }
+          case "statsRefresh": {
+            yield* requireInitiative(action.initiativeId);
+            yield* stats.refresh(action.initiativeId, author);
+            return { id: action.initiativeId };
+          }
           case "autoAssignRuleSet": {
             const rule = yield* store
               .update("autoAssignRule", action.ruleId, { enabled: action.enabled }, { author })
@@ -936,18 +963,12 @@ export const makeInitiatives = (options: {
             session.assignment !== "released" &&
             (session.environmentId === null || session.environmentId === environmentId),
         );
-        const now = yield* Clock.currentTimeMillis;
         const threads = yield* Effect.forEach(
           local,
           (session) =>
             Effect.gen(function* () {
               const threadId = session.threadId!;
-              const cached = usageCache.get(threadId);
-              const value =
-                cached && now - cached.at < USAGE_TTL_MS
-                  ? cached.value
-                  : yield* options.readUsage(threadId);
-              usageCache.set(threadId, { at: now, value });
+              const value = yield* cachedUsage(threadId);
               return {
                 threadId,
                 costUsd: value?.costUsd ?? null,
@@ -978,6 +999,7 @@ export const makeInitiatives = (options: {
       subscribeInbox: subscribeTo(entries.inboxSnapshot, () => true),
       preflight,
       importer,
+      stats,
       subscribeThreadPreflight: (threadId) =>
         subscribeTo(
           Effect.map(preflight.threadObservations(threadId), (observations) => ({ observations })),
@@ -1038,6 +1060,10 @@ export const layer = Layer.effect(
                     summary.totals.cachedInputTokens +
                     summary.totals.cacheCreationTokens +
                     summary.totals.outputTokens,
+                  input: summary.totals.uncachedInputTokens,
+                  output: summary.totals.outputTokens,
+                  cacheRead: summary.totals.cachedInputTokens,
+                  cacheWrite: summary.totals.cacheCreationTokens,
                 }
               : null,
           ),
@@ -1056,6 +1082,14 @@ export const layer = Layer.effect(
             service.importer.resumeAfterRestart.pipe(Effect.ignoreCause({ log: true })),
           ),
         ),
+    );
+    // The providers' quota windows, recorded for the estimates every quarter hour.
+    yield* forkParked(
+      service.stats.recordQuota.pipe(
+        Effect.ignoreCause({ log: true }),
+        Effect.repeat(Schedule.spaced("15 minutes")),
+        Effect.asVoid,
+      ),
     );
     // New sessions in the folders of auto-assign rules join their initiative, hourly.
     yield* forkParked(
@@ -1114,3 +1148,15 @@ export const preflightReportRpc = (input: { readonly initiativeId: string | null
 
 export const importCatalogRpc = (input: { readonly initiativeId: string }) =>
   withService((initiatives) => initiatives.importer.catalog(input.initiativeId));
+
+export const statsReportRpc = (input: { readonly initiativeId: string }) =>
+  withService((initiatives) => initiatives.stats.report(input.initiativeId));
+
+export const statsEstimateRpc = (input: {
+  readonly initiativeId: string | null;
+  readonly provider: string;
+  readonly model: string | null;
+}) =>
+  withService((initiatives) =>
+    initiatives.stats.estimate(input.initiativeId, input.provider, input.model),
+  );
