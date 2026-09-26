@@ -131,8 +131,9 @@ export function InitiativesInbox({ environmentId }: { readonly environmentId: En
 }
 
 /**
- * The stop of every initiative at once: no initiative starts a thread while
- * it is on. Running threads go on; stop those in their chats.
+ * The stop of every initiative at once, in two stages: the Not-Aus keeps any
+ * initiative from starting a thread; "Alles anhalten" also interrupts the
+ * initiatives' threads that are working now.
  */
 function GlobalStop({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const list = useEnvironmentQuery(initiativesEnvironment.list({ environmentId, input: {} }));
@@ -142,8 +143,8 @@ function GlobalStop({ environmentId }: { readonly environmentId: EnvironmentId }
     <div className="flex items-center gap-2 rounded-lg border border-border p-2 text-sm">
       <span className="min-w-0 flex-1 text-muted-foreground">
         {halted
-          ? "Not-Aus ist an: kein Vorhaben startet Threads. Laufende Threads laufen weiter."
-          : "Not-Aus: hält alle Vorhaben an, keines startet dann Threads."}
+          ? "Not-Aus ist an: kein Vorhaben startet Threads. Laufende Threads laufen weiter, bis du alles anhältst."
+          : "Not-Aus: kein Vorhaben startet dann Threads. „Alles anhalten“ unterbricht zusätzlich die laufenden."}
       </span>
       <Button
         size="sm"
@@ -156,6 +157,13 @@ function GlobalStop({ environmentId }: { readonly environmentId: EnvironmentId }
         }
       >
         {halted ? "Not-Aus lösen" : "Not-Aus"}
+      </Button>
+      <Button
+        size="sm"
+        variant="destructive-outline"
+        onClick={() => void act({ environmentId, input: { type: "stopAll", initiativeId: null } })}
+      >
+        Alles anhalten
       </Button>
     </div>
   );

@@ -13,7 +13,14 @@ import {
 } from "@t3tools/contracts";
 import { SESSION_STATE_LABELS, type InitiativeSessionState } from "@t3tools/initiatives/model";
 import { Link } from "@tanstack/react-router";
-import { ArchiveIcon, ArchiveRestoreIcon, OctagonPauseIcon, PlayIcon, XIcon } from "lucide-react";
+import {
+  ArchiveIcon,
+  ArchiveRestoreIcon,
+  CircleStopIcon,
+  OctagonPauseIcon,
+  PlayIcon,
+  XIcon,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { useProjects, useServerConfigs, useThreadShells } from "~/state/entities";
@@ -150,6 +157,15 @@ function LoadedInitiative({
         >
           {initiative.halted ? <PlayIcon /> : <OctagonPauseIcon />}
           {initiative.halted ? "Fortsetzen" : "Anhalten"}
+        </Button>
+        {/* Second stage of the stop: also interrupts the threads that are working now. */}
+        <Button
+          size="sm"
+          variant="destructive-outline"
+          onClick={() => void act({ type: "stopAll", initiativeId: initiative.id })}
+        >
+          <CircleStopIcon />
+          Alles anhalten
         </Button>
         <Button
           size="sm"
