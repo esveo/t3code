@@ -57,6 +57,19 @@ export const initiativesEnvironment = {
     tag: INITIATIVES_WS_METHODS.brainRead,
     idleTtlMs: 60_000,
   }),
+  /** Measured sessions beside their estimates, and the quota shares; refreshed on request. */
+  statsReport: createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
+    label: "environment-data:initiatives:stats-report",
+    tag: INITIATIVES_WS_METHODS.statsReport,
+    staleTimeMs: 60_000,
+    idleTtlMs: 60_000,
+  }),
+  statsEstimate: createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
+    label: "environment-data:initiatives:stats-estimate",
+    tag: INITIATIVES_WS_METHODS.statsEstimate,
+    staleTimeMs: 5 * 60_000,
+    idleTtlMs: 60_000,
+  }),
   act: createEnvironmentRpcCommand(connectionAtomRuntime, {
     label: "environment-data:initiatives:act",
     tag: INITIATIVES_WS_METHODS.act,

@@ -39,6 +39,7 @@ import { InitiativeCoordinatorSection } from "./InitiativeCoordinatorSection";
 import { InitiativeEntriesSection } from "./InitiativeEntriesSection";
 import { InitiativeImportSection, SOURCE_LABELS } from "./InitiativeImportSection";
 import { InitiativePreflightSection } from "./InitiativePreflightSection";
+import { EstimateLine, InitiativeStatsSection, QuotaList } from "./InitiativeStatsSection";
 import { initiativesEnvironment } from "./initiativesState";
 import { INITIATIVE_STATUS_LABELS } from "./InitiativesPage";
 
@@ -271,6 +272,8 @@ function LoadedInitiative({
         entries={detail.entries}
         links={detail.links}
       />
+
+      <InitiativeStatsSection environmentId={environmentId} initiative={initiative} />
 
       <InitiativePreflightSection environmentId={environmentId} initiative={initiative} />
 
@@ -545,6 +548,37 @@ function ProjectsSection({
   );
 }
 
+/** What a thread on the chosen provider usually takes, and its quota now. */
+function StartEstimate({
+  environmentId,
+  initiativeId,
+  provider,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly initiativeId: string;
+  readonly provider: string;
+}) {
+  const result = useEnvironmentQuery(
+    initiativesEnvironment.statsEstimate({
+      environmentId,
+      input: { initiativeId, provider, model: null },
+    }),
+  );
+  if (!result.data) return null;
+  return (
+    <div className="flex flex-col gap-1">
+      {result.data.estimate ? (
+        <EstimateLine estimate={result.data.estimate} />
+      ) : (
+        <span className="text-xs text-muted-foreground">
+          Noch zu wenige abgeschlossene Sessions für eine Schätzung.
+        </span>
+      )}
+      <QuotaList quota={result.data.quota} />
+    </div>
+  );
+}
+
 function StartThreadForm({
   environmentId,
   initiative,
@@ -654,6 +688,13 @@ function StartThreadForm({
             onChange={(event) => setTitle(event.target.value)}
           />
         </div>
+        {provider ? (
+          <StartEstimate
+            environmentId={environmentId}
+            initiativeId={initiative.id}
+            provider={provider}
+          />
+        ) : null}
         <Textarea
           placeholder="Auftrag: Was soll der Thread tun, woran erkennt er, dass er fertig ist?"
           value={prompt}
