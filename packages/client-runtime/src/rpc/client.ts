@@ -1,4 +1,5 @@
 import {
+  INITIATIVES_WS_METHODS,
   ORCHESTRATION_WS_METHODS,
   SUBAGENT_CHAT_WS_METHODS,
   THREAD_DECISIONS_WS_METHODS,
@@ -68,6 +69,9 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.terminalAttach
   | typeof SUBAGENT_CHAT_WS_METHODS.subscribeTranscript
   | typeof THREAD_DECISIONS_WS_METHODS.subscribe
+  // Fork: initiatives.
+  | typeof INITIATIVES_WS_METHODS.subscribeList
+  | typeof INITIATIVES_WS_METHODS.subscribeDetail
   | typeof VOICE_INPUT_WS_METHODS.prepare;
 
 export type EnvironmentStreamCommandRpcTag =
