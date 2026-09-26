@@ -43,6 +43,12 @@ const sessionInput = (initiativeId: string, threadId: string) => ({
   branch: null,
   assignment: "confirmed" as const,
   launchJobId: null,
+  startedAt: null,
+  endedAt: null,
+  prUrls: [],
+  model: null,
+  tokens: null,
+  summary: null,
 });
 
 describe("InitiativeStore", () => {

@@ -52,6 +52,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
+import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
@@ -66,6 +67,14 @@ import { type InitiativeBrain, makeInitiativeBrain } from "./InitiativeBrain.ts"
 import { type InitiativeEntries, makeInitiativeEntries } from "./InitiativeEntries.ts";
 import { type InboxStorage, makeInboxStorage } from "./InitiativeInbox.ts";
 import { makeDigest, makePreflight, type Preflight } from "./Preflight.ts";
+import {
+  type ImportReaders,
+  type InitiativeImport,
+  makeInitiativeImport,
+  type Summarize,
+} from "./InitiativeImport.ts";
+import { makeImportReaders } from "./ImportReaders.ts";
+import { makeClaudeSummarizer } from "./ImportSummarizer.ts";
 import { InitiativesSql } from "./InitiativesSql.ts";
 import { makeThreadBridgeV1 } from "./ThreadBridgeV1.ts";
 
@@ -123,6 +132,7 @@ export interface InitiativesShape {
   readonly entries: InitiativeEntries;
   readonly subscribeInbox: Stream.Stream<InitiativesInboxSnapshot, InitiativesError>;
   readonly preflight: Preflight;
+  readonly importer: InitiativeImport;
   readonly subscribeThreadPreflight: (
     threadId: string,
   ) => Stream.Stream<
@@ -158,6 +168,8 @@ export const makeInitiatives = (options: {
   readonly workspaceRootOf: (initiativeId: string) => string;
   /** A stable hash of a text, for the preflight's action fingerprint. */
   readonly digest: (text: string) => Effect.Effect<string>;
+  readonly importReaders: ImportReaders;
+  readonly summarize: Summarize;
   /** API-equivalent cost and tokens of one thread, or null when unknown. */
   readonly readUsage: (
     threadId: ThreadId,
@@ -231,6 +243,13 @@ export const makeInitiatives = (options: {
             cwd: input.shell?.worktreePath ?? null,
             branch: input.shell?.branch ?? null,
             launchJobId: input.launchJobId,
+            startedAt: input.shell?.createdAt ?? null,
+            endedAt: null,
+            prUrls: [],
+            // Test shells and old projections can lack a model selection.
+            model: input.shell?.modelSelection?.model ?? null,
+            tokens: null,
+            summary: null,
             ...fields,
           },
           input.author,
@@ -466,6 +485,16 @@ export const makeInitiatives = (options: {
       Effect.orElseSucceed(() => false),
     );
 
+    const jobScope = yield* Effect.scope;
+    const importer = makeInitiativeImport({
+      store,
+      readers: options.importReaders,
+      summarize: options.summarize,
+      changed,
+      environmentId,
+      fork: (effect) => Effect.forkIn(effect, jobScope).pipe(Effect.asVoid),
+    });
+
     const preflight = makePreflight({
       initiatives: { store, membershipOf, threads: bridge },
       changed,
@@ -516,16 +545,27 @@ export const makeInitiatives = (options: {
 
     const detailSnapshot: InitiativesShape["detailSnapshot"] = (initiativeId) =>
       Effect.gen(function* () {
-        const [initiative, projects, sessions, launchJobs, brainPages, entries, links] =
-          yield* Effect.all([
-            store.get("initiative", initiativeId),
-            store.list("project", { initiativeId }),
-            store.list("session", { initiativeId }),
-            store.list("launchJob", { initiativeId }),
-            store.list("brainPage", { initiativeId }),
-            store.list("entry", { initiativeId }),
-            store.list("link", { initiativeId }),
-          ]).pipe(Effect.mapError(fromStore));
+        const [
+          initiative,
+          projects,
+          sessions,
+          launchJobs,
+          brainPages,
+          entries,
+          links,
+          importJobs,
+          autoAssignRules,
+        ] = yield* Effect.all([
+          store.get("initiative", initiativeId),
+          store.list("project", { initiativeId }),
+          store.list("session", { initiativeId }),
+          store.list("launchJob", { initiativeId }),
+          store.list("brainPage", { initiativeId }),
+          store.list("entry", { initiativeId }),
+          store.list("link", { initiativeId }),
+          store.list("importJob", { initiativeId }),
+          store.list("autoAssignRule", { initiativeId }),
+        ]).pipe(Effect.mapError(fromStore));
         return {
           initiative: Option.getOrNull(initiative),
           projects,
@@ -535,6 +575,8 @@ export const makeInitiatives = (options: {
           brainError: brain.errorOf(initiativeId),
           entries,
           links,
+          importJobs: importJobs.slice(-10),
+          autoAssignRules,
         };
       });
 
@@ -824,6 +866,62 @@ export const makeInitiatives = (options: {
             yield* preflight.markWrong(action.observationId, action.wrong, author);
             return { id: action.observationId };
           }
+          case "importRun": {
+            yield* requireInitiative(action.initiativeId);
+            const job = yield* importer.run(
+              action.initiativeId,
+              action.selection,
+              action.autoAssign === true,
+              author,
+            );
+            return { id: job.id };
+          }
+          case "importSummarize": {
+            const initiative = yield* requireInitiative(action.initiativeId);
+            // The summaries go through Claude; an initiative that excludes it gets none.
+            if (initiative.providerExclusions.includes("claudeAgent")) {
+              return yield* failure(
+                `Summaries run on Claude, which is excluded from ${initiative.title}.`,
+              );
+            }
+            const job = yield* importer.summarizeSessions(
+              action.initiativeId,
+              action.sessionIds,
+              action.costCapUsd,
+              author,
+            );
+            return { id: job.id };
+          }
+          case "importPause":
+          case "importResume":
+          case "importCancel": {
+            const job = yield* importer.control(
+              action.jobId,
+              action.type === "importPause"
+                ? "pause"
+                : action.type === "importResume"
+                  ? "resume"
+                  : "cancel",
+              author,
+            );
+            return { id: job.id };
+          }
+          case "importRemove": {
+            const removed = yield* importer.remove(
+              action.initiativeId,
+              action.source,
+              action.cwd,
+              author,
+            );
+            return { id: String(removed) };
+          }
+          case "autoAssignRuleSet": {
+            const rule = yield* store
+              .update("autoAssignRule", action.ruleId, { enabled: action.enabled }, { author })
+              .pipe(Effect.mapError(fromStore));
+            yield* changed(rule.initiativeId);
+            return { id: rule.id };
+          }
         }
       });
 
@@ -879,6 +977,7 @@ export const makeInitiatives = (options: {
       entries,
       subscribeInbox: subscribeTo(entries.inboxSnapshot, () => true),
       preflight,
+      importer,
       subscribeThreadPreflight: (threadId) =>
         subscribeTo(
           Effect.map(preflight.threadObservations(threadId), (observations) => ({ observations })),
@@ -924,6 +1023,8 @@ export const layer = Layer.effect(
       archive,
       workspaceRootOf: (initiativeId) => path.join(initiativesDir, initiativeId, "workspace"),
       digest: yield* makeDigest,
+      importReaders: yield* makeImportReaders({ store, bridge, mainSql }),
+      summarize: yield* makeClaudeSummarizer.pipe(Effect.provide(ProcessRunner.layer)),
       readUsage: (threadId) =>
         readThreadUsage({ threadId }).pipe(
           Effect.provideService(UsageService.UsageService, usageService),
@@ -948,7 +1049,21 @@ export const layer = Layer.effect(
     yield* forkParked(
       service
         .reconcile(startedAt)
-        .pipe(Effect.ignoreCause({ log: true }), Effect.andThen(service.recoverBrains)),
+        .pipe(
+          Effect.ignoreCause({ log: true }),
+          Effect.andThen(service.recoverBrains),
+          Effect.andThen(
+            service.importer.resumeAfterRestart.pipe(Effect.ignoreCause({ log: true })),
+          ),
+        ),
+    );
+    // New sessions in the folders of auto-assign rules join their initiative, hourly.
+    yield* forkParked(
+      service.importer.applyAutoAssign.pipe(
+        Effect.ignoreCause({ log: true }),
+        Effect.repeat(Schedule.spaced("1 hour")),
+        Effect.asVoid,
+      ),
     );
     return Initiatives.of(service);
   }),
@@ -996,3 +1111,6 @@ export const subscribeThreadPreflightRpc = (input: { readonly threadId: string }
 
 export const preflightReportRpc = (input: { readonly initiativeId: string | null }) =>
   withService((initiatives) => initiatives.preflight.report(input.initiativeId));
+
+export const importCatalogRpc = (input: { readonly initiativeId: string }) =>
+  withService((initiatives) => initiatives.importer.catalog(input.initiativeId));

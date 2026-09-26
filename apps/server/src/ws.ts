@@ -3866,6 +3866,12 @@ const makeWsRpcLayer = (
             Initiatives.preflightReportRpc(input),
             { "rpc.aggregate": "orchestration" },
           ),
+        [INITIATIVES_WS_METHODS.importCatalog]: (input) =>
+          observeRpcEffect(
+            INITIATIVES_WS_METHODS.importCatalog,
+            Initiatives.importCatalogRpc(input),
+            { "rpc.aggregate": "orchestration" },
+          ),
         [INITIATIVES_WS_METHODS.brainRead]: (input) =>
           observeRpcEffect(INITIATIVES_WS_METHODS.brainRead, Initiatives.brainReadRpc(input), {
             "rpc.aggregate": "orchestration",

@@ -57,6 +57,12 @@ const session = (
   branch: null,
   assignment,
   launchJobId: null,
+  startedAt: null,
+  endedAt: null,
+  prUrls: [],
+  model: null,
+  tokens: null,
+  summary: null,
 });
 
 describe("suggestedThreads", () => {

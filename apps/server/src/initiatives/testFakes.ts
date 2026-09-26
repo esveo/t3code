@@ -19,6 +19,9 @@ import * as Option from "effect/Option";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import { type BrainArchiveShape, BrainError } from "./BrainArchive.ts";
+import type { ImportedSessionMeta } from "@t3tools/initiatives/importers";
+
+import type { ImportReaders, Summarize } from "./InitiativeImport.ts";
 import { makeInitiatives } from "./Initiatives.ts";
 
 export const TEST_PROJECT = ProjectId.make("project-1");
@@ -173,6 +176,42 @@ export const makeMemoryArchive = () => {
   return { archive, repos, state };
 };
 
+/**
+ * Import sources in memory: sessions per source, excerpts per native id and
+ * a summarizer that costs a fixed amount per call.
+ */
+export const makeFakeReaders = () => {
+  const sessions: Record<"claude" | "codex", Array<ImportedSessionMeta>> = {
+    claude: [],
+    codex: [],
+  };
+  const t3NativeIds = new Set<string>();
+  const excerpts = new Map<string, string>();
+  const state = { summaries: 0, costPerSummary: 0.01 };
+  const readers: ImportReaders = {
+    claude: Effect.sync(() => sessions.claude),
+    codex: Effect.sync(() => sessions.codex),
+    t3: Effect.succeed([]),
+    t3NativeIds: Effect.sync(() => t3NativeIds),
+    excerpt: (_source, nativeId) => Effect.sync(() => excerpts.get(nativeId) ?? null),
+    available: Effect.succeed({
+      t3: true,
+      "claude-code-cli": true,
+      "claude-desktop": true,
+      codex: true,
+    }),
+  };
+  const summarize: Summarize = (prompt) =>
+    Effect.sync(() => {
+      state.summaries += 1;
+      return {
+        text: `Zusammenfassung ${state.summaries} (${prompt.length})`,
+        costUsd: state.costPerSummary,
+      };
+    });
+  return { readers, summarize, sessions, t3NativeIds, excerpts, state };
+};
+
 /** A service on a fresh in-memory store, with the fakes above. */
 export const makeTestInitiatives = Effect.gen(function* () {
   const context = yield* Layer.build(NodeSqliteClient.layer({ filename: ":memory:" }));
@@ -183,6 +222,7 @@ export const makeTestInitiatives = Effect.gen(function* () {
   const store = makeInitiativeStore({ sql, newId });
   const fake = makeFakeBridge();
   const memory = makeMemoryArchive();
+  const readers = makeFakeReaders();
   /** A server process on the same database; run it again for a restart. */
   const boot = makeInitiatives({
     store,
@@ -192,8 +232,10 @@ export const makeTestInitiatives = Effect.gen(function* () {
     archive: memory.archive,
     workspaceRootOf: (initiativeId) => `/state/initiatives/${initiativeId}/workspace`,
     digest: (text) => Effect.succeed(`hash:${text.length}`),
+    importReaders: readers.readers,
+    summarize: readers.summarize,
     readUsage: () => Effect.succeed({ costUsd: 1.5, totalTokens: 1000 }),
   });
   const initiatives = yield* boot;
-  return { initiatives, boot, store, fake, memory, newId };
+  return { initiatives, boot, store, fake, memory, newId, readers };
 });

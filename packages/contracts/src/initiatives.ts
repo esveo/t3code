@@ -31,6 +31,7 @@ export const INITIATIVES_WS_METHODS = {
   subscribeInbox: "initiatives.subscribeInbox",
   subscribeThreadPreflight: "initiatives.subscribeThreadPreflight",
   preflightReport: "initiatives.preflightReport",
+  importCatalog: "initiatives.importCatalog",
 } as const;
 
 /**
@@ -201,8 +202,91 @@ export const InitiativeSession = Schema.Struct({
   branch: Schema.NullOr(Schema.String),
   assignment: InitiativeAssignment,
   launchJobId: Schema.NullOr(TrimmedNonEmptyString),
+  /** When the session ran; known for imported ones, a T3 thread shows its own. */
+  startedAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  endedAt: Schema.NullOr(IsoDateTime).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  prUrls: Schema.Array(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed([]))),
+  model: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  tokens: Schema.NullOr(NonNegativeInt).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
+  /** One or two sentences, made on request; the user reads it before it goes anywhere. */
+  summary: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
 });
 export type InitiativeSession = typeof InitiativeSession.Type;
+
+export const InitiativeImportSource = Schema.Literals([
+  "t3",
+  "claude-code-cli",
+  "claude-desktop",
+  "codex",
+]);
+export type InitiativeImportSource = typeof InitiativeImportSource.Type;
+
+/** A folder the sessions of a source ran in, with how many and when. */
+export const InitiativeImportGroup = Schema.Struct({
+  source: InitiativeImportSource,
+  cwd: Schema.String,
+  count: NonNegativeInt,
+  firstAt: Schema.NullOr(IsoDateTime),
+  lastAt: Schema.NullOr(IsoDateTime),
+  /** Inside one of the initiative's projects. */
+  preselected: Schema.Boolean,
+  /** Already in this initiative. */
+  imported: NonNegativeInt,
+  /** Held by another initiative. */
+  elsewhere: NonNegativeInt,
+});
+export type InitiativeImportGroup = typeof InitiativeImportGroup.Type;
+
+export const InitiativeImportCatalog = Schema.Struct({
+  sources: Schema.Array(
+    Schema.Struct({
+      source: InitiativeImportSource,
+      available: Schema.Boolean,
+      note: Schema.String,
+    }),
+  ),
+  groups: Schema.Array(InitiativeImportGroup),
+});
+export type InitiativeImportCatalog = typeof InitiativeImportCatalog.Type;
+
+export const InitiativeImportSelection = Schema.Struct({
+  source: InitiativeImportSource,
+  cwd: Schema.String,
+});
+export type InitiativeImportSelection = typeof InitiativeImportSelection.Type;
+
+/**
+ * A resumable import: first the metadata of the chosen folders' sessions,
+ * or later summaries of chosen sessions within a cost cap.
+ */
+export const InitiativeImportJob = Schema.Struct({
+  ...RecordBase,
+  initiativeId: TrimmedNonEmptyString,
+  phase: Schema.Literals(["metadata", "summary"]),
+  selection: Schema.Array(InitiativeImportSelection),
+  sessionIds: Schema.Array(Schema.String),
+  status: Schema.Literals(["running", "paused", "cancelled", "done", "failed"]),
+  total: NonNegativeInt,
+  done: NonNegativeInt,
+  added: NonNegativeInt,
+  skipped: NonNegativeInt,
+  /** Position of the next item, so a paused job continues where it stopped. */
+  cursor: NonNegativeInt,
+  costCapUsd: Schema.NullOr(Schema.Number),
+  spentUsd: Schema.Number,
+  error: Schema.NullOr(Schema.String),
+});
+export type InitiativeImportJob = typeof InitiativeImportJob.Type;
+
+/** New sessions of a source in this folder join the initiative on their own; can be turned off. */
+export const InitiativeAutoAssignRule = Schema.Struct({
+  ...RecordBase,
+  initiativeId: TrimmedNonEmptyString,
+  source: InitiativeImportSource,
+  cwdPrefix: TrimmedNonEmptyString,
+  enabled: Schema.Boolean,
+});
+export type InitiativeAutoAssignRule = typeof InitiativeAutoAssignRule.Type;
 
 export const InitiativeLaunchStatus = Schema.Literals([
   "created",
@@ -392,6 +476,8 @@ export const InitiativeDetailSnapshot = Schema.Struct({
   brainError: Schema.NullOr(Schema.String),
   entries: Schema.Array(InitiativeEntry),
   links: Schema.Array(InitiativeEntryLink),
+  importJobs: Schema.Array(InitiativeImportJob),
+  autoAssignRules: Schema.Array(InitiativeAutoAssignRule),
 });
 
 /**
@@ -530,6 +616,39 @@ export const InitiativesAction = Schema.Union([
     observationId: TrimmedNonEmptyString,
     wrong: Schema.Boolean,
   }),
+  /** Imports the metadata of the chosen folders' sessions; nothing without a selection. */
+  Schema.Struct({
+    type: Schema.Literal("importRun"),
+    ...InitiativeRef,
+    selection: Schema.NonEmptyArray(InitiativeImportSelection),
+    /** Later sessions of these folders join the initiative on their own. */
+    autoAssign: Schema.optional(Schema.Boolean),
+  }),
+  /** Summaries of imported sessions, on request, until the cost cap. */
+  Schema.Struct({
+    type: Schema.Literal("importSummarize"),
+    ...InitiativeRef,
+    sessionIds: Schema.NonEmptyArray(TrimmedNonEmptyString),
+    costCapUsd: Schema.Number.check(Schema.isGreaterThan(0)),
+  }),
+  Schema.Struct({
+    type: Schema.Literals(["importPause", "importResume", "importCancel"]),
+    ...InitiativeRef,
+    jobId: TrimmedNonEmptyString,
+  }),
+  /** Takes imported sessions out again: those of one folder, or all of a source. */
+  Schema.Struct({
+    type: Schema.Literal("importRemove"),
+    ...InitiativeRef,
+    source: InitiativeImportSource,
+    cwd: Schema.optional(Schema.String),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("autoAssignRuleSet"),
+    ...InitiativeRef,
+    ruleId: TrimmedNonEmptyString,
+    enabled: Schema.Boolean,
+  }),
 ]);
 export type InitiativesAction = typeof InitiativesAction.Type;
 
@@ -607,6 +726,13 @@ export const WsInitiativesSubscribeThreadPreflightRpc = Rpc.make(
 export const WsInitiativesPreflightReportRpc = Rpc.make(INITIATIVES_WS_METHODS.preflightReport, {
   payload: Schema.Struct({ initiativeId: Schema.NullOr(TrimmedNonEmptyString) }),
   success: PreflightReport,
+  error: InitiativesRpcError,
+});
+
+/** What earlier work there is to import, per source and folder. Reads local session files. */
+export const WsInitiativesImportCatalogRpc = Rpc.make(INITIATIVES_WS_METHODS.importCatalog, {
+  payload: InitiativeTarget,
+  success: InitiativeImportCatalog,
   error: InitiativesRpcError,
 });
 

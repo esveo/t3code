@@ -12,8 +12,11 @@ import {
   type InitiativeAuthor,
   Initiative,
   InitiativeApprovalObservation,
+  InitiativeAutoAssignRule,
   InitiativeBrainPage,
   InitiativeControl,
+  InitiativeImportJob,
+  TrimmedNonEmptyString,
   InitiativeEntry,
   InitiativeEntryLink,
   InitiativeLaunchJob,
@@ -25,6 +28,25 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type * as SqlClient from "effect/unstable/sql/SqlClient";
+
+/**
+ * What the import read from one session file, with the size and time it had:
+ * a file that did not change is not read again.
+ */
+export const ImportCursor = Schema.Struct({
+  id: TrimmedNonEmptyString,
+  revision: Schema.Int,
+  createdAt: Schema.String,
+  updatedAt: Schema.String,
+  createdBy: Schema.String,
+  updatedBy: Schema.String,
+  path: TrimmedNonEmptyString,
+  size: Schema.Number,
+  mtimeMs: Schema.Number,
+  /** The parsed session, or null for a file without one. */
+  meta: Schema.NullOr(Schema.Record(Schema.String, Schema.Unknown)),
+});
+export type ImportCursor = typeof ImportCursor.Type;
 
 /** What the store keeps, with how each kind is found besides its id. */
 export const INITIATIVE_KINDS = {
@@ -84,6 +106,22 @@ export const INITIATIVE_KINDS = {
     initiativeId: (_record: InitiativeControl): string | null => null,
     uniqueKey: (_record: InitiativeControl): string | null => null,
   },
+  importJob: {
+    schema: InitiativeImportJob,
+    initiativeId: (record: InitiativeImportJob): string | null => record.initiativeId,
+    uniqueKey: (_record: InitiativeImportJob): string | null => null,
+  },
+  autoAssignRule: {
+    schema: InitiativeAutoAssignRule,
+    initiativeId: (record: InitiativeAutoAssignRule): string | null => record.initiativeId,
+    uniqueKey: (record: InitiativeAutoAssignRule): string | null =>
+      `${record.initiativeId}|${record.source}|${record.cwdPrefix}`,
+  },
+  importCursor: {
+    schema: ImportCursor,
+    initiativeId: (_record: ImportCursor): string | null => null,
+    uniqueKey: (record: ImportCursor): string | null => record.path,
+  },
 } as const;
 
 /** The unique key of an Inbox item: its coordinator thread and its id there. */
@@ -128,6 +166,18 @@ const DECODERS = {
   control: {
     json: Schema.decodeUnknownEffect(Schema.fromJsonString(InitiativeControl)),
     value: Schema.decodeUnknownEffect(InitiativeControl),
+  },
+  importJob: {
+    json: Schema.decodeUnknownEffect(Schema.fromJsonString(InitiativeImportJob)),
+    value: Schema.decodeUnknownEffect(InitiativeImportJob),
+  },
+  autoAssignRule: {
+    json: Schema.decodeUnknownEffect(Schema.fromJsonString(InitiativeAutoAssignRule)),
+    value: Schema.decodeUnknownEffect(InitiativeAutoAssignRule),
+  },
+  importCursor: {
+    json: Schema.decodeUnknownEffect(Schema.fromJsonString(ImportCursor)),
+    value: Schema.decodeUnknownEffect(ImportCursor),
   },
 } as const;
 export type InitiativeRecord<K extends InitiativeKind> =
