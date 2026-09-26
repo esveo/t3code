@@ -53,7 +53,8 @@ const RecordBase = {
   updatedBy: InitiativeAuthor,
 };
 
-export const InitiativeStatus = Schema.Literals(["active", "paused", "archived"]);
+/** draft: set up in its setup chat; it becomes active once it has a goal. */
+export const InitiativeStatus = Schema.Literals(["draft", "active", "paused", "archived"]);
 export type InitiativeStatus = typeof InitiativeStatus.Type;
 
 export const Initiative = Schema.Struct({
@@ -675,6 +676,15 @@ export const InitiativesAction = Schema.Union([
     model: Schema.optional(TrimmedNonEmptyString),
     /** A first instruction; without it the coordinator continues from the handoff. */
     message: Schema.optional(Schema.String),
+  }),
+  /**
+   * Creates a draft initiative and starts its setup chat, which becomes its
+   * coordinator. The result's id is the chat's thread.
+   */
+  Schema.Struct({
+    type: Schema.Literal("createWithChat"),
+    key: TrimmedNonEmptyString,
+    projectId: Schema.optional(ProjectId),
   }),
   /** A person's edit of a brain page; it locks the page against agents. */
   Schema.Struct({

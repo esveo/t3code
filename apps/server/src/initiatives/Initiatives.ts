@@ -31,6 +31,7 @@ import {
 import { clampForPrompt } from "@t3tools/initiatives/brain";
 import type { ThreadBridge } from "@t3tools/initiatives/bridge";
 import {
+  INITIATIVE_SETUP_PROMPT,
   initiativeRuntimeMode,
   initiativeStartPrompt,
   type InitiativeRole,
@@ -161,6 +162,9 @@ const fromBridge = (error: { readonly message: string }) => failure(error.messag
 /** How long a thread's usage stays cached; reading it scans the provider's transcripts. */
 const USAGE_TTL_MS = 5 * 60 * 1000;
 
+/** The model a setup chat runs on when it is available. */
+const SETUP_MODEL = { provider: "claudeAgent", model: "claude-opus-5-5" } as const;
+
 /** The steckbrief rides in every start prompt, so it stays short there. */
 const STECKBRIEF_PROMPT_LIMIT = 4000;
 
@@ -201,6 +205,96 @@ export const makeInitiatives = (options: {
         const value = yield* options.readUsage(threadId);
         usageCache.set(threadId, { at: now, value });
         return value;
+      });
+
+    const createInitiative = (
+      fields: Pick<Initiative, "title" | "goalText" | "instructionsMd" | "status">,
+      author: InitiativeAuthor,
+    ) =>
+      Effect.gen(function* () {
+        const created = yield* store
+          .insert(
+            "initiative",
+            {
+              ...fields,
+              homeEnvironmentId: environmentId,
+              providerExclusions: [],
+              coordinatorThreadId: null,
+              halted: false,
+              preflightMode: "shadow",
+            },
+            author,
+          )
+          .pipe(Effect.mapError(fromStore));
+        // A failed brain shows on the page; the initiative exists either way.
+        yield* brain.ensure(created, author).pipe(Effect.ignore);
+        yield* changed(created.id);
+        return created;
+      });
+
+    /**
+     * Starts the initiative's coordinator, in the named project, else its
+     * first one, else a folder of its own. `preferred` is a model to use when
+     * it is available, falling back to the usual choice.
+     */
+    const startCoordinatorFor = (
+      initiative: Initiative,
+      input: {
+        readonly key: string;
+        readonly projectId?: ProjectId | undefined;
+        readonly provider?: string | undefined;
+        readonly model?: string | undefined;
+        readonly message?: string | undefined;
+        readonly preferred?: { readonly provider: string; readonly model: string };
+      },
+      author: InitiativeAuthor,
+    ) =>
+      Effect.gen(function* () {
+        const projects = yield* store
+          .list("project", { initiativeId: initiative.id })
+          .pipe(Effect.mapError(fromStore));
+        // Work without code gets a folder of the initiative's own as its project.
+        const projectId =
+          input.projectId ??
+          projects.find((project) => project.projectId !== null)?.projectId ??
+          (yield* bridge
+            .ensureProject({
+              workspaceRoot: options.workspaceRootOf(initiative.id),
+              title: `Vorhaben: ${initiative.title}`,
+            })
+            .pipe(Effect.mapError(fromBridge))).projectId;
+        const preferred =
+          input.provider === undefined && input.preferred
+            ? yield* bridge
+                .resolveModel({
+                  projectId,
+                  parentThreadId: null,
+                  provider: input.preferred.provider,
+                  model: input.preferred.model,
+                })
+                .pipe(
+                  Effect.map(() => input.preferred),
+                  Effect.orElseSucceed(() => undefined),
+                )
+            : undefined;
+        const job = yield* launch(
+          {
+            initiativeId: initiative.id,
+            key: input.key,
+            projectId,
+            title: `Koordinator: ${initiative.title}`,
+            prompt:
+              input.message?.trim() ||
+              "Continue the initiative from the handoff above: check the state of its threads with session_list, then take the next step. When there is nothing to continue, tell the user briefly where the initiative stands and ask what to do next.",
+            provider: preferred?.provider ?? input.provider,
+            model: preferred?.model ?? input.model,
+            // The coordinator orchestrates; its threads get the worktrees.
+            worktree: false,
+            role: "coordinator",
+          },
+          author,
+        );
+        return job.threadId;
       });
 
     /** The stop of one initiative, or with null of all; running threads go on. */
@@ -366,7 +460,8 @@ export const makeInitiatives = (options: {
           .pipe(Effect.mapError(fromStore));
         if (Option.isSome(existing)) return existing.value;
         const initiative = yield* requireInitiative(input.initiativeId);
-        if (initiative.status !== "active") {
+        // A draft's setup chat may start threads once the user said yes.
+        if (initiative.status !== "active" && initiative.status !== "draft") {
           return yield* failure(`${initiative.title} is ${initiative.status}; reopen it first.`);
         }
         if (initiative.halted) {
@@ -646,27 +741,38 @@ export const makeInitiatives = (options: {
       Effect.gen(function* () {
         switch (action.type) {
           case "create": {
-            const created = yield* store
-              .insert(
-                "initiative",
-                {
-                  title: action.title,
-                  goalText: action.goalText ?? "",
-                  status: "active",
-                  instructionsMd: action.instructionsMd ?? "",
-                  homeEnvironmentId: environmentId,
-                  providerExclusions: [],
-                  coordinatorThreadId: null,
-                  halted: false,
-                  preflightMode: "shadow",
-                },
-                author,
-              )
-              .pipe(Effect.mapError(fromStore));
-            // A failed brain shows on the page; the initiative exists either way.
-            yield* brain.ensure(created, author).pipe(Effect.ignore);
-            yield* changed(created.id);
+            const created = yield* createInitiative(
+              {
+                title: action.title,
+                goalText: action.goalText ?? "",
+                instructionsMd: action.instructionsMd ?? "",
+                status: "active",
+              },
+              author,
+            );
             return { id: created.id };
+          }
+          case "createWithChat": {
+            // A repeated request finds its chat and creates no second draft.
+            const repeated = yield* store
+              .findByKey("launchJob", action.key)
+              .pipe(Effect.mapError(fromStore));
+            if (Option.isSome(repeated)) return { id: repeated.value.threadId };
+            const created = yield* createInitiative(
+              { title: "Neues Vorhaben", goalText: "", instructionsMd: "", status: "draft" },
+              author,
+            );
+            const threadId = yield* startCoordinatorFor(
+              created,
+              {
+                key: action.key,
+                projectId: action.projectId,
+                message: INITIATIVE_SETUP_PROMPT,
+                preferred: SETUP_MODEL,
+              },
+              author,
+            );
+            return { id: threadId };
           }
           case "update": {
             const { type: _type, initiativeId, expectedRevision, ...fields } = action;
@@ -674,8 +780,17 @@ export const makeInitiatives = (options: {
             const patch = Object.fromEntries(
               Object.entries(fields).filter(([, value]) => value !== undefined),
             ) as InitiativeRecordPatch<"initiative">;
+            const current = yield* requireInitiative(initiativeId);
+            // A draft from a setup chat becomes an active initiative with its first goal.
+            const activates =
+              current.status === "draft" && (patch.goalText ?? current.goalText).trim() !== "";
             const updated = yield* store
-              .update("initiative", initiativeId, patch, { author, expectedRevision })
+              .update(
+                "initiative",
+                initiativeId,
+                activates ? { ...patch, status: "active" } : patch,
+                { author, expectedRevision },
+              )
               .pipe(Effect.mapError(fromStore));
             yield* changed(updated.id);
             return { id: updated.id };
@@ -801,37 +916,18 @@ export const makeInitiatives = (options: {
           }
           case "startCoordinator": {
             const initiative = yield* requireInitiative(action.initiativeId);
-            const projects = yield* store
-              .list("project", { initiativeId: initiative.id })
-              .pipe(Effect.mapError(fromStore));
-            // Work without code gets a folder of the initiative's own as its project.
-            const projectId =
-              action.projectId ??
-              projects.find((project) => project.projectId !== null)?.projectId ??
-              (yield* bridge
-                .ensureProject({
-                  workspaceRoot: options.workspaceRootOf(initiative.id),
-                  title: `Vorhaben: ${initiative.title}`,
-                })
-                .pipe(Effect.mapError(fromBridge))).projectId;
-            const job = yield* launch(
+            const threadId = yield* startCoordinatorFor(
+              initiative,
               {
-                initiativeId: initiative.id,
                 key: action.key,
-                projectId,
-                title: `Koordinator: ${initiative.title}`,
-                prompt:
-                  action.message?.trim() ||
-                  "Continue the initiative from the handoff above: check the state of its threads with session_list, then take the next step. When there is nothing to continue, tell the user briefly where the initiative stands and ask what to do next.",
+                projectId: action.projectId,
                 provider: action.provider,
                 model: action.model,
-                // The coordinator orchestrates; its threads get the worktrees.
-                worktree: false,
-                role: "coordinator",
+                message: action.message,
               },
               author,
             );
-            return { id: job.threadId };
+            return { id: threadId };
           }
           case "brainWrite": {
             const initiative = yield* requireInitiative(action.initiativeId);

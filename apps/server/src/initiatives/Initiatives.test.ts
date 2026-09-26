@@ -297,10 +297,36 @@ describe("Initiatives", () => {
       assert.deepEqual(fake.interrupts, [running.id]);
       assert.notInclude(fake.interrupts, idle.id);
       const detail = yield* initiatives.detailSnapshot(initiativeId);
-      assert.isTrue(detail.initiative.halted);
+      assert.isTrue(detail.initiative?.halted);
       yield* initiatives.act({ type: "stopAll", initiativeId: null }, ROBERT);
       assert.deepEqual(fake.interrupts, [running.id, elsewhere.id]);
       assert.isTrue((yield* initiatives.listSnapshot).halted);
+    }),
+  );
+  it.effect("starts a new initiative as a draft with its setup chat as coordinator", () =>
+    Effect.gen(function* () {
+      const { initiatives, fake } = yield* makeTestInitiatives;
+      const first = yield* initiatives.act({ type: "createWithChat", key: "setup-1" }, ROBERT);
+      const again = yield* initiatives.act({ type: "createWithChat", key: "setup-1" }, ROBERT);
+      assert.equal(first.id, again.id);
+      const list = yield* initiatives.listSnapshot;
+      assert.equal(list.initiatives.length, 1);
+      const draft = list.initiatives[0]!.initiative;
+      assert.equal(draft.status, "draft");
+      assert.equal(draft.coordinatorThreadId, first.id);
+      const started = fake.starts[0]!;
+      assert.equal(started.job.spec.role, "coordinator");
+      assert.equal(started.job.spec.provider, "claudeAgent");
+      assert.equal(started.job.spec.model, "claude-opus-5-5");
+      assert.include(started.prompt, "Du richtest mit mir ein neues Vorhaben ein.");
+      // A title alone keeps the draft; the first goal makes it active.
+      yield* initiatives.act({ type: "update", initiativeId: draft.id, title: "Relaunch" }, ROBERT);
+      assert.equal((yield* initiatives.detailSnapshot(draft.id)).initiative?.status, "draft");
+      yield* initiatives.act(
+        { type: "update", initiativeId: draft.id, goalText: "- Seite ist live" },
+        ROBERT,
+      );
+      assert.equal((yield* initiatives.detailSnapshot(draft.id)).initiative?.status, "active");
     }),
   );
 });

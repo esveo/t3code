@@ -15,6 +15,8 @@ import { resolveChildThreadState } from "@t3tools/shared/threadOrchestration";
 
 // ── Authors ──────────────────────────────────────────────────────────────
 
+export { INITIATIVE_SETUP_PROMPT } from "./setupPrompt.ts";
+
 export type InitiativeRole = "participant" | "coordinator";
 
 export const personAuthor = (subject: string): InitiativeAuthor => `person:${subject}`;
