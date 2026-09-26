@@ -185,4 +185,67 @@ describe("initiatives toolkit", () => {
       assert.include(refused.message, "coordinator");
     }),
   );
+
+  it.effect("records entries by profile and lets only the user make a decision valid", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      const issue = yield* harness.call("member", "entry_create", {
+        type: "issue",
+        title: "Login flackert",
+      });
+      assert.equal(issue.status, "open");
+      const refused = yield* Effect.flip(
+        harness.call("member", "entry_create", { type: "decision", title: "Wir nehmen X" }),
+      );
+      assert.include(refused.message, "coordinator");
+
+      const assumption = yield* harness.call("member", "entry_create", {
+        type: "assumption",
+        title: "Die API bleibt stabil",
+      });
+      const decision = yield* harness.call("coordinator", "decision_record", {
+        title: "REST statt GraphQL",
+        choice: "REST",
+        rationale: "Weniger Aufwand",
+        dependsOn: [assumption.entryId],
+      });
+      assert.equal(decision.status, "proposed");
+      const notValid = yield* Effect.flip(
+        harness.call("coordinator", "entry_status", { entryId: decision.entryId, status: "valid" }),
+      );
+      assert.include(notValid.message, "Only the user");
+      yield* harness.initiatives.act(
+        { type: "entryStatus", entryId: decision.entryId, status: "valid" },
+        ROBERT,
+      );
+
+      yield* harness.call("coordinator", "entry_status", {
+        entryId: assumption.entryId,
+        status: "refuted",
+        note: "API v2 bricht",
+      });
+      const listed = yield* harness.call("member", "entry_list", {
+        type: "decision",
+        includeClosed: true,
+      });
+      assert.equal(listed.entries[0]?.status, "valid");
+      assert.isTrue(listed.entries[0]?.needsReview);
+
+      const next = yield* harness.call("coordinator", "entry_supersede", {
+        entryId: decision.entryId,
+        title: "GraphQL doch",
+      });
+      const all = yield* harness.call("member", "entry_list", {
+        type: "decision",
+        includeClosed: true,
+      });
+      assert.sameDeepMembers(
+        all.entries.map((entry) => [entry.entryId, entry.status, entry.supersedes]),
+        [
+          [next.entryId, "proposed", decision.entryId],
+          [decision.entryId, "superseded", null],
+        ],
+      );
+    }),
+  );
 });

@@ -4,6 +4,7 @@ import {
   type InitiativeRole,
   type InitiativeToolName,
   mayUseTool,
+  PARTICIPANT_ENTRY_TYPES,
   roleOfThread,
   sessionStateOf,
 } from "@t3tools/initiatives/model";
@@ -15,6 +16,8 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import * as McpInvocationContext from "../../mcp/McpInvocationContext.ts";
+import * as ThreadDecisions from "../../threadDecisions/ThreadDecisions.ts";
+import { selectEntries } from "../InitiativeEntries.ts";
 import { Initiatives, type InitiativesShape, type ThreadMembership } from "../Initiatives.ts";
 import { InitiativeToolError, InitiativesToolkit } from "./tools.ts";
 
@@ -32,12 +35,25 @@ interface Caller {
 
 const make = Effect.gen(function* () {
   const found = yield* Effect.serviceOption(Initiatives);
+  const decisions = Option.getOrNull(yield* Effect.serviceOption(ThreadDecisions.ThreadDecisions));
   const crypto = yield* Crypto.Crypto;
   const service: InitiativesShape | null = Option.getOrNull(found);
 
+  // Read when the layer is built, and again at the call when it was not there yet.
   const requireService = service
     ? Effect.succeed(service)
-    : Effect.fail(fail("This server does not keep initiatives."));
+    : Effect.flatMap(Effect.serviceOption(Initiatives), (live) =>
+        Option.isSome(live)
+          ? Effect.succeed(live.value)
+          : Effect.fail(fail("This server does not keep initiatives.")),
+      );
+  const requireDecisions = decisions
+    ? Effect.succeed(decisions)
+    : Effect.flatMap(Effect.serviceOption(ThreadDecisions.ThreadDecisions), (live) =>
+        Option.isSome(live)
+          ? Effect.succeed(live.value)
+          : Effect.fail(fail("This server does not keep an Inbox.")),
+      );
 
   /** The calling thread, its initiative and its role there, checked against the tool's profile. */
   const callerFor = (tool: InitiativeToolName) =>
@@ -72,6 +88,17 @@ const make = Effect.gen(function* () {
   };
 
   const authorOf = (caller: Caller) => agentAuthor(caller.role ?? "agent", caller.threadId);
+
+  /** An entry of the caller's initiative; entries of others stay out of reach. */
+  const requireOwnEntry = (initiatives: InitiativesShape, initiativeId: string, entryId: string) =>
+    initiatives.entries.requireEntry(entryId).pipe(
+      Effect.mapError(fromService),
+      Effect.flatMap((entry) =>
+        entry.initiativeId === initiativeId
+          ? Effect.succeed(entry)
+          : Effect.fail(fail(`No entry ${entryId} in this initiative.`)),
+      ),
+    );
 
   const liveShells = (initiatives: InitiativesShape) =>
     initiatives.threads.listThreads().pipe(
@@ -349,6 +376,172 @@ const make = Effect.gen(function* () {
         return yield* initiatives.brain
           .tidy(caller.membership!.initiative.id)
           .pipe(Effect.mapError(fromService));
+      }),
+
+    question_ask: (input) =>
+      Effect.gen(function* () {
+        const { caller } = yield* callerFor("question_ask");
+        const own = caller.membership!.initiative;
+        const inboxes = yield* requireDecisions;
+        // The coordinator's Inbox; a thread of an initiative without one asks in its own.
+        const inboxThreadId = ThreadId.make(own.coordinatorThreadId ?? caller.threadId);
+        const fromOther = inboxThreadId !== caller.threadId;
+        const id =
+          input.id ??
+          (input.title
+            .toLowerCase()
+            .normalize("NFKD")
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "")
+            .slice(0, 40) ||
+            "frage");
+        const decision = yield* inboxes
+          .upsert(inboxThreadId, {
+            id,
+            title: input.title,
+            question: input.question,
+            ...(input.context !== undefined ? { context: input.context } : {}),
+            ...(input.options ? { options: input.options } : {}),
+            ...(input.urgency ? { urgency: input.urgency } : {}),
+            ...(fromOther
+              ? { sourceThreadId: caller.threadId, routeToThreadId: caller.threadId }
+              : {}),
+          })
+          .pipe(Effect.mapError(fromService));
+        return { questionId: decision.id, inboxThreadId };
+      }),
+
+    entry_create: (input) =>
+      Effect.gen(function* () {
+        const { initiatives, caller } = yield* callerFor("entry_create");
+        if (caller.role !== "coordinator" && !PARTICIPANT_ENTRY_TYPES.has(input.type)) {
+          return yield* fail(
+            `Threads of the initiative record issues and assumptions; a ${input.type} is for the coordinator.`,
+          );
+        }
+        const entry = yield* initiatives.entries
+          .create(
+            {
+              initiativeId: caller.membership!.initiative.id,
+              type: input.type,
+              title: input.title,
+              bodyMd: input.body,
+              details: input.details,
+              originThreadId: ThreadId.make(caller.threadId),
+            },
+            authorOf(caller),
+          )
+          .pipe(Effect.mapError(fromService));
+        return { entryId: entry.id, status: entry.status };
+      }),
+
+    entry_list: (input) =>
+      Effect.gen(function* () {
+        const { initiatives, caller } = yield* callerFor("entry_list");
+        const own = yield* targetOf(caller, undefined);
+        const all = yield* initiatives.store
+          .list("entry", { initiativeId: own.id })
+          .pipe(Effect.mapError(fromService));
+        return {
+          entries: selectEntries(all, input)
+            .slice(0, 100)
+            .map((entry) => ({
+              entryId: entry.id,
+              type: entry.type,
+              title: entry.title,
+              status: entry.status,
+              body: entry.bodyMd.slice(0, 2000),
+              createdBy: entry.createdBy,
+              createdAt: entry.createdAt,
+              supersedes: entry.supersedes,
+              needsReview: entry.details["needsReview"] === true,
+              inbox: entry.inbox !== null,
+            })),
+        };
+      }),
+
+    decision_record: (input) =>
+      Effect.gen(function* () {
+        const { initiatives, caller } = yield* callerFor("decision_record");
+        const own = caller.membership!.initiative;
+        const author = authorOf(caller);
+        const { dependsOn, title, rationale, ...details } = input;
+        const entry = yield* initiatives.entries
+          .create(
+            {
+              initiativeId: own.id,
+              type: "decision",
+              title,
+              bodyMd: rationale ?? "",
+              details: { ...details, decidedBy: author },
+              originThreadId: ThreadId.make(caller.threadId),
+            },
+            author,
+          )
+          .pipe(Effect.mapError(fromService));
+        for (const assumptionId of dependsOn ?? []) {
+          yield* requireOwnEntry(initiatives, own.id, assumptionId);
+          yield* initiatives.entries
+            .link(entry.id, assumptionId, "dependsOn", author)
+            .pipe(Effect.mapError(fromService));
+        }
+        return { entryId: entry.id, status: entry.status };
+      }),
+
+    decision_reopen: (input) =>
+      Effect.gen(function* () {
+        const { initiatives, caller } = yield* callerFor("decision_reopen");
+        const entry = yield* requireOwnEntry(
+          initiatives,
+          caller.membership!.initiative.id,
+          input.entryId,
+        );
+        if (entry.type !== "decision") return yield* fail("Only a decision is reopened.");
+        const updated = yield* initiatives.entries
+          .setStatus(entry.id, "reopened", authorOf(caller), input.reason)
+          .pipe(Effect.mapError(fromService));
+        return { status: updated.status };
+      }),
+
+    entry_supersede: (input) =>
+      Effect.gen(function* () {
+        const { initiatives, caller } = yield* callerFor("entry_supersede");
+        yield* requireOwnEntry(initiatives, caller.membership!.initiative.id, input.entryId);
+        const next = yield* initiatives.entries
+          .supersede(
+            input.entryId,
+            {
+              title: input.title,
+              bodyMd: input.body,
+              details: input.details,
+              originThreadId: ThreadId.make(caller.threadId),
+            },
+            authorOf(caller),
+          )
+          .pipe(Effect.mapError(fromService));
+        return { entryId: next.id };
+      }),
+
+    entry_link: (input) =>
+      Effect.gen(function* () {
+        const { initiatives, caller } = yield* callerFor("entry_link");
+        const own = caller.membership!.initiative.id;
+        yield* requireOwnEntry(initiatives, own, input.fromId);
+        yield* requireOwnEntry(initiatives, own, input.toId);
+        yield* initiatives.entries
+          .link(input.fromId, input.toId, input.kind, authorOf(caller))
+          .pipe(Effect.mapError(fromService));
+        return { linked: true };
+      }),
+
+    entry_status: (input) =>
+      Effect.gen(function* () {
+        const { initiatives, caller } = yield* callerFor("entry_status");
+        yield* requireOwnEntry(initiatives, caller.membership!.initiative.id, input.entryId);
+        const updated = yield* initiatives.entries
+          .setStatus(input.entryId, input.status, authorOf(caller), input.note)
+          .pipe(Effect.mapError(fromService));
+        return { status: updated.status };
       }),
 
     session_assign: (input) =>

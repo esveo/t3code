@@ -369,7 +369,197 @@ const BrainTidyTool = readOnly(
   }).annotate(Tool.Title, "Suggest brain tidying"),
 );
 
+const EntryTypeParameter = Schema.Literals([
+  "decision",
+  "assumption",
+  "issue",
+  "task",
+  "plan",
+  "idea",
+  "insight",
+  "risk",
+]);
+
+export const EntrySummary = Schema.Struct({
+  entryId: Schema.String,
+  type: Schema.String,
+  title: Schema.String,
+  status: Schema.String,
+  body: Schema.String,
+  createdBy: Schema.String,
+  createdAt: Schema.String,
+  supersedes: Schema.NullOr(Schema.String),
+  needsReview: Schema.Boolean.annotate({
+    description: "A decision whose assumption was refuted; check whether it still holds.",
+  }),
+  inbox: Schema.Boolean.annotate({
+    description: "An Inbox item for the user; answer it through the Inbox, not entry_status.",
+  }),
+});
+
+const QuestionAskTool = writing(
+  Tool.make("question_ask", {
+    description:
+      "Ask the user a question of the initiative. It goes to the Inbox of the initiative's coordinator (or yours when there is none) and stays there until answered; the answer reaches the coordinator, which passes it on. Give options when the user picks one.",
+    parameters: Schema.Struct({
+      id: Schema.optional(
+        TrimmedNonEmptyString.annotate({
+          description: "A stable id you choose; asking again with it updates the question.",
+        }),
+      ),
+      title: TrimmedNonEmptyString,
+      question: TrimmedNonEmptyString,
+      context: Schema.optional(Schema.String),
+      options: Schema.optional(
+        Schema.Array(Schema.Struct({ id: TrimmedNonEmptyString, label: TrimmedNonEmptyString })),
+      ),
+      urgency: Schema.optional(Schema.Literals(["now", "today", "later"])),
+    }),
+    success: Schema.Struct({ questionId: Schema.String, inboxThreadId: Schema.String }),
+    failure: InitiativeToolError,
+    dependencies,
+  }).annotate(Tool.Title, "Ask the user"),
+  true,
+);
+
+const EntryCreateTool = writing(
+  Tool.make("entry_create", {
+    description:
+      "Record an entry in the initiative's log: an issue or an assumption (every thread), or as the coordinator also a task, plan, idea, insight, risk or decision (proposed until the user confirms it). For a decision prefer decision_record, for a question to the user question_ask.",
+    parameters: Schema.Struct({
+      type: EntryTypeParameter,
+      title: TrimmedNonEmptyString,
+      body: Schema.optional(Schema.String.annotate({ description: "Markdown." })),
+      details: Schema.optional(
+        Schema.Record(Schema.String, Schema.Unknown).annotate({
+          description:
+            "Type-specific fields, e.g. assumption: confidence, howToVerify; issue: githubUrl; task: acceptance, deadline.",
+        }),
+      ),
+    }),
+    success: Schema.Struct({ entryId: Schema.String, status: Schema.String }),
+    failure: InitiativeToolError,
+    dependencies,
+  }).annotate(Tool.Title, "Record an entry"),
+  false,
+);
+
+const EntryListTool = readOnly(
+  Tool.make("entry_list", {
+    description:
+      "List the initiative's entries, newest first: open ones by default. Read decisions and assumptions before you decide something the initiative may have settled.",
+    parameters: Schema.Struct({
+      type: Schema.optional(Schema.Literals(["question", ...EntryTypeParameter.literals])),
+      status: Schema.optional(TrimmedNonEmptyString),
+      includeClosed: Schema.optional(Schema.Boolean),
+    }),
+    success: Schema.Struct({ entries: Schema.Array(EntrySummary) }),
+    failure: InitiativeToolError,
+    dependencies,
+  }).annotate(Tool.Title, "List entries"),
+);
+
+const DecisionRecordTool = writing(
+  Tool.make("decision_record", {
+    description:
+      "Record a decision of the initiative you coordinate, with its context, the options, the choice and why. It stays proposed until the user makes it valid in the Inbox.",
+    parameters: Schema.Struct({
+      title: TrimmedNonEmptyString,
+      context: Schema.optional(Schema.String),
+      options: Schema.optional(Schema.Array(Schema.String)),
+      choice: TrimmedNonEmptyString,
+      rationale: Schema.optional(Schema.String),
+      reversalCost: Schema.optional(Schema.Literals(["low", "medium", "high"])),
+      technical: Schema.optional(
+        Schema.Boolean.annotate({ description: "True for an architecture decision (ADR)." }),
+      ),
+      adrRef: Schema.optional(
+        Schema.String.annotate({ description: "Path of its ADR in the repository." }),
+      ),
+      dependsOn: Schema.optional(
+        Schema.Array(TrimmedNonEmptyString).annotate({
+          description:
+            "Entry ids of the assumptions it rests on; refuting one marks it for review.",
+        }),
+      ),
+    }),
+    success: Schema.Struct({ entryId: Schema.String, status: Schema.String }),
+    failure: InitiativeToolError,
+    dependencies,
+  }).annotate(Tool.Title, "Record a decision"),
+  false,
+);
+
+const DecisionReopenTool = writing(
+  Tool.make("decision_reopen", {
+    description:
+      "Reopen a decision of your initiative that no longer holds, with the reason; then record the new one or ask the user.",
+    parameters: Schema.Struct({ entryId: TrimmedNonEmptyString, reason: TrimmedNonEmptyString }),
+    success: Schema.Struct({ status: Schema.String }),
+    failure: InitiativeToolError,
+    dependencies,
+  }).annotate(Tool.Title, "Reopen a decision"),
+  true,
+);
+
+const EntrySupersedeTool = writing(
+  Tool.make("entry_supersede", {
+    description:
+      "Replace an entry of your initiative with a new version instead of changing it: the old one stays in the history as superseded.",
+    parameters: Schema.Struct({
+      entryId: TrimmedNonEmptyString,
+      title: TrimmedNonEmptyString,
+      body: Schema.optional(Schema.String),
+      details: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+    }),
+    success: Schema.Struct({ entryId: Schema.String }),
+    failure: InitiativeToolError,
+    dependencies,
+  }).annotate(Tool.Title, "Supersede an entry"),
+  false,
+);
+
+const EntryLinkTool = writing(
+  Tool.make("entry_link", {
+    description:
+      "Link two entries of your initiative: dependsOn (a decision on an assumption), implements (a task for a decision), answers, blocks or relatesTo.",
+    parameters: Schema.Struct({
+      fromId: TrimmedNonEmptyString,
+      toId: TrimmedNonEmptyString,
+      kind: Schema.Literals(["dependsOn", "relatesTo", "implements", "answers", "blocks"]),
+    }),
+    success: Schema.Struct({ linked: Schema.Boolean }),
+    failure: InitiativeToolError,
+    dependencies,
+  }).annotate(Tool.Title, "Link entries"),
+  true,
+);
+
+const EntryStatusTool = writing(
+  Tool.make("entry_status", {
+    description:
+      "Move an entry of your initiative on: an assumption to confirmed or refuted, an issue or task to done, a risk to mitigated. Only the user makes a decision valid.",
+    parameters: Schema.Struct({
+      entryId: TrimmedNonEmptyString,
+      status: TrimmedNonEmptyString,
+      note: Schema.optional(Schema.String),
+    }),
+    success: Schema.Struct({ status: Schema.String }),
+    failure: InitiativeToolError,
+    dependencies,
+  }).annotate(Tool.Title, "Change an entry's status"),
+  true,
+);
+
 export const InitiativesToolkit = Toolkit.make(
+  QuestionAskTool,
+  EntryCreateTool,
+  EntryListTool,
+  DecisionRecordTool,
+  DecisionReopenTool,
+  EntrySupersedeTool,
+  EntryLinkTool,
+  EntryStatusTool,
   BrainReadTool,
   BrainSearchTool,
   BrainWriteTool,
