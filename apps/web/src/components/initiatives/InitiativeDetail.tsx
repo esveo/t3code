@@ -36,6 +36,7 @@ import {
 } from "./initiatives.logic";
 import { InitiativeBrainSection } from "./InitiativeBrainSection";
 import { InitiativeCoordinatorSection } from "./InitiativeCoordinatorSection";
+import { InitiativeEntriesSection } from "./InitiativeEntriesSection";
 import { initiativesEnvironment } from "./initiativesState";
 import { INITIATIVE_STATUS_LABELS } from "./InitiativesPage";
 
@@ -240,6 +241,13 @@ function LoadedInitiative({
           </ul>
         </section>
       ) : null}
+
+      <InitiativeEntriesSection
+        environmentId={environmentId}
+        initiative={initiative}
+        entries={detail.entries}
+        links={detail.links}
+      />
 
       <InitiativeBrainSection
         environmentId={environmentId}

@@ -3,10 +3,11 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { InitiativesPage } from "../components/initiatives/InitiativesPage";
 
-/** Fork: the Initiatives page; `id` opens one initiative. */
+/** Fork: the Initiatives page; `id` opens one initiative, `view=inbox` the Inbox over all. */
 export interface InitiativesSearch {
   readonly id?: string;
   readonly environmentId?: EnvironmentId;
+  readonly view?: "inbox";
 }
 
 export const Route = createFileRoute("/_chat/initiatives")({
@@ -15,11 +16,18 @@ export const Route = createFileRoute("/_chat/initiatives")({
     ...(typeof raw.environmentId === "string" && raw.environmentId
       ? { environmentId: raw.environmentId as EnvironmentId }
       : {}),
+    ...(raw.view === "inbox" ? { view: "inbox" as const } : {}),
   }),
   component: InitiativesRouteView,
 });
 
 function InitiativesRouteView() {
-  const { id, environmentId } = Route.useSearch();
-  return <InitiativesPage initiativeId={id} environmentId={environmentId} />;
+  const { id, environmentId, view } = Route.useSearch();
+  return (
+    <InitiativesPage
+      initiativeId={id}
+      environmentId={environmentId}
+      view={view === "inbox" ? "inbox" : "list"}
+    />
+  );
 }

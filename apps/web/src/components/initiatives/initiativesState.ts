@@ -19,6 +19,12 @@ export const initiativesEnvironment = {
     tag: INITIATIVES_WS_METHODS.subscribeDetail,
     idleTtlMs: 30_000,
   }),
+  /** What waits on the user across every initiative. */
+  inbox: createEnvironmentRpcSubscriptionAtomFamily(connectionAtomRuntime, {
+    label: "environment-data:initiatives:inbox",
+    tag: INITIATIVES_WS_METHODS.subscribeInbox,
+    idleTtlMs: 30_000,
+  }),
   /** Reading usage scans transcripts on the server, so it is cached for minutes. */
   usage: createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
     label: "environment-data:initiatives:usage",

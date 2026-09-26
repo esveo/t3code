@@ -7,7 +7,7 @@
 import type { EnvironmentId, InitiativeSummary } from "@t3tools/contracts";
 import { SESSION_STATE_LABELS, sessionStateOf } from "@t3tools/initiatives/model";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowLeftIcon, FlagIcon, PlusIcon } from "lucide-react";
+import { ArrowLeftIcon, FlagIcon, InboxIcon, PlusIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { isElectron } from "~/env";
@@ -22,9 +22,11 @@ import { Input } from "../ui/input";
 import { ScrollArea } from "../ui/scroll-area";
 import { SidebarInset } from "../ui/sidebar";
 import { Textarea } from "../ui/textarea";
+import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { WorkspacePageContainer } from "../WorkspacePageContainer";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { InitiativeDetail } from "./InitiativeDetail";
+import { InitiativesInbox } from "./InitiativesInbox";
 import { countStates } from "./initiatives.logic";
 import { initiativesEnvironment } from "./initiativesState";
 
@@ -53,6 +55,7 @@ export function useInitiativeEnvironments(): ReadonlyArray<EnvironmentId> {
 export function InitiativesPage(props: {
   readonly initiativeId: string | undefined;
   readonly environmentId: EnvironmentId | undefined;
+  readonly view: "list" | "inbox";
 }) {
   const navigate = useNavigate();
   const supported = useInitiativeEnvironments();
@@ -76,10 +79,27 @@ export function InitiativesPage(props: {
               Alle Vorhaben
             </Button>
           ) : (
-            <span className="flex items-center gap-2 text-sm font-medium">
-              <FlagIcon className="size-4" />
-              Vorhaben
-            </span>
+            <ToggleGroup
+              value={[props.view]}
+              onValueChange={(value) => {
+                const next = value[0];
+                if (next === "list" || next === "inbox") {
+                  void navigate({
+                    to: "/initiatives",
+                    search: next === "inbox" ? { view: "inbox" } : {},
+                  });
+                }
+              }}
+            >
+              <Toggle value="list" size="sm">
+                <FlagIcon />
+                Vorhaben
+              </Toggle>
+              <Toggle value="inbox" size="sm">
+                <InboxIcon />
+                Inbox
+              </Toggle>
+            </ToggleGroup>
           )}
         </WorkspacePageHeader>
         <ScrollArea className="min-h-0 flex-1">
@@ -91,6 +111,8 @@ export function InitiativesPage(props: {
               </p>
             ) : props.initiativeId ? (
               <InitiativeDetail environmentId={environmentId} initiativeId={props.initiativeId} />
+            ) : props.view === "inbox" ? (
+              <InitiativesInbox environmentId={environmentId} />
             ) : (
               <InitiativeList environmentId={environmentId} />
             )}
