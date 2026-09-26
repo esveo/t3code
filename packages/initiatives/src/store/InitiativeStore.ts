@@ -407,6 +407,22 @@ export const makeInitiativeStore = (options: {
   const decodeRows = <K extends InitiativeKind>(kind: K, rows: ReadonlyArray<RecordRow>) =>
     Effect.forEach(rows, (row) => decode(kind, row.data_json));
 
+  /** A list skips a record it cannot read (another build's shape) and logs it, instead of failing. */
+  const decodeListRows = <K extends InitiativeKind>(kind: K, rows: ReadonlyArray<RecordRow>) =>
+    Effect.map(
+      Effect.forEach(rows, (row) =>
+        decode(kind, row.data_json).pipe(
+          Effect.map(Option.some),
+          Effect.catch((error) =>
+            Effect.logWarning(`Skipped an unreadable ${kind} record`, error.message).pipe(
+              Effect.as(Option.none<InitiativeRecord<K>>()),
+            ),
+          ),
+        ),
+      ),
+      (records) => records.flatMap(Option.toArray),
+    );
+
   const keysOf = <K extends InitiativeKind>(kind: K, record: InitiativeRecord<K>) => {
     const spec = INITIATIVE_KINDS[kind] as unknown as {
       readonly initiativeId: (record: InitiativeRecord<K>) => string | null;
@@ -471,7 +487,7 @@ export const makeInitiativeStore = (options: {
             `
     ).pipe(
       Effect.mapError(failed(`list the ${kind} records`)),
-      Effect.flatMap((rows) => decodeRows(kind, rows)),
+      Effect.flatMap((rows) => decodeListRows(kind, rows)),
     );
 
   const save = <K extends InitiativeKind>(kind: K, record: InitiativeRecord<K>, isNew: boolean) => {

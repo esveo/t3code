@@ -52,6 +52,26 @@ const sessionInput = (initiativeId: string, threadId: string) => ({
 });
 
 describe("InitiativeStore", () => {
+  it.effect("lists around a record it cannot read instead of failing", () =>
+    Effect.gen(function* () {
+      const context = yield* Layer.build(NodeSqliteClient.layer({ filename: ":memory:" }));
+      const sql = Context.get(context, SqlClient.SqlClient);
+      yield* ensureInitiativeSchema(sql);
+      const store = makeInitiativeStore({ sql, newId: Effect.succeed("good") });
+      yield* store.insert("initiative", initiativeInput, ROBERT);
+      // A row another build wrote, in a shape this one does not know.
+      yield* sql`
+        INSERT INTO initiative_records (kind, id, initiative_id, unique_key, revision, updated_at, data_json)
+        VALUES ('initiative', 'broken', 'broken', NULL, 1, '2026-09-26T10:00:00.000Z', '{"id":"broken","title":7}')
+      `;
+      const listed = yield* store.list("initiative");
+      assert.deepEqual(
+        listed.map((initiative) => initiative.id),
+        ["good"],
+      );
+    }),
+  );
+
   it.effect("writes an audit row with every insert and update", () =>
     Effect.gen(function* () {
       const store = yield* makeStore;

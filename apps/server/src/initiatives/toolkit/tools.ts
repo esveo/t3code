@@ -194,7 +194,6 @@ const InitiativeArchiveTool = writing(
   Tool.make("initiative_archive", {
     description:
       "Archive the initiative you coordinate once its goal is reached or dropped, when the user agreed. initiative_reopen brings it back.",
-    parameters: Schema.Struct({}),
     success: Schema.Struct({ status: Schema.String }),
     failure: InitiativeToolError,
     dependencies,
@@ -205,7 +204,6 @@ const InitiativeArchiveTool = writing(
 const InitiativeReopenTool = writing(
   Tool.make("initiative_reopen", {
     description: "Reopen the archived initiative you coordinate.",
-    parameters: Schema.Struct({}),
     success: Schema.Struct({ status: Schema.String }),
     failure: InitiativeToolError,
     dependencies,
@@ -357,7 +355,6 @@ const BrainTidyTool = readOnly(
   Tool.make("brain_tidy", {
     description:
       "What to tidy in the brain: detail pages index.md does not list, index entries without a page, outdated pages and pages a person locked. It changes nothing.",
-    parameters: Schema.Struct({}),
     success: Schema.Struct({
       notInIndex: Schema.Array(Schema.String),
       missingFromBrain: Schema.Array(Schema.String),

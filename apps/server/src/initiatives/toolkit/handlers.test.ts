@@ -5,6 +5,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
 import type { Tool } from "effect/unstable/ai";
+import * as ToolModule from "effect/unstable/ai/Tool";
 
 import * as McpInvocationContext from "../../mcp/McpInvocationContext.ts";
 import { Initiatives } from "../Initiatives.ts";
@@ -75,6 +76,16 @@ const makeHarness = Effect.gen(function* () {
       }),
     );
   return { ...harness, initiativeId, call };
+});
+
+describe("initiative tools", () => {
+  // MCP requires an object input schema; `Schema.Struct({})` yields none and
+  // stops the server at start.
+  it("declare an object input schema each", () => {
+    for (const [name, tool] of Object.entries(InitiativesToolkit.tools)) {
+      assert.equal(ToolModule.getJsonSchema(tool as Tool.Any)["type"], "object", name);
+    }
+  });
 });
 
 describe("initiatives toolkit", () => {
