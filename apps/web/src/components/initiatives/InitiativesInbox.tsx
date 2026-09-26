@@ -62,12 +62,13 @@ export function InitiativesInbox({ environmentId }: { readonly environmentId: En
 
   if (inbox.error) return <p className="text-sm text-destructive">{inbox.error}</p>;
   if (!inbox.data) return <p className="text-sm text-muted-foreground">Lade Inbox …</p>;
-  if (groups.length === 0) {
-    return <p className="text-sm text-muted-foreground">Nichts wartet auf dich.</p>;
-  }
 
   return (
     <div className="flex flex-col gap-5">
+      <GlobalStop environmentId={environmentId} />
+      {groups.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Nichts wartet auf dich.</p>
+      ) : null}
       {groups.map(([key, group]) => (
         <section key={key || "none"} className="flex flex-col gap-2">
           <h2 className="text-sm font-medium">
@@ -125,6 +126,37 @@ export function InitiativesInbox({ environmentId }: { readonly environmentId: En
           </ul>
         </section>
       ))}
+    </div>
+  );
+}
+
+/**
+ * The stop of every initiative at once: no initiative starts a thread while
+ * it is on. Running threads go on; stop those in their chats.
+ */
+function GlobalStop({ environmentId }: { readonly environmentId: EnvironmentId }) {
+  const list = useEnvironmentQuery(initiativesEnvironment.list({ environmentId, input: {} }));
+  const act = useAtomCommand(initiativesEnvironment.act);
+  const halted = list.data?.halted === true;
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-border p-2 text-sm">
+      <span className="min-w-0 flex-1 text-muted-foreground">
+        {halted
+          ? "Not-Aus ist an: kein Vorhaben startet Threads. Laufende Threads laufen weiter."
+          : "Not-Aus: hält alle Vorhaben an, keines startet dann Threads."}
+      </span>
+      <Button
+        size="sm"
+        variant={halted ? "outline" : "destructive-outline"}
+        onClick={() =>
+          void act({
+            environmentId,
+            input: { type: "setHalt", initiativeId: null, halted: !halted },
+          })
+        }
+      >
+        {halted ? "Not-Aus lösen" : "Not-Aus"}
+      </Button>
     </div>
   );
 }

@@ -25,6 +25,18 @@ export const initiativesEnvironment = {
     tag: INITIATIVES_WS_METHODS.subscribeInbox,
     idleTtlMs: 30_000,
   }),
+  /** A thread's approval requests with the preflight's verdicts, while one waits. */
+  threadPreflight: createEnvironmentRpcSubscriptionAtomFamily(connectionAtomRuntime, {
+    label: "environment-data:initiatives:thread-preflight",
+    tag: INITIATIVES_WS_METHODS.subscribeThreadPreflight,
+    idleTtlMs: 10_000,
+  }),
+  preflightReport: createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
+    label: "environment-data:initiatives:preflight-report",
+    tag: INITIATIVES_WS_METHODS.preflightReport,
+    staleTimeMs: 30_000,
+    idleTtlMs: 60_000,
+  }),
   /** Reading usage scans transcripts on the server, so it is cached for minutes. */
   usage: createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
     label: "environment-data:initiatives:usage",

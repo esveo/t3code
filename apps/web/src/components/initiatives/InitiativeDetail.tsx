@@ -13,7 +13,7 @@ import {
 } from "@t3tools/contracts";
 import { SESSION_STATE_LABELS, type InitiativeSessionState } from "@t3tools/initiatives/model";
 import { Link } from "@tanstack/react-router";
-import { ArchiveIcon, ArchiveRestoreIcon, PlayIcon, XIcon } from "lucide-react";
+import { ArchiveIcon, ArchiveRestoreIcon, OctagonPauseIcon, PlayIcon, XIcon } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { useProjects, useServerConfigs, useThreadShells } from "~/state/entities";
@@ -37,6 +37,7 @@ import {
 import { InitiativeBrainSection } from "./InitiativeBrainSection";
 import { InitiativeCoordinatorSection } from "./InitiativeCoordinatorSection";
 import { InitiativeEntriesSection } from "./InitiativeEntriesSection";
+import { InitiativePreflightSection } from "./InitiativePreflightSection";
 import { initiativesEnvironment } from "./initiativesState";
 import { INITIATIVE_STATUS_LABELS } from "./InitiativesPage";
 
@@ -133,6 +134,21 @@ function LoadedInitiative({
           </Badge>
         ))}
         <UsageBadge environmentId={environmentId} initiativeId={initiative.id} />
+        {initiative.halted ? <Badge variant="error">angehalten</Badge> : null}
+        <Button
+          size="sm"
+          variant={initiative.halted ? "outline" : "destructive-outline"}
+          onClick={() =>
+            void act({
+              type: "setHalt",
+              initiativeId: initiative.id,
+              halted: !initiative.halted,
+            })
+          }
+        >
+          {initiative.halted ? <PlayIcon /> : <OctagonPauseIcon />}
+          {initiative.halted ? "Fortsetzen" : "Anhalten"}
+        </Button>
         <Button
           size="sm"
           variant="outline"
@@ -248,6 +264,8 @@ function LoadedInitiative({
         entries={detail.entries}
         links={detail.links}
       />
+
+      <InitiativePreflightSection environmentId={environmentId} initiative={initiative} />
 
       <InitiativeBrainSection
         environmentId={environmentId}

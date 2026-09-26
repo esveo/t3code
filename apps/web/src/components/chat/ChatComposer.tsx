@@ -251,6 +251,7 @@ import { CompactComposerControlsMenu } from "./CompactComposerControlsMenu";
 import { ComposerImageThumbnail } from "./ComposerImageThumbnail";
 import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
+import { PreflightHint } from "../initiatives/PreflightHint";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
 import {
@@ -6291,6 +6292,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       <ComposerPendingApprovalPanel
                         approval={activePendingApproval}
                         pendingCount={pendingApprovals.length}
+                      />
+                      {/* Fork: initiatives' preflight verdict. */}
+                      <PreflightHint
+                        environmentId={environmentId}
+                        threadId={routeThreadRef.threadId}
+                        requestId={activePendingApproval.requestId}
                       />
                     </ComposerBanner.Content>
                     <ComposerBanner.Actions>
