@@ -7,6 +7,7 @@ import {
   roleOfThread,
   sessionStateOf,
 } from "@t3tools/initiatives/model";
+import { BRAIN_FILES } from "@t3tools/initiatives/brain";
 import { threadLinkHref } from "@t3tools/shared/threadOrchestration";
 import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
@@ -285,6 +286,69 @@ const make = Effect.gen(function* () {
           link: link(job.threadId, job.spec.title),
           status: job.status,
         };
+      }),
+
+    brain_read: (input) =>
+      Effect.gen(function* () {
+        const { initiatives, caller } = yield* callerFor("brain_read");
+        const own = yield* targetOf(caller, undefined);
+        const page = yield* initiatives.brain
+          .read(own.id, input.path ?? BRAIN_FILES.index, 10)
+          .pipe(Effect.mapError(fromService));
+        const record = yield* initiatives.store
+          .findByKey("brainPage", `${own.id}|${page.path}`)
+          .pipe(Effect.mapError(fromService));
+        return {
+          path: page.path,
+          markdown: page.markdown,
+          lockedBy: Option.isSome(record) ? record.value.lockedBy : null,
+          history: page.history.map(({ author, at, message }) => ({ author, at, message })),
+        };
+      }),
+
+    brain_search: (input) =>
+      Effect.gen(function* () {
+        const { initiatives, caller } = yield* callerFor("brain_search");
+        const own = yield* targetOf(caller, undefined);
+        const hits = yield* initiatives.brain
+          .search(own.id, input.query, Math.min(Math.max(input.limit ?? 30, 1), 100))
+          .pipe(Effect.mapError(fromService));
+        return { hits };
+      }),
+
+    brain_write: (input) =>
+      Effect.gen(function* () {
+        const { initiatives, caller } = yield* callerFor("brain_write");
+        const own = caller.membership!.initiative;
+        if (input.path.trim() === BRAIN_FILES.handoff) {
+          return yield* fail("Write the handoff with handoff_update.");
+        }
+        const written = yield* initiatives.brain
+          .write(own, {
+            path: input.path,
+            markdown: input.markdown,
+            author: authorOf(caller),
+            sources: input.sources,
+          })
+          .pipe(Effect.mapError(fromService));
+        return { path: written.path, changed: written.changed };
+      }),
+
+    handoff_update: (input) =>
+      Effect.gen(function* () {
+        const { initiatives, caller } = yield* callerFor("handoff_update");
+        const written = yield* initiatives.brain
+          .writeHandoff(caller.membership!.initiative, input, authorOf(caller))
+          .pipe(Effect.mapError(fromService));
+        return { changed: written.changed };
+      }),
+
+    brain_tidy: () =>
+      Effect.gen(function* () {
+        const { initiatives, caller } = yield* callerFor("brain_tidy");
+        return yield* initiatives.brain
+          .tidy(caller.membership!.initiative.id)
+          .pipe(Effect.mapError(fromService));
       }),
 
     session_assign: (input) =>

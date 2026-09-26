@@ -26,6 +26,12 @@ export const initiativesEnvironment = {
     staleTimeMs: 5 * 60_000,
     idleTtlMs: 5 * 60_000,
   }),
+  /** One brain page with its history; refreshed when the page's last commit moves. */
+  brainPage: createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
+    label: "environment-data:initiatives:brain-page",
+    tag: INITIATIVES_WS_METHODS.brainRead,
+    idleTtlMs: 60_000,
+  }),
   act: createEnvironmentRpcCommand(connectionAtomRuntime, {
     label: "environment-data:initiatives:act",
     tag: INITIATIVES_WS_METHODS.act,

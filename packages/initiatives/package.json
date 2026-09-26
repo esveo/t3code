@@ -11,6 +11,10 @@
       "types": "./src/store/InitiativeStore.ts",
       "import": "./src/store/InitiativeStore.ts"
     },
+    "./brain": {
+      "types": "./src/brain/index.ts",
+      "import": "./src/brain/index.ts"
+    },
     "./bridge": {
       "types": "./src/bridge/ThreadBridge.ts",
       "import": "./src/bridge/ThreadBridge.ts"

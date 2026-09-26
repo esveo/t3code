@@ -1,97 +1,21 @@
 import { assert, describe, it } from "@effect/vitest";
-import {
-  type InitiativeLaunchJob,
-  type OrchestrationThreadShell,
-  ProjectId,
-  ProviderInstanceId,
-  ThreadId,
-} from "@t3tools/contracts";
-import { type ThreadBridge, ThreadBridgeError } from "@t3tools/initiatives/bridge";
-import { ensureInitiativeSchema, makeInitiativeStore } from "@t3tools/initiatives/store";
-import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
-import * as Context from "effect/Context";
+import { ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
 
-import { makeInitiatives } from "./Initiatives.ts";
+import { makeTestInitiatives, TEST_PROJECT, testShell } from "./testFakes.ts";
 
 const ROBERT = "person:robert";
-const PROJECT = ProjectId.make("project-1");
-
-const shellOf = (threadId: string, title: string) =>
-  ({
-    id: ThreadId.make(threadId),
-    projectId: PROJECT,
-    title,
-    branch: "feature",
-    worktreePath: "/worktrees/feature",
-  }) as OrchestrationThreadShell;
-
-/**
- * A bridge over an in-memory thread list. `failNextStart` makes the next
- * start fail; `crashAfterCreate` creates the thread and then fails, as a
- * server dying between creating the thread and recording it would.
- */
-const makeBridge = () => {
-  const threads = new Map<string, OrchestrationThreadShell>();
-  const starts: Array<{ job: InitiativeLaunchJob; prompt: string }> = [];
-  const state = { failNextStart: false, crashAfterCreate: false };
-  const bridge: ThreadBridge = {
-    capabilities: { runtimeModes: ["auto"], lineage: "one-level" },
-    resolveModel: (input) =>
-      Effect.succeed({
-        modelSelection: {
-          instanceId: ProviderInstanceId.make(input.provider ?? "codex"),
-          model: input.model ?? "gpt-6",
-        },
-        driver: input.provider === "opencode" ? "opencode" : (input.provider ?? "codex"),
-      }),
-    startThread: (job, prompt) =>
-      Effect.suspend(() => {
-        if (state.failNextStart) {
-          state.failNextStart = false;
-          return Effect.fail(new ThreadBridgeError({ message: "Could not create the worktree" }));
-        }
-        if (threads.has(job.threadId)) {
-          return Effect.fail(new ThreadBridgeError({ message: "Thread exists" }));
-        }
-        starts.push({ job, prompt });
-        threads.set(job.threadId, shellOf(job.threadId, job.spec.title));
-        if (state.crashAfterCreate) return Effect.die("server stopped");
-        return Effect.succeed({ threadId: job.threadId, branch: "feature", worktree: true });
-      }),
-    findThread: (threadId) => Effect.succeed(Option.fromNullishOr(threads.get(threadId))),
-    listThreads: () => Effect.succeed([...threads.values()]),
-    listProjects: () =>
-      Effect.succeed([{ projectId: PROJECT, title: "Web", workspaceRoot: "/repo/web" }]),
-  };
-  return { bridge, threads, starts, state };
-};
+const PROJECT = TEST_PROJECT;
+const shellOf = (threadId: string, title: string) => testShell(threadId, { title });
 
 const makeHarness = Effect.gen(function* () {
-  const context = yield* Layer.build(NodeSqliteClient.layer({ filename: ":memory:" }));
-  const sql = Context.get(context, SqlClient.SqlClient);
-  yield* ensureInitiativeSchema(sql);
-  let counter = 0;
-  const newId = Effect.sync(() => `id-${++counter}`);
-  const store = makeInitiativeStore({ sql, newId });
-  const fake = makeBridge();
-  /** A server process on the same database; call it again for a restart. */
-  const boot = makeInitiatives({
-    store,
-    bridge: fake.bridge,
-    newId,
-    environmentId: null,
-    readUsage: () => Effect.succeed({ costUsd: 1.5, totalTokens: 1000 }),
-  });
-  const initiatives = yield* boot;
-  const created = yield* initiatives.act(
+  const harness = yield* makeTestInitiatives;
+  const created = yield* harness.initiatives.act(
     { type: "create", title: "Relaunch", goalText: "Ship it" },
     ROBERT,
   );
-  return { initiatives, boot, store, fake, initiativeId: created.id! };
+  return { ...harness, initiativeId: created.id! };
 });
 
 const startAction = (initiativeId: string, key: string, provider?: string) => ({
@@ -167,6 +91,7 @@ describe("Initiatives", () => {
           key: "lost",
           threadId: ThreadId.make("never-created"),
           spec: {
+            role: "participant",
             projectId: PROJECT,
             title: "Lost",
             prompt: "Lost",
@@ -271,6 +196,86 @@ describe("Initiatives", () => {
       assert.deepEqual(usage.threads, [
         { threadId: ThreadId.make(started.id!), costUsd: 1.5, totalTokens: 1000 },
       ]);
+    }),
+  );
+
+  it.effect("restarts the coordinator from the handoff, without its old chat", () =>
+    Effect.gen(function* () {
+      const { initiatives, fake, initiativeId } = yield* makeHarness;
+      // No code project yet: the coordinator gets a folder of the initiative's own.
+      const first = (yield* initiatives.act(
+        { type: "startCoordinator", initiativeId, key: "coordinator-1" },
+        ROBERT,
+      )).id!;
+      const firstStart = fake.starts[0]!;
+      assert.equal(firstStart.job.spec.role, "coordinator");
+      assert.equal(firstStart.job.spec.parentThreadId, null);
+      assert.equal(firstStart.job.spec.worktree, false);
+      assert.include(firstStart.prompt, 'role="coordinator"');
+      assert.include(firstStart.prompt, "no handoff yet");
+      assert.equal(
+        fake.projects.find((project) => project.projectId === firstStart.job.spec.projectId)
+          ?.workspaceRoot,
+        `/state/initiatives/${initiativeId}/workspace`,
+      );
+      assert.isNotNull(fake.threads.get(first)?.pinnedAt);
+
+      // The coordinator starts a thread and records where it stands.
+      const child = (yield* initiatives.act(startAction(initiativeId, "task-1"), ROBERT)).id!;
+      assert.equal(fake.threads.get(child)?.parentThreadId, first);
+      const initiative = (yield* initiatives.detailSnapshot(initiativeId)).initiative!;
+      yield* initiatives.brain.writeHandoff(
+        initiative,
+        {
+          openTasks: ["Review the landing page"],
+          lastResults: ["Landing page: PR #12 open"],
+          nextStep: "Merge PR #12 after the review",
+        },
+        `role:coordinator:${first}`,
+      );
+
+      // A fresh coordinator starts from the handoff and takes the threads over.
+      const second = (yield* initiatives.act(
+        { type: "startCoordinator", initiativeId, key: "coordinator-2" },
+        ROBERT,
+      )).id!;
+      const secondStart = fake.starts.find((start) => start.job.threadId === second)!;
+      assert.include(secondStart.prompt, "Merge PR #12 after the review");
+      assert.include(secondStart.prompt, "> Landing page: PR #12 open");
+      assert.notInclude(secondStart.prompt, "no handoff yet");
+      const after = yield* initiatives.detailSnapshot(initiativeId);
+      assert.equal(after.initiative?.coordinatorThreadId, second);
+      assert.isNotNull(fake.threads.get(second)?.pinnedAt);
+      assert.isNull(fake.threads.get(first)?.pinnedAt);
+      assert.equal(fake.threads.get(child)?.parentThreadId, second);
+    }),
+  );
+
+  it.effect("shows a failed brain write until the next write succeeds", () =>
+    Effect.gen(function* () {
+      const { initiatives, memory, initiativeId } = yield* makeHarness;
+      memory.state.failWrites = true;
+      const error = yield* Effect.flip(
+        initiatives.act(
+          { type: "brainWrite", initiativeId, path: "details/a.md", markdown: "# A" },
+          ROBERT,
+        ),
+      );
+      assert.include(error.message, "disk full");
+      assert.include(
+        (yield* initiatives.detailSnapshot(initiativeId)).brainError ?? "",
+        "disk full",
+      );
+      memory.state.failWrites = false;
+      yield* initiatives.act(
+        { type: "brainWrite", initiativeId, path: "details/a.md", markdown: "# A" },
+        ROBERT,
+      );
+      const detail = yield* initiatives.detailSnapshot(initiativeId);
+      assert.equal(detail.brainError, null);
+      const page = detail.brainPages.find((candidate) => candidate.path === "details/a.md");
+      assert.equal(page?.lockedBy, ROBERT);
+      assert.equal(page?.title, "A");
     }),
   );
 });

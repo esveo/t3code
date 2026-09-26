@@ -26,6 +26,7 @@ import {
   type ProjectId,
   ThreadId,
 } from "@t3tools/contracts";
+import { clampForPrompt } from "@t3tools/initiatives/brain";
 import type { ThreadBridge } from "@t3tools/initiatives/bridge";
 import {
   initiativeRuntimeMode,
@@ -47,14 +48,19 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
+import { ServerConfig } from "../config.ts";
 import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
+import * as ProcessRunner from "../processRunner.ts";
 import { forkParked } from "../serverActivation.ts";
 import * as UsageService from "../usage/UsageService.ts";
 import { readThreadUsage } from "../usage/ThreadUsageQuery.ts";
+import { type BrainArchiveShape, makeBrainArchive } from "./BrainArchive.ts";
+import { type InitiativeBrain, makeInitiativeBrain } from "./InitiativeBrain.ts";
 import { InitiativesSql } from "./InitiativesSql.ts";
 import { makeThreadBridgeV1 } from "./ThreadBridgeV1.ts";
 
@@ -68,7 +74,9 @@ export interface LaunchInput {
   readonly model?: string | undefined;
   readonly worktree?: boolean | undefined;
   readonly baseBranch?: string | undefined;
+  /** Defaults to the initiative's coordinator; a coordinator itself has none. */
   readonly parentThreadId?: ThreadId | null | undefined;
+  readonly role?: InitiativeRole | undefined;
 }
 
 /** A thread's place in an initiative, as its MCP tools see it. */
@@ -102,6 +110,9 @@ export interface InitiativesShape {
   ) => Stream.Stream<InitiativeDetailSnapshot, InitiativesError>;
   readonly usage: (initiativeId: string) => Effect.Effect<InitiativeUsageResult, InitiativesError>;
   readonly threads: ThreadBridge;
+  readonly brain: InitiativeBrain;
+  /** After a restart: commits what a crash left in the brains and syncs their records. */
+  readonly recoverBrains: Effect.Effect<void>;
 }
 
 export class Initiatives extends Context.Service<Initiatives, InitiativesShape>()(
@@ -115,11 +126,17 @@ const fromBridge = (error: { readonly message: string }) => failure(error.messag
 /** How long a thread's usage stays cached; reading it scans the provider's transcripts. */
 const USAGE_TTL_MS = 5 * 60 * 1000;
 
+/** The steckbrief rides in every start prompt, so it stays short there. */
+const STECKBRIEF_PROMPT_LIMIT = 4000;
+
 export const makeInitiatives = (options: {
   readonly store: InitiativeStore;
   readonly bridge: ThreadBridge;
   readonly newId: Effect.Effect<string>;
   readonly environmentId: EnvironmentId | null;
+  readonly archive: BrainArchiveShape;
+  /** Where initiatives without a code project work: `<root>/<initiative id>/workspace`. */
+  readonly workspaceRootOf: (initiativeId: string) => string;
   /** API-equivalent cost and tokens of one thread, or null when unknown. */
   readonly readUsage: (
     threadId: ThreadId,
@@ -131,6 +148,7 @@ export const makeInitiatives = (options: {
       PubSub.shutdown(pubsub),
     );
     const changed = (initiativeId: string | null) => PubSub.publish(changes, initiativeId);
+    const brain = makeInitiativeBrain({ store, archive: options.archive, changed });
     const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
     const usageCache = new Map<
       string,
@@ -225,7 +243,39 @@ export const makeInitiatives = (options: {
             });
           }),
         )
-        .pipe(Effect.mapError(fromStore));
+        .pipe(
+          Effect.mapError(fromStore),
+          Effect.andThen(
+            job.spec.role === "coordinator" ? promoteCoordinator(job, author) : Effect.void,
+          ),
+        );
+
+    /**
+     * Makes a started coordinator the initiative's one: pinned, recorded, and
+     * the threads of the one before it report to it. Safe to repeat.
+     */
+    const promoteCoordinator = (job: InitiativeLaunchJob, author: InitiativeAuthor) =>
+      Effect.gen(function* () {
+        const initiative = yield* requireInitiative(job.initiativeId);
+        const previous = initiative.coordinatorThreadId;
+        if (previous !== job.threadId) {
+          yield* store
+            .update("initiative", initiative.id, { coordinatorThreadId: job.threadId }, { author })
+            .pipe(Effect.mapError(fromStore));
+        }
+        // Thread changes are best effort: the record above is what counts.
+        const ignore = Effect.ignoreCause({ log: true });
+        yield* bridge.setPinned(job.threadId, true).pipe(ignore);
+        if (previous && previous !== job.threadId) {
+          yield* bridge.setPinned(previous, false).pipe(ignore);
+          const threads = yield* bridge.listThreads().pipe(Effect.orElseSucceed(() => []));
+          for (const thread of threads) {
+            if (thread.parentThreadId === previous) {
+              yield* bridge.setParent(thread.id, job.threadId).pipe(ignore);
+            }
+          }
+        }
+      });
 
     const failLaunch = (job: InitiativeLaunchJob, error: string, author: InitiativeAuthor) =>
       store
@@ -245,7 +295,13 @@ export const makeInitiatives = (options: {
         if (initiative.halted) {
           return yield* failure(`${initiative.title} is halted: no new threads start.`);
         }
-        const parentThreadId = input.parentThreadId ?? initiative.coordinatorThreadId;
+        const role: InitiativeRole = input.role ?? "participant";
+        const parentThreadId =
+          role === "coordinator"
+            ? null
+            : input.parentThreadId !== undefined
+              ? input.parentThreadId
+              : initiative.coordinatorThreadId;
         const resolved = yield* bridge
           .resolveModel({
             projectId: input.projectId,
@@ -268,6 +324,7 @@ export const makeInitiatives = (options: {
               key: input.key,
               threadId: ThreadId.make(yield* newId),
               spec: {
+                role,
                 projectId: input.projectId,
                 title: input.title,
                 prompt: input.prompt,
@@ -303,9 +360,23 @@ export const makeInitiatives = (options: {
           );
         if (!fresh) return job;
         yield* changed(initiative.id);
-        const role: InitiativeRole = "participant";
+        // The steckbrief and handoff are read at every start, so a start never uses a stale one.
+        const startBrain = yield* brain.startBrain(initiative);
         const started = yield* bridge
-          .startThread(job, initiativeStartPrompt({ initiative, role, prompt: input.prompt }))
+          .startThread(
+            job,
+            initiativeStartPrompt({
+              initiative,
+              role,
+              prompt: input.prompt,
+              brain: {
+                steckbrief: startBrain.steckbrief
+                  ? clampForPrompt(startBrain.steckbrief, STECKBRIEF_PROMPT_LIMIT)
+                  : null,
+                handoff: role === "coordinator" ? startBrain.handoff : null,
+              },
+            }),
+          )
           .pipe(Effect.result);
         if (started._tag === "Failure") {
           yield* failLaunch(job, started.failure.message, author);
@@ -382,17 +453,20 @@ export const makeInitiatives = (options: {
 
     const detailSnapshot: InitiativesShape["detailSnapshot"] = (initiativeId) =>
       Effect.gen(function* () {
-        const [initiative, projects, sessions, launchJobs] = yield* Effect.all([
+        const [initiative, projects, sessions, launchJobs, brainPages] = yield* Effect.all([
           store.get("initiative", initiativeId),
           store.list("project", { initiativeId }),
           store.list("session", { initiativeId }),
           store.list("launchJob", { initiativeId }),
+          store.list("brainPage", { initiativeId }),
         ]).pipe(Effect.mapError(fromStore));
         return {
           initiative: Option.getOrNull(initiative),
           projects,
           sessions,
           launchJobs: launchJobs.filter((job) => job.status !== "dismissed"),
+          brainPages,
+          brainError: brain.errorOf(initiativeId),
         };
       });
 
@@ -433,6 +507,8 @@ export const makeInitiatives = (options: {
                 author,
               )
               .pipe(Effect.mapError(fromStore));
+            // A failed brain shows on the page; the initiative exists either way.
+            yield* brain.ensure(created, author).pipe(Effect.ignore);
             yield* changed(created.id);
             return { id: created.id };
           }
@@ -567,6 +643,53 @@ export const makeInitiatives = (options: {
             yield* changed(action.initiativeId);
             return { id: job.value.id };
           }
+          case "startCoordinator": {
+            const initiative = yield* requireInitiative(action.initiativeId);
+            const projects = yield* store
+              .list("project", { initiativeId: initiative.id })
+              .pipe(Effect.mapError(fromStore));
+            // Work without code gets a folder of the initiative's own as its project.
+            const projectId =
+              action.projectId ??
+              projects.find((project) => project.projectId !== null)?.projectId ??
+              (yield* bridge
+                .ensureProject({
+                  workspaceRoot: options.workspaceRootOf(initiative.id),
+                  title: `Vorhaben: ${initiative.title}`,
+                })
+                .pipe(Effect.mapError(fromBridge))).projectId;
+            const job = yield* launch(
+              {
+                initiativeId: initiative.id,
+                key: action.key,
+                projectId,
+                title: `Koordinator: ${initiative.title}`,
+                prompt:
+                  action.message?.trim() ||
+                  "Continue the initiative from the handoff above: check the state of its threads with session_list, then take the next step. When there is nothing to continue, tell the user briefly where the initiative stands and ask what to do next.",
+                provider: action.provider,
+                model: action.model,
+                // The coordinator orchestrates; its threads get the worktrees.
+                worktree: false,
+                role: "coordinator",
+              },
+              author,
+            );
+            return { id: job.threadId };
+          }
+          case "brainWrite": {
+            const initiative = yield* requireInitiative(action.initiativeId);
+            const written = yield* brain.write(initiative, {
+              path: action.path,
+              markdown: action.markdown,
+              author,
+            });
+            return { id: written.path };
+          }
+          case "brainUnlock": {
+            yield* brain.unlock(action.initiativeId, action.path, author);
+            return { id: action.path };
+          }
         }
       });
 
@@ -617,6 +740,15 @@ export const makeInitiatives = (options: {
         subscribeTo(detailSnapshot(initiativeId), (id) => id === null || id === initiativeId),
       usage,
       threads: bridge,
+      brain,
+      recoverBrains: Effect.gen(function* () {
+        const initiatives = yield* store.list("initiative").pipe(Effect.orElseSucceed(() => []));
+        for (const initiative of initiatives) {
+          if (yield* options.archive.exists(initiative.id)) {
+            yield* brain.recover(initiative.id).pipe(Effect.ignore);
+          }
+        }
+      }),
     } satisfies InitiativesShape;
   });
 
@@ -635,11 +767,19 @@ export const layer = Layer.effect(
     const newId = crypto.randomUUIDv4.pipe(Effect.orDie);
     const store = makeInitiativeStore({ sql, newId });
     const bridge = yield* makeThreadBridgeV1;
+    const { stateDir } = yield* ServerConfig;
+    const path = yield* Path.Path;
+    const initiativesDir = path.join(stateDir, "initiatives");
+    const archive = yield* makeBrainArchive(initiativesDir).pipe(
+      Effect.provide(ProcessRunner.layer),
+    );
     const service = yield* makeInitiatives({
       store,
       bridge,
       newId,
       environmentId,
+      archive,
+      workspaceRootOf: (initiativeId) => path.join(initiativesDir, initiativeId, "workspace"),
       readUsage: (threadId) =>
         readThreadUsage({ threadId }).pipe(
           Effect.provideService(UsageService.UsageService, usageService),
@@ -661,7 +801,11 @@ export const layer = Layer.effect(
     });
     // Jobs a restart interrupted were written before this server started.
     const startedAt = DateTime.formatIso(yield* DateTime.now);
-    yield* forkParked(service.reconcile(startedAt).pipe(Effect.ignoreCause({ log: true })));
+    yield* forkParked(
+      service
+        .reconcile(startedAt)
+        .pipe(Effect.ignoreCause({ log: true }), Effect.andThen(service.recoverBrains)),
+    );
     return Initiatives.of(service);
   }),
 );
@@ -692,3 +836,6 @@ export const actRpc = (action: InitiativesAction, author: InitiativeAuthor) =>
 
 export const usageRpc = (input: { readonly initiativeId: string }) =>
   withService((initiatives) => initiatives.usage(input.initiativeId));
+
+export const brainReadRpc = (input: { readonly initiativeId: string; readonly path: string }) =>
+  withService((initiatives) => initiatives.brain.read(input.initiativeId, input.path));

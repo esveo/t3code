@@ -34,6 +34,8 @@ import {
   totalCost,
   type SessionRow,
 } from "./initiatives.logic";
+import { InitiativeBrainSection } from "./InitiativeBrainSection";
+import { InitiativeCoordinatorSection } from "./InitiativeCoordinatorSection";
 import { initiativesEnvironment } from "./initiativesState";
 import { INITIATIVE_STATUS_LABELS } from "./InitiativesPage";
 
@@ -143,6 +145,13 @@ function LoadedInitiative({
       </header>
 
       <BriefEditor environmentId={environmentId} initiative={initiative} />
+      <InitiativeCoordinatorSection
+        environmentId={environmentId}
+        initiative={initiative}
+        handoffCommit={
+          detail.brainPages.find((page) => page.layer === "handoff")?.lastCommit ?? null
+        }
+      />
       <ProjectsSection environmentId={environmentId} initiative={initiative} detail={detail} />
       {!archived ? (
         <StartThreadForm environmentId={environmentId} initiative={initiative} detail={detail} />
@@ -231,6 +240,13 @@ function LoadedInitiative({
           </ul>
         </section>
       ) : null}
+
+      <InitiativeBrainSection
+        environmentId={environmentId}
+        initiative={initiative}
+        pages={detail.brainPages}
+        brainError={detail.brainError}
+      />
 
       {released.length > 0 ? (
         <section className="flex flex-col gap-2">

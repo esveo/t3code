@@ -269,7 +269,112 @@ const SessionUnassignTool = writing(
   true,
 );
 
+const BrainReadTool = readOnly(
+  Tool.make("brain_read", {
+    description:
+      "Read a page of the initiative's brain, its shared memory that every agent of the initiative reads: steckbrief.md (the brief), index.md (one line per page), handoff.md (the coordinator's open tasks and next step) or a page under details/. Defaults to index.md.",
+    parameters: Schema.Struct({
+      path: Schema.optional(
+        TrimmedNonEmptyString.annotate({ description: "For example details/api.md." }),
+      ),
+    }),
+    success: Schema.Struct({
+      path: Schema.String,
+      markdown: Schema.NullOr(Schema.String),
+      lockedBy: Schema.NullOr(Schema.String).annotate({
+        description: "Set when a person corrected the page; agents then leave it as it is.",
+      }),
+      history: Schema.Array(
+        Schema.Struct({ author: Schema.String, at: Schema.String, message: Schema.String }),
+      ),
+    }),
+    failure: InitiativeToolError,
+    dependencies,
+  }).annotate(Tool.Title, "Read a brain page"),
+);
+
+const BrainSearchTool = readOnly(
+  Tool.make("brain_search", {
+    description:
+      "Search the initiative's brain for a word or phrase, ignoring case. Search before you ask the user something the initiative may already know.",
+    parameters: Schema.Struct({
+      query: TrimmedNonEmptyString,
+      limit: Schema.optional(
+        Schema.Int.annotate({ description: "Most hits to return. Defaults to 30." }),
+      ),
+    }),
+    success: Schema.Struct({
+      hits: Schema.Array(
+        Schema.Struct({ path: Schema.String, line: Schema.Int, text: Schema.String }),
+      ),
+    }),
+    failure: InitiativeToolError,
+    dependencies,
+  }).annotate(Tool.Title, "Search the brain"),
+);
+
+const BrainWriteTool = writing(
+  Tool.make("brain_write", {
+    description:
+      "Write a page of the brain you coordinate; it is committed to the brain's git history. Keep index.md listing every detail page with one line each. A page a person corrected stays locked against agents: ask the user instead. Write the handoff with handoff_update, not here.",
+    parameters: Schema.Struct({
+      path: TrimmedNonEmptyString.annotate({
+        description: "steckbrief.md, index.md or details/<name>.md.",
+      }),
+      markdown: Schema.String.annotate({ description: "The whole page." }),
+      sources: Schema.optional(
+        Schema.Array(Schema.String).annotate({
+          description: "Where the knowledge comes from: thread links, pull requests, files.",
+        }),
+      ),
+    }),
+    success: Schema.Struct({ path: Schema.String, changed: Schema.Boolean }),
+    failure: InitiativeToolError,
+    dependencies,
+  }).annotate(Tool.Title, "Write a brain page"),
+  true,
+);
+
+const HandoffUpdateTool = writing(
+  Tool.make("handoff_update", {
+    description:
+      "Record the handoff at the end of every turn: open tasks, the latest results and the next step. A fresh coordinator starts from it without this chat, so write what it needs to continue.",
+    parameters: Schema.Struct({
+      openTasks: Schema.Array(Schema.String),
+      lastResults: Schema.Array(Schema.String).annotate({
+        description: "What threads reported, one entry each; it is quoted as data.",
+      }),
+      nextStep: Schema.String,
+    }),
+    success: Schema.Struct({ changed: Schema.Boolean }),
+    failure: InitiativeToolError,
+    dependencies,
+  }).annotate(Tool.Title, "Update the handoff"),
+  true,
+);
+
+const BrainTidyTool = readOnly(
+  Tool.make("brain_tidy", {
+    description:
+      "What to tidy in the brain: detail pages index.md does not list, index entries without a page, outdated pages and pages a person locked. It changes nothing.",
+    parameters: Schema.Struct({}),
+    success: Schema.Struct({
+      notInIndex: Schema.Array(Schema.String),
+      missingFromBrain: Schema.Array(Schema.String),
+      outdated: Schema.Array(Schema.String),
+      locked: Schema.Array(Schema.String),
+    }),
+    failure: InitiativeToolError,
+    dependencies,
+  }).annotate(Tool.Title, "Suggest brain tidying"),
+);
+
 export const InitiativesToolkit = Toolkit.make(
+  BrainReadTool,
+  BrainSearchTool,
+  BrainWriteTool,
+  HandoffUpdateTool,
+  BrainTidyTool,
   InitiativeListTool,
   InitiativeBriefTool,
   InitiativeStatusTool,

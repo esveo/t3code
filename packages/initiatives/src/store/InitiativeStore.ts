@@ -11,6 +11,7 @@
 import {
   type InitiativeAuthor,
   Initiative,
+  InitiativeBrainPage,
   InitiativeLaunchJob,
   InitiativeProject,
   InitiativeSession,
@@ -46,6 +47,12 @@ export const INITIATIVE_KINDS = {
     initiativeId: (record: InitiativeLaunchJob) => record.initiativeId,
     uniqueKey: (record: InitiativeLaunchJob): string | null => record.key,
   },
+  brainPage: {
+    schema: InitiativeBrainPage,
+    initiativeId: (record: InitiativeBrainPage) => record.initiativeId,
+    uniqueKey: (record: InitiativeBrainPage): string | null =>
+      `${record.initiativeId}|${record.path}`,
+  },
 } as const;
 
 export type InitiativeKind = keyof typeof INITIATIVE_KINDS;
@@ -67,6 +74,10 @@ const DECODERS = {
   launchJob: {
     json: Schema.decodeUnknownEffect(Schema.fromJsonString(InitiativeLaunchJob)),
     value: Schema.decodeUnknownEffect(InitiativeLaunchJob),
+  },
+  brainPage: {
+    json: Schema.decodeUnknownEffect(Schema.fromJsonString(InitiativeBrainPage)),
+    value: Schema.decodeUnknownEffect(InitiativeBrainPage),
   },
 } as const;
 export type InitiativeRecord<K extends InitiativeKind> =

@@ -61,6 +61,21 @@ export interface ThreadBridge {
     ThreadBridgeError
   >;
   readonly listProjects: () => Effect.Effect<ReadonlyArray<ThreadBridgeProject>, ThreadBridgeError>;
+  /** The project at this folder, created when there is none (work without code). */
+  readonly ensureProject: (input: {
+    readonly workspaceRoot: string;
+    readonly title: string;
+  }) => Effect.Effect<ThreadBridgeProject, ThreadBridgeError>;
+  /** Keeps the coordinator on top of the user's sidebar. */
+  readonly setPinned: (
+    threadId: ThreadId,
+    pinned: boolean,
+  ) => Effect.Effect<void, ThreadBridgeError>;
+  /** Hands a thread to another coordinator, whose updates it then reports to. */
+  readonly setParent: (
+    threadId: ThreadId,
+    parentThreadId: ThreadId | null,
+  ) => Effect.Effect<void, ThreadBridgeError>;
   /**
    * The model a new thread runs on: the named provider and model, checked
    * against the usable ones, or else the parent's, the project's default or

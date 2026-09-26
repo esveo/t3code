@@ -4,19 +4,24 @@
  * them from the projection. Orchestration V2 gets its own adapter.
  */
 import {
+  CommandId,
   isProviderAvailable,
   type ModelSelection,
+  ProjectId,
   ProviderInstanceId,
   type ServerProvider,
   type ThreadId,
 } from "@t3tools/contracts";
 import { type ThreadBridge, ThreadBridgeError } from "@t3tools/initiatives/bridge";
 import * as Cause from "effect/Cause";
+import * as Crypto from "effect/Crypto";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
 import { chooseModelSelection } from "../mcp/toolkits/threads/modelChoice.ts";
 import { makeThreadStarter } from "../mcp/toolkits/threads/threadStarter.ts";
+import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
 
@@ -48,6 +53,18 @@ export const makeThreadBridgeV1 = Effect.gen(function* () {
   const snapshots = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const starter = yield* makeThreadStarter;
+  const engine = yield* OrchestrationEngine.OrchestrationEngineService;
+  const crypto = yield* Crypto.Crypto;
+  const uuid = crypto.randomUUIDv4.pipe(Effect.orDie);
+  const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
+  const commandId = (tag: string) =>
+    Effect.map(uuid, (id) => CommandId.make(`server:initiatives-${tag}:${id}`));
+  const dispatch = (
+    command: Parameters<OrchestrationEngine.OrchestrationEngineShape["dispatch"]>[0],
+  ) =>
+    engine
+      .dispatch(command)
+      .pipe(Effect.asVoid, Effect.catchCause(bridgeError(`Could not ${command.type}`)));
 
   const findThread = (threadId: ThreadId) =>
     snapshots
@@ -155,6 +172,56 @@ export const makeThreadBridgeV1 = Effect.gen(function* () {
         ),
         Effect.catchCause(bridgeError("Could not read the projects")),
       ),
+
+    ensureProject: (input) =>
+      Effect.gen(function* () {
+        const existing = yield* snapshots
+          .getActiveProjectByWorkspaceRoot(input.workspaceRoot)
+          .pipe(Effect.catchCause(bridgeError("Could not read the projects")));
+        if (Option.isSome(existing)) {
+          const project = existing.value;
+          return {
+            projectId: project.id,
+            title: project.title,
+            workspaceRoot: project.workspaceRoot,
+          };
+        }
+        const projectId = ProjectId.make(yield* uuid);
+        yield* dispatch({
+          type: "project.create",
+          commandId: yield* commandId("project"),
+          projectId,
+          title: input.title,
+          workspaceRoot: input.workspaceRoot,
+          createWorkspaceRootIfMissing: true,
+          createdAt: yield* nowIso,
+        });
+        return { projectId, title: input.title, workspaceRoot: input.workspaceRoot };
+      }),
+
+    setPinned: (threadId, pinned) =>
+      Effect.gen(function* () {
+        const thread = yield* findThread(threadId);
+        if (Option.isNone(thread) || (thread.value.pinnedAt != null) === pinned) return;
+        yield* dispatch(
+          pinned
+            ? { type: "thread.pin", commandId: yield* commandId("pin"), threadId }
+            : { type: "thread.unpin", commandId: yield* commandId("unpin"), threadId },
+        );
+      }),
+
+    setParent: (threadId, parentThreadId) =>
+      Effect.gen(function* () {
+        const thread = yield* findThread(threadId);
+        if (Option.isNone(thread) || (thread.value.parentThreadId ?? null) === parentThreadId)
+          return;
+        yield* dispatch({
+          type: "thread.parent.set",
+          commandId: yield* commandId("parent-set"),
+          threadId,
+          parentThreadId,
+        });
+      }),
   };
   return bridge;
 });

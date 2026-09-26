@@ -3848,6 +3848,10 @@ const makeWsRpcLayer = (
           observeRpcEffect(INITIATIVES_WS_METHODS.usage, Initiatives.usageRpc(input), {
             "rpc.aggregate": "orchestration",
           }),
+        [INITIATIVES_WS_METHODS.brainRead]: (input) =>
+          observeRpcEffect(INITIATIVES_WS_METHODS.brainRead, Initiatives.brainReadRpc(input), {
+            "rpc.aggregate": "orchestration",
+          }),
         // Fork: dictation in the composer.
         [VOICE_INPUT_WS_METHODS.prepare]: (input) =>
           observeRpcStream(VOICE_INPUT_WS_METHODS.prepare, VoiceInput.prepareRpc(input), {

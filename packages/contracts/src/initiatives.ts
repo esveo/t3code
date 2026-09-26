@@ -7,6 +7,7 @@
  * Every record carries a UUID, a revision and its author, and every change
  * writes an audit row, so a shared store for several people can follow later.
  */
+import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/unstable/rpc/Rpc";
 
@@ -26,6 +27,7 @@ export const INITIATIVES_WS_METHODS = {
   subscribeDetail: "initiatives.subscribeDetail",
   act: "initiatives.act",
   usage: "initiatives.usage",
+  brainRead: "initiatives.brainRead",
 } as const;
 
 /**
@@ -121,7 +123,12 @@ export const InitiativeLaunchStatus = Schema.Literals([
 ]);
 export type InitiativeLaunchStatus = typeof InitiativeLaunchStatus.Type;
 
+export const InitiativeRoleName = Schema.Literals(["participant", "coordinator"]);
+export type InitiativeRoleName = typeof InitiativeRoleName.Type;
+
 export const InitiativeLaunchSpec = Schema.Struct({
+  /** A coordinator start makes the thread the initiative's pinned coordinator. */
+  role: InitiativeRoleName.pipe(Schema.withDecodingDefault(Effect.succeed("participant" as const))),
   projectId: ProjectId,
   title: TrimmedNonEmptyString,
   prompt: TrimmedNonEmptyString,
@@ -151,6 +158,48 @@ export const InitiativeLaunchJob = Schema.Struct({
 });
 export type InitiativeLaunchJob = typeof InitiativeLaunchJob.Type;
 
+/**
+ * Where a brain page sits: steckbrief (always in the start prompt), index
+ * (what exists, read at the start), detail (found by search) or handoff (the
+ * coordinator's open tasks, latest results and next step).
+ */
+export const InitiativeBrainLayer = Schema.Literals(["steckbrief", "index", "detail", "handoff"]);
+export type InitiativeBrainLayer = typeof InitiativeBrainLayer.Type;
+
+/**
+ * A page of an initiative's brain. The markdown lives in the initiative's own
+ * git repository; this record indexes it and carries the lock a person's
+ * correction sets, which agents cannot overwrite.
+ */
+export const InitiativeBrainPage = Schema.Struct({
+  ...RecordBase,
+  initiativeId: TrimmedNonEmptyString,
+  path: TrimmedNonEmptyString,
+  layer: InitiativeBrainLayer,
+  title: Schema.String,
+  sources: Schema.Array(Schema.String),
+  status: Schema.Literals(["current", "outdated", "merged"]),
+  /** Set when a person wrote the page; agents then leave it alone. */
+  lockedBy: Schema.NullOr(InitiativeAuthor),
+  lastCommit: Schema.NullOr(Schema.String),
+});
+export type InitiativeBrainPage = typeof InitiativeBrainPage.Type;
+
+export const InitiativeBrainCommit = Schema.Struct({
+  commit: Schema.String,
+  author: Schema.String,
+  at: IsoDateTime,
+  message: Schema.String,
+});
+export type InitiativeBrainCommit = typeof InitiativeBrainCommit.Type;
+
+export const InitiativeBrainPageContent = Schema.Struct({
+  path: Schema.String,
+  markdown: Schema.NullOr(Schema.String),
+  history: Schema.Array(InitiativeBrainCommit),
+});
+export type InitiativeBrainPageContent = typeof InitiativeBrainPageContent.Type;
+
 export const InitiativeSummary = Schema.Struct({
   initiative: Initiative,
   projects: Schema.Array(InitiativeProject),
@@ -175,6 +224,9 @@ export const InitiativeDetailSnapshot = Schema.Struct({
   projects: Schema.Array(InitiativeProject),
   sessions: Schema.Array(InitiativeSession),
   launchJobs: Schema.Array(InitiativeLaunchJob),
+  brainPages: Schema.Array(InitiativeBrainPage),
+  /** Why the brain could not be read or written last, until a write succeeds. */
+  brainError: Schema.NullOr(Schema.String),
 });
 export type InitiativeDetailSnapshot = typeof InitiativeDetailSnapshot.Type;
 
@@ -238,6 +290,33 @@ export const InitiativesAction = Schema.Union([
     ...InitiativeRef,
     launchJobId: TrimmedNonEmptyString,
   }),
+  /**
+   * Starts the initiative's coordinator, or a fresh one from the handoff when
+   * there is one already: the new thread is pinned, the old one unpinned, and
+   * the old coordinator's threads report to the new one.
+   */
+  Schema.Struct({
+    type: Schema.Literal("startCoordinator"),
+    ...InitiativeRef,
+    key: TrimmedNonEmptyString,
+    projectId: Schema.optional(ProjectId),
+    provider: Schema.optional(TrimmedNonEmptyString),
+    model: Schema.optional(TrimmedNonEmptyString),
+    /** A first instruction; without it the coordinator continues from the handoff. */
+    message: Schema.optional(Schema.String),
+  }),
+  /** A person's edit of a brain page; it locks the page against agents. */
+  Schema.Struct({
+    type: Schema.Literal("brainWrite"),
+    ...InitiativeRef,
+    path: TrimmedNonEmptyString,
+    markdown: Schema.String,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("brainUnlock"),
+    ...InitiativeRef,
+    path: TrimmedNonEmptyString,
+  }),
 ]);
 export type InitiativesAction = typeof InitiativesAction.Type;
 
@@ -290,5 +369,11 @@ export const WsInitiativesActRpc = Rpc.make(INITIATIVES_WS_METHODS.act, {
 export const WsInitiativesUsageRpc = Rpc.make(INITIATIVES_WS_METHODS.usage, {
   payload: InitiativeTarget,
   success: InitiativeUsageResult,
+  error: InitiativesRpcError,
+});
+
+export const WsInitiativesBrainReadRpc = Rpc.make(INITIATIVES_WS_METHODS.brainRead, {
+  payload: Schema.Struct({ initiativeId: TrimmedNonEmptyString, path: TrimmedNonEmptyString }),
+  success: InitiativeBrainPageContent,
   error: InitiativesRpcError,
 });
