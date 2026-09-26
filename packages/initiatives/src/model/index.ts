@@ -5,6 +5,8 @@
 import type {
   Initiative,
   InitiativeAuthor,
+  InitiativeEntry,
+  InitiativeEntryType,
   OrchestrationThreadShell,
   RuntimeMode,
 } from "@t3tools/contracts";
@@ -62,6 +64,14 @@ export const INITIATIVE_TOOL_PROFILES = {
   brain_write: "coordinator",
   handoff_update: "coordinator",
   brain_tidy: "coordinator",
+  question_ask: "participant",
+  entry_create: "participant",
+  entry_list: "participant",
+  decision_record: "coordinator",
+  decision_reopen: "coordinator",
+  entry_supersede: "coordinator",
+  entry_link: "coordinator",
+  entry_status: "coordinator",
 } as const satisfies Record<string, "any" | InitiativeRole>;
 
 export type InitiativeToolName = keyof typeof INITIATIVE_TOOL_PROFILES;
@@ -216,3 +226,96 @@ export function initiativeStartPrompt(input: {
 }): string {
   return `${initiativeStartBlock(input)}\n\n${input.prompt.trim()}`;
 }
+
+// ── Entries ──────────────────────────────────────────────────────────────
+
+/** The statuses each entry type moves through; the first one is where it starts. */
+export const ENTRY_STATUSES = {
+  question: ["open", "answered", "defaulted", "dismissed"],
+  decision: ["proposed", "valid", "superseded", "reopened"],
+  assumption: ["open", "confirmed", "refuted"],
+  issue: ["open", "done"],
+  task: ["open", "running", "review", "done", "cancelled"],
+  plan: ["open", "done", "superseded"],
+  idea: ["open", "done", "dismissed"],
+  insight: ["open", "superseded"],
+  risk: ["open", "mitigated", "occurred"],
+} as const satisfies Record<InitiativeEntryType, ReadonlyArray<string>>;
+
+/** Statuses after which an entry no longer waits on anyone. */
+const CLOSED_STATUSES: ReadonlySet<string> = new Set([
+  "answered",
+  "defaulted",
+  "dismissed",
+  "valid",
+  "superseded",
+  "confirmed",
+  "refuted",
+  "done",
+  "cancelled",
+  "mitigated",
+  "occurred",
+]);
+
+export function isEntryOpen(entry: Pick<InitiativeEntry, "status">): boolean {
+  return !CLOSED_STATUSES.has(entry.status);
+}
+
+export function isEntryStatus(type: InitiativeEntryType, status: string): boolean {
+  return (ENTRY_STATUSES[type] as ReadonlyArray<string>).includes(status);
+}
+
+/**
+ * Why this author may not move the entry to this status, or null. Only a
+ * person makes a decision valid; agents propose.
+ */
+export function entryStatusBlocker(
+  entry: Pick<InitiativeEntry, "type" | "status">,
+  status: string,
+  author: InitiativeAuthor,
+): string | null {
+  if (!isEntryStatus(entry.type, status)) {
+    return `A ${entry.type} is ${ENTRY_STATUSES[entry.type].join(", ")}; not ${status}.`;
+  }
+  if (entry.type === "decision" && status === "valid" && !author.startsWith("person:")) {
+    return "Only the user makes a decision valid; record it as proposed.";
+  }
+  return null;
+}
+
+/** Which entry types an initiative's participants may create; the coordinator creates all. */
+export const PARTICIPANT_ENTRY_TYPES: ReadonlySet<InitiativeEntryType> = new Set([
+  "issue",
+  "assumption",
+]);
+
+export const ENTRY_TYPE_LABELS: Record<InitiativeEntryType, string> = {
+  question: "Frage",
+  decision: "Entscheidung",
+  assumption: "Annahme",
+  issue: "Issue",
+  task: "Task",
+  plan: "Plan",
+  idea: "Idee",
+  insight: "Erkenntnis",
+  risk: "Risiko",
+};
+
+export const ENTRY_STATUS_LABELS: Record<string, string> = {
+  open: "offen",
+  answered: "beantwortet",
+  defaulted: "Standard angewandt",
+  dismissed: "verworfen",
+  proposed: "vorgeschlagen",
+  valid: "gilt",
+  superseded: "ersetzt",
+  reopened: "wieder offen",
+  confirmed: "bestätigt",
+  refuted: "widerlegt",
+  done: "erledigt",
+  running: "läuft",
+  review: "Review",
+  cancelled: "abgebrochen",
+  mitigated: "entschärft",
+  occurred: "eingetreten",
+};

@@ -72,6 +72,7 @@ export type EnvironmentSubscriptionRpcTag =
   // Fork: initiatives.
   | typeof INITIATIVES_WS_METHODS.subscribeList
   | typeof INITIATIVES_WS_METHODS.subscribeDetail
+  | typeof INITIATIVES_WS_METHODS.subscribeInbox
   | typeof VOICE_INPUT_WS_METHODS.prepare;
 
 export type EnvironmentStreamCommandRpcTag =

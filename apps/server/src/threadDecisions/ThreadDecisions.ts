@@ -7,9 +7,16 @@
  * would show up as rows in the chat. The coordinator writes through its MCP
  * tools, the Inbox panel reads through a subscription and replies through
  * `act`; every write tells the open subscriptions of that coordinator.
+ *
+ * Where the items live: with the initiatives module on this server, as its
+ * entries (InitiativeInbox.ts), after the old table's items were taken over
+ * at start; otherwise in the old `fork_thread_decisions` table. While
+ * builds without the module may still run on this machine, every save also
+ * updates the old table, so switching builds loses nothing.
  */
 import {
   CommandId,
+  type InitiativeAuthor,
   MessageId,
   ThreadDecision,
   type ThreadDecisionsAction,
@@ -44,6 +51,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
+import * as Initiatives from "../initiatives/Initiatives.ts";
 import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 
@@ -64,7 +72,10 @@ export class ThreadDecisions extends Context.Service<
       reason: string,
     ) => Effect.Effect<ThreadDecision, ThreadDecisionsError>;
     /** The user's side: submit replies, snooze, unsnooze, reopen. */
-    readonly act: (action: ThreadDecisionsAction) => Effect.Effect<void, ThreadDecisionsError>;
+    readonly act: (
+      action: ThreadDecisionsAction,
+      author?: InitiativeAuthor,
+    ) => Effect.Effect<void, ThreadDecisionsError>;
     readonly subscribe: (
       coordinatorId: ThreadId,
     ) => Stream.Stream<ThreadDecisionsSnapshot, ThreadDecisionsError>;
@@ -89,7 +100,7 @@ export const make = Effect.gen(function* () {
   const uuid = crypto.randomUUIDv4.pipe(Effect.orDie);
   const storeFailed = (detail: string) => () => failure(`Could not ${detail} the decisions.`);
 
-  const list = (coordinatorId: ThreadId) =>
+  const legacyList = (coordinatorId: ThreadId) =>
     sql<{ readonly decision_json: string }>`
       SELECT decision_json FROM fork_thread_decisions
       WHERE coordinator_thread_id = ${coordinatorId}
@@ -101,7 +112,7 @@ export const make = Effect.gen(function* () {
       Effect.mapError(storeFailed("read")),
     );
 
-  const save = (decisions: ReadonlyArray<ThreadDecision>) =>
+  const legacySave = (decisions: ReadonlyArray<ThreadDecision>) =>
     Effect.forEach(
       decisions,
       (decision) => sql`
@@ -113,9 +124,14 @@ export const make = Effect.gen(function* () {
       { discard: true },
     ).pipe(sql.withTransaction, Effect.mapError(storeFailed("save")));
 
+  const storage = yield* chooseStorage({ legacyList, legacySave, sql, storeFailed });
+  const list = storage.list;
+  const save = storage.save;
+
   /** Read, change and save one coordinator's decisions without racing another write. */
   const update = <A>(
     coordinatorId: ThreadId,
+    author: InitiativeAuthor,
     change: (
       decisions: ReadonlyArray<ThreadDecision>,
       now: string,
@@ -129,7 +145,7 @@ export const make = Effect.gen(function* () {
         const decisions = yield* list(coordinatorId);
         const { changed, result } = yield* change(decisions, yield* nowIso);
         if (changed.length > 0) {
-          yield* save(changed);
+          yield* save(changed, author);
           yield* PubSub.publish(changes, coordinatorId);
         }
         return result;
@@ -146,7 +162,7 @@ export const make = Effect.gen(function* () {
   };
 
   const upsert: ThreadDecisions["Service"]["upsert"] = (coordinatorId, input) =>
-    update(coordinatorId, (decisions, now) => {
+    update(coordinatorId, agentAuthorOf(coordinatorId, input.sourceThreadId), (decisions, now) => {
       const existing = decisions.find((decision) => decision.id === input.id) ?? null;
       const invalid = validateDecisionInput(input, decisionKind(existing, input));
       if (invalid) return Effect.fail(failure(invalid));
@@ -159,7 +175,7 @@ export const make = Effect.gen(function* () {
     });
 
   const resolve: ThreadDecisions["Service"]["resolve"] = (coordinatorId, decisionId, reason) =>
-    update(coordinatorId, (decisions, now) =>
+    update(coordinatorId, agentAuthorOf(coordinatorId, undefined), (decisions, now) =>
       Effect.map(find(decisions, decisionId), (decision) => {
         const resolved = resolveDecision(decision, reason, "coordinator", now);
         return { changed: [resolved], result: resolved };
@@ -204,7 +220,7 @@ export const make = Effect.gen(function* () {
     return `[${title}](${threadLinkHref(threadId)})`;
   });
 
-  const act: ThreadDecisions["Service"]["act"] = (action) =>
+  const act: ThreadDecisions["Service"]["act"] = (action, author = "person:unknown") =>
     action.type === "submit"
       ? // One lock from reading to saving: a double submit or a coordinator
         // asking again in between must not be answered with a stale reply.
@@ -232,11 +248,14 @@ export const make = Effect.gen(function* () {
             // would vanish from the Inbox without reaching the coordinator.
             yield* sendReplies(action.threadId, text);
             const now = yield* nowIso;
-            yield* save(entries.map(({ decision, reply }) => applyReply(decision, reply, now)));
+            yield* save(
+              entries.map(({ decision, reply }) => applyReply(decision, reply, now)),
+              author,
+            );
             yield* PubSub.publish(changes, action.threadId);
           }),
         )
-      : update(action.threadId, (decisions, now) =>
+      : update(action.threadId, author, (decisions, now) =>
           Effect.map(find(decisions, action.decisionId), (decision) => {
             const changed =
               action.type === "reopen"
@@ -288,5 +307,70 @@ export const withService = <A>(
 export const subscribeRpc = (target: ThreadDecisionsTarget) =>
   Stream.unwrap(withService((decisions) => Effect.succeed(decisions.subscribe(target.threadId))));
 
-export const actRpc = (action: ThreadDecisionsAction) =>
-  withService((decisions) => decisions.act(action)).pipe(Effect.as({}));
+export const actRpc = (action: ThreadDecisionsAction, author?: InitiativeAuthor) =>
+  withService((decisions) => decisions.act(action, author)).pipe(Effect.as({}));
+
+/** Who changes a coordinator's items from its MCP tools: the asking thread. */
+const agentAuthorOf = (coordinatorId: ThreadId, sourceThreadId: string | undefined) =>
+  sourceThreadId ? `role:participant:${sourceThreadId}` : `role:coordinator:${coordinatorId}`;
+
+/**
+ * The initiatives' entries when this server keeps them and the old items
+ * were taken over; the old table otherwise, or when the takeover failed.
+ */
+const chooseStorage = Effect.fn("ThreadDecisions.chooseStorage")(function* (legacy: {
+  readonly legacyList: (
+    coordinatorId: ThreadId,
+  ) => Effect.Effect<ReadonlyArray<ThreadDecision>, ThreadDecisionsError>;
+  readonly legacySave: (
+    decisions: ReadonlyArray<ThreadDecision>,
+  ) => Effect.Effect<void, ThreadDecisionsError>;
+  readonly sql: SqlClient.SqlClient;
+  readonly storeFailed: (detail: string) => () => ThreadDecisionsError;
+}) {
+  const legacyStorage = {
+    list: legacy.legacyList,
+    save: (decisions: ReadonlyArray<ThreadDecision>, _author: InitiativeAuthor) =>
+      legacy.legacySave(decisions),
+  };
+  const initiatives = yield* Effect.serviceOption(Initiatives.Initiatives);
+  if (Option.isNone(initiatives)) return legacyStorage;
+  const inbox = initiatives.value.inbox;
+  const takenOver = yield* legacy.sql<{ readonly decision_json: string }>`
+    SELECT decision_json FROM fork_thread_decisions
+  `.pipe(
+    Effect.map((rows) => rows.flatMap((row) => Option.toArray(decodeDecision(row.decision_json)))),
+    Effect.flatMap((decisions) => inbox.importLegacy(decisions)),
+    Effect.tap((result) =>
+      result.inserted + result.updated > 0
+        ? Effect.logInfo("Took the Inbox items over into the initiatives' entries", result)
+        : Effect.void,
+    ),
+    Effect.as(true),
+    Effect.catchCause((cause) =>
+      Effect.logError(
+        "Could not take the Inbox items over; they stay in the old table",
+        cause,
+      ).pipe(Effect.as(false)),
+    ),
+  );
+  if (!takenOver) return legacyStorage;
+  return {
+    list: (coordinatorId: ThreadId) =>
+      inbox.list(coordinatorId).pipe(Effect.mapError(legacy.storeFailed("read"))),
+    save: (decisions: ReadonlyArray<ThreadDecision>, author: InitiativeAuthor) =>
+      inbox.save(decisions, author).pipe(
+        Effect.mapError(legacy.storeFailed("save")),
+        // Builds without the initiatives module read the old table; keep it current.
+        Effect.tap(() =>
+          legacy
+            .legacySave(decisions)
+            .pipe(
+              Effect.catchCause((cause) =>
+                Effect.logWarning("Could not mirror the Inbox items to the old table", cause),
+              ),
+            ),
+        ),
+      ),
+  };
+});

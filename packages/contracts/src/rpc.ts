@@ -10,6 +10,7 @@ import {
   WsInitiativesSubscribeListRpc,
   WsInitiativesUsageRpc,
   WsInitiativesBrainReadRpc,
+  WsInitiativesSubscribeInboxRpc,
 } from "./initiatives.ts";
 import { WsVoiceInputPrepareRpc, WsVoiceInputTranscribeRpc } from "./voiceInput.ts";
 import {
@@ -1578,6 +1579,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsInitiativesActRpc,
   WsInitiativesUsageRpc,
   WsInitiativesBrainReadRpc,
+  WsInitiativesSubscribeInboxRpc,
   // Fork: dictation in the composer.
   WsVoiceInputPrepareRpc,
   WsVoiceInputTranscribeRpc,

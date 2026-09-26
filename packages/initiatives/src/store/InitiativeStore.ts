@@ -12,6 +12,8 @@ import {
   type InitiativeAuthor,
   Initiative,
   InitiativeBrainPage,
+  InitiativeEntry,
+  InitiativeEntryLink,
   InitiativeLaunchJob,
   InitiativeProject,
   InitiativeSession,
@@ -53,7 +55,24 @@ export const INITIATIVE_KINDS = {
     uniqueKey: (record: InitiativeBrainPage): string | null =>
       `${record.initiativeId}|${record.path}`,
   },
+  entry: {
+    schema: InitiativeEntry,
+    initiativeId: (record: InitiativeEntry): string | null => record.initiativeId,
+    // An Inbox item is its coordinator's, under the id the coordinator chose.
+    uniqueKey: (record: InitiativeEntry): string | null =>
+      record.inbox ? entryInboxKey(record.inbox.threadId, record.inbox.itemId) : null,
+    groupKey: (record: InitiativeEntry): string | null => record.inbox?.threadId ?? null,
+  },
+  link: {
+    schema: InitiativeEntryLink,
+    initiativeId: (record: InitiativeEntryLink): string | null => record.initiativeId,
+    uniqueKey: (record: InitiativeEntryLink): string | null =>
+      `${record.fromId}|${record.kind}|${record.toId}`,
+  },
 } as const;
+
+/** The unique key of an Inbox item: its coordinator thread and its id there. */
+export const entryInboxKey = (threadId: string, itemId: string) => `inbox|${threadId}|${itemId}`;
 
 export type InitiativeKind = keyof typeof INITIATIVE_KINDS;
 
@@ -78,6 +97,14 @@ const DECODERS = {
   brainPage: {
     json: Schema.decodeUnknownEffect(Schema.fromJsonString(InitiativeBrainPage)),
     value: Schema.decodeUnknownEffect(InitiativeBrainPage),
+  },
+  entry: {
+    json: Schema.decodeUnknownEffect(Schema.fromJsonString(InitiativeEntry)),
+    value: Schema.decodeUnknownEffect(InitiativeEntry),
+  },
+  link: {
+    json: Schema.decodeUnknownEffect(Schema.fromJsonString(InitiativeEntryLink)),
+    value: Schema.decodeUnknownEffect(InitiativeEntryLink),
   },
 } as const;
 export type InitiativeRecord<K extends InitiativeKind> =
@@ -147,7 +174,11 @@ export interface InitiativeStore {
   ) => Effect.Effect<Option.Option<InitiativeRecord<K>>, InitiativeStoreError>;
   readonly list: <K extends InitiativeKind>(
     kind: K,
-    filter?: { readonly initiativeId?: string | undefined },
+    /** initiativeId null: records of no initiative. groupKey: the kind's own grouping. */
+    filter?: {
+      readonly initiativeId?: string | null | undefined;
+      readonly groupKey?: string | undefined;
+    },
   ) => Effect.Effect<ReadonlyArray<InitiativeRecord<K>>, InitiativeStoreError>;
   readonly audit: (
     kind: InitiativeKind,
@@ -183,6 +214,15 @@ export const ensureInitiativeSchema = (sql: SqlClient.SqlClient) =>
     yield* sql`
       CREATE INDEX IF NOT EXISTS initiative_records_by_initiative
       ON initiative_records (kind, initiative_id)
+    `;
+    // Added after the first builds; a database from one of those gets it here.
+    const columns = yield* sql<{ readonly name: string }>`PRAGMA table_info(initiative_records)`;
+    if (!columns.some((column) => column.name === "group_key")) {
+      yield* sql`ALTER TABLE initiative_records ADD COLUMN group_key TEXT`;
+    }
+    yield* sql`
+      CREATE INDEX IF NOT EXISTS initiative_records_by_group
+      ON initiative_records (kind, group_key) WHERE group_key IS NOT NULL
     `;
     yield* sql`
       CREATE TABLE IF NOT EXISTS initiative_audit (
@@ -274,10 +314,15 @@ export const makeInitiativeStore = (options: {
 
   const keysOf = <K extends InitiativeKind>(kind: K, record: InitiativeRecord<K>) => {
     const spec = INITIATIVE_KINDS[kind] as unknown as {
-      readonly initiativeId: (record: InitiativeRecord<K>) => string;
+      readonly initiativeId: (record: InitiativeRecord<K>) => string | null;
       readonly uniqueKey: (record: InitiativeRecord<K>) => string | null;
+      readonly groupKey?: (record: InitiativeRecord<K>) => string | null;
     };
-    return { initiativeId: spec.initiativeId(record), uniqueKey: spec.uniqueKey(record) };
+    return {
+      initiativeId: spec.initiativeId(record),
+      uniqueKey: spec.uniqueKey(record),
+      groupKey: spec.groupKey?.(record) ?? null,
+    };
   };
 
   const writeAudit = (row: AuditRow) =>
@@ -307,34 +352,46 @@ export const makeInitiativeStore = (options: {
     );
 
   const list: InitiativeStore["list"] = (kind, filter) =>
-    (filter?.initiativeId === undefined
+    (filter?.groupKey !== undefined
       ? sql<RecordRow>`
-          SELECT data_json FROM initiative_records WHERE kind = ${kind}
-          ORDER BY json_extract(data_json, '$.createdAt'), id
-        `
-      : sql<RecordRow>`
           SELECT data_json FROM initiative_records
-          WHERE kind = ${kind} AND initiative_id = ${filter.initiativeId}
+          WHERE kind = ${kind} AND group_key = ${filter.groupKey}
           ORDER BY json_extract(data_json, '$.createdAt'), id
         `
+      : filter?.initiativeId === null
+        ? sql<RecordRow>`
+            SELECT data_json FROM initiative_records
+            WHERE kind = ${kind} AND initiative_id IS NULL
+            ORDER BY json_extract(data_json, '$.createdAt'), id
+          `
+        : filter?.initiativeId === undefined
+          ? sql<RecordRow>`
+              SELECT data_json FROM initiative_records WHERE kind = ${kind}
+              ORDER BY json_extract(data_json, '$.createdAt'), id
+            `
+          : sql<RecordRow>`
+              SELECT data_json FROM initiative_records
+              WHERE kind = ${kind} AND initiative_id = ${filter.initiativeId}
+              ORDER BY json_extract(data_json, '$.createdAt'), id
+            `
     ).pipe(
       Effect.mapError(failed(`list the ${kind} records`)),
       Effect.flatMap((rows) => decodeRows(kind, rows)),
     );
 
   const save = <K extends InitiativeKind>(kind: K, record: InitiativeRecord<K>, isNew: boolean) => {
-    const { initiativeId, uniqueKey } = keysOf(kind, record);
+    const { initiativeId, uniqueKey, groupKey } = keysOf(kind, record);
     const json = JSON.stringify(record);
     return (
       isNew
         ? sql`
-            INSERT INTO initiative_records (kind, id, initiative_id, unique_key, revision, data_json, updated_at)
-            VALUES (${kind}, ${record.id}, ${initiativeId}, ${uniqueKey}, ${record.revision}, ${json}, ${record.updatedAt})
+            INSERT INTO initiative_records (kind, id, initiative_id, unique_key, group_key, revision, data_json, updated_at)
+            VALUES (${kind}, ${record.id}, ${initiativeId}, ${uniqueKey}, ${groupKey}, ${record.revision}, ${json}, ${record.updatedAt})
           `
         : sql`
             UPDATE initiative_records
-            SET initiative_id = ${initiativeId}, unique_key = ${uniqueKey}, revision = ${record.revision},
-              data_json = ${json}, updated_at = ${record.updatedAt}
+            SET initiative_id = ${initiativeId}, unique_key = ${uniqueKey}, group_key = ${groupKey},
+              revision = ${record.revision}, data_json = ${json}, updated_at = ${record.updatedAt}
             WHERE kind = ${kind} AND id = ${record.id}
           `
     ).pipe(

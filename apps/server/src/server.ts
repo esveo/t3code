@@ -248,6 +248,9 @@ const HttpServerLive = Layer.unwrap(
 
 const PlatformServicesLive = NodeServices.layer;
 
+// Fork: one instance, shared by the Inbox and the initiatives' own RPCs and tools.
+const InitiativesLive = Initiatives.layer.pipe(Layer.provide(InitiativesSql.layer));
+
 const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(OrchestrationReactorLive),
   Layer.provideMerge(ProviderRuntimeIngestionLive),
@@ -260,10 +263,11 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(ThreadPullRequestReactor.layer),
   // Fork: thread orchestration updates for coordinator threads.
   Layer.provideMerge(ThreadOrchestrationReactor.startedLayer),
-  // Fork: decisions a coordinator asks the user for (Inbox panel, MCP tools).
-  Layer.provideMerge(ThreadDecisions.layer),
+  // Fork: decisions a coordinator asks the user for (Inbox panel, MCP tools),
+  // kept as the initiatives' entries.
+  Layer.provideMerge(ThreadDecisions.layer.pipe(Layer.provide(InitiativesLive))),
   // Fork: initiatives, on their own database file.
-  Layer.provideMerge(Initiatives.layer.pipe(Layer.provide(InitiativesSql.layer))),
+  Layer.provideMerge(InitiativesLive),
   Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),
   Layer.provideMerge(RuntimeReceiptBusLive),
 );

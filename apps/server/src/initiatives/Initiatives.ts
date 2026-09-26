@@ -19,6 +19,7 @@ import {
   InitiativesError,
   type InitiativesAction,
   type InitiativesActResult,
+  type InitiativesInboxSnapshot,
   type InitiativesListSnapshot,
   type InitiativeSession,
   type InitiativeUsageResult,
@@ -61,6 +62,8 @@ import * as UsageService from "../usage/UsageService.ts";
 import { readThreadUsage } from "../usage/ThreadUsageQuery.ts";
 import { type BrainArchiveShape, makeBrainArchive } from "./BrainArchive.ts";
 import { type InitiativeBrain, makeInitiativeBrain } from "./InitiativeBrain.ts";
+import { type InitiativeEntries, makeInitiativeEntries } from "./InitiativeEntries.ts";
+import { type InboxStorage, makeInboxStorage } from "./InitiativeInbox.ts";
 import { InitiativesSql } from "./InitiativesSql.ts";
 import { makeThreadBridgeV1 } from "./ThreadBridgeV1.ts";
 
@@ -113,6 +116,10 @@ export interface InitiativesShape {
   readonly brain: InitiativeBrain;
   /** After a restart: commits what a crash left in the brains and syncs their records. */
   readonly recoverBrains: Effect.Effect<void>;
+  /** Where the coordinator Inbox (ThreadDecisions) keeps its items. */
+  readonly inbox: InboxStorage;
+  readonly entries: InitiativeEntries;
+  readonly subscribeInbox: Stream.Stream<InitiativesInboxSnapshot, InitiativesError>;
 }
 
 export class Initiatives extends Context.Service<Initiatives, InitiativesShape>()(
@@ -425,6 +432,33 @@ export const makeInitiatives = (options: {
         return Option.map(initiative, (found) => ({ initiative: found, session: session.value }));
       });
 
+    const entries = makeInitiativeEntries({
+      store,
+      changed,
+      initiativeOfThread: (threadId) =>
+        membershipOf(threadId).pipe(
+          Effect.map((membership) =>
+            Option.isSome(membership) ? membership.value.initiative : null,
+          ),
+          Effect.orElseSucceed(() => null),
+        ),
+    });
+
+    const inbox = makeInboxStorage({
+      store,
+      initiativeOf: (threadIds) =>
+        Effect.gen(function* () {
+          for (const threadId of threadIds) {
+            const membership = yield* membershipOf(threadId).pipe(
+              Effect.orElseSucceed(() => Option.none()),
+            );
+            if (Option.isSome(membership)) return membership.value.initiative.id;
+          }
+          return null;
+        }),
+      changed,
+    });
+
     const listSnapshot: InitiativesShape["listSnapshot"] = Effect.gen(function* () {
       const [initiatives, projects, sessions] = yield* Effect.all([
         store.list("initiative"),
@@ -453,13 +487,16 @@ export const makeInitiatives = (options: {
 
     const detailSnapshot: InitiativesShape["detailSnapshot"] = (initiativeId) =>
       Effect.gen(function* () {
-        const [initiative, projects, sessions, launchJobs, brainPages] = yield* Effect.all([
-          store.get("initiative", initiativeId),
-          store.list("project", { initiativeId }),
-          store.list("session", { initiativeId }),
-          store.list("launchJob", { initiativeId }),
-          store.list("brainPage", { initiativeId }),
-        ]).pipe(Effect.mapError(fromStore));
+        const [initiative, projects, sessions, launchJobs, brainPages, entries, links] =
+          yield* Effect.all([
+            store.get("initiative", initiativeId),
+            store.list("project", { initiativeId }),
+            store.list("session", { initiativeId }),
+            store.list("launchJob", { initiativeId }),
+            store.list("brainPage", { initiativeId }),
+            store.list("entry", { initiativeId }),
+            store.list("link", { initiativeId }),
+          ]).pipe(Effect.mapError(fromStore));
         return {
           initiative: Option.getOrNull(initiative),
           projects,
@@ -467,6 +504,8 @@ export const makeInitiatives = (options: {
           launchJobs: launchJobs.filter((job) => job.status !== "dismissed"),
           brainPages,
           brainError: brain.errorOf(initiativeId),
+          entries,
+          links,
         };
       });
 
@@ -690,6 +729,31 @@ export const makeInitiatives = (options: {
             yield* brain.unlock(action.initiativeId, action.path, author);
             return { id: action.path };
           }
+          case "entryCreate": {
+            if (action.initiativeId !== null) yield* requireInitiative(action.initiativeId);
+            const entry = yield* entries.create(
+              {
+                initiativeId: action.initiativeId,
+                type: action.entryType,
+                title: action.title,
+                bodyMd: action.bodyMd,
+                details: action.details,
+                // A person's decision holds from the start; an agent's is proposed.
+                ...(action.entryType === "decision" ? { status: "valid" } : {}),
+              },
+              author,
+            );
+            return { id: entry.id };
+          }
+          case "entryStatus": {
+            const entry = yield* entries.setStatus(
+              action.entryId,
+              action.status,
+              author,
+              action.note,
+            );
+            return { id: entry.id };
+          }
         }
       });
 
@@ -741,6 +805,9 @@ export const makeInitiatives = (options: {
       usage,
       threads: bridge,
       brain,
+      inbox,
+      entries,
+      subscribeInbox: subscribeTo(entries.inboxSnapshot, () => true),
       recoverBrains: Effect.gen(function* () {
         const initiatives = yield* store.list("initiative").pipe(Effect.orElseSucceed(() => []));
         for (const initiative of initiatives) {
@@ -839,3 +906,6 @@ export const usageRpc = (input: { readonly initiativeId: string }) =>
 
 export const brainReadRpc = (input: { readonly initiativeId: string; readonly path: string }) =>
   withService((initiatives) => initiatives.brain.read(input.initiativeId, input.path));
+
+export const subscribeInboxRpc = () =>
+  Stream.unwrap(withService((initiatives) => Effect.succeed(initiatives.subscribeInbox)));

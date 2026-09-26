@@ -28,6 +28,7 @@ export const INITIATIVES_WS_METHODS = {
   act: "initiatives.act",
   usage: "initiatives.usage",
   brainRead: "initiatives.brainRead",
+  subscribeInbox: "initiatives.subscribeInbox",
 } as const;
 
 /**
@@ -200,6 +201,78 @@ export const InitiativeBrainPageContent = Schema.Struct({
 });
 export type InitiativeBrainPageContent = typeof InitiativeBrainPageContent.Type;
 
+/**
+ * What an entry records. question: something the user answers (the Inbox's
+ * decisions and tasks for the user are questions and tasks here); decision:
+ * a recorded choice; the rest is the initiative's log.
+ */
+export const InitiativeEntryType = Schema.Literals([
+  "question",
+  "decision",
+  "assumption",
+  "issue",
+  "task",
+  "plan",
+  "idea",
+  "insight",
+  "risk",
+]);
+export type InitiativeEntryType = typeof InitiativeEntryType.Type;
+
+/**
+ * An Inbox item of a thread: the coordinator it asks for and the item's id
+ * there. The full item (options, answer, snooze) is in `details.decision`.
+ */
+export const InitiativeEntryInbox = Schema.Struct({
+  threadId: ThreadId,
+  itemId: TrimmedNonEmptyString,
+});
+export type InitiativeEntryInbox = typeof InitiativeEntryInbox.Type;
+
+export const InitiativeEntry = Schema.Struct({
+  ...RecordBase,
+  /** Null for entries of no initiative ("Ohne Zuordnung"). */
+  initiativeId: Schema.NullOr(TrimmedNonEmptyString),
+  type: InitiativeEntryType,
+  title: TrimmedNonEmptyString,
+  bodyMd: Schema.String,
+  /** Per type, see ENTRY_STATUSES in @t3tools/initiatives/model. */
+  status: TrimmedNonEmptyString,
+  details: Schema.Record(Schema.String, Schema.Unknown),
+  origin: Schema.Struct({
+    threadId: Schema.NullOr(ThreadId),
+    messageId: Schema.NullOr(Schema.String),
+  }),
+  /** The entry this one replaces; that one's status becomes superseded. */
+  supersedes: Schema.NullOr(TrimmedNonEmptyString),
+  inbox: Schema.NullOr(InitiativeEntryInbox),
+  urgency: Schema.NullOr(Schema.Literals(["now", "today", "later"])),
+  dependsOn: Schema.Array(Schema.String),
+  routeToThreadId: Schema.NullOr(ThreadId),
+  snoozedAt: Schema.NullOr(IsoDateTime),
+  /** Where a migrated entry came from, so a second migration skips it. */
+  legacyKey: Schema.NullOr(Schema.String),
+});
+export type InitiativeEntry = typeof InitiativeEntry.Type;
+
+export const InitiativeEntryLinkKind = Schema.Literals([
+  "dependsOn",
+  "relatesTo",
+  "implements",
+  "answers",
+  "blocks",
+]);
+export type InitiativeEntryLinkKind = typeof InitiativeEntryLinkKind.Type;
+
+export const InitiativeEntryLink = Schema.Struct({
+  ...RecordBase,
+  initiativeId: Schema.NullOr(TrimmedNonEmptyString),
+  fromId: TrimmedNonEmptyString,
+  toId: TrimmedNonEmptyString,
+  kind: InitiativeEntryLinkKind,
+});
+export type InitiativeEntryLink = typeof InitiativeEntryLink.Type;
+
 export const InitiativeSummary = Schema.Struct({
   initiative: Initiative,
   projects: Schema.Array(InitiativeProject),
@@ -227,7 +300,24 @@ export const InitiativeDetailSnapshot = Schema.Struct({
   brainPages: Schema.Array(InitiativeBrainPage),
   /** Why the brain could not be read or written last, until a write succeeds. */
   brainError: Schema.NullOr(Schema.String),
+  entries: Schema.Array(InitiativeEntry),
+  links: Schema.Array(InitiativeEntryLink),
 });
+
+/**
+ * The Inbox over every initiative: what waits on the user. Inbox items group
+ * by the initiative their coordinator belongs to now; null is "Ohne Zuordnung".
+ */
+export const InitiativesInboxSnapshot = Schema.Struct({
+  items: Schema.Array(
+    Schema.Struct({
+      entry: InitiativeEntry,
+      initiativeId: Schema.NullOr(Schema.String),
+      initiativeTitle: Schema.NullOr(Schema.String),
+    }),
+  ),
+});
+export type InitiativesInboxSnapshot = typeof InitiativesInboxSnapshot.Type;
 export type InitiativeDetailSnapshot = typeof InitiativeDetailSnapshot.Type;
 
 const InitiativeRef = { initiativeId: TrimmedNonEmptyString };
@@ -317,6 +407,22 @@ export const InitiativesAction = Schema.Union([
     ...InitiativeRef,
     path: TrimmedNonEmptyString,
   }),
+  /** A person's entry; the initiative is null for one of no initiative. */
+  Schema.Struct({
+    type: Schema.Literal("entryCreate"),
+    initiativeId: Schema.NullOr(TrimmedNonEmptyString),
+    entryType: InitiativeEntryType,
+    title: TrimmedNonEmptyString,
+    bodyMd: Schema.optional(Schema.String),
+    details: Schema.optional(Schema.Record(Schema.String, Schema.Unknown)),
+  }),
+  /** Moves an entry to another status of its type, e.g. a proposed decision to valid. */
+  Schema.Struct({
+    type: Schema.Literal("entryStatus"),
+    entryId: TrimmedNonEmptyString,
+    status: TrimmedNonEmptyString,
+    note: Schema.optional(Schema.String),
+  }),
 ]);
 export type InitiativesAction = typeof InitiativesAction.Type;
 
@@ -370,6 +476,13 @@ export const WsInitiativesUsageRpc = Rpc.make(INITIATIVES_WS_METHODS.usage, {
   payload: InitiativeTarget,
   success: InitiativeUsageResult,
   error: InitiativesRpcError,
+});
+
+export const WsInitiativesSubscribeInboxRpc = Rpc.make(INITIATIVES_WS_METHODS.subscribeInbox, {
+  payload: Schema.Struct({}),
+  success: InitiativesInboxSnapshot,
+  error: InitiativesRpcError,
+  stream: true,
 });
 
 export const WsInitiativesBrainReadRpc = Rpc.make(INITIATIVES_WS_METHODS.brainRead, {

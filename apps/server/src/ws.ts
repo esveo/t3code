@@ -3824,9 +3824,11 @@ const makeWsRpcLayer = (
             { "rpc.aggregate": "orchestration" },
           ),
         [THREAD_DECISIONS_WS_METHODS.act]: (input) =>
-          observeRpcEffect(THREAD_DECISIONS_WS_METHODS.act, ThreadDecisions.actRpc(input), {
-            "rpc.aggregate": "orchestration",
-          }),
+          observeRpcEffect(
+            THREAD_DECISIONS_WS_METHODS.act,
+            ThreadDecisions.actRpc(input, personAuthor(currentSession.subject)),
+            { "rpc.aggregate": "orchestration" },
+          ),
         // Fork: initiatives.
         [INITIATIVES_WS_METHODS.subscribeList]: (_input) =>
           observeRpcStream(INITIATIVES_WS_METHODS.subscribeList, Initiatives.subscribeListRpc(), {
@@ -3846,6 +3848,10 @@ const makeWsRpcLayer = (
           ),
         [INITIATIVES_WS_METHODS.usage]: (input) =>
           observeRpcEffect(INITIATIVES_WS_METHODS.usage, Initiatives.usageRpc(input), {
+            "rpc.aggregate": "orchestration",
+          }),
+        [INITIATIVES_WS_METHODS.subscribeInbox]: (_input) =>
+          observeRpcStream(INITIATIVES_WS_METHODS.subscribeInbox, Initiatives.subscribeInboxRpc(), {
             "rpc.aggregate": "orchestration",
           }),
         [INITIATIVES_WS_METHODS.brainRead]: (input) =>
