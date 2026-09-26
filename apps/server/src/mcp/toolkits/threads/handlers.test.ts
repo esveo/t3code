@@ -40,6 +40,7 @@ import { ProjectSetupScriptRunner } from "../../../project/ProjectSetupScriptRun
 import { makeProviderRegistryLayer } from "../../../provider/testUtils/providerRegistryMock.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as ThreadDecisions from "../../../threadDecisions/ThreadDecisions.ts";
+import * as WorkspacePaths from "../../../workspace/WorkspacePaths.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { ThreadsToolkitHandlersLive } from "./handlers.ts";
 import { ThreadsToolkit } from "./tools.ts";
@@ -110,6 +111,7 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
     readonly branches?: ReadonlyArray<{ name: string; isRemote?: boolean; remoteName?: string }>;
     readonly decisions?: boolean;
     readonly providers?: ReadonlyArray<ServerProvider>;
+    readonly projects?: ReadonlyArray<OrchestrationProjectShell>;
   } = {},
 ) {
   const commands = yield* Ref.make<ReadonlyArray<OrchestrationCommand>>([]);
@@ -137,6 +139,14 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
         Effect.succeed(Option.fromNullishOr(threads.find((thread) => thread.id === threadId))),
       getProjectShellById: () => Effect.succeed(Option.some(project)),
       getProjectShells: () => Effect.succeed([project, otherProject]),
+      getActiveProjectByWorkspaceRoot: (workspaceRoot) =>
+        Effect.succeed(
+          Option.fromNullishOr(
+            options.projects?.find(
+              (candidate) => candidate.workspaceRoot === workspaceRoot,
+            ) as never,
+          ),
+        ),
       getShellSnapshot: () =>
         Effect.succeed({ snapshotSequence: 0, projects: [project], threads, updatedAt: "" }),
       getThreadDetailById: (threadId) =>
@@ -176,6 +186,7 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (
           worktree: { path: `/worktrees/${input.newRefName}`, refName: input.newRefName! },
         } as never),
     }),
+    WorkspacePaths.layer.pipe(Layer.provide(NodeServices.layer)),
     Layer.mock(ProjectSetupScriptRunner)({
       runForThread: () => Effect.succeed({ status: "no-script" as const }),
     }),
@@ -331,6 +342,66 @@ describe("threads toolkit", () => {
         .call("start_thread", { title: "Nowhere", prompt: "x", project: "missing" })
         .pipe(Effect.flip);
       expect(error).toMatchObject({ _tag: "ThreadOrchestrationFailedError" });
+    }),
+  );
+
+  it.effect("creates a project for a folder, and returns the one a folder already is", () =>
+    Effect.gen(function* () {
+      const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-create-project-"));
+      const existingRoot = NodePath.join(root, "existing");
+      NodeFS.mkdirSync(existingRoot);
+      const existing = {
+        ...otherProject,
+        id: ProjectId.make("project-3"),
+        workspaceRoot: existingRoot,
+      };
+      const harness = yield* makeHarness({ projects: [existing] });
+
+      const created = yield* harness.call("create_project", { workspaceRoot: `${root}/` });
+      expect(created).toMatchObject({
+        created: true,
+        project: { title: NodePath.basename(root), workspaceRoot: root, current: false },
+      });
+      const [create] = yield* Ref.get(harness.commands);
+      expect(create).toMatchObject({
+        type: "project.create",
+        projectId: created.project.projectId,
+        workspaceRoot: root,
+      });
+
+      const again = yield* harness.call("create_project", { workspaceRoot: existingRoot });
+      expect(again).toMatchObject({ created: false, project: { projectId: "project-3" } });
+      expect(yield* Ref.get(harness.commands)).toHaveLength(1);
+    }),
+  );
+
+  it.effect("creates a missing folder only when asked, and refuses relative paths", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const missing = NodePath.join(baseDir, "new-project");
+
+      const refused = yield* harness
+        .call("create_project", { workspaceRoot: missing })
+        .pipe(Effect.flip);
+      expect(refused.message).toContain("createWorkspaceRootIfMissing");
+      expect(NodeFS.existsSync(missing)).toBe(false);
+
+      const created = yield* harness.call("create_project", {
+        workspaceRoot: missing,
+        title: "New project",
+        createWorkspaceRootIfMissing: true,
+      });
+      expect(created.project).toMatchObject({ title: "New project", workspaceRoot: missing });
+      expect(NodeFS.statSync(missing).isDirectory()).toBe(true);
+
+      const relative = yield* harness
+        .call("create_project", {
+          workspaceRoot: "some/folder",
+          createWorkspaceRootIfMissing: true,
+        })
+        .pipe(Effect.flip);
+      expect(relative.message).toContain("not an absolute path");
+      expect(yield* Ref.get(harness.commands)).toHaveLength(1);
     }),
   );
 

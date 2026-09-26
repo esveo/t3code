@@ -4,6 +4,7 @@ import {
   type ThreadDecision,
   ThreadDecisionsError,
   MessageId,
+  ProjectId,
   ThreadId,
   type OrchestrationThreadShell,
   type VcsListRefsResult,
@@ -21,14 +22,17 @@ import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 
 import * as GitWorkflowService from "../../../git/GitWorkflowService.ts";
 import * as OrchestrationEngine from "../../../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ProjectSetupScriptRunner from "../../../project/ProjectSetupScriptRunner.ts";
 import * as ProviderRegistry from "../../../provider/Services/ProviderRegistry.ts";
+import { expandHomePathWith } from "../../../pathExpansion.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as ThreadDecisions from "../../../threadDecisions/ThreadDecisions.ts";
+import * as WorkspacePaths from "../../../workspace/WorkspacePaths.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { describeMessageAttachments, makeThreadAttachments } from "./attachments.ts";
 import { suggestBranches } from "./branchSuggestions.ts";
@@ -193,6 +197,8 @@ const make = Effect.gen(function* () {
   const setupScripts = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
+  const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
+  const path = yield* Path.Path;
   const crypto = yield* Crypto.Crypto;
   const threadAttachments = yield* makeThreadAttachments;
 
@@ -654,6 +660,62 @@ const make = Effect.gen(function* () {
             current: project.id === coordinator.projectId,
           })),
           providers: listProviderModels(providers, coordinator.modelSelection.instanceId),
+        };
+      }),
+
+    create_project: (input) =>
+      Effect.gen(function* () {
+        const coordinator = yield* requireCoordinator;
+        // The server's working directory means nothing to the agent, so a relative path is refused.
+        if (!path.isAbsolute(expandHomePathWith(input.workspaceRoot, path))) {
+          return yield* failure(
+            `${input.workspaceRoot} is not an absolute path. Pass the folder's full path.`,
+          );
+        }
+        const workspaceRoot = yield* workspacePaths
+          .normalizeWorkspaceRoot(input.workspaceRoot, {
+            createIfMissing: input.createWorkspaceRootIfMissing === true,
+          })
+          .pipe(
+            Effect.mapError((error) =>
+              failure(
+                error._tag === "WorkspaceRootNotExistsError"
+                  ? `${error.normalizedWorkspaceRoot} does not exist. Pass createWorkspaceRootIfMissing: true to create it.`
+                  : error.message,
+              ),
+            ),
+          );
+        const existing = yield* snapshots
+          .getActiveProjectByWorkspaceRoot(workspaceRoot)
+          .pipe(Effect.catchCause(failWith("Could not read the projects")));
+        if (Option.isSome(existing)) {
+          const project = existing.value;
+          return {
+            project: {
+              projectId: project.id,
+              title: project.title,
+              workspaceRoot: project.workspaceRoot,
+              current: project.id === coordinator.projectId,
+            },
+            created: false,
+          };
+        }
+        const projectId = ProjectId.make(yield* uuid);
+        const title = input.title ?? (path.basename(workspaceRoot) || "project");
+        yield* dispatch(
+          {
+            type: "project.create",
+            commandId: yield* commandId("project"),
+            projectId,
+            title,
+            workspaceRoot,
+            createdAt: yield* nowIso,
+          },
+          "Could not create the project",
+        );
+        return {
+          project: { projectId, title, workspaceRoot, current: false },
+          created: true,
         };
       }),
 
