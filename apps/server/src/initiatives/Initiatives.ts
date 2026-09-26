@@ -203,6 +203,28 @@ export const makeInitiatives = (options: {
         return value;
       });
 
+    /** The stop of one initiative, or with null of all; running threads go on. */
+    const setHalted = (initiativeId: string | null, halted: boolean, author: InitiativeAuthor) =>
+      Effect.gen(function* () {
+        if (initiativeId === null) {
+          const control = yield* store
+            .get("control", GLOBAL_CONTROL_ID)
+            .pipe(Effect.mapError(fromStore));
+          yield* (
+            Option.isSome(control)
+              ? store.update("control", GLOBAL_CONTROL_ID, { halted }, { author })
+              : store.insert("control", { id: GLOBAL_CONTROL_ID, halted }, author)
+          ).pipe(Effect.mapError(fromStore));
+          yield* changed(null);
+          return GLOBAL_CONTROL_ID;
+        }
+        const updated = yield* store
+          .update("initiative", initiativeId, { halted }, { author })
+          .pipe(Effect.mapError(fromStore));
+        yield* changed(updated.id);
+        return updated.id;
+      });
+
     const requireInitiative = (initiativeId: string) =>
       store.get("initiative", initiativeId).pipe(
         Effect.mapError(fromStore),
@@ -850,32 +872,40 @@ export const makeInitiatives = (options: {
             return { id: entry.id };
           }
           case "setHalt": {
-            if (action.initiativeId === null) {
-              const control = yield* store
-                .get("control", GLOBAL_CONTROL_ID)
+            return { id: yield* setHalted(action.initiativeId, action.halted, author) };
+          }
+          case "stopAll": {
+            yield* setHalted(action.initiativeId, true, author);
+            const initiativesToStop =
+              action.initiativeId === null
+                ? yield* store.list("initiative").pipe(Effect.mapError(fromStore))
+                : [yield* requireInitiative(action.initiativeId)];
+            const threadIds = new Set<ThreadId>();
+            for (const initiative of initiativesToStop) {
+              if (initiative.coordinatorThreadId) threadIds.add(initiative.coordinatorThreadId);
+              const sessions = yield* store
+                .list("session", { initiativeId: initiative.id })
                 .pipe(Effect.mapError(fromStore));
-              yield* (
-                Option.isSome(control)
-                  ? store.update(
-                      "control",
-                      GLOBAL_CONTROL_ID,
-                      { halted: action.halted },
-                      { author },
-                    )
-                  : store.insert(
-                      "control",
-                      { id: GLOBAL_CONTROL_ID, halted: action.halted },
-                      author,
-                    )
-              ).pipe(Effect.mapError(fromStore));
-              yield* changed(null);
-              return { id: GLOBAL_CONTROL_ID };
+              for (const session of sessions) {
+                if (session.threadId && session.assignment !== "released") {
+                  threadIds.add(session.threadId);
+                }
+              }
             }
-            const updated = yield* store
-              .update("initiative", action.initiativeId, { halted: action.halted }, { author })
-              .pipe(Effect.mapError(fromStore));
-            yield* changed(updated.id);
-            return { id: updated.id };
+            const stopped = yield* Effect.forEach(
+              threadIds,
+              (threadId) =>
+                bridge.interruptThread(threadId).pipe(
+                  Effect.catch((error) =>
+                    Effect.logWarning("Could not stop a thread of an initiative", {
+                      threadId,
+                      error: error.message,
+                    }).pipe(Effect.as(false)),
+                  ),
+                ),
+              { concurrency: 4 },
+            );
+            return { id: String(stopped.filter(Boolean).length) };
           }
           case "setPreflightMode": {
             const updated = yield* store

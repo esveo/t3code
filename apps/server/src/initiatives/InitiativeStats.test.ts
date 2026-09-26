@@ -78,6 +78,39 @@ describe("InitiativeStats", () => {
 
         const estimate = yield* initiatives.stats.estimate(initiativeId, "codex", "gpt-6");
         assert.equal(estimate.estimate?.basis, 4);
+
+        // An imported Codex session counts under the codex provider.
+        yield* initiatives.store.insert(
+          "session",
+          {
+            initiativeId,
+            source: "codex",
+            nativeId: "rollout-1",
+            environmentId: null,
+            threadId: null,
+            title: "Earlier work",
+            cwd: "/repo/web",
+            branch: null,
+            assignment: "confirmed",
+            launchJobId: null,
+            startedAt: "2026-09-26T10:05:00.000Z",
+            endedAt: "2026-09-26T10:20:00.000Z",
+            prUrls: [],
+            model: "gpt-6",
+            tokens: 5000,
+            summary: null,
+          },
+          ROBERT,
+        );
+        yield* initiatives.act({ type: "statsRefresh", initiativeId }, ROBERT);
+        const imported = (yield* initiatives.stats.report(initiativeId)).sessions.find(
+          (session) => session.title === "Earlier work",
+        );
+        assert.equal(imported?.stats.provider, "codex");
+        assert.equal(
+          (yield* initiatives.stats.estimate(initiativeId, "codex", "gpt-6")).estimate?.basis,
+          5,
+        );
         assert.equal(estimate.quota.length, 1);
         assert.isNull((yield* initiatives.stats.estimate(null, "claudeAgent", null)).estimate);
       }),

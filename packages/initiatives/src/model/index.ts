@@ -7,6 +7,7 @@ import type {
   InitiativeAuthor,
   InitiativeEntry,
   InitiativeEntryType,
+  InitiativeSessionSource,
   OrchestrationThreadShell,
   RuntimeMode,
 } from "@t3tools/contracts";
@@ -320,3 +321,19 @@ export const ENTRY_STATUS_LABELS: Record<string, string> = {
   mitigated: "entschärft",
   occurred: "eingetreten",
 };
+
+/**
+ * The provider instance an imported session ran on, so it counts in the
+ * estimates and the quota beside T3 threads of the same provider.
+ */
+export function providerOfSessionSource(source: InitiativeSessionSource): string | null {
+  switch (source) {
+    case "claude-code-cli":
+    case "claude-desktop":
+      return "claudeAgent";
+    case "codex":
+      return "codex";
+    case "t3":
+      return null;
+  }
+}

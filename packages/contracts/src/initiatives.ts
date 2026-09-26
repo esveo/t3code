@@ -710,6 +710,14 @@ export const InitiativesAction = Schema.Union([
     initiativeId: Schema.NullOr(TrimmedNonEmptyString),
     halted: Schema.Boolean,
   }),
+  /**
+   * Halts one initiative, or with initiativeId null all of them, and also
+   * stops the running turns of their threads.
+   */
+  Schema.Struct({
+    type: Schema.Literal("stopAll"),
+    initiativeId: Schema.NullOr(TrimmedNonEmptyString),
+  }),
   Schema.Struct({
     type: Schema.Literal("setPreflightMode"),
     ...InitiativeRef,

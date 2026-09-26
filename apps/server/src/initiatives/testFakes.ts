@@ -54,6 +54,7 @@ export const makeFakeBridge = () => {
     string,
     { turns: number; firstAt: string | null; lastAt: string | null }
   >();
+  const interrupts: Array<string> = [];
   const usage: Array<{
     instanceId: string;
     driver: string;
@@ -117,10 +118,18 @@ export const makeFakeBridge = () => {
       Effect.sync(() => update(threadId, { pinnedAt: pinned ? "2026-09-26T10:00:00.000Z" : null })),
     setParent: (threadId, parentThreadId) =>
       Effect.sync(() => update(threadId, { parentThreadId: parentThreadId ?? undefined })),
+    interruptThread: (threadId) =>
+      Effect.sync(() => {
+        const thread = threads.get(threadId);
+        if (thread?.session?.status !== "running") return false;
+        interrupts.push(threadId);
+        threads.set(threadId, { ...thread, session: { ...thread.session, status: "ready" } });
+        return true;
+      }),
     threadActivity: (threadId) => Effect.sync(() => activity.get(threadId) ?? null),
     providerUsage: () => Effect.sync(() => usage),
   };
-  return { bridge, threads, starts, state, projects, activity, usage };
+  return { bridge, threads, starts, state, projects, activity, usage, interrupts };
 };
 
 /** A brain that keeps its pages in a map and counts commits instead of running git. */

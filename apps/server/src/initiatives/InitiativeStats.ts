@@ -20,7 +20,7 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import type { ThreadBridge } from "@t3tools/initiatives/bridge";
-import { sessionStateOf } from "@t3tools/initiatives/model";
+import { providerOfSessionSource, sessionStateOf } from "@t3tools/initiatives/model";
 import {
   attributeQuota,
   attributionConfidence,
@@ -144,7 +144,10 @@ export const makeInitiativeStats = (options: {
       return {
         initiativeId: session.initiativeId,
         sessionId: session.id,
-        provider: shell?.modelSelection?.instanceId ?? session.source,
+        provider:
+          shell?.modelSelection?.instanceId ??
+          providerOfSessionSource(session.source) ??
+          session.source,
         model: shell?.modelSelection?.model ?? session.model,
         taskType: null,
         roleId: null,

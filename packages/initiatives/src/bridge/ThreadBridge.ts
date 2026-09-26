@@ -89,6 +89,8 @@ export interface ThreadBridge {
       readonly usageLimits: ServerProviderUsageLimits | null;
     }>
   >;
+  /** Stops the thread's running turn; false when it was not working. */
+  readonly interruptThread: (threadId: ThreadId) => Effect.Effect<boolean, ThreadBridgeError>;
   /** Hands a thread to another coordinator, whose updates it then reports to. */
   readonly setParent: (
     threadId: ThreadId,

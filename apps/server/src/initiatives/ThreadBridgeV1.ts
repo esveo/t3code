@@ -13,6 +13,7 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import { type ThreadBridge, ThreadBridgeError } from "@t3tools/initiatives/bridge";
+import { resolveChildThreadState } from "@t3tools/shared/threadOrchestration";
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
@@ -221,6 +222,21 @@ export const makeThreadBridgeV1 = Effect.gen(function* () {
           threadId,
           parentThreadId,
         });
+      }),
+
+    interruptThread: (threadId) =>
+      Effect.gen(function* () {
+        const thread = yield* findThread(threadId);
+        if (Option.isNone(thread) || resolveChildThreadState(thread.value) !== "working") {
+          return false;
+        }
+        yield* dispatch({
+          type: "thread.turn.interrupt",
+          commandId: yield* commandId("interrupt"),
+          threadId,
+          createdAt: yield* nowIso,
+        });
+        return true;
       }),
 
     threadActivity: (threadId) =>

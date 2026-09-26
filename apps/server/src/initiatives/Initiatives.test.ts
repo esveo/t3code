@@ -278,4 +278,29 @@ describe("Initiatives", () => {
       assert.equal(page?.title, "A");
     }),
   );
+  it.effect("stops everything: no new starts and the running threads' turns interrupted", () =>
+    Effect.gen(function* () {
+      const { initiatives, fake, initiativeId } = yield* makeHarness;
+      const running = yield* initiatives.act(startAction(initiativeId, "submit-1"), ROBERT);
+      const idle = yield* initiatives.act(startAction(initiativeId, "submit-2"), ROBERT);
+      const other = (yield* initiatives.act({ type: "create", title: "Other" }, ROBERT)).id!;
+      const elsewhere = yield* initiatives.act(startAction(other, "submit-3"), ROBERT);
+      for (const threadId of [running.id!, elsewhere.id!]) {
+        const shell = fake.threads.get(threadId)!;
+        fake.threads.set(threadId, {
+          ...shell,
+          session: { status: "running" },
+        } as typeof shell);
+      }
+      const result = yield* initiatives.act({ type: "stopAll", initiativeId }, ROBERT);
+      assert.equal(result.id, "1");
+      assert.deepEqual(fake.interrupts, [running.id]);
+      assert.notInclude(fake.interrupts, idle.id);
+      const detail = yield* initiatives.detailSnapshot(initiativeId);
+      assert.isTrue(detail.initiative.halted);
+      yield* initiatives.act({ type: "stopAll", initiativeId: null }, ROBERT);
+      assert.deepEqual(fake.interrupts, [running.id, elsewhere.id]);
+      assert.isTrue((yield* initiatives.listSnapshot).halted);
+    }),
+  );
 });
