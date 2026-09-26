@@ -37,6 +37,13 @@ export const initiativesEnvironment = {
     staleTimeMs: 30_000,
     idleTtlMs: 60_000,
   }),
+  /** Earlier sessions per source and folder; reads local files, so only on request. */
+  importCatalog: createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
+    label: "environment-data:initiatives:import-catalog",
+    tag: INITIATIVES_WS_METHODS.importCatalog,
+    staleTimeMs: 60_000,
+    idleTtlMs: 60_000,
+  }),
   /** Reading usage scans transcripts on the server, so it is cached for minutes. */
   usage: createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
     label: "environment-data:initiatives:usage",

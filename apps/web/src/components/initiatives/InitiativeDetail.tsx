@@ -37,6 +37,7 @@ import {
 import { InitiativeBrainSection } from "./InitiativeBrainSection";
 import { InitiativeCoordinatorSection } from "./InitiativeCoordinatorSection";
 import { InitiativeEntriesSection } from "./InitiativeEntriesSection";
+import { InitiativeImportSection, SOURCE_LABELS } from "./InitiativeImportSection";
 import { InitiativePreflightSection } from "./InitiativePreflightSection";
 import { initiativesEnvironment } from "./initiativesState";
 import { INITIATIVE_STATUS_LABELS } from "./InitiativesPage";
@@ -226,6 +227,12 @@ function LoadedInitiative({
         )}
       </section>
 
+      <InitiativeImportSection
+        environmentId={environmentId}
+        initiative={initiative}
+        detail={detail}
+      />
+
       {suggestions.length > 0 ? (
         <section className="flex flex-col gap-2">
           <h2 className="text-sm font-medium">Vorschläge aus den Projekten</h2>
@@ -344,9 +351,14 @@ function SessionListItem({
 }) {
   const threadId = row.session.threadId;
   const environmentId = row.session.environmentId ?? homeEnvironmentId;
+  const imported = row.session.source !== "t3";
   return (
-    <li className="flex items-center gap-2 p-2 text-sm">
-      <Badge variant={STATE_BADGE[row.state]}>{SESSION_STATE_LABELS[row.state]}</Badge>
+    <li className="flex flex-wrap items-center gap-x-2 gap-y-0.5 p-2 text-sm">
+      {imported ? (
+        <Badge variant="outline">{SOURCE_LABELS[row.session.source]}</Badge>
+      ) : (
+        <Badge variant={STATE_BADGE[row.state]}>{SESSION_STATE_LABELS[row.state]}</Badge>
+      )}
       {threadId && row.shell ? (
         <Link
           className="min-w-0 flex-1 truncate hover:underline"
@@ -376,6 +388,14 @@ function SessionListItem({
         >
           <XIcon />
         </Button>
+      ) : null}
+      {imported && row.session.startedAt ? (
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {new Date(row.session.startedAt).toLocaleDateString("de-DE")}
+        </span>
+      ) : null}
+      {row.session.summary ? (
+        <p className="w-full text-xs text-muted-foreground">{row.session.summary}</p>
       ) : null}
     </li>
   );
