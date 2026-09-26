@@ -73,6 +73,7 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof INITIATIVES_WS_METHODS.subscribeList
   | typeof INITIATIVES_WS_METHODS.subscribeDetail
   | typeof INITIATIVES_WS_METHODS.subscribeInbox
+  | typeof INITIATIVES_WS_METHODS.subscribeThreadPreflight
   | typeof VOICE_INPUT_WS_METHODS.prepare;
 
 export type EnvironmentStreamCommandRpcTag =

@@ -191,6 +191,7 @@ export const makeTestInitiatives = Effect.gen(function* () {
     environmentId: null,
     archive: memory.archive,
     workspaceRootOf: (initiativeId) => `/state/initiatives/${initiativeId}/workspace`,
+    digest: (text) => Effect.succeed(`hash:${text.length}`),
     readUsage: () => Effect.succeed({ costUsd: 1.5, totalTokens: 1000 }),
   });
   const initiatives = yield* boot;

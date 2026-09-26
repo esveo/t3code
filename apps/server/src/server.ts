@@ -93,6 +93,7 @@ import * as ThreadOrchestrationReactor from "./threadOrchestration/ThreadOrchest
 import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
 import * as Initiatives from "./initiatives/Initiatives.ts";
 import * as InitiativesSql from "./initiatives/InitiativesSql.ts";
+import * as InitiativesPreflightObserver from "./initiatives/PreflightObserver.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry.ts";
@@ -266,7 +267,8 @@ const ReactorLayerLive = Layer.empty.pipe(
   // Fork: decisions a coordinator asks the user for (Inbox panel, MCP tools),
   // kept as the initiatives' entries.
   Layer.provideMerge(ThreadDecisions.layer.pipe(Layer.provide(InitiativesLive))),
-  // Fork: initiatives, on their own database file.
+  // Fork: initiatives, on their own database file, and their preflight's listener.
+  Layer.provideMerge(InitiativesPreflightObserver.layer.pipe(Layer.provide(InitiativesLive))),
   Layer.provideMerge(InitiativesLive),
   Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),
   Layer.provideMerge(RuntimeReceiptBusLive),

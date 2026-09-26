@@ -3854,6 +3854,18 @@ const makeWsRpcLayer = (
           observeRpcStream(INITIATIVES_WS_METHODS.subscribeInbox, Initiatives.subscribeInboxRpc(), {
             "rpc.aggregate": "orchestration",
           }),
+        [INITIATIVES_WS_METHODS.subscribeThreadPreflight]: (input) =>
+          observeRpcStream(
+            INITIATIVES_WS_METHODS.subscribeThreadPreflight,
+            Initiatives.subscribeThreadPreflightRpc(input),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [INITIATIVES_WS_METHODS.preflightReport]: (input) =>
+          observeRpcEffect(
+            INITIATIVES_WS_METHODS.preflightReport,
+            Initiatives.preflightReportRpc(input),
+            { "rpc.aggregate": "orchestration" },
+          ),
         [INITIATIVES_WS_METHODS.brainRead]: (input) =>
           observeRpcEffect(INITIATIVES_WS_METHODS.brainRead, Initiatives.brainReadRpc(input), {
             "rpc.aggregate": "orchestration",

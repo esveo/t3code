@@ -11,7 +11,9 @@
 import {
   type InitiativeAuthor,
   Initiative,
+  InitiativeApprovalObservation,
   InitiativeBrainPage,
+  InitiativeControl,
   InitiativeEntry,
   InitiativeEntryLink,
   InitiativeLaunchJob,
@@ -69,6 +71,19 @@ export const INITIATIVE_KINDS = {
     uniqueKey: (record: InitiativeEntryLink): string | null =>
       `${record.fromId}|${record.kind}|${record.toId}`,
   },
+  observation: {
+    schema: InitiativeApprovalObservation,
+    initiativeId: (record: InitiativeApprovalObservation): string | null => record.initiativeId,
+    // One observation per request; a restarted stream finds it again.
+    uniqueKey: (record: InitiativeApprovalObservation): string | null =>
+      `${record.threadId}|${record.requestId}`,
+    groupKey: (record: InitiativeApprovalObservation): string | null => record.threadId,
+  },
+  control: {
+    schema: InitiativeControl,
+    initiativeId: (_record: InitiativeControl): string | null => null,
+    uniqueKey: (_record: InitiativeControl): string | null => null,
+  },
 } as const;
 
 /** The unique key of an Inbox item: its coordinator thread and its id there. */
@@ -105,6 +120,14 @@ const DECODERS = {
   link: {
     json: Schema.decodeUnknownEffect(Schema.fromJsonString(InitiativeEntryLink)),
     value: Schema.decodeUnknownEffect(InitiativeEntryLink),
+  },
+  observation: {
+    json: Schema.decodeUnknownEffect(Schema.fromJsonString(InitiativeApprovalObservation)),
+    value: Schema.decodeUnknownEffect(InitiativeApprovalObservation),
+  },
+  control: {
+    json: Schema.decodeUnknownEffect(Schema.fromJsonString(InitiativeControl)),
+    value: Schema.decodeUnknownEffect(InitiativeControl),
   },
 } as const;
 export type InitiativeRecord<K extends InitiativeKind> =

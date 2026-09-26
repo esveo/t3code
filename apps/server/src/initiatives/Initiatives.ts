@@ -13,6 +13,7 @@
 import {
   type EnvironmentId,
   type Initiative,
+  type InitiativeApprovalObservation,
   type InitiativeAuthor,
   type InitiativeDetailSnapshot,
   type InitiativeLaunchJob,
@@ -64,6 +65,7 @@ import { type BrainArchiveShape, makeBrainArchive } from "./BrainArchive.ts";
 import { type InitiativeBrain, makeInitiativeBrain } from "./InitiativeBrain.ts";
 import { type InitiativeEntries, makeInitiativeEntries } from "./InitiativeEntries.ts";
 import { type InboxStorage, makeInboxStorage } from "./InitiativeInbox.ts";
+import { makeDigest, makePreflight, type Preflight } from "./Preflight.ts";
 import { InitiativesSql } from "./InitiativesSql.ts";
 import { makeThreadBridgeV1 } from "./ThreadBridgeV1.ts";
 
@@ -120,7 +122,17 @@ export interface InitiativesShape {
   readonly inbox: InboxStorage;
   readonly entries: InitiativeEntries;
   readonly subscribeInbox: Stream.Stream<InitiativesInboxSnapshot, InitiativesError>;
+  readonly preflight: Preflight;
+  readonly subscribeThreadPreflight: (
+    threadId: string,
+  ) => Stream.Stream<
+    { readonly observations: ReadonlyArray<InitiativeApprovalObservation> },
+    InitiativesError
+  >;
 }
+
+/** The record of the module's server-wide switches. */
+const GLOBAL_CONTROL_ID = "global";
 
 export class Initiatives extends Context.Service<Initiatives, InitiativesShape>()(
   "t3/initiatives/Initiatives",
@@ -144,6 +156,8 @@ export const makeInitiatives = (options: {
   readonly archive: BrainArchiveShape;
   /** Where initiatives without a code project work: `<root>/<initiative id>/workspace`. */
   readonly workspaceRootOf: (initiativeId: string) => string;
+  /** A stable hash of a text, for the preflight's action fingerprint. */
+  readonly digest: (text: string) => Effect.Effect<string>;
   /** API-equivalent cost and tokens of one thread, or null when unknown. */
   readonly readUsage: (
     threadId: ThreadId,
@@ -302,6 +316,9 @@ export const makeInitiatives = (options: {
         if (initiative.halted) {
           return yield* failure(`${initiative.title} is halted: no new threads start.`);
         }
+        if (yield* globallyHalted) {
+          return yield* failure("All initiatives are halted (Not-Aus): no new threads start.");
+        }
         const role: InitiativeRole = input.role ?? "participant";
         const parentThreadId =
           role === "coordinator"
@@ -444,6 +461,17 @@ export const makeInitiatives = (options: {
         ),
     });
 
+    const globallyHalted = store.get("control", GLOBAL_CONTROL_ID).pipe(
+      Effect.map((control) => Option.isSome(control) && control.value.halted),
+      Effect.orElseSucceed(() => false),
+    );
+
+    const preflight = makePreflight({
+      initiatives: { store, membershipOf, threads: bridge },
+      changed,
+      digest: options.digest,
+    });
+
     const inbox = makeInboxStorage({
       store,
       initiativeOf: (threadIds) =>
@@ -482,6 +510,7 @@ export const makeInitiatives = (options: {
             sessionCount: own.length,
           };
         }),
+        halted: yield* globallyHalted,
       };
     });
 
@@ -522,7 +551,8 @@ export const makeInitiatives = (options: {
               Stream.filter(relevant),
               Stream.mapEffect(() => snapshot),
             ),
-          );
+            // A change elsewhere leaves this snapshot as it was; send it only when it moved.
+          ).pipe(Stream.changesWith((a, b) => JSON.stringify(a) === JSON.stringify(b)));
         }),
       );
 
@@ -542,6 +572,7 @@ export const makeInitiatives = (options: {
                   providerExclusions: [],
                   coordinatorThreadId: null,
                   halted: false,
+                  preflightMode: "shadow",
                 },
                 author,
               )
@@ -754,6 +785,45 @@ export const makeInitiatives = (options: {
             );
             return { id: entry.id };
           }
+          case "setHalt": {
+            if (action.initiativeId === null) {
+              const control = yield* store
+                .get("control", GLOBAL_CONTROL_ID)
+                .pipe(Effect.mapError(fromStore));
+              yield* (
+                Option.isSome(control)
+                  ? store.update(
+                      "control",
+                      GLOBAL_CONTROL_ID,
+                      { halted: action.halted },
+                      { author },
+                    )
+                  : store.insert(
+                      "control",
+                      { id: GLOBAL_CONTROL_ID, halted: action.halted },
+                      author,
+                    )
+              ).pipe(Effect.mapError(fromStore));
+              yield* changed(null);
+              return { id: GLOBAL_CONTROL_ID };
+            }
+            const updated = yield* store
+              .update("initiative", action.initiativeId, { halted: action.halted }, { author })
+              .pipe(Effect.mapError(fromStore));
+            yield* changed(updated.id);
+            return { id: updated.id };
+          }
+          case "setPreflightMode": {
+            const updated = yield* store
+              .update("initiative", action.initiativeId, { preflightMode: action.mode }, { author })
+              .pipe(Effect.mapError(fromStore));
+            yield* changed(updated.id);
+            return { id: updated.id };
+          }
+          case "preflightMarkWrong": {
+            yield* preflight.markWrong(action.observationId, action.wrong, author);
+            return { id: action.observationId };
+          }
         }
       });
 
@@ -808,6 +878,12 @@ export const makeInitiatives = (options: {
       inbox,
       entries,
       subscribeInbox: subscribeTo(entries.inboxSnapshot, () => true),
+      preflight,
+      subscribeThreadPreflight: (threadId) =>
+        subscribeTo(
+          Effect.map(preflight.threadObservations(threadId), (observations) => ({ observations })),
+          () => true,
+        ),
       recoverBrains: Effect.gen(function* () {
         const initiatives = yield* store.list("initiative").pipe(Effect.orElseSucceed(() => []));
         for (const initiative of initiatives) {
@@ -847,6 +923,7 @@ export const layer = Layer.effect(
       environmentId,
       archive,
       workspaceRootOf: (initiativeId) => path.join(initiativesDir, initiativeId, "workspace"),
+      digest: yield* makeDigest,
       readUsage: (threadId) =>
         readThreadUsage({ threadId }).pipe(
           Effect.provideService(UsageService.UsageService, usageService),
@@ -909,3 +986,13 @@ export const brainReadRpc = (input: { readonly initiativeId: string; readonly pa
 
 export const subscribeInboxRpc = () =>
   Stream.unwrap(withService((initiatives) => Effect.succeed(initiatives.subscribeInbox)));
+
+export const subscribeThreadPreflightRpc = (input: { readonly threadId: string }) =>
+  Stream.unwrap(
+    withService((initiatives) =>
+      Effect.succeed(initiatives.subscribeThreadPreflight(input.threadId)),
+    ),
+  );
+
+export const preflightReportRpc = (input: { readonly initiativeId: string | null }) =>
+  withService((initiatives) => initiatives.preflight.report(input.initiativeId));

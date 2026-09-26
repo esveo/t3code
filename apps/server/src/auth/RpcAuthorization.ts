@@ -188,6 +188,8 @@ export const RPC_REQUIRED_SCOPES = {
   [INITIATIVES_WS_METHODS.usage]: AuthOrchestrationReadScope,
   [INITIATIVES_WS_METHODS.brainRead]: AuthOrchestrationReadScope,
   [INITIATIVES_WS_METHODS.subscribeInbox]: AuthOrchestrationReadScope,
+  [INITIATIVES_WS_METHODS.subscribeThreadPreflight]: AuthOrchestrationReadScope,
+  [INITIATIVES_WS_METHODS.preflightReport]: AuthOrchestrationReadScope,
   [INITIATIVES_WS_METHODS.act]: AuthOrchestrationOperateScope,
   // Fork: dictation in the composer.
   [VOICE_INPUT_WS_METHODS.prepare]: AuthOrchestrationOperateScope,

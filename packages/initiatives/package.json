@@ -15,6 +15,10 @@
       "types": "./src/brain/index.ts",
       "import": "./src/brain/index.ts"
     },
+    "./preflight": {
+      "types": "./src/preflight/index.ts",
+      "import": "./src/preflight/index.ts"
+    },
     "./bridge": {
       "types": "./src/bridge/ThreadBridge.ts",
       "import": "./src/bridge/ThreadBridge.ts"

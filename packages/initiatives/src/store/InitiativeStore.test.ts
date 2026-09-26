@@ -29,6 +29,7 @@ const initiativeInput = {
   providerExclusions: [],
   coordinatorThreadId: null,
   halted: false,
+  preflightMode: "shadow" as const,
 };
 
 const sessionInput = (initiativeId: string, threadId: string) => ({

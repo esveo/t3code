@@ -29,6 +29,8 @@ export const INITIATIVES_WS_METHODS = {
   usage: "initiatives.usage",
   brainRead: "initiatives.brainRead",
   subscribeInbox: "initiatives.subscribeInbox",
+  subscribeThreadPreflight: "initiatives.subscribeThreadPreflight",
+  preflightReport: "initiatives.preflightReport",
 } as const;
 
 /**
@@ -66,8 +68,94 @@ export const Initiative = Schema.Struct({
   coordinatorThreadId: Schema.NullOr(ThreadId),
   /** Stop flag: no new starts while set. */
   halted: Schema.Boolean,
+  /**
+   * off: approvals of the initiative's threads are not looked at. shadow: the
+   * preflight records what it would have answered, and answers nothing.
+   */
+  preflightMode: Schema.Literals(["off", "shadow"]).pipe(
+    Schema.withDecodingDefault(Effect.succeed("shadow" as const)),
+  ),
 });
 export type Initiative = typeof Initiative.Type;
+
+/** Server-wide switches of the module; one record with id "global". */
+export const InitiativeControl = Schema.Struct({
+  ...RecordBase,
+  /** The global stop: no initiative starts a thread while set. */
+  halted: Schema.Boolean,
+});
+export type InitiativeControl = typeof InitiativeControl.Type;
+
+export const PreflightWouldHave = Schema.Literals(["accept", "decline", "ask"]);
+export type PreflightWouldHave = typeof PreflightWouldHave.Type;
+
+/** What a checker would have answered; in shadow mode nothing is sent. */
+export const PreflightVerdict = Schema.Struct({
+  checker: Schema.Literals(["rules"]),
+  ruleVersion: Schema.String,
+  ruleHit: Schema.NullOr(Schema.String),
+  /** The row of the approval matrix the action falls into. */
+  category: Schema.String,
+  wouldHave: PreflightWouldHave,
+  reason: Schema.String,
+  latencyMs: NonNegativeInt,
+});
+export type PreflightVerdict = typeof PreflightVerdict.Type;
+
+/**
+ * An approval request of an initiative thread, as the provider asked it, and
+ * how it ended. Secrets in the action are masked; the hash identifies the
+ * unchanged action.
+ */
+export const InitiativeApprovalObservation = Schema.Struct({
+  ...RecordBase,
+  initiativeId: Schema.NullOr(TrimmedNonEmptyString),
+  threadId: ThreadId,
+  requestId: TrimmedNonEmptyString,
+  provider: Schema.String,
+  runtimeMode: Schema.String,
+  requestType: Schema.String,
+  action: Schema.Struct({
+    tool: Schema.NullOr(Schema.String),
+    command: Schema.NullOr(Schema.String),
+    paths: Schema.Array(Schema.String),
+    detail: Schema.NullOr(Schema.String),
+    input: Schema.NullOr(Schema.String),
+  }),
+  actionHash: Schema.String,
+  providerWarning: Schema.NullOr(Schema.String),
+  openedAt: IsoDateTime,
+  resolvedBy: Schema.NullOr(Schema.Literals(["person", "provider-auto", "expired"])),
+  decision: Schema.NullOr(Schema.String),
+  resolvedAt: Schema.NullOr(IsoDateTime),
+  verdicts: Schema.Array(PreflightVerdict),
+  /** The user marked the verdict as wrong; it counts against the checker. */
+  markedWrongBy: Schema.NullOr(InitiativeAuthor),
+});
+export type InitiativeApprovalObservation = typeof InitiativeApprovalObservation.Type;
+
+export const PreflightProviderStats = Schema.Struct({
+  provider: Schema.String,
+  requests: NonNegativeInt,
+  /** Answered by the user; with the thread in auto mode that is what landed on them despite it. */
+  byPerson: NonNegativeInt,
+  inAutoMode: NonNegativeInt,
+  perHour: Schema.NullOr(Schema.Number),
+  /** Of the requests the user answered: the verdict matched their answer. */
+  agreed: NonNegativeInt,
+  /** The verdict would have accepted what the user declined. */
+  wrongAccepts: NonNegativeInt,
+  /** The verdict would have asked about what the user accepted. */
+  needlessAsks: NonNegativeInt,
+  markedWrong: NonNegativeInt,
+});
+export type PreflightProviderStats = typeof PreflightProviderStats.Type;
+
+export const PreflightReport = Schema.Struct({
+  providers: Schema.Array(PreflightProviderStats),
+  observations: Schema.Array(InitiativeApprovalObservation),
+});
+export type PreflightReport = typeof PreflightReport.Type;
 
 export const InitiativeProject = Schema.Struct({
   ...RecordBase,
@@ -286,6 +374,8 @@ export type InitiativeSummary = typeof InitiativeSummary.Type;
 
 export const InitiativesListSnapshot = Schema.Struct({
   initiatives: Schema.Array(InitiativeSummary),
+  /** The global stop of all initiatives. */
+  halted: Schema.Boolean,
 });
 export type InitiativesListSnapshot = typeof InitiativesListSnapshot.Type;
 
@@ -423,6 +513,23 @@ export const InitiativesAction = Schema.Union([
     status: TrimmedNonEmptyString,
     note: Schema.optional(Schema.String),
   }),
+  /** The stop of one initiative, or with initiativeId null of all of them. */
+  Schema.Struct({
+    type: Schema.Literal("setHalt"),
+    initiativeId: Schema.NullOr(TrimmedNonEmptyString),
+    halted: Schema.Boolean,
+  }),
+  Schema.Struct({
+    type: Schema.Literal("setPreflightMode"),
+    ...InitiativeRef,
+    mode: Schema.Literals(["off", "shadow"]),
+  }),
+  /** Marks the preflight's verdict on a request as wrong, or takes that back. */
+  Schema.Struct({
+    type: Schema.Literal("preflightMarkWrong"),
+    observationId: TrimmedNonEmptyString,
+    wrong: Schema.Boolean,
+  }),
 ]);
 export type InitiativesAction = typeof InitiativesAction.Type;
 
@@ -483,6 +590,24 @@ export const WsInitiativesSubscribeInboxRpc = Rpc.make(INITIATIVES_WS_METHODS.su
   success: InitiativesInboxSnapshot,
   error: InitiativesRpcError,
   stream: true,
+});
+
+/** The approvals of one thread, for the preflight's verdict beside the approval card. */
+export const WsInitiativesSubscribeThreadPreflightRpc = Rpc.make(
+  INITIATIVES_WS_METHODS.subscribeThreadPreflight,
+  {
+    payload: Schema.Struct({ threadId: ThreadId }),
+    success: Schema.Struct({ observations: Schema.Array(InitiativeApprovalObservation) }),
+    error: InitiativesRpcError,
+    stream: true,
+  },
+);
+
+/** The preflight's record of one initiative, or of all with initiativeId null. */
+export const WsInitiativesPreflightReportRpc = Rpc.make(INITIATIVES_WS_METHODS.preflightReport, {
+  payload: Schema.Struct({ initiativeId: Schema.NullOr(TrimmedNonEmptyString) }),
+  success: PreflightReport,
+  error: InitiativesRpcError,
 });
 
 export const WsInitiativesBrainReadRpc = Rpc.make(INITIATIVES_WS_METHODS.brainRead, {
