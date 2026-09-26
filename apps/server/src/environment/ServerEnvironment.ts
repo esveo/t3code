@@ -224,6 +224,7 @@ export const make = Effect.gen(function* () {
       commitGraph: true,
       subagentChat: true,
       threadDecisions: true,
+      initiatives: true,
       inlineMessageContext: true,
       requiredWorktreeBootstrap: true,
       threadSettlement: true,

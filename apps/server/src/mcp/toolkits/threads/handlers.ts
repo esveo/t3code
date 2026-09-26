@@ -1,5 +1,4 @@
 import {
-  type ChatAttachment,
   CommandId,
   type ThreadDecision,
   ThreadDecisionsError,
@@ -7,9 +6,7 @@ import {
   ProjectId,
   ThreadId,
   type OrchestrationThreadShell,
-  type VcsListRefsResult,
 } from "@t3tools/contracts";
-import { buildTemporaryWorktreeBranchName } from "@t3tools/shared/git";
 import {
   childThreadProgress,
   describeChildThread,
@@ -17,17 +14,14 @@ import {
   threadLinkHref,
   wrapFromCoordinator,
 } from "@t3tools/shared/threadOrchestration";
-import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 
-import * as GitWorkflowService from "../../../git/GitWorkflowService.ts";
 import * as OrchestrationEngine from "../../../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
-import * as ProjectSetupScriptRunner from "../../../project/ProjectSetupScriptRunner.ts";
 import * as ProviderRegistry from "../../../provider/Services/ProviderRegistry.ts";
 import { expandHomePathWith } from "../../../pathExpansion.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
@@ -35,8 +29,8 @@ import * as ThreadDecisions from "../../../threadDecisions/ThreadDecisions.ts";
 import * as WorkspacePaths from "../../../workspace/WorkspacePaths.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { describeMessageAttachments, makeThreadAttachments } from "./attachments.ts";
-import { suggestBranches } from "./branchSuggestions.ts";
 import { childTaskText } from "./childTask.ts";
+import { failWith, failure, makeThreadStarter } from "./threadStarter.ts";
 import { chooseModelSelection, listProviderModels } from "./modelChoice.ts";
 import { matchProject } from "./projectMatch.ts";
 import {
@@ -44,7 +38,6 @@ import {
   type ChildThreadSummary,
   type DecisionSummary,
   ThreadOrchestrationDisabledError,
-  ThreadOrchestrationFailedError,
   ThreadOrchestrationNestedError,
   type ThreadAttachmentInput,
   ThreadNotFoundError,
@@ -176,31 +169,16 @@ function clampAnswer(text: string): string {
     : text;
 }
 
-const failure = (detail: string) => new ThreadOrchestrationFailedError({ detail });
-
-/** Keeps interrupts as interrupts; everything else becomes a readable tool failure. */
-const failWith =
-  (detail: string) =>
-  <E>(cause: Cause.Cause<E>): Effect.Effect<never, ThreadOrchestrationFailedError> =>
-    Cause.hasInterruptsOnly(cause)
-      ? Effect.failCause(cause as Cause.Cause<never>)
-      : Effect.fail(
-          failure(
-            `${detail}: ${Cause.squash(cause) instanceof Error ? (Cause.squash(cause) as Error).message : "unknown error"}`,
-          ),
-        );
-
 const make = Effect.gen(function* () {
   const engine = yield* OrchestrationEngine.OrchestrationEngineService;
   const snapshots = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
-  const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
-  const setupScripts = yield* ProjectSetupScriptRunner.ProjectSetupScriptRunner;
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
   const workspacePaths = yield* WorkspacePaths.WorkspacePaths;
   const path = yield* Path.Path;
   const crypto = yield* Crypto.Crypto;
   const threadAttachments = yield* makeThreadAttachments;
+  const starter = yield* makeThreadStarter;
 
   const uuid = crypto.randomUUIDv4.pipe(Effect.orDie);
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
@@ -316,27 +294,6 @@ const make = Effect.gen(function* () {
     });
   });
 
-  /** A base ref that does not resolve, with the branches the coordinator probably meant. */
-  const unknownBaseRef = Effect.fn("ThreadsToolkit.unknownBaseRef")(function* (
-    cwd: string,
-    baseRef: string,
-  ) {
-    const refs: Array<VcsListRefsResult["refs"][number]> = [];
-    let cursor: number | null = 0;
-    while (cursor !== null && refs.length < 5_000) {
-      const page: VcsListRefsResult = yield* gitWorkflow.listRefs({
-        cwd,
-        refKind: "all",
-        includeMatchingRemoteRefs: true,
-        cursor,
-        limit: 200,
-      });
-      refs.push(...page.refs);
-      cursor = page.nextCursor;
-    }
-    return suggestBranches(baseRef, refs);
-  });
-
   /** The coordinator's project, or another one named by id, workspace path or title. */
   const resolveTargetProject = Effect.fn("ThreadsToolkit.resolveTargetProject")(function* (
     coordinator: OrchestrationThreadShell,
@@ -355,162 +312,17 @@ const make = Effect.gen(function* () {
     return project;
   });
 
-  const startTurn = Effect.fn("ThreadsToolkit.startTurn")(function* (input: {
-    readonly thread: Pick<
-      OrchestrationThreadShell,
-      "id" | "modelSelection" | "runtimeMode" | "interactionMode"
-    >;
-    readonly messageId: MessageId;
-    readonly text: string;
-    readonly attachments: ReadonlyArray<ChatAttachment>;
-  }) {
-    yield* dispatch(
-      {
-        type: "thread.turn.start",
-        commandId: yield* commandId("turn-start"),
-        threadId: input.thread.id,
-        message: {
-          messageId: input.messageId,
-          role: "user",
-          text: input.text,
-          attachments: input.attachments,
-        },
-        modelSelection: input.thread.modelSelection,
-        runtimeMode: input.thread.runtimeMode,
-        interactionMode: input.thread.interactionMode,
-        createdAt: yield* nowIso,
-      },
-      "Could not start the thread's turn",
-    );
-  });
-
-  /**
-   * Checks out the worktree, records it on the thread, runs the project's
-   * setup script and then starts the first turn, as a new thread from the
-   * composer does. It runs after start_thread has returned: a checkout can
-   * take a while and the coordinator should not wait for it. A failure marks
-   * the thread's session as failed, which reaches the coordinator as an update.
-   */
-  const prepareWorktreeAndStart = Effect.fn("ThreadsToolkit.prepareWorktreeAndStart")(
-    function* (input: {
-      readonly child: Pick<
-        OrchestrationThreadShell,
-        "id" | "projectId" | "modelSelection" | "runtimeMode" | "interactionMode"
-      >;
-      readonly repositoryCwd: string;
-      readonly projectCwd: string;
-      readonly baseRef: string;
-      readonly baseBranch: string | null;
-      readonly branch: string;
-      readonly messageId: MessageId;
-      readonly text: string;
-      readonly attachments: ReadonlyArray<ChatAttachment>;
-    }) {
-      const worktree = yield* gitWorkflow
-        .createWorktree({
-          cwd: input.repositoryCwd,
-          refName: input.baseRef,
-          newRefName: input.branch,
-          ...(input.baseBranch ? { baseRefName: input.baseBranch } : {}),
-          path: null,
-        })
-        .pipe(Effect.catchCause(failWith("Could not create the worktree")));
-      yield* dispatch(
-        {
-          type: "thread.meta.update",
-          commandId: yield* commandId("meta-update"),
-          threadId: input.child.id,
-          branch: worktree.worktree.refName,
-          worktreePath: worktree.worktree.path,
-        },
-        "Could not record the worktree",
-      );
-      const setup = yield* setupScripts
-        .runForThread({
-          threadId: input.child.id,
-          projectId: input.child.projectId,
-          projectCwd: input.projectCwd,
-          worktreePath: worktree.worktree.path,
-          observeCompletion: {},
-        })
-        .pipe(Effect.option);
-      // A blocking setup script (dependencies, env files) finishes before the agent starts.
-      if (
-        Option.isSome(setup) &&
-        setup.value.status === "started" &&
-        !setup.value.async &&
-        setup.value.completion
-      ) {
-        yield* setup.value.completion;
-      }
-      yield* startTurn({
-        thread: input.child,
-        messageId: input.messageId,
-        text: input.text,
-        attachments: input.attachments,
-      });
-    },
-  );
-
-  const markFailed = (
-    child: Pick<OrchestrationThreadShell, "id" | "runtimeMode" | "modelSelection">,
-    lastError: string,
-  ) =>
-    Effect.gen(function* () {
-      const at = yield* nowIso;
-      yield* engine.dispatch({
-        type: "thread.session.set",
-        commandId: yield* commandId("session-failed"),
-        threadId: child.id,
-        session: {
-          threadId: child.id,
-          status: "error",
-          providerName: null,
-          providerInstanceId: child.modelSelection.instanceId,
-          runtimeMode: child.runtimeMode,
-          activeTurnId: null,
-          lastError,
-          updatedAt: at,
-        },
-        createdAt: at,
-      });
-    }).pipe(Effect.ignoreCause({ log: true }));
-
   return ThreadsToolkit.of({
     start_thread: (input) =>
       Effect.gen(function* () {
         const coordinator = yield* requireCoordinator;
         const project = yield* resolveTargetProject(coordinator, input.project);
-        const sameProject = project.id === coordinator.projectId;
-        const projectCwd = project.workspaceRoot;
-        // In its own project a thread starts from the coordinator's checkout;
-        // in another one there is no such checkout, so from that project's.
-        const repositoryCwd = sameProject ? (coordinator.worktreePath ?? projectCwd) : projectCwd;
-        const sharedBranch = sameProject ? coordinator.branch : null;
-        const sharedWorktreePath = sameProject ? coordinator.worktreePath : null;
-        const wantsWorktree = input.worktree !== false;
-        const isRepository = wantsWorktree
-          ? yield* gitWorkflow.isRepository(repositoryCwd).pipe(Effect.orElseSucceed(() => false))
-          : false;
-        if (wantsWorktree && !isRepository) {
-          return yield* failure(
-            "This project is not a git repository, so the thread cannot get its own worktree. Pass worktree: false to let it work in the project's checkout.",
-          );
-        }
-        const baseRef = input.baseBranch ?? "HEAD";
-        if (wantsWorktree) {
-          const exists = yield* gitWorkflow
-            .hasCommit({ cwd: repositoryCwd, refName: baseRef })
-            .pipe(Effect.orElseSucceed(() => false));
-          if (!exists) {
-            const suggestions = yield* unknownBaseRef(repositoryCwd, baseRef).pipe(
-              Effect.orElseSucceed((): string[] => []),
-            );
-            return yield* failure(
-              `${baseRef} is not a commit in this repository.${suggestions.length > 0 ? ` Did you mean: ${suggestions.join(", ")}?` : ""}`,
-            );
-          }
-        }
+        const checkout = yield* starter.checkout({
+          parent: coordinator,
+          project,
+          worktree: input.worktree !== false,
+          baseBranch: input.baseBranch,
+        });
         const chosen = chooseModelSelection({
           providers: input.provider || input.model ? yield* providerRegistry.getProviders : [],
           current: coordinator.modelSelection,
@@ -518,111 +330,30 @@ const make = Effect.gen(function* () {
           model: input.model,
         });
         if ("error" in chosen) return yield* failure(chosen.error);
-        const modelSelection = chosen.selection;
         const attachmentSources = yield* resolveAttachments(coordinator, input.attachments);
 
         const threadId = ThreadId.make(yield* uuid);
-        const messageId = MessageId.make(yield* uuid);
         const attachments = yield* threadAttachments.claim(threadId, attachmentSources);
-        const text = wrapFromCoordinator({
-          coordinatorThreadId: coordinator.id,
-          coordinatorTitle: coordinator.title,
-          text: childTaskText({ prompt: input.prompt, language: input.language }),
-        });
-        const child = {
-          id: threadId,
-          projectId: project.id,
-          modelSelection,
-          runtimeMode: coordinator.runtimeMode,
-          interactionMode: "default" as const,
-        };
-        const createdAt = yield* nowIso;
-        yield* dispatch(
-          {
-            type: "thread.create",
-            commandId: yield* commandId("thread-create"),
-            threadId,
-            projectId: project.id,
-            parentThreadId: coordinator.id,
-            title: input.title,
-            modelSelection,
-            runtimeMode: child.runtimeMode,
-            interactionMode: child.interactionMode,
-            branch: wantsWorktree ? null : sharedBranch,
-            worktreePath: wantsWorktree ? null : sharedWorktreePath,
-            createdAt,
-          },
-          "Could not create the thread",
-        );
-
-        if (!wantsWorktree) {
-          yield* startTurn({ thread: child, messageId, text, attachments });
-          return {
-            threadId,
-            link: threadLink({ id: threadId, title: input.title }),
-            branch: sharedBranch,
-            worktree: false,
-          };
-        }
-
-        // The task shows in the thread right away, and the thread reads as
-        // working while its worktree is prepared; the turn start below
-        // references this message instead of sending it again.
-        yield* dispatch(
-          {
-            type: "thread.message.user.append",
-            commandId: yield* commandId("message"),
-            threadId,
-            message: { messageId, text, attachments },
-            createdAt,
-          },
-          "Could not record the task",
-        );
-        yield* dispatch(
-          {
-            type: "thread.session.set",
-            commandId: yield* commandId("session-starting"),
-            threadId,
-            session: {
-              threadId,
-              status: "starting",
-              providerName: null,
-              providerInstanceId: modelSelection.instanceId,
-              runtimeMode: child.runtimeMode,
-              activeTurnId: null,
-              lastError: null,
-              updatedAt: createdAt,
-            },
-            createdAt,
-          },
-          "Could not mark the thread as starting",
-        );
-        const randomHex = yield* crypto.randomBytes(4).pipe(
-          Effect.map((bytes) =>
-            Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(""),
-          ),
-          Effect.orDie,
-        );
-        const branch = buildTemporaryWorktreeBranchName(() => randomHex);
-        yield* prepareWorktreeAndStart({
-          child,
-          repositoryCwd,
-          projectCwd,
-          baseRef,
-          baseBranch: input.baseBranch ?? sharedBranch,
-          branch,
-          messageId,
-          text,
+        const started = yield* starter.start({
+          checkout,
+          threadId,
+          parentThreadId: coordinator.id,
+          title: input.title,
+          text: wrapFromCoordinator({
+            coordinatorThreadId: coordinator.id,
+            coordinatorTitle: coordinator.title,
+            text: childTaskText({ prompt: input.prompt, language: input.language }),
+          }),
           attachments,
-        }).pipe(
-          Effect.catch((error) => markFailed(child, error.message)),
-          Effect.forkDetach,
-        );
+          modelSelection: chosen.selection,
+          // A child inherits its coordinator's mode unless the coordinator names one.
+          runtimeMode: input.runtimeMode ?? coordinator.runtimeMode,
+        });
         return {
           threadId,
           link: threadLink({ id: threadId, title: input.title }),
-          branch,
-          worktree: true,
+          branch: started.branch,
+          worktree: started.worktree,
         };
       }),
 
@@ -632,16 +363,18 @@ const make = Effect.gen(function* () {
         const child = yield* requireChild(coordinator, input.threadId);
         const attachmentSources = yield* resolveAttachments(coordinator, input.attachments);
         const attachments = yield* threadAttachments.claim(child.id, attachmentSources);
-        yield* startTurn({
-          thread: child,
-          messageId: MessageId.make(yield* uuid),
-          text: wrapFromCoordinator({
-            coordinatorThreadId: coordinator.id,
-            coordinatorTitle: coordinator.title,
-            text: input.message,
-          }),
-          attachments,
-        }).pipe(Effect.tapError(() => threadAttachments.release(attachments)));
+        yield* starter
+          .startTurn({
+            thread: child,
+            messageId: MessageId.make(yield* uuid),
+            text: wrapFromCoordinator({
+              coordinatorThreadId: coordinator.id,
+              coordinatorTitle: coordinator.title,
+              text: input.message,
+            }),
+            attachments,
+          })
+          .pipe(Effect.tapError(() => threadAttachments.release(attachments)));
         return { delivered: true };
       }),
 

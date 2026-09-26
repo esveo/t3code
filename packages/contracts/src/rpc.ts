@@ -4,6 +4,12 @@ import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { WsSubagentChatStopRpc, WsSubagentChatSubscribeTranscriptRpc } from "./subagentChat.ts";
 import { WsThreadDecisionsActRpc, WsThreadDecisionsSubscribeRpc } from "./threadDecisions.ts";
+import {
+  WsInitiativesActRpc,
+  WsInitiativesSubscribeDetailRpc,
+  WsInitiativesSubscribeListRpc,
+  WsInitiativesUsageRpc,
+} from "./initiatives.ts";
 import { WsVoiceInputPrepareRpc, WsVoiceInputTranscribeRpc } from "./voiceInput.ts";
 import {
   ProviderAuthCancelInput,
@@ -1565,6 +1571,11 @@ export const WsRpcGroup = RpcGroup.make(
   // Fork: decisions a coordinator asks the user for.
   WsThreadDecisionsSubscribeRpc,
   WsThreadDecisionsActRpc,
+  // Fork: initiatives.
+  WsInitiativesSubscribeListRpc,
+  WsInitiativesSubscribeDetailRpc,
+  WsInitiativesActRpc,
+  WsInitiativesUsageRpc,
   // Fork: dictation in the composer.
   WsVoiceInputPrepareRpc,
   WsVoiceInputTranscribeRpc,

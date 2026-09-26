@@ -280,6 +280,25 @@ describe("threads toolkit", () => {
     }),
   );
 
+  it.effect("inherits the coordinator's mode unless it names one", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      yield* harness.call("start_thread", { title: "A", prompt: "A", worktree: false });
+      yield* harness.call("start_thread", {
+        title: "B",
+        prompt: "B",
+        worktree: false,
+        runtimeMode: "auto",
+      });
+      const modes = (yield* Ref.get(harness.commands)).flatMap((command) =>
+        command.type === "thread.create" || command.type === "thread.turn.start"
+          ? [command.runtimeMode]
+          : [],
+      );
+      expect(modes).toEqual(["full-access", "full-access", "auto", "auto"]);
+    }),
+  );
+
   it.effect("prepares its own worktree and then starts the turn", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness();

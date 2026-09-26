@@ -7,6 +7,7 @@
 import {
   McpCapabilityUnavailableError,
   PositiveInt,
+  RuntimeMode,
   TrimmedNonEmptyString,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -193,6 +194,12 @@ export const CreateThreadInput = Schema.Struct({
     TrimmedNonEmptyString.annotate({
       description:
         "The language the user writes to you in, for example German. The thread answers the user in it; without it, it answers in the language of your prompt.",
+    }),
+  ),
+  runtimeMode: Schema.optional(
+    RuntimeMode.annotate({
+      description:
+        "How freely the thread may act without asking the user: approval-required, auto-accept-edits, auto or full-access. Defaults to your own mode. Never pick a freer mode than the user gave you.",
     }),
   ),
   attachments: attachmentsParameter,

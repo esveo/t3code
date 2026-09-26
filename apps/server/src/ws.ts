@@ -48,6 +48,7 @@ import {
   ORCHESTRATION_WS_METHODS,
   SUBAGENT_CHAT_WS_METHODS,
   THREAD_DECISIONS_WS_METHODS,
+  INITIATIVES_WS_METHODS,
   VOICE_INPUT_WS_METHODS,
   ProjectId,
   type ProjectEntriesFailure,
@@ -138,6 +139,8 @@ import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration/workflowScriptQuery.ts";
 import * as SubagentChat from "./subagentChat/SubagentChat.ts";
 import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
+import * as Initiatives from "./initiatives/Initiatives.ts";
+import { personAuthor } from "@t3tools/initiatives/model";
 import * as VoiceInput from "./voiceInput/VoiceInput.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
@@ -3822,6 +3825,27 @@ const makeWsRpcLayer = (
           ),
         [THREAD_DECISIONS_WS_METHODS.act]: (input) =>
           observeRpcEffect(THREAD_DECISIONS_WS_METHODS.act, ThreadDecisions.actRpc(input), {
+            "rpc.aggregate": "orchestration",
+          }),
+        // Fork: initiatives.
+        [INITIATIVES_WS_METHODS.subscribeList]: (_input) =>
+          observeRpcStream(INITIATIVES_WS_METHODS.subscribeList, Initiatives.subscribeListRpc(), {
+            "rpc.aggregate": "orchestration",
+          }),
+        [INITIATIVES_WS_METHODS.subscribeDetail]: (input) =>
+          observeRpcStream(
+            INITIATIVES_WS_METHODS.subscribeDetail,
+            Initiatives.subscribeDetailRpc(input),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [INITIATIVES_WS_METHODS.act]: (input) =>
+          observeRpcEffect(
+            INITIATIVES_WS_METHODS.act,
+            Initiatives.actRpc(input, personAuthor(currentSession.subject)),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [INITIATIVES_WS_METHODS.usage]: (input) =>
+          observeRpcEffect(INITIATIVES_WS_METHODS.usage, Initiatives.usageRpc(input), {
             "rpc.aggregate": "orchestration",
           }),
         // Fork: dictation in the composer.

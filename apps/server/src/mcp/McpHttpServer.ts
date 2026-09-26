@@ -36,6 +36,9 @@ import { PullRequestsToolkit } from "./toolkits/pullRequests/tools.ts";
 // Fork: thread orchestration.
 import { ThreadsToolkitHandlersLive } from "./toolkits/threads/handlers.ts";
 import { ThreadsToolkit } from "./toolkits/threads/tools.ts";
+// Fork: initiatives.
+import { InitiativesToolkitHandlersLive } from "../initiatives/toolkit/handlers.ts";
+import { InitiativesToolkit } from "../initiatives/toolkit/tools.ts";
 import {
   DeviceScreenshotToolkitHandlersLive,
   DeviceStandardToolkitHandlersLive,
@@ -646,4 +649,6 @@ export const layer = Layer.mergeAll(
   PullRequestsToolkitRegistrationLive,
   DeviceToolkitRegistrationLive,
   ThreadsToolkitRegistrationLive,
+  // Fork: initiatives.
+  McpServer.toolkit(InitiativesToolkit).pipe(Layer.provide(InitiativesToolkitHandlersLive)),
 ).pipe(Layer.provideMerge(McpTransportLive));

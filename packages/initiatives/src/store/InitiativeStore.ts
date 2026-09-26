@@ -1,0 +1,490 @@
+/**
+ * The initiatives' structured data: one SQLite table of records, keyed by kind
+ * and id, and one audit table. Every change writes the record and an audit row
+ * (who, when, the changed fields before and after) in one transaction, and
+ * bumps the record's revision, which a caller can pass back as
+ * `expectedRevision` to refuse a change made on stale data.
+ *
+ * The store gets its `SqlClient` as a value instead of from the context, so the
+ * server can run it on a file of its own beside `state.sqlite`.
+ */
+import {
+  type InitiativeAuthor,
+  Initiative,
+  InitiativeLaunchJob,
+  InitiativeProject,
+  InitiativeSession,
+} from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import type * as SqlClient from "effect/unstable/sql/SqlClient";
+
+/** What the store keeps, with how each kind is found besides its id. */
+export const INITIATIVE_KINDS = {
+  initiative: {
+    schema: Initiative,
+    initiativeId: (record: Initiative) => record.id,
+    uniqueKey: (_record: Initiative): string | null => null,
+  },
+  project: {
+    schema: InitiativeProject,
+    initiativeId: (record: InitiativeProject) => record.initiativeId,
+    // One initiative lists a project once; another initiative may list it too.
+    uniqueKey: (record: InitiativeProject): string | null =>
+      `${record.initiativeId}|${record.environmentId ?? ""}|${record.projectId ?? record.workspaceRoot}`,
+  },
+  session: {
+    schema: InitiativeSession,
+    initiativeId: (record: InitiativeSession) => record.initiativeId,
+    // A session belongs to one initiative at a time.
+    uniqueKey: (record: InitiativeSession): string | null => `${record.source}|${record.nativeId}`,
+  },
+  launchJob: {
+    schema: InitiativeLaunchJob,
+    initiativeId: (record: InitiativeLaunchJob) => record.initiativeId,
+    uniqueKey: (record: InitiativeLaunchJob): string | null => record.key,
+  },
+} as const;
+
+export type InitiativeKind = keyof typeof INITIATIVE_KINDS;
+
+/** Compiled once: a stored row's JSON, and a record about to be written. */
+const DECODERS = {
+  initiative: {
+    json: Schema.decodeUnknownEffect(Schema.fromJsonString(Initiative)),
+    value: Schema.decodeUnknownEffect(Initiative),
+  },
+  project: {
+    json: Schema.decodeUnknownEffect(Schema.fromJsonString(InitiativeProject)),
+    value: Schema.decodeUnknownEffect(InitiativeProject),
+  },
+  session: {
+    json: Schema.decodeUnknownEffect(Schema.fromJsonString(InitiativeSession)),
+    value: Schema.decodeUnknownEffect(InitiativeSession),
+  },
+  launchJob: {
+    json: Schema.decodeUnknownEffect(Schema.fromJsonString(InitiativeLaunchJob)),
+    value: Schema.decodeUnknownEffect(InitiativeLaunchJob),
+  },
+} as const;
+export type InitiativeRecord<K extends InitiativeKind> =
+  (typeof INITIATIVE_KINDS)[K]["schema"]["Type"];
+
+type Decoder<K extends InitiativeKind> = (
+  input: unknown,
+) => Effect.Effect<InitiativeRecord<K>, Schema.SchemaError>;
+const decodeJson = <K extends InitiativeKind>(kind: K): Decoder<K> =>
+  DECODERS[kind].json as unknown as Decoder<K>;
+const decodeValue = <K extends InitiativeKind>(kind: K): Decoder<K> =>
+  DECODERS[kind].value as unknown as Decoder<K>;
+
+type BaseField = "id" | "revision" | "createdAt" | "updatedAt" | "createdBy" | "updatedBy";
+export type InitiativeRecordInput<K extends InitiativeKind> = Omit<
+  InitiativeRecord<K>,
+  BaseField
+> & {
+  readonly id?: string;
+};
+export type InitiativeRecordPatch<K extends InitiativeKind> = Partial<
+  Omit<InitiativeRecord<K>, BaseField>
+>;
+
+export class InitiativeStoreError extends Schema.TaggedError<InitiativeStoreError>()(
+  "InitiativeStoreError",
+  {
+    reason: Schema.Literals(["notFound", "conflict", "duplicate", "failed"]),
+    message: Schema.String,
+  },
+) {}
+
+export interface AuditRow {
+  readonly kind: InitiativeKind;
+  readonly entityId: string;
+  readonly revision: number;
+  readonly author: InitiativeAuthor;
+  readonly at: string;
+  readonly before: Readonly<Record<string, unknown>> | null;
+  readonly after: Readonly<Record<string, unknown>> | null;
+}
+
+export interface InitiativeStore {
+  readonly insert: <K extends InitiativeKind>(
+    kind: K,
+    input: InitiativeRecordInput<K>,
+    author: InitiativeAuthor,
+  ) => Effect.Effect<InitiativeRecord<K>, InitiativeStoreError>;
+  readonly update: <K extends InitiativeKind>(
+    kind: K,
+    id: string,
+    patch: InitiativeRecordPatch<K>,
+    options: { readonly author: InitiativeAuthor; readonly expectedRevision?: number | undefined },
+  ) => Effect.Effect<InitiativeRecord<K>, InitiativeStoreError>;
+  readonly remove: <K extends InitiativeKind>(
+    kind: K,
+    id: string,
+    author: InitiativeAuthor,
+  ) => Effect.Effect<void, InitiativeStoreError>;
+  readonly get: <K extends InitiativeKind>(
+    kind: K,
+    id: string,
+  ) => Effect.Effect<Option.Option<InitiativeRecord<K>>, InitiativeStoreError>;
+  readonly findByKey: <K extends InitiativeKind>(
+    kind: K,
+    key: string,
+  ) => Effect.Effect<Option.Option<InitiativeRecord<K>>, InitiativeStoreError>;
+  readonly list: <K extends InitiativeKind>(
+    kind: K,
+    filter?: { readonly initiativeId?: string | undefined },
+  ) => Effect.Effect<ReadonlyArray<InitiativeRecord<K>>, InitiativeStoreError>;
+  readonly audit: (
+    kind: InitiativeKind,
+    entityId: string,
+  ) => Effect.Effect<ReadonlyArray<AuditRow>, InitiativeStoreError>;
+  /** Runs several writes as one: all land or none. */
+  readonly transaction: <A, E, R>(
+    effect: Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E | InitiativeStoreError, R>;
+}
+
+/** Creates the tables when missing; safe on every start. */
+export const ensureInitiativeSchema = (sql: SqlClient.SqlClient) =>
+  Effect.gen(function* () {
+    yield* sql`PRAGMA busy_timeout = 5000`;
+    yield* sql`PRAGMA journal_mode = WAL`;
+    yield* sql`
+      CREATE TABLE IF NOT EXISTS initiative_records (
+        kind TEXT NOT NULL,
+        id TEXT NOT NULL,
+        initiative_id TEXT,
+        unique_key TEXT,
+        revision INTEGER NOT NULL,
+        data_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (kind, id)
+      )
+    `;
+    yield* sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS initiative_records_unique_key
+      ON initiative_records (kind, unique_key) WHERE unique_key IS NOT NULL
+    `;
+    yield* sql`
+      CREATE INDEX IF NOT EXISTS initiative_records_by_initiative
+      ON initiative_records (kind, initiative_id)
+    `;
+    yield* sql`
+      CREATE TABLE IF NOT EXISTS initiative_audit (
+        seq INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        revision INTEGER NOT NULL,
+        author TEXT NOT NULL,
+        at TEXT NOT NULL,
+        before_json TEXT,
+        after_json TEXT
+      )
+    `;
+    yield* sql`
+      CREATE INDEX IF NOT EXISTS initiative_audit_by_entity
+      ON initiative_audit (kind, entity_id, seq)
+    `;
+  }).pipe(
+    Effect.mapError(
+      (cause) =>
+        new InitiativeStoreError({
+          reason: "failed",
+          message: `Could not prepare the store: ${cause}`,
+        }),
+    ),
+  );
+
+interface RecordRow {
+  readonly data_json: string;
+}
+
+const failed = (detail: string) => (cause: unknown) =>
+  new InitiativeStoreError({
+    reason: "failed",
+    message: `Could not ${detail}: ${cause instanceof Error ? cause.message : String(cause)}`,
+  });
+
+/** node:sqlite reports a unique violation only in the message of the error's cause. */
+const isUniqueViolation = (cause: unknown): boolean => {
+  for (let current = cause, depth = 0; current && depth < 5; depth++) {
+    if (typeof current !== "object") return false;
+    const error = current as {
+      readonly message?: unknown;
+      readonly cause?: unknown;
+      readonly reason?: { readonly _tag?: string; readonly cause?: unknown };
+    };
+    if (error.reason?._tag === "UniqueViolation") return true;
+    if (typeof error.message === "string" && /UNIQUE constraint failed/i.test(error.message)) {
+      return true;
+    }
+    current = error.cause ?? error.reason?.cause;
+  }
+  return false;
+};
+
+/** The fields a patch changes, before and after. */
+function diffFields(
+  before: Readonly<Record<string, unknown>>,
+  after: Readonly<Record<string, unknown>>,
+): { before: Record<string, unknown>; after: Record<string, unknown> } | null {
+  const changedBefore: Record<string, unknown> = {};
+  const changedAfter: Record<string, unknown> = {};
+  let changed = false;
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    if (key === "revision" || key === "updatedAt" || key === "updatedBy") continue;
+    if (JSON.stringify(before[key]) === JSON.stringify(after[key])) continue;
+    changedBefore[key] = before[key];
+    changedAfter[key] = after[key];
+    changed = true;
+  }
+  return changed ? { before: changedBefore, after: changedAfter } : null;
+}
+
+export const makeInitiativeStore = (options: {
+  readonly sql: SqlClient.SqlClient;
+  readonly newId: Effect.Effect<string>;
+}): InitiativeStore => {
+  const { sql, newId } = options;
+  const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
+
+  const decode = <K extends InitiativeKind>(kind: K, json: string) =>
+    decodeJson(kind)(json).pipe(Effect.mapError(failed(`read a stored ${kind}`))) as Effect.Effect<
+      InitiativeRecord<K>,
+      InitiativeStoreError
+    >;
+
+  const decodeRows = <K extends InitiativeKind>(kind: K, rows: ReadonlyArray<RecordRow>) =>
+    Effect.forEach(rows, (row) => decode(kind, row.data_json));
+
+  const keysOf = <K extends InitiativeKind>(kind: K, record: InitiativeRecord<K>) => {
+    const spec = INITIATIVE_KINDS[kind] as unknown as {
+      readonly initiativeId: (record: InitiativeRecord<K>) => string;
+      readonly uniqueKey: (record: InitiativeRecord<K>) => string | null;
+    };
+    return { initiativeId: spec.initiativeId(record), uniqueKey: spec.uniqueKey(record) };
+  };
+
+  const writeAudit = (row: AuditRow) =>
+    sql`
+      INSERT INTO initiative_audit (kind, entity_id, revision, author, at, before_json, after_json)
+      VALUES (${row.kind}, ${row.entityId}, ${row.revision}, ${row.author}, ${row.at},
+        ${row.before === null ? null : JSON.stringify(row.before)},
+        ${row.after === null ? null : JSON.stringify(row.after)})
+    `;
+
+  const getRaw = <K extends InitiativeKind>(kind: K, id: string) =>
+    sql<RecordRow>`SELECT data_json FROM initiative_records WHERE kind = ${kind} AND id = ${id}`.pipe(
+      Effect.mapError(failed(`read the ${kind}`)),
+      Effect.flatMap((rows) => decodeRows(kind, rows)),
+      Effect.map((records) => Option.fromNullishOr(records[0])),
+    );
+
+  const get: InitiativeStore["get"] = (kind, id) => getRaw(kind, id);
+
+  const findByKey: InitiativeStore["findByKey"] = (kind, key) =>
+    sql<RecordRow>`
+      SELECT data_json FROM initiative_records WHERE kind = ${kind} AND unique_key = ${key}
+    `.pipe(
+      Effect.mapError(failed(`read the ${kind}`)),
+      Effect.flatMap((rows) => decodeRows(kind, rows)),
+      Effect.map((records) => Option.fromNullishOr(records[0])),
+    );
+
+  const list: InitiativeStore["list"] = (kind, filter) =>
+    (filter?.initiativeId === undefined
+      ? sql<RecordRow>`
+          SELECT data_json FROM initiative_records WHERE kind = ${kind}
+          ORDER BY json_extract(data_json, '$.createdAt'), id
+        `
+      : sql<RecordRow>`
+          SELECT data_json FROM initiative_records
+          WHERE kind = ${kind} AND initiative_id = ${filter.initiativeId}
+          ORDER BY json_extract(data_json, '$.createdAt'), id
+        `
+    ).pipe(
+      Effect.mapError(failed(`list the ${kind} records`)),
+      Effect.flatMap((rows) => decodeRows(kind, rows)),
+    );
+
+  const save = <K extends InitiativeKind>(kind: K, record: InitiativeRecord<K>, isNew: boolean) => {
+    const { initiativeId, uniqueKey } = keysOf(kind, record);
+    const json = JSON.stringify(record);
+    return (
+      isNew
+        ? sql`
+            INSERT INTO initiative_records (kind, id, initiative_id, unique_key, revision, data_json, updated_at)
+            VALUES (${kind}, ${record.id}, ${initiativeId}, ${uniqueKey}, ${record.revision}, ${json}, ${record.updatedAt})
+          `
+        : sql`
+            UPDATE initiative_records
+            SET initiative_id = ${initiativeId}, unique_key = ${uniqueKey}, revision = ${record.revision},
+              data_json = ${json}, updated_at = ${record.updatedAt}
+            WHERE kind = ${kind} AND id = ${record.id}
+          `
+    ).pipe(
+      Effect.mapError((cause) =>
+        isUniqueViolation(cause)
+          ? new InitiativeStoreError({
+              reason: "duplicate",
+              message: `This ${kind} exists already.`,
+            })
+          : failed(`save the ${kind}`)(cause),
+      ),
+    );
+  };
+
+  const transaction: InitiativeStore["transaction"] = (effect) =>
+    sql
+      .withTransaction(effect)
+      .pipe(
+        Effect.catchTag("SqlError", (cause) => Effect.fail(failed("finish the change")(cause))),
+      ) as never;
+
+  const insert: InitiativeStore["insert"] = (kind, input, author) =>
+    transaction(
+      Effect.gen(function* () {
+        const at = yield* nowIso;
+        const id = input.id ?? (yield* newId);
+        const record = yield* decodeValue(kind)({
+          ...input,
+          id,
+          revision: 1,
+          createdAt: at,
+          updatedAt: at,
+          createdBy: author,
+          updatedBy: author,
+        }).pipe(
+          Effect.mapError(
+            (cause) =>
+              new InitiativeStoreError({
+                reason: "failed",
+                message: `Invalid ${kind}: ${cause.message}`,
+              }),
+          ),
+        );
+        const typed = record as InitiativeRecord<typeof kind>;
+        yield* save(kind, typed, true);
+        yield* writeAudit({
+          kind,
+          entityId: id,
+          revision: 1,
+          author,
+          at,
+          before: null,
+          after: record as unknown as Record<string, unknown>,
+        }).pipe(Effect.mapError(failed("write the audit row")));
+        return typed;
+      }),
+    );
+
+  const update: InitiativeStore["update"] = (kind, id, patch, { author, expectedRevision }) =>
+    transaction(
+      Effect.gen(function* () {
+        const current = yield* getRaw(kind, id);
+        if (Option.isNone(current)) {
+          return yield* new InitiativeStoreError({
+            reason: "notFound",
+            message: `No ${kind} ${id}.`,
+          });
+        }
+        const before = current.value;
+        if (expectedRevision !== undefined && expectedRevision !== before.revision) {
+          return yield* new InitiativeStoreError({
+            reason: "conflict",
+            message: `The ${kind} changed in the meantime (revision ${before.revision}, not ${expectedRevision}). Reload and try again.`,
+          });
+        }
+        const at = yield* nowIso;
+        const merged = {
+          ...before,
+          ...patch,
+          id: before.id,
+          createdAt: before.createdAt,
+          createdBy: before.createdBy,
+        };
+        const changes = diffFields(
+          before as unknown as Record<string, unknown>,
+          merged as unknown as Record<string, unknown>,
+        );
+        if (changes === null) return before;
+        const record = yield* decodeValue(kind)({
+          ...merged,
+          revision: before.revision + 1,
+          updatedAt: at,
+          updatedBy: author,
+        }).pipe(
+          Effect.mapError(
+            (cause) =>
+              new InitiativeStoreError({
+                reason: "failed",
+                message: `Invalid ${kind}: ${cause.message}`,
+              }),
+          ),
+        );
+        const typed = record as InitiativeRecord<typeof kind>;
+        yield* save(kind, typed, false);
+        yield* writeAudit({
+          kind,
+          entityId: id,
+          revision: typed.revision,
+          author,
+          at,
+          before: changes.before,
+          after: changes.after,
+        }).pipe(Effect.mapError(failed("write the audit row")));
+        return typed;
+      }),
+    );
+
+  const remove: InitiativeStore["remove"] = (kind, id, author) =>
+    transaction(
+      Effect.gen(function* () {
+        const current = yield* getRaw(kind, id);
+        if (Option.isNone(current)) return;
+        yield* sql`DELETE FROM initiative_records WHERE kind = ${kind} AND id = ${id}`.pipe(
+          Effect.mapError(failed(`remove the ${kind}`)),
+        );
+        yield* writeAudit({
+          kind,
+          entityId: id,
+          revision: current.value.revision + 1,
+          author,
+          at: yield* nowIso,
+          before: current.value as unknown as Record<string, unknown>,
+          after: null,
+        }).pipe(Effect.mapError(failed("write the audit row")));
+      }),
+    );
+
+  const audit: InitiativeStore["audit"] = (kind, entityId) =>
+    sql<{
+      readonly revision: number;
+      readonly author: string;
+      readonly at: string;
+      readonly before_json: string | null;
+      readonly after_json: string | null;
+    }>`
+      SELECT revision, author, at, before_json, after_json FROM initiative_audit
+      WHERE kind = ${kind} AND entity_id = ${entityId} ORDER BY seq
+    `.pipe(
+      Effect.mapError(failed("read the audit rows")),
+      Effect.map((rows) =>
+        rows.map((row): AuditRow => ({
+          kind,
+          entityId,
+          revision: row.revision,
+          author: row.author,
+          at: row.at,
+          before: row.before_json === null ? null : JSON.parse(row.before_json),
+          after: row.after_json === null ? null : JSON.parse(row.after_json),
+        })),
+      ),
+    );
+
+  return { insert, update, remove, get, findByKey, list, audit, transaction };
+};

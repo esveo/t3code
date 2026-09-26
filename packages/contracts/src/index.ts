@@ -47,4 +47,6 @@ export * from "./rpc.ts";
 export * from "./worktreeSetup.ts";
 export * from "./subagentChat.ts";
 export * from "./threadDecisions.ts";
+// Fork: initiatives.
+export * from "./initiatives.ts";
 export * from "./voiceInput.ts";
