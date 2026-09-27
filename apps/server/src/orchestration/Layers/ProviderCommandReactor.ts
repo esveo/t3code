@@ -772,9 +772,14 @@ const make = Effect.gen(function* () {
         activeSession?.providerInstanceId !== requestedModelSelection.instanceId;
       const shouldRestartForModelChange = modelChanged && sessionModelSwitch === "unsupported";
       const previousModelSelection = threadModelSelections.get(threadId);
+      // Fork: a session resumed outside this reactor (the continuation after a
+      // server restart) has no cached selection. It runs the thread's last one,
+      // and restarting it would kill its background shells. Obsolete with
+      // orchestration v2, which drops this reactor.
       const shouldRestartForModelSelectionChange =
         preferredProvider === "claudeAgent" &&
         requestedModelSelection !== undefined &&
+        previousModelSelection !== undefined &&
         !Equal.equals(previousModelSelection, requestedModelSelection);
 
       if (

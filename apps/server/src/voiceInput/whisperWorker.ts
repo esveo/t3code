@@ -35,6 +35,7 @@ parentPort.on("message", async (message) => {
       parentPort.close();
     }
   } catch (error) {
+    if (message.type === "transcribe") jobs.delete(message.id);
     parentPort.postMessage({ type: "error", id: message.id ?? null, message: String(error?.message ?? error) });
   }
 });
@@ -69,8 +70,10 @@ export function loadWhisperContextInWorker(modelPath: string): Promise<WhisperCo
   >();
   let nextId = 0;
   let failure: Error | null = null;
+  const closed = Promise.withResolvers<void>();
   const failAll = (error: Error) => {
     failure = error;
+    closed.resolve();
     for (const job of pending.values()) job.reject(error);
     pending.clear();
   };
@@ -112,6 +115,7 @@ export function loadWhisperContextInWorker(modelPath: string): Promise<WhisperCo
       release: async () => {
         worker.postMessage({ type: "release" });
       },
+      closed: closed.promise,
     };
     worker.postMessage({ type: "init", modelPath });
   });

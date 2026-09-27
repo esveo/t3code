@@ -361,7 +361,7 @@ export type ProviderSummary = typeof ProviderSummary.Type;
 
 const ListProjectsTool = Tool.make("list_projects", {
   description:
-    "List the projects of this T3 Code environment and the providers with their models, to start a thread in another repository or on another model with start_thread.",
+    "List the projects of this T3 Code environment and the providers with their models, to start a thread in another repository or on another model with start_thread. A folder that is not a project yet can be added with create_project.",
   success: Schema.Struct({
     projects: Schema.Array(ProjectSummary),
     providers: Schema.Array(ProviderSummary),
@@ -371,6 +371,48 @@ const ListProjectsTool = Tool.make("list_projects", {
 })
   .annotate(Tool.Title, "List projects")
   .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, true)
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, whileThreadsOn);
+
+// Field names follow upstream's t3_project_create (Orchestration V2), which replaces this tool.
+export const CreateProjectInput = Schema.Struct({
+  workspaceRoot: TrimmedNonEmptyString.annotate({
+    description:
+      "Absolute path of the project's folder (~ for the home folder) on the machine T3 Code runs on, which may not be the machine the user sits at.",
+  }),
+  title: Schema.optional(
+    TrimmedNonEmptyString.annotate({
+      description: "Name shown in the sidebar. Defaults to the folder name.",
+    }),
+  ),
+  createWorkspaceRootIfMissing: Schema.optional(
+    Schema.Boolean.annotate({
+      description: "true: create the folder when it does not exist yet. Defaults to false.",
+    }),
+  ),
+});
+export type CreateProjectInput = typeof CreateProjectInput.Type;
+
+export const CreateProjectResult = Schema.Struct({
+  project: ProjectSummary,
+  created: Schema.Boolean.annotate({
+    description: "false when the folder already was a project; that project is returned.",
+  }),
+});
+export type CreateProjectResult = typeof CreateProjectResult.Type;
+
+const CreateProjectTool = Tool.make("create_project", {
+  description:
+    "Add a folder as a project of this T3 Code environment, as the user can with Add project, so you can start threads in it with start_thread (pass its projectId as project). Only when the user asked for a new project or for work in a folder that is not one yet. Calling it for a folder that already is a project returns that project.",
+  parameters: CreateProjectInput,
+  success: CreateProjectResult,
+  failure: ThreadsToolError,
+  dependencies,
+})
+  .annotate(Tool.Title, "Create a project")
+  .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
   .annotate(Tool.OpenWorld, false)
@@ -631,6 +673,7 @@ const ListDecisionsTool = Tool.make("list_decisions", {
 
 export const ThreadsToolkit = Toolkit.make(
   ListProjectsTool,
+  CreateProjectTool,
   CreateThreadTool,
   SendToThreadTool,
   ListThreadsTool,

@@ -43,6 +43,13 @@ import {
  */
 
 const USER_BUBBLE_RADIUS = 20;
+// react-native-svg paints every Svg into a bitmap the size of its view on
+// Android, and drawing a bitmap over 100 MB crashes the app. A long message
+// (a coordinator's task in a child thread) makes a bubble thousands of points
+// tall, so the gradients are drawn at a fixed size and scaled to the bubble.
+// They are soft enough that the scaling never shows.
+const TILE_DRAW_SIZE = 64;
+const LIGHT_DRAW_SIZE = 256;
 const CONIC_WEDGES = buildEsveoConicWedges();
 
 function useEsveoMidnightDark(): boolean {
@@ -75,31 +82,45 @@ export function useEsveoLiveUserMessage(
   );
 }
 
-/** The bubbles' tile: Space navy into Sky ink with a Sea and a Sky glow in the corners. */
-function EsveoTile() {
+/**
+ * The bubbles' tile: Space navy into Sky ink with a Sea and a Sky glow in the
+ * corners, stretched over a box of `width` by `height`.
+ */
+function EsveoTile({ width, height }: { width: number; height: number }) {
   const id = useSvgId();
   return (
-    <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" preserveAspectRatio="none">
-      <Defs>
-        {/* CSS 160deg: top left-of-centre to bottom right-of-centre. */}
-        <LinearGradient id={`${id}base`} x1="0.32" y1="0" x2="0.68" y2="1">
-          <Stop offset="0" stopColor={ESVEO_TILE_STOPS[0]} />
-          <Stop offset="0.6" stopColor={ESVEO_TILE_STOPS[1]} />
-          <Stop offset="1" stopColor={ESVEO_TILE_STOPS[2]} />
-        </LinearGradient>
-        <RadialGradient id={`${id}sea`} cx="1" cy="0" fx="1" fy="0" r="1.05">
-          <Stop offset="0" stopColor={ESVEO_SEA} stopOpacity={0.13} />
-          <Stop offset="0.55" stopColor={ESVEO_SEA} stopOpacity={0} />
-        </RadialGradient>
-        <RadialGradient id={`${id}sky`} cx="0" cy="1" fx="0" fy="1" r="0.9">
-          <Stop offset="0" stopColor={ESVEO_SKY} stopOpacity={0.09} />
-          <Stop offset="0.6" stopColor={ESVEO_SKY} stopOpacity={0} />
-        </RadialGradient>
-      </Defs>
-      <Rect width="100%" height="100%" fill={`url(#${id}base)`} />
-      <Rect width="100%" height="100%" fill={`url(#${id}sea)`} />
-      <Rect width="100%" height="100%" fill={`url(#${id}sky)`} />
-    </Svg>
+    <View
+      style={{
+        position: "absolute",
+        left: (width - TILE_DRAW_SIZE) / 2,
+        top: (height - TILE_DRAW_SIZE) / 2,
+        width: TILE_DRAW_SIZE,
+        height: TILE_DRAW_SIZE,
+        transform: [{ scaleX: width / TILE_DRAW_SIZE }, { scaleY: height / TILE_DRAW_SIZE }],
+      }}
+    >
+      <Svg width={TILE_DRAW_SIZE} height={TILE_DRAW_SIZE} preserveAspectRatio="none">
+        <Defs>
+          {/* CSS 160deg: top left-of-centre to bottom right-of-centre. */}
+          <LinearGradient id={`${id}base`} x1="0.32" y1="0" x2="0.68" y2="1">
+            <Stop offset="0" stopColor={ESVEO_TILE_STOPS[0]} />
+            <Stop offset="0.6" stopColor={ESVEO_TILE_STOPS[1]} />
+            <Stop offset="1" stopColor={ESVEO_TILE_STOPS[2]} />
+          </LinearGradient>
+          <RadialGradient id={`${id}sea`} cx="1" cy="0" fx="1" fy="0" r="1.05">
+            <Stop offset="0" stopColor={ESVEO_SEA} stopOpacity={0.13} />
+            <Stop offset="0.55" stopColor={ESVEO_SEA} stopOpacity={0} />
+          </RadialGradient>
+          <RadialGradient id={`${id}sky`} cx="0" cy="1" fx="0" fy="1" r="0.9">
+            <Stop offset="0" stopColor={ESVEO_SKY} stopOpacity={0.09} />
+            <Stop offset="0.6" stopColor={ESVEO_SKY} stopOpacity={0} />
+          </RadialGradient>
+        </Defs>
+        <Rect width="100%" height="100%" fill={`url(#${id}base)`} />
+        <Rect width="100%" height="100%" fill={`url(#${id}sea)`} />
+        <Rect width="100%" height="100%" fill={`url(#${id}sky)`} />
+      </Svg>
+    </View>
   );
 }
 
@@ -124,27 +145,27 @@ function EsveoLiveLight({ size }: { size: number }) {
     transform: [{ rotate: `${rotation.value}deg` }],
   }));
   return (
-    <Animated.View
+    <View
       pointerEvents="none"
-      style={[
-        {
-          position: "absolute",
-          top: "50%",
-          left: "50%",
-          width: size,
-          height: size,
-          marginTop: -size / 2,
-          marginLeft: -size / 2,
-        },
-        animatedStyle,
-      ]}
+      style={{
+        position: "absolute",
+        top: "50%",
+        left: "50%",
+        width: LIGHT_DRAW_SIZE,
+        height: LIGHT_DRAW_SIZE,
+        marginTop: -LIGHT_DRAW_SIZE / 2,
+        marginLeft: -LIGHT_DRAW_SIZE / 2,
+        transform: [{ scale: size / LIGHT_DRAW_SIZE }],
+      }}
     >
-      <Svg width={size} height={size} viewBox="-1 -1 2 2">
-        {CONIC_WEDGES.map((wedge) => (
-          <Path key={wedge.path} d={wedge.path} fill={wedge.fill} fillOpacity={wedge.opacity} />
-        ))}
-      </Svg>
-    </Animated.View>
+      <Animated.View style={animatedStyle}>
+        <Svg width={LIGHT_DRAW_SIZE} height={LIGHT_DRAW_SIZE} viewBox="-1 -1 2 2">
+          {CONIC_WEDGES.map((wedge) => (
+            <Path key={wedge.path} d={wedge.path} fill={wedge.fill} fillOpacity={wedge.opacity} />
+          ))}
+        </Svg>
+      </Animated.View>
+    </View>
   );
 }
 
@@ -152,15 +173,19 @@ function EsveoUserBubbleFill({ messageId }: { messageId: string }) {
   const live = useSyncExternalStore(subscribeEsveoLiveUserMessages, () =>
     isEsveoLiveUserMessage(messageId),
   );
-  const [diagonal, setDiagonal] = useState(0);
+  const [size, setSize] = useState({ width: 0, height: 0 });
   const onLayout = (event: LayoutChangeEvent) => {
     const { width, height } = event.nativeEvent.layout;
-    setDiagonal(Math.ceil(Math.hypot(width, height)));
+    setSize((previous) =>
+      previous.width === width && previous.height === height ? previous : { width, height },
+    );
   };
+  const diagonal = Math.ceil(Math.hypot(size.width, size.height));
+  const inset = live ? 1 : 0;
   return (
     <View
       pointerEvents="none"
-      onLayout={live ? onLayout : undefined}
+      onLayout={onLayout}
       style={[
         StyleSheet.absoluteFill,
         {
@@ -175,15 +200,17 @@ function EsveoUserBubbleFill({ messageId }: { messageId: string }) {
       <View
         style={{
           position: "absolute",
-          top: live ? 1 : 0,
-          right: live ? 1 : 0,
-          bottom: live ? 1 : 0,
-          left: live ? 1 : 0,
-          borderRadius: live ? USER_BUBBLE_RADIUS - 1 : USER_BUBBLE_RADIUS,
+          top: inset,
+          right: inset,
+          bottom: inset,
+          left: inset,
+          borderRadius: USER_BUBBLE_RADIUS - inset,
           overflow: "hidden",
         }}
       >
-        <EsveoTile />
+        {size.width > 0 ? (
+          <EsveoTile width={size.width - 2 * inset} height={size.height - 2 * inset} />
+        ) : null}
       </View>
     </View>
   );

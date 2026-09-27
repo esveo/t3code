@@ -91,6 +91,14 @@ item is an issue in `esveo/t3code`, with the status `Ideen`, `In Arbeit` or
 - **Starting a feature or fix:** find its issue on the board. If there is none,
   create one (German title, a sentence or two of body, like the existing ones)
   and add it to the board. Set it to `In Arbeit`.
+- **Before a larger feature:** check whether upstream already builds it or
+  something close. Look at upstream's open pull requests
+  (`gh pr list -R pingdotgg/t3code --search "<keywords>"`), its branches
+  (`git fetch upstream && git branch -r | grep upstream`), and recent
+  `upstream/main`. Reading is fine; the rule against writing to upstream
+  still holds. Note in the issue what you found and how the idea differs.
+  If upstream builds the same thing, build on it or wait; if it builds
+  part of it, keep the fork's work to the difference.
 - **Feature live:** once it is merged into `fork`, set it to `Done` and close
   the issue. A build prepared from a feature branch alone is not done.
 - **Abandoned or paused:** move it back to `Ideen` with a comment on the issue

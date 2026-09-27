@@ -47,7 +47,9 @@ function EnabledComposerVoiceInputControl(props: ComposerVoiceInputControlProps)
   const { phase, toggle, cancel } = voice;
 
   const rootRef = useRef<HTMLSpanElement>(null);
+  // Without dictation there is no button, so the shortcut would record out of sight.
   const ownsShortcut = () =>
+    voice.supported &&
     ownsVoiceInputShortcut({
       ownComposer: rootRef.current?.closest(COMPOSER_SURFACE_SELECTOR) ?? null,
       focusedComposer: focusedComposer(),

@@ -59,13 +59,11 @@ async function downloadModel(
   await NodeFSP.mkdir(NodePath.dirname(modelPath), { recursive: true });
   const partialPath = `${modelPath}.${process.pid}.part`;
   const stalled = new AbortController();
-  let stallTimer = setTimeout(() => stalled.abort(), DOWNLOAD_STALL_MS);
+  const abortStalled = () => stalled.abort(new Error("The model download stalled."));
+  let stallTimer = setTimeout(abortStalled, DOWNLOAD_STALL_MS);
   const resetStallTimer = () => {
     clearTimeout(stallTimer);
-    stallTimer = setTimeout(
-      () => stalled.abort(new Error("The model download stalled.")),
-      DOWNLOAD_STALL_MS,
-    );
+    stallTimer = setTimeout(abortStalled, DOWNLOAD_STALL_MS);
   };
   try {
     const response = await fetch(MODEL.url, { signal: stalled.signal });

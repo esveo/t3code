@@ -100,10 +100,15 @@ export function useComposerVoiceInput(input: {
       return true;
     };
 
-    let recorded: Blob;
+    let compressed: Uint8Array | null;
     let samples: Float32Array;
     try {
-      recorded = await current.stop();
+      const recorded = await current.stop();
+      // Compressed audio is about a tenth of the PCM; the server trims both to the time limit.
+      compressed =
+        acceptsM4a && isM4aRecording(recorded)
+          ? new Uint8Array(await recorded.arrayBuffer())
+          : null;
       samples = await decodeVoiceRecording(recorded);
     } catch {
       finish({ title: "Couldn't read the recording" });
@@ -115,14 +120,9 @@ export function useComposerVoiceInput(input: {
       return;
     }
 
-    // Compressed audio is about a tenth of the PCM; the server trims both to the time limit.
-    const audio =
-      acceptsM4a && isM4aRecording(recorded)
-        ? {
-            audioBase64: encodeBase64(new Uint8Array(await recorded.arrayBuffer())),
-            format: "m4a" as const,
-          }
-        : { audioBase64: encodePcm16Base64(samples) };
+    const audio = compressed
+      ? { audioBase64: encodeBase64(compressed), format: "m4a" as const }
+      : { audioBase64: encodePcm16Base64(samples) };
     const language = useVoiceInputStore.getState().language;
     const result = await transcribe({
       environmentId,
