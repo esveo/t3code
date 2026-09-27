@@ -44,7 +44,23 @@ cd "$REPO_ROOT/apps/mobile"
 export APP_VARIANT=production T3CODE_ESVEO_ANDROID=1 EXPO_NO_GIT_STATUS=1
 export T3CODE_ESVEO_VERSION_CODE="$(git rev-list --count HEAD)"
 npx expo prebuild --clean --platform android --no-install
-(cd android && ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a)
+
+# react-native-shiki-engine asks for fbjni "+", which resolves to the newest
+# release instead of the one React Native is built against. A newer libfbjni.so
+# does not load and the app crashes at launch, so pin it to React Native's.
+rn_versions="$(dirname "$(node -p "require.resolve('react-native/package.json')")")/gradle/libs.versions.toml"
+fbjni_version="$(sed -nE 's/^fbjni = "([^"]+)"/\1/p' "$rn_versions")"
+[ -n "$fbjni_version" ] || { echo "No fbjni version in $rn_versions." >&2; exit 1; }
+init_script="$(mktemp -t esveo-fbjni).gradle"
+trap 'rm -f "$init_script"' EXIT
+cat > "$init_script" <<EOF
+allprojects {
+  configurations.configureEach {
+    resolutionStrategy.force "com.facebook.fbjni:fbjni:$fbjni_version"
+  }
+}
+EOF
+(cd android && ./gradlew --init-script "$init_script" assembleRelease -PreactNativeArchitectures=arm64-v8a)
 
 build_tools="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)"
 apk="$OUT_DIR/esveo-code-$(git rev-parse --short HEAD).apk"
