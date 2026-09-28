@@ -59,7 +59,19 @@ The Agents panel lists every subagent. Click one to open its chat, live while it
 
 ### Thread orchestration
 
+<<<<<<< HEAD
 A coordinator thread starts child threads in any project, waits for them and collects their results.
+=======
+#### Debian, Ubuntu (`.deb`)
+
+Download the `.deb` from [GitHub Releases](https://github.com/pingdotgg/t3code/releases), then:
+
+```bash
+sudo apt install ./T3-Code-*.deb
+```
+
+#### Arch Linux (AUR)
+>>>>>>> d15210cd3da79f9a1a495a6309d912d76362a046
 
 <p align="center">
   <img src="docs/fork/media/orchestration.gif" alt="A coordinator starts three child threads across three projects" width="100%">

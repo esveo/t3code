@@ -44,6 +44,7 @@ export type UnpinThreadInput = CommandInput<"thread.unpin">;
 /** Fork: thread orchestration. */
 export type SetThreadParentInput = CommandInput<"thread.parent.set">;
 export type ReorderPinnedThreadInput = CommandInput<"thread.pin.reorder">;
+export type SetThreadAutoSettleInput = CommandInput<"thread.auto-settle.set">;
 export type ReorderActiveThreadInput = CommandInput<"thread.active.reorder">;
 export type UpdateThreadMetadataInput = CommandInput<"thread.meta.update">;
 export type LinkThreadPullRequestInput = CommandInput<"thread.pull-request.link">;
@@ -228,6 +229,7 @@ export const unpinThread: (input: UnpinThreadInput) => CommandEffect = Effect.fn
   });
 });
 
+<<<<<<< HEAD
 /** Fork: thread orchestration. Puts a thread under a coordinator thread, or null to take it out. */
 export const setThreadParent: (input: SetThreadParentInput) => CommandEffect = Effect.fn(
   "EnvironmentCommands.setThreadParent",
@@ -235,6 +237,14 @@ export const setThreadParent: (input: SetThreadParentInput) => CommandEffect = E
   return yield* dispatch({
     ...input,
     type: "thread.parent.set",
+=======
+export const setThreadAutoSettle: (input: SetThreadAutoSettleInput) => CommandEffect = Effect.fn(
+  "EnvironmentCommands.setThreadAutoSettle",
+)(function* (input) {
+  return yield* dispatch({
+    ...input,
+    type: "thread.auto-settle.set",
+>>>>>>> d15210cd3da79f9a1a495a6309d912d76362a046
     commandId: yield* commandId(input),
   });
 });

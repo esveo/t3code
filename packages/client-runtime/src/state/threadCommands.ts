@@ -29,6 +29,7 @@ import {
   type PinThreadInput,
   type ReorderPinnedThreadInput,
   type ReorderActiveThreadInput,
+  type SetThreadAutoSettleInput,
   type SettleThreadInput,
   type SnoozeThreadInput,
   type StartThreadTurnInput,
@@ -54,7 +55,11 @@ import {
   pinThread,
   reorderPinnedThread,
   reorderActiveThread,
+<<<<<<< HEAD
   setThreadParent,
+=======
+  setThreadAutoSettle,
+>>>>>>> d15210cd3da79f9a1a495a6309d912d76362a046
   settleThread,
   snoozeThread,
   startThreadTurn,
@@ -83,6 +88,7 @@ export type {
   PinThreadInput,
   ReorderPinnedThreadInput,
   ReorderActiveThreadInput,
+  SetThreadAutoSettleInput,
   SettleThreadInput,
   SnoozeThreadInput,
   StartThreadTurnInput,
@@ -176,6 +182,12 @@ export function createThreadEnvironmentAtoms<R, E>(
     reorderPin: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:reorder-pin",
       execute: (input: ReorderPinnedThreadInput) => reorderPinnedThread(input),
+      scheduler,
+      concurrency,
+    }),
+    setAutoSettle: createEnvironmentCommand(runtime, {
+      label: "environment-data:commands:thread:set-auto-settle",
+      execute: (input: SetThreadAutoSettleInput) => setThreadAutoSettle(input),
       scheduler,
       concurrency,
     }),

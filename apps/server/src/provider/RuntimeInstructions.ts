@@ -2,6 +2,7 @@ const PULL_REQUEST_LINKING_INSTRUCTIONS = `<pull_request_linking>
 When the t3-code MCP server exposes link_pull_request, you must use it to register every pull request you create or work on for this thread. Call link_pull_request with the full PR URL immediately after creating a PR or starting work on an existing PR. For a stack, call it for every layer, not just the current branch or the top PR. This applies when creating or updating PRs through gh, gh stack, another CLI, or the host API: those operations do not register the PRs with this thread. Linking an already-linked PR is safe. Before finishing PR work, call list_thread_pull_requests and link any PR from your work that is missing. Do not link unrelated PRs mentioned only as background. If a linking call fails, report that failure instead of claiming the PR is linked.
 </pull_request_linking>`;
 
+<<<<<<< HEAD
 // Fork: thread orchestration, only for sessions granted the "threads" MCP capability.
 const THREAD_ORCHESTRATION_INSTRUCTIONS = `<thread_orchestration>
 The t3-code MCP server lets you coordinate other threads: start_thread starts a child thread that works on its own task in parallel, usually in its own git worktree and branch, and shows up for the user under this thread. It can also work in another project of this environment (list_projects). When a request splits into independent pieces of work with their own results (a branch, a pull request, a document), start a thread per piece, group work that belongs together into one thread, and keep quick lookups and checks in subagents. Give each thread everything it needs in its prompt, since it starts without your context, and pass the language the user writes to you in as language, so the thread answers the user in it. list_projects also lists the providers and models start_thread accepts. You receive a message when a thread finishes, fails or waits on the user; follow up with send_to_thread and read results with read_thread. An update carries a summary of the thread's answer, and updates of several threads can arrive together. The user sees each thread's full answer right above your reply, so do not repeat or summarize it: add only what it does not say, such as how several results fit together, what the user has to decide, or what happens next, and say nothing when there is nothing to add. When you do name a file from a thread's answer, give its absolute path, since the thread's relative paths start in its own directory, not yours. To pick up earlier work, find any thread of this environment with list_threads (scope "all", filter by title) and read it with read_thread; you can message or stop only your own threads, so ask the user to assign an existing one to you when you need to continue it; only when the user explicitly asks you to take a thread over, adopt it with adopt_thread. Once a thread's result has reached the user and nothing is left open there, settle it with settle_thread so it leaves the user's sidebar; leave it unsettled while the user still has a decision to make in it. Mention threads to the user as Markdown links [title](t3-thread:THREAD_ID). If this thread was itself started by a coordinator (its task arrived in a t3_from_coordinator message), do not start threads: use subagents.
@@ -13,9 +14,16 @@ When you need the user to decide or approve something, record each question with
 </thread_decisions>`;
 
 /** Shared runtime context; omit model and effort when the harness manages them dynamically. */
+=======
+/**
+ * Shared runtime context; omit model and effort when the harness manages them dynamically.
+ * `modelName` is the display name users see in the model picker; `model` is the slug.
+ */
+>>>>>>> d15210cd3da79f9a1a495a6309d912d76362a046
 export function buildRuntimeInstructions(runtime: {
   readonly harness: string;
   readonly model?: string | undefined;
+  readonly modelName?: string | undefined;
   readonly reasoningEffort?: string | undefined;
   /** Fork: the session may start and follow child threads. */
   readonly threadOrchestration?: boolean | undefined;
@@ -24,8 +32,11 @@ export function buildRuntimeInstructions(runtime: {
 }): string {
   const harness = toSingleLine(runtime.harness);
   const model = toSingleLine(runtime.model ?? "");
+  const modelName = toSingleLine(runtime.modelName ?? "");
   const effort = toSingleLine(runtime.reasoningEffort ?? "");
-  const modelInfo = model && model !== "auto" && model !== "default" ? `, as ${model}` : "";
+  const modelLabel =
+    modelName && modelName !== model ? `${modelName} (model slug: ${model})` : model;
+  const modelInfo = model && model !== "auto" && model !== "default" ? `, as ${modelLabel}` : "";
   const effortInfo = effort ? ` with ${effort} reasoning effort` : "";
   return `<runtime_info>In case you're asked: you are running in T3 Code through the ${harness} harness${modelInfo}${effortInfo}. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths.</runtime_info>\n\n${PULL_REQUEST_LINKING_INSTRUCTIONS}${runtime.threadOrchestration ? `\n\n${THREAD_ORCHESTRATION_INSTRUCTIONS}` : ""}${runtime.threadDecisions ? `\n\n${THREAD_DECISIONS_INSTRUCTIONS}` : ""}`;
 }

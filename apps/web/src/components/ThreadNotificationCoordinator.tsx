@@ -193,6 +193,7 @@ function EnvironmentNotifications({
           description: project ? `${title} · ${project.title}` : title,
           data: {
             hideCopyButton: true,
+<<<<<<< HEAD
             ...shortcuts.data,
             leadingAvatar: (
               <ThreadToastIdentity
@@ -222,6 +223,18 @@ function EnvironmentNotifications({
                 }
               />
             ),
+=======
+            leadingIcon:
+              kind === "completion" ? (
+                <CircleCheckIcon aria-hidden className="size-4 text-success-foreground" />
+              ) : status === "approval" ? (
+                <ShieldQuestionIcon aria-hidden className="size-4 text-warning-foreground" />
+              ) : status === "failed" ? (
+                <CircleAlertIcon aria-hidden className="size-4 text-destructive-foreground" />
+              ) : (
+                <MessageCircleQuestionIcon aria-hidden className="size-4 text-info-foreground" />
+              ),
+>>>>>>> d15210cd3da79f9a1a495a6309d912d76362a046
           },
           actionProps: shortcuts.openThread({
             children: "Open thread",
