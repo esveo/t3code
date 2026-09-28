@@ -226,6 +226,15 @@ export class TerminalManager extends Context.Service<
     readonly subscribeMetadata: (
       listener: (event: TerminalMetadataStreamEvent) => Effect.Effect<void>,
     ) => Effect.Effect<() => void>;
+
+    /**
+     * Fork: the loaded sessions of one thread, for the read-only MCP terminal
+     * tools. Never spawns, attaches, or reads persisted history; `history`
+     * returns the retained output at the time it is called.
+     */
+    readonly inspectLoadedThread?: (
+      threadId: string,
+    ) => Effect.Effect<ReadonlyArray<TerminalSummary & { readonly history: () => string }>>;
   }
 >()("t3/terminal/Manager/TerminalManager") {}
 
@@ -3125,6 +3134,16 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     closeIdle,
     subscribe,
     subscribeMetadata,
+    // Fork: read-only MCP terminal tools.
+    inspectLoadedThread: (threadId) =>
+      sessionsForThread(threadId).pipe(
+        Effect.map((sessions) =>
+          sessions.map((session) => ({
+            ...summary(session),
+            history: () => session.history.value(),
+          })),
+        ),
+      ),
   });
 });
 

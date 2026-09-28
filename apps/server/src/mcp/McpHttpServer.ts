@@ -37,6 +37,8 @@ import { PullRequestsToolkit } from "./toolkits/pullRequests/tools.ts";
 // Fork: thread orchestration.
 import { ThreadsToolkitHandlersLive } from "./toolkits/threads/handlers.ts";
 import { ThreadsToolkit } from "./toolkits/threads/tools.ts";
+// Fork: read-only terminal drawer access.
+import { TerminalsToolkitRegistrationLive } from "./toolkits/terminals/registration.ts";
 import {
   DeviceScreenshotToolkitHandlersLive,
   DeviceStandardToolkitHandlersLive,
@@ -685,4 +687,5 @@ export const layer = Layer.mergeAll(
   PullRequestsToolkitRegistrationLive,
   DeviceToolkitRegistrationLive,
   ThreadsToolkitRegistrationLive,
+  TerminalsToolkitRegistrationLive,
 ).pipe(Layer.provideMerge(McpTransportLive));
