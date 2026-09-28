@@ -59,7 +59,7 @@ import { announceToolListChanged } from "../mcp/McpOrchestrationTools.ts";
 import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ServerSettings from "../serverSettings.ts";
-import { readManagedEndpoint } from "./managedEndpoint.ts";
+import { lookupManagedEndpoint, readManagedEndpoint } from "./managedEndpoint.ts";
 import { decideRoute } from "./PeersRouting.ts";
 
 /** How many messages a snapshot carries; the channel shows the latest. */
@@ -69,6 +69,7 @@ const GIVE_UP_AFTER_MS = Duration.toMillis(Duration.hours(24));
 const RETRY_BASE_MS = 15_000;
 const RETRY_MAX_MS = Duration.toMillis(Duration.minutes(10));
 const SWEEP_INTERVAL = "30 seconds";
+const LOOKUP_INTERVAL_MS = Duration.toMillis(Duration.minutes(10));
 
 /** How long a message waits after its n-th failed delivery (n ≥ 1). */
 export function peerRetryDelayMs(attempts: number): number {
@@ -322,6 +323,24 @@ export const makeWith = Effect.fn("Peers.make")(function* (self: PeersIdentity) 
       yield* changed;
     });
 
+  /**
+   * The T3 Connect address. When none is remembered yet, the relay is asked in
+   * the background, at most every ten minutes; the snapshot follows once known.
+   */
+  let lookedUpAt = 0;
+  const detectedAddress = Effect.gen(function* () {
+    const known = yield* readManagedEndpoint;
+    const nowMs = DateTime.toEpochMillis(yield* DateTime.now);
+    if (known === null && nowMs - lookedUpAt > LOOKUP_INTERVAL_MS) {
+      lookedUpAt = nowMs;
+      yield* lookupManagedEndpoint.pipe(
+        Effect.flatMap((found) => (found ? changed : Effect.void)),
+        Effect.forkIn(layerScope),
+      );
+    }
+    return known;
+  });
+
   /** The model routing asks, as Settings → General names it; null when unknown here. */
   const routingModelLabel = Effect.gen(function* () {
     const settings = yield* Effect.serviceOption(ServerSettings.ServerSettingsService);
@@ -344,7 +363,7 @@ export const makeWith = Effect.fn("Peers.make")(function* (self: PeersIdentity) 
       environmentId: self.environmentId,
       ownName: yield* ownName,
       ownBaseUrl: baseUrl,
-      detectedBaseUrl: yield* readManagedEndpoint,
+      detectedBaseUrl: yield* detectedAddress,
       inviteLink: baseUrl ? buildPeerInviteLink(baseUrl, yield* inviteSecret) : null,
       adoptMode: yield* adoptMode,
       autoRoute: yield* autoRoute,
