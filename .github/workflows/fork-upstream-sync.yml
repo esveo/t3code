@@ -29,7 +29,7 @@ on:
         default: "300"
       model:
         description: Copilot model for this run
-        default: claude-opus-5.5
+        default: gpt-6-sol
 
 concurrency:
   group: fork-upstream-sync
@@ -126,7 +126,7 @@ jobs:
         env:
           COPILOT_GITHUB_TOKEN: ${{ github.token }}
           MAX_AI_CREDITS: ${{ inputs.max_ai_credits || '300' }}
-          MODEL: ${{ inputs.model || 'claude-opus-5.5' }}
+          MODEL: ${{ inputs.model || 'gpt-6-sol' }}
         run: |
           npm install -g @github/copilot
           cat > "$RUNNER_TEMP/prompt.md" <<EOF
