@@ -30,6 +30,7 @@ const record = (overrides: Partial<UsageRecord> = {}): UsageRecord => ({
     reasoningTokens: 100,
   },
   reportedCostUsd: null,
+  fast: false,
   dedupeKey: null,
   ...overrides,
 });
@@ -120,7 +121,7 @@ describe("thread session usage", () => {
   it("maps only the drivers whose transcripts are scanned", () => {
     expect(usageProviderForDriver("claudeAgent")).toBe("claude");
     expect(usageProviderForDriver("codex")).toBe("codex");
-    expect(usageProviderForDriver("cursor")).toBeNull();
+    expect(usageProviderForDriver("cursor")).toBe("cursor");
     expect(usageProviderForDriver(null)).toBeNull();
   });
 });

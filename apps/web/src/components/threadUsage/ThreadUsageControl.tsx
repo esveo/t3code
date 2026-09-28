@@ -137,9 +137,7 @@ export function ThreadUsageControl(props: {
         tooltipStyle
         side="top"
         align="start"
-        // Upstream #13193 replaces viewportClassName with a padding prop; after
-        // that sync this becomes padding="none" (same look: no inner padding).
-        viewportClassName="p-0"
+        padding="none"
         className="w-72 max-w-none text-left whitespace-normal"
       >
         <div
