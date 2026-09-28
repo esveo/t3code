@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 
 import { PeersView } from "../components/peers/PeersView";
 
@@ -15,18 +15,12 @@ export const Route = createFileRoute("/_chat/peers")({
 function PeersRouteView() {
   const { contact } = Route.useSearch();
   const navigate = useNavigate();
-  const router = useRouter();
-  const close = () => {
-    if (router.history.canGoBack()) router.history.back();
-    else void navigate({ to: "/", replace: true });
-  };
   return (
     <PeersView
       contactId={contact ?? null}
       onSelectContact={(next) =>
         void navigate({ to: "/peers", search: { contact: next }, replace: true })
       }
-      onClose={close}
     />
   );
 }
