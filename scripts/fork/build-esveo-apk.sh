@@ -51,7 +51,7 @@ npx expo prebuild --clean --platform android --no-install
 rn_versions="$(dirname "$(node -p "require.resolve('react-native/package.json')")")/gradle/libs.versions.toml"
 fbjni_version="$(sed -nE 's/^fbjni = "([^"]+)"/\1/p' "$rn_versions")"
 [ -n "$fbjni_version" ] || { echo "No fbjni version in $rn_versions." >&2; exit 1; }
-init_script="$(mktemp -t esveo-fbjni).gradle"
+init_script="$(mktemp "${TMPDIR:-/tmp}/esveo-fbjni.XXXXXX").gradle"
 trap 'rm -f "$init_script"' EXIT
 cat > "$init_script" <<EOF
 allprojects {
