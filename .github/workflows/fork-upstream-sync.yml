@@ -163,6 +163,7 @@ jobs:
           markers included, so the maintainer can pick it up from there.
           EOF
           copilot -p "$(cat "$RUNNER_TEMP/prompt.md")" \
+            --model claude-opus-5.5 \
             --no-ask-user --allow-all-tools --allow-all-paths \
             --deny-tool 'shell(git push)' --deny-tool 'shell(gh)' \
             --secret-env-vars=COPILOT_GITHUB_TOKEN \
