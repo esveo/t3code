@@ -33,7 +33,6 @@ const ContactSummary = Schema.Struct({
 const ListContactsTool = Tool.make("list_contacts", {
   description:
     "List the contacts the user linked: other people's T3 Code environments you can send a message to with send_to_contact.",
-  parameters: Schema.Struct({}),
   success: Schema.Struct({ contacts: Schema.Array(ContactSummary) }),
   failure: PeersError,
   dependencies,
