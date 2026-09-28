@@ -16,6 +16,7 @@ import {
   createMobileThemeSelectionPatch,
   createMobileThemeVariables,
   DEFAULT_MOBILE_THEME_ID,
+  FALLBACK_MOBILE_THEME_ID,
   flattenThemeColor,
   getMobileThemePreviewColors,
   getMobileThemeVariables,
@@ -239,7 +240,7 @@ describe("mobile themes", () => {
 
   it("normalizes persisted theme preferences", () => {
     expect(normalizeMobileThemeId("ocean")).toBe("ocean");
-    expect(normalizeMobileThemeId("missing-theme")).toBe(DEFAULT_MOBILE_THEME_ID);
+    expect(normalizeMobileThemeId("missing-theme")).toBe(FALLBACK_MOBILE_THEME_ID);
     expect(normalizeMobileThemeMode("dark")).toBe("dark");
     expect(normalizeMobileThemeMode("sepia")).toBe("system");
   });
@@ -253,7 +254,7 @@ describe("mobile themes", () => {
       resolveMobileThemeIds({ themeId: "grove", lightThemeId: "iris", darkThemeId: "ocean" }),
     ).toEqual({ light: "iris", dark: "ocean" });
     expect(resolveMobileThemeIds({ themeId: "grove", lightThemeId: "missing" })).toEqual({
-      light: DEFAULT_MOBILE_THEME_ID,
+      light: FALLBACK_MOBILE_THEME_ID,
       dark: "grove",
     });
   });

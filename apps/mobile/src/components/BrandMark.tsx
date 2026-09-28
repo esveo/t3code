@@ -3,6 +3,8 @@ import { Image } from "expo-image";
 import { View } from "react-native";
 
 import { AppText as Text } from "./AppText";
+import { IS_ESVEO_BUILD } from "../features/esveoBrand/esveoBuild";
+import { EsveoBrandMark } from "../features/esveoBrand/EsveoBrand";
 
 const appVariant = Constants.expoConfig?.extra?.appVariant;
 const BRAND_MARK_SOURCE =
@@ -16,6 +18,7 @@ const DEFAULT_STAGE_LABEL =
 
 export function BrandMark(props: { readonly compact?: boolean; readonly stageLabel?: string }) {
   const compact = props.compact ?? false;
+  if (IS_ESVEO_BUILD) return <EsveoBrandMark compact={compact} />;
   const iconSize = compact ? 32 : 44;
   const stageLabel = props.stageLabel ?? DEFAULT_STAGE_LABEL;
 
