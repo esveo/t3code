@@ -399,14 +399,19 @@ const make = Effect.gen(function* () {
     }
     reported.set(child.value.id, update.key);
 
+    const answer =
+      update.state !== "waiting" && answersLatestPrompt(latestAnswer, latestPrompt)
+        ? latestAnswer
+        : null;
     const block = wrapThreadUpdate({
       threadId: child.value.id,
       title: child.value.title,
       state: update.state,
       detail: childUpdateDetail({ child: child.value, background }),
+      answerId: answer?.id ?? null,
       text: childUpdateBody({
         state: update.state,
-        latestAnswer: answersLatestPrompt(latestAnswer, latestPrompt) ? latestAnswer.text : null,
+        latestAnswer: answer?.text ?? null,
         background,
       }),
     });

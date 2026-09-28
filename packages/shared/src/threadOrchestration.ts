@@ -138,10 +138,13 @@ export function wrapThreadUpdate(input: {
   readonly title: string;
   readonly state: ChildThreadState;
   readonly detail: string;
+  /** The child's message the text summarizes, so a client can show all of it. */
+  readonly answerId?: string | null;
   readonly text: string;
 }): string {
+  const answer = input.answerId ? ` answer_id="${escapeAttribute(input.answerId)}"` : "";
   return [
-    `<${THREAD_UPDATE_TAG} thread_id="${input.threadId}" title="${escapeAttribute(input.title)}" state="${input.state}" detail="${escapeAttribute(input.detail)}">`,
+    `<${THREAD_UPDATE_TAG} thread_id="${input.threadId}" title="${escapeAttribute(input.title)}" state="${input.state}" detail="${escapeAttribute(input.detail)}"${answer}>`,
     input.text.trim(),
     `</${THREAD_UPDATE_TAG}>`,
   ].join("\n");
@@ -153,6 +156,7 @@ export interface TaggedThreadMessage {
   readonly title: string;
   readonly state: ChildThreadState | null;
   readonly detail: string | null;
+  readonly answerId: string | null;
   readonly body: string;
 }
 
@@ -179,6 +183,7 @@ export function parseTaggedThreadMessage(text: string): TaggedThreadMessage | nu
     title: attributes.get("title") ?? "",
     state: state !== null && CHILD_THREAD_STATES.has(state) ? (state as ChildThreadState) : null,
     detail: attributes.get("detail") ?? null,
+    answerId: attributes.get("answer_id") ?? null,
     body: match[3] ?? "",
   };
 }

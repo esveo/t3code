@@ -1,4 +1,5 @@
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import {
   CHILD_THREAD_STATE_LABELS,
   FROM_COORDINATOR_TAG,
@@ -7,20 +8,22 @@ import {
   type TaggedThreadMessage as ParsedTaggedThreadMessage,
 } from "@t3tools/shared/threadOrchestration";
 import { ChevronRightIcon } from "lucide-react";
-import { type ReactNode, useMemo, useState } from "react";
+import { type ReactNode, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import ChatMarkdown from "~/components/ChatMarkdown";
 import { cn } from "~/lib/utils";
+import { useChildAnswer, useIsLatestThreadUpdate } from "./childAnswer";
 import { CHILD_THREAD_DOT_CLASS } from "./childThreadStateVisuals";
 import { ThreadLinkChip } from "./ThreadLinkChip";
 
 interface TaggedRow {
-  readonly message: { readonly text: string };
+  readonly message: { readonly id?: string; readonly text: string };
 }
 
 /**
  * Fork: messages between a coordinator and its threads. A child's update to
- * its coordinator reads as a compact card with the child's chip and state; a
+ * its coordinator reads as a card with the child's chip, state and answer
+ * (open while it is the coordinator's newest message); a
  * coordinator's message to a child stays a user message, labeled with who
  * sent it. Everything else renders as the timeline always does.
  */
@@ -46,6 +49,7 @@ export function TaggedThreadMessage<Row extends TaggedRow>(props: {
     () => (tagged ? null : parseThreadUpdates(props.row.message.text)),
     [props.row.message.text, tagged],
   );
+  const isLatest = useIsLatestThreadUpdate(props.threadRef, props.row.message.id);
   if (bundle) {
     // Updates of several children that arrived together as one turn.
     return (
@@ -57,6 +61,7 @@ export function TaggedThreadMessage<Row extends TaggedRow>(props: {
             environmentId={props.environmentId}
             threadRef={props.threadRef}
             markdownCwd={props.markdownCwd}
+            isLatest={isLatest}
           />
         ))}
       </div>
@@ -84,19 +89,32 @@ export function TaggedThreadMessage<Row extends TaggedRow>(props: {
       environmentId={props.environmentId}
       threadRef={props.threadRef}
       markdownCwd={props.markdownCwd}
+      isLatest={isLatest}
     />
   );
 }
+
+/** Answers taller than this start clamped, with a toggle to show all of it. */
+const CLAMPED_ANSWER_HEIGHT_PX = 320;
 
 function ThreadUpdateCard(props: {
   update: ParsedTaggedThreadMessage;
   environmentId: EnvironmentId;
   threadRef: ScopedThreadRef | null;
   markdownCwd: string | undefined;
+  isLatest: boolean;
 }) {
   const { update } = props;
-  const [open, setOpen] = useState(false);
-  const hasBody = update.body.trim().length > 0;
+  const [toggled, setToggled] = useState<boolean | null>(null);
+  const open = toggled ?? props.isLatest;
+  const childRef = useMemo(
+    () => scopeThreadRef(props.environmentId, update.threadId as ThreadId),
+    [props.environmentId, update.threadId],
+  );
+  const answer = useChildAnswer({ childRef, answerId: update.answerId, load: open });
+  // The update carries a clamped copy; the child's own message has all of it.
+  const text = answer.text ?? update.body;
+  const hasBody = text.trim().length > 0;
   return (
     <div className="rounded-xl border border-border/70 bg-card/40 text-sm">
       <div className="flex min-w-0 items-center gap-2 px-3 py-2">
@@ -120,7 +138,7 @@ function ThreadUpdateCard(props: {
         {hasBody ? (
           <button
             type="button"
-            onClick={() => setOpen((value) => !value)}
+            onClick={() => setToggled(!open)}
             aria-expanded={open}
             aria-label={open ? "Hide the thread's answer" : "Show the thread's answer"}
             className="ms-auto inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
@@ -133,13 +151,67 @@ function ThreadUpdateCard(props: {
         ) : null}
       </div>
       {open && hasBody ? (
-        <div className="border-t border-border/60 px-3 py-2">
+        <ChildAnswerBody
+          text={text}
+          cwd={props.markdownCwd}
+          answerCwd={answer.cwd}
+          threadRef={props.threadRef}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The child's answer, with its relative paths anchored at the child's
+ * directory while links still open in the coordinator's panels.
+ */
+function ChildAnswerBody(props: {
+  text: string;
+  cwd: string | undefined;
+  answerCwd: string | undefined;
+  threadRef: ScopedThreadRef | null;
+}) {
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [overflows, setOverflows] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  // Measured on every resize, since highlighting and media grow the answer after it mounts.
+  useLayoutEffect(() => {
+    const element = contentRef.current;
+    if (!element) return;
+    const measure = () => setOverflows(element.offsetHeight > CLAMPED_ANSWER_HEIGHT_PX);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const clamped = overflows && !expanded;
+  return (
+    <div className="border-t border-border/60 px-3 py-2">
+      <div
+        className={cn(
+          "overflow-hidden",
+          clamped && "[mask-image:linear-gradient(to_bottom,black_75%,transparent)]",
+        )}
+        style={clamped ? { maxHeight: CLAMPED_ANSWER_HEIGHT_PX } : undefined}
+      >
+        <div ref={contentRef}>
           <ChatMarkdown
-            text={update.body}
-            cwd={props.markdownCwd}
+            text={props.text}
+            cwd={props.cwd}
+            imageBaseDir={props.answerCwd ?? props.cwd}
             threadRef={props.threadRef ?? undefined}
           />
         </div>
+      </div>
+      {overflows ? (
+        <button
+          type="button"
+          onClick={() => setExpanded((value) => !value)}
+          className="mt-1 cursor-pointer text-xs text-muted-foreground hover:text-foreground"
+        >
+          {expanded ? "Show less" : "Show all"}
+        </button>
       ) : null}
     </div>
   );
