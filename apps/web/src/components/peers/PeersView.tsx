@@ -10,7 +10,9 @@ import type {
   PeersSnapshot,
   ThreadId,
 } from "@t3tools/contracts";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { normalizePeerBaseUrl } from "@t3tools/shared/peers";
+import { useNavigate } from "@tanstack/react-router";
 import {
   CheckIcon,
   CopyIcon,
@@ -34,11 +36,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "~/components/ui/select";
+import { Switch } from "~/components/ui/switch";
 import { Textarea } from "~/components/ui/textarea";
 import { toastManager } from "~/components/ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
 import { useRelayEnvironmentDiscovery } from "~/state/environments";
+import { useThreadShells } from "~/state/entities";
+import { buildThreadRouteParams } from "~/threadRoutes";
 import { unreadCountByContact } from "./peers.logic";
 import {
   useAdoptPeerMessage,
@@ -378,6 +383,32 @@ function OwnSettings({
           </SelectPopup>
         </Select>
       </div>
+
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-2">
+          <SectionTitle>Route messages automatically</SectionTitle>
+          <Switch
+            checked={snapshot.autoRoute}
+            aria-label="Route messages automatically"
+            onCheckedChange={(checked) =>
+              void run(
+                { type: "configure", autoRoute: Boolean(checked) },
+                "Could not save the setting",
+              )
+            }
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          A model reads each received message and sends it to the agent of the active thread it
+          belongs to. Answers go back to the thread that asked. Messages it cannot place stay here.
+          Model: {snapshot.routingModel ?? "the text generation model"} (Settings → General).
+        </p>
+        {snapshot.autoRoute ? (
+          <p className="text-xs text-warning-foreground">
+            Your contacts' messages then reach your agents without you reading them first.
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -593,6 +624,7 @@ function MessageRow({
           </Button>
         </div>
       ) : null}
+      {incoming ? <Placement environmentId={environmentId} message={message} /> : null}
       {incoming ? (
         <IncomingActions environmentId={environmentId} snapshot={snapshot} message={message} />
       ) : null}
@@ -676,6 +708,79 @@ function IncomingActions({
           Mark done
         </Button>
       )}
+    </div>
+  );
+}
+
+/** Where a received message went, and for automatic routing, how that was decided. */
+function Placement({
+  environmentId,
+  message,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly message: PeerMessage;
+}) {
+  const navigate = useNavigate();
+  const threads = useThreadShells();
+  const routing = message.routing;
+  const threadId = message.status === "done" ? message.threadId : null;
+  const title =
+    threads.find((thread) => thread.id === threadId)?.title ?? routing?.threadTitle ?? null;
+  const openThread = () => {
+    if (!threadId) return;
+    void navigate({
+      to: "/$environmentId/$threadId",
+      params: buildThreadRouteParams(scopeThreadRef(environmentId, threadId)),
+    });
+  };
+  if (!threadId && !routing) return null;
+  return (
+    <div className="flex flex-col gap-1 rounded-md bg-muted/40 px-2 py-1.5 text-xs">
+      {threadId ? (
+        <p>
+          {routing?.outcome === "thread" ? "Routed to " : "Handed to "}
+          <button type="button" className="font-medium underline" onClick={openThread}>
+            {title ?? "a thread"}
+          </button>
+        </p>
+      ) : routing ? (
+        <p>Automatic routing left it here: {routing.reason}</p>
+      ) : null}
+      {routing && (routing.model || routing.steps.length > 0) ? (
+        <details>
+          <summary className="cursor-pointer text-muted-foreground">How it was routed</summary>
+          <div className="flex flex-col gap-1.5 pt-1.5">
+            <p className="text-muted-foreground">
+              {routing.model ? `Model: ${routing.model}` : "No model asked"} ·{" "}
+              {new Date(routing.decidedAt).toLocaleString()}
+            </p>
+            {routing.steps.length > 0 ? (
+              <ol className="list-decimal ps-4">
+                {routing.steps.map((step, index) => (
+                  // Steps are an ordered list of plain strings that never reorder.
+                  // oxlint-disable-next-line react/no-array-index-key
+                  <li key={`${index}:${step}`}>{step}</li>
+                ))}
+              </ol>
+            ) : null}
+            <p>
+              <span className="font-medium">Reason:</span> {routing.reason}
+            </p>
+            {routing.candidates.length > 0 ? (
+              <p className="text-muted-foreground">
+                Threads it chose from:{" "}
+                {routing.candidates
+                  .map((candidate) =>
+                    candidate.project
+                      ? `${candidate.title} (${candidate.project})`
+                      : candidate.title,
+                  )
+                  .join(" · ")}
+              </p>
+            ) : null}
+          </div>
+        </details>
+      ) : null}
     </div>
   );
 }

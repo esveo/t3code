@@ -57,6 +57,27 @@ export const PeerMessageStatus = Schema.Literals([
 ]);
 export type PeerMessageStatus = typeof PeerMessageStatus.Type;
 
+/**
+ * How automatic routing placed a received message: the threads it chose
+ * from, the model's steps and reason, and where the message went.
+ */
+export const PeerRouting = Schema.Struct({
+  decidedAt: IsoDateTime,
+  /** thread: forwarded to `threadId`; stay: left in the channel for the user. */
+  outcome: Schema.Literals(["thread", "stay"]),
+  threadId: Schema.NullOr(ThreadId),
+  threadTitle: Schema.NullOr(Schema.String),
+  /** The model that decided, or null when no model was asked (an answer goes back to its thread). */
+  model: Schema.NullOr(Schema.String),
+  /** The model's steps, in its words. */
+  steps: Schema.Array(Schema.String),
+  reason: Schema.String,
+  candidates: Schema.Array(
+    Schema.Struct({ id: Schema.String, title: Schema.String, project: Schema.String }),
+  ),
+});
+export type PeerRouting = typeof PeerRouting.Type;
+
 export const PeerMessage = Schema.Struct({
   id: TrimmedNonEmptyString,
   contactId: TrimmedNonEmptyString,
@@ -74,6 +95,8 @@ export const PeerMessage = Schema.Struct({
   status: PeerMessageStatus,
   /** Why the last delivery failed, for sent messages. */
   error: Schema.NullOr(Schema.String),
+  /** Received messages: how automatic routing placed it, when it was on. */
+  routing: Schema.NullOr(PeerRouting),
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
 });
@@ -92,6 +115,10 @@ export const PeersSnapshot = Schema.Struct({
   /** The reusable contact link, once there is an address. */
   inviteLink: Schema.NullOr(Schema.String),
   adoptMode: PeerAdoptMode,
+  /** Received messages go to a matching thread's agent on their own. */
+  autoRoute: Schema.Boolean,
+  /** The text generation model routing uses (Settings → General), for display. */
+  routingModel: Schema.NullOr(Schema.String),
   contacts: Schema.Array(PeerContact),
   /** The latest messages, oldest first. */
   messages: Schema.Array(PeerMessage),
@@ -104,6 +131,7 @@ export const PeersAction = Schema.Union([
     ownName: Schema.optional(PeerName),
     ownBaseUrl: Schema.optional(Schema.NullOr(TrimmedNonEmptyString)),
     adoptMode: Schema.optional(PeerAdoptMode),
+    autoRoute: Schema.optional(Schema.Boolean),
   }),
   /** A new secret for the contact link; contacts linked with the old one stay. */
   Schema.Struct({ type: Schema.Literal("regenerateInvite") }),

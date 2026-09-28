@@ -27,6 +27,7 @@ import {
   type PeerDeliverRequest,
   type PeerMessage,
   PeerRedeemResponse,
+  PeerRouting,
   type PeerRedeemRequest,
   type PeersAction,
   PeersError,
@@ -46,6 +47,8 @@ import { identity } from "effect/Function";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
+import * as Schema from "effect/Schema";
+import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/unstable/http";
@@ -55,6 +58,8 @@ import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import { announceToolListChanged } from "../mcp/McpOrchestrationTools.ts";
 import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import * as ServerSettings from "../serverSettings.ts";
+import { decideRoute } from "./PeersRouting.ts";
 
 /** How many messages a snapshot carries; the channel shows the latest. */
 const SNAPSHOT_MESSAGE_LIMIT = 300;
@@ -143,6 +148,7 @@ interface MessageRow {
   readonly attempts: number;
   readonly created_at: string;
   readonly updated_at: string;
+  readonly routing_json: string | null;
 }
 
 const toContact = (row: ContactRow): PeerContact => ({
@@ -163,9 +169,13 @@ const toMessage = (row: MessageRow): PeerMessage => ({
   threadId: row.thread_id as ThreadId | null,
   status: row.status as PeerMessage["status"],
   error: row.error,
+  routing: row.routing_json ? Option.getOrNull(decodeRouting(row.routing_json)) : null,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
+
+const decodeRouting = Schema.decodeUnknownOption(Schema.fromJsonString(PeerRouting));
+const encodeRouting = Schema.encodeEffect(Schema.fromJsonString(PeerRouting));
 
 const hashToken = (token: string) => NodeCrypto.createHash("sha256").update(token).digest("hex");
 const newSecret = () => NodeCrypto.randomBytes(32).toString("base64url");
@@ -193,6 +203,7 @@ export const makeWith = Effect.fn("Peers.make")(function* (self: PeersIdentity) 
     PubSub.shutdown(pubsub),
   );
   const deliveries = yield* Semaphore.make(1);
+  const layerScope = yield* Scope.Scope;
 
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
   const storeFailed = (detail: string) => () => failure(`Could not ${detail}.`);
@@ -219,6 +230,7 @@ export const makeWith = Effect.fn("Peers.make")(function* (self: PeersIdentity) 
   const adoptMode = Effect.map(readSetting("adopt_mode"), (mode): PeerAdoptMode =>
     mode === "send" ? "send" : "composer",
   );
+  const autoRoute = Effect.map(readSetting("auto_route"), (value) => value === "on");
   const inviteSecret = Effect.gen(function* () {
     const existing = yield* readSetting("invite_secret");
     if (existing) return existing;
@@ -306,6 +318,16 @@ export const makeWith = Effect.fn("Peers.make")(function* (self: PeersIdentity) 
       yield* changed;
     });
 
+  /** The model routing asks, as Settings → General names it; null when unknown here. */
+  const routingModelLabel = Effect.gen(function* () {
+    const settings = yield* Effect.serviceOption(ServerSettings.ServerSettingsService);
+    if (Option.isNone(settings)) return null;
+    const current = yield* settings.value.getSettings.pipe(Effect.option);
+    return Option.isSome(current)
+      ? `${current.value.textGenerationModelSelection.instanceId} · ${current.value.textGenerationModelSelection.model}`
+      : null;
+  });
+
   const snapshot: Peers["Service"]["snapshot"] = Effect.gen(function* () {
     const contacts = yield* contactRows;
     const messages = yield* sql<MessageRow>`
@@ -320,6 +342,8 @@ export const makeWith = Effect.fn("Peers.make")(function* (self: PeersIdentity) 
       ownBaseUrl: baseUrl,
       inviteLink: baseUrl ? buildPeerInviteLink(baseUrl, yield* inviteSecret) : null,
       adoptMode: yield* adoptMode,
+      autoRoute: yield* autoRoute,
+      routingModel: yield* routingModelLabel,
       contacts: contacts.map(toContact),
       messages: messages.map(toMessage),
     };
@@ -563,26 +587,32 @@ export const makeWith = Effect.fn("Peers.make")(function* (self: PeersIdentity) 
           ? answered.value.thread_id
           : null;
       const now = yield* nowIso;
-      yield* sql`
+      const inserted = yield* sql<{ readonly id: string }>`
         INSERT INTO fork_peer_messages
           (id, direction, contact_id, text, context, reply_to_id, thread_id, status, attempts,
            created_at, updated_at)
         VALUES (${request.id}, 'in', ${contact.id}, ${request.text}, ${request.context},
           ${request.replyToId}, ${threadId}, 'unread', 0, ${now}, ${now})
         ON CONFLICT (id, direction) DO NOTHING
+        RETURNING id
       `.pipe(Effect.mapError(storeFailed("store the message")));
       yield* changed;
+      // Routing runs beside the request: the sender only waits for the delivery.
+      if (inserted.length > 0 && (yield* autoRoute)) {
+        yield* routeIncoming(request.id).pipe(Effect.forkIn(layerScope));
+      }
       return true;
     });
 
   /* The user's side. */
 
-  /** Starts a turn on the thread with the message, as if the user had sent it. */
-  const sendToThread = (messageId: string, threadId: ThreadId) =>
+  /**
+   * Starts a turn on the thread with the message, as if the user had sent it,
+   * and marks the message done in that thread.
+   */
+  const forwardToThread = (message: MessageRow, threadId: ThreadId) =>
     Effect.gen(function* () {
-      const message = yield* findMessage(messageId, "in");
-      if (Option.isNone(message)) return yield* failure("The message was not found.");
-      const contact = yield* findContact(message.value.contact_id);
+      const contact = yield* findContact(message.contact_id);
       const senderName = Option.isSome(contact) ? contact.value.name : "a removed contact";
       const engine = yield* Effect.serviceOption(OrchestrationEngine.OrchestrationEngineService);
       const snapshots = yield* Effect.serviceOption(
@@ -607,7 +637,7 @@ export const makeWith = Effect.fn("Peers.make")(function* (self: PeersIdentity) 
           message: {
             messageId: MessageId.make(yield* uuid),
             role: "user",
-            text: formatPeerMessageForThread(toMessage(message.value), senderName),
+            text: formatPeerMessageForThread(toMessage(message), senderName),
             attachments: [],
           },
           modelSelection: thread.modelSelection,
@@ -616,8 +646,69 @@ export const makeWith = Effect.fn("Peers.make")(function* (self: PeersIdentity) 
           createdAt: yield* nowIso,
         })
         .pipe(Effect.mapError(() => failure("Could not send the message to the thread.")));
-      yield* setMessageStatus(messageId, "in", "done");
+      const now = yield* nowIso;
+      yield* sql`
+        UPDATE fork_peer_messages SET status = 'done', thread_id = ${thread.id}, updated_at = ${now}
+        WHERE id = ${message.id} AND direction = 'in'
+      `.pipe(Effect.mapError(storeFailed("update the message")));
+      yield* changed;
     });
+
+  const sendToThread = (messageId: string, threadId: ThreadId) =>
+    Effect.gen(function* () {
+      const message = yield* findMessage(messageId, "in");
+      if (Option.isNone(message)) return yield* failure("The message was not found.");
+      yield* forwardToThread(message.value, threadId);
+    });
+
+  const saveRouting = (messageId: string, routing: PeerRouting) =>
+    Effect.gen(function* () {
+      const routingJson = yield* encodeRouting(routing).pipe(
+        Effect.mapError(storeFailed("record the routing")),
+      );
+      yield* sql`
+        UPDATE fork_peer_messages SET routing_json = ${routingJson}
+        WHERE id = ${messageId} AND direction = 'in'
+      `.pipe(Effect.mapError(storeFailed("record the routing")));
+      yield* changed;
+    });
+
+  /**
+   * Automatic routing: an answer goes back to the thread that asked, anything
+   * else to the thread the model picks. What was decided is kept with the
+   * message, so the channel can show why it went where it went.
+   */
+  const routeIncoming = (messageId: string) =>
+    Effect.gen(function* () {
+      const found = yield* findMessage(messageId, "in");
+      if (Option.isNone(found)) return;
+      const message = found.value;
+      const contact = yield* findContact(message.contact_id);
+      const senderName = Option.isSome(contact) ? contact.value.name : "a removed contact";
+      const routing: PeerRouting = message.thread_id
+        ? {
+            decidedAt: yield* nowIso,
+            outcome: "thread",
+            threadId: message.thread_id as ThreadId,
+            threadTitle: null,
+            model: null,
+            steps: [],
+            reason: "It answers a message this thread sent.",
+            candidates: [],
+          }
+        : yield* decideRoute({ senderName, text: message.text, context: message.context });
+      if (routing.outcome === "thread" && routing.threadId) {
+        const forwarded = yield* forwardToThread(message, routing.threadId).pipe(Effect.result);
+        if (forwarded._tag === "Failure") {
+          return yield* saveRouting(messageId, {
+            ...routing,
+            outcome: "stay",
+            reason: `${routing.reason} Forwarding failed: ${forwarded.failure.message}`,
+          });
+        }
+      }
+      yield* saveRouting(messageId, routing);
+    }).pipe(Effect.catchCause((cause) => Effect.logWarning("peers: routing failed", cause)));
 
   const act: Peers["Service"]["act"] = (action) => {
     switch (action.type) {
@@ -628,6 +719,9 @@ export const makeWith = Effect.fn("Peers.make")(function* (self: PeersIdentity) 
             yield* writeSetting("own_base_url", action.ownBaseUrl);
           }
           if (action.adoptMode !== undefined) yield* writeSetting("adopt_mode", action.adoptMode);
+          if (action.autoRoute !== undefined) {
+            yield* writeSetting("auto_route", action.autoRoute ? "on" : "off");
+          }
           yield* changed;
         });
       case "regenerateInvite":

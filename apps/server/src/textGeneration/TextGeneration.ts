@@ -1,5 +1,6 @@
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import type * as Schema from "effect/Schema";
 import * as Layer from "effect/Layer";
 import type { ChatAttachment, ModelSelection, ProviderInstanceId } from "@t3tools/contracts";
 import { TextGenerationError } from "@t3tools/contracts";
@@ -75,6 +76,14 @@ export interface ThreadTitleGenerationResult {
   needsRefinement?: boolean | undefined;
 }
 
+/** Fork: input of `generateForkJson`. */
+export interface ForkJsonGenerationInput<S extends Schema.Top> {
+  cwd: string;
+  prompt: string;
+  outputSchema: S;
+  modelSelection: ModelSelection;
+}
+
 /**
  * TextGeneration - Service tag for commit and change request text generation.
  */
@@ -106,6 +115,11 @@ export class TextGeneration extends Context.Service<
     readonly generateThreadTitle: (
       input: ThreadTitleGenerationInput,
     ) => Effect.Effect<ThreadTitleGenerationResult, TextGenerationError>;
+
+    /** Fork: any prompt with a JSON answer of the given schema (Peers routing). */
+    readonly generateForkJson?: <S extends Schema.Top>(
+      input: ForkJsonGenerationInput<S>,
+    ) => Effect.Effect<S["Type"], TextGenerationError, S["DecodingServices"]>;
   }
 >()("t3/textGeneration/TextGeneration") {}
 

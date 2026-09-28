@@ -59,6 +59,12 @@ export const ensureForkSchema = Effect.gen(function* () {
       PRIMARY KEY (id, direction)
     )
   `;
+  const peerMessageColumns = yield* sql<{ readonly name: string }>`
+    PRAGMA table_info(fork_peer_messages)
+  `;
+  if (!peerMessageColumns.some((column) => column.name === "routing_json")) {
+    yield* sql`ALTER TABLE fork_peer_messages ADD COLUMN routing_json TEXT`;
+  }
   yield* sql`
     CREATE INDEX IF NOT EXISTS fork_peer_messages_created_at ON fork_peer_messages (created_at)
   `;

@@ -1,13 +1,22 @@
-import { PeerDeliverRequest, PeerRedeemRequest, ThreadId } from "@t3tools/contracts";
+import {
+  type OrchestrationCommand,
+  type OrchestrationThreadShell,
+  PeerDeliverRequest,
+  PeerRedeemRequest,
+  ThreadId,
+} from "@t3tools/contracts";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 import { HttpClient, HttpClientResponse } from "effect/unstable/http";
 import * as HttpClientError from "effect/unstable/http/HttpClientError";
 
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
+import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as Peers from "./Peers.ts";
 
 /**
@@ -208,6 +217,74 @@ describe("Peers", () => {
       const error = yield* max.act({ type: "redeem", link: oldLink }).pipe(Effect.flip);
       assert.include(error.message, "no longer valid");
       assert.lengthOf(yield* max.listContacts, 0);
+    }),
+  );
+
+  it.effect("routes an answer on its own into the thread that asked, when routing is on", () =>
+    Effect.gen(function* () {
+      const network = makeNetwork();
+      const anna = yield* network.environment("anna", "Anna");
+      const max = yield* network.environment("max", "Max");
+      yield* max.act({ type: "redeem", link: yield* inviteLink(anna) });
+      yield* anna.act({ type: "configure", autoRoute: true });
+
+      const origin = ThreadId.make("thread-auth");
+      const { message: question } = yield* anna.send({
+        contact: "max",
+        text: "Question",
+        context: "c",
+        replyToId: null,
+        threadId: origin,
+      });
+      yield* anna.deliverDue;
+
+      // The routing fiber takes the services of the delivery that started it.
+      const commands: Array<OrchestrationCommand> = [];
+      const engine = OrchestrationEngine.OrchestrationEngineService.of({
+        dispatch: (command) => Effect.sync(() => ({ sequence: commands.push(command) })),
+        readEvents: () => Stream.empty,
+        readThreadEvents: () => Stream.empty,
+        getThreadReplayStats: () => Effect.die("unused"),
+        streamDomainEvents: Stream.empty,
+        subscribeDomainEvents: Effect.succeed(Stream.empty),
+        latestSequence: Effect.succeed(0),
+      });
+      const shell = {
+        id: origin,
+        modelSelection: { instanceId: "codex", model: "gpt" },
+        runtimeMode: "full-access",
+        interactionMode: "default",
+      } as unknown as OrchestrationThreadShell;
+      const snapshots = {
+        getThreadShellById: () => Effect.succeed(Option.some(shell)),
+      } as unknown as ProjectionSnapshotQuery.ProjectionSnapshotQuery["Service"];
+
+      yield* max.send({
+        contact: null,
+        text: "The answer",
+        context: "c",
+        replyToId: question.id,
+        threadId: null,
+      });
+      yield* max.deliverDue.pipe(
+        Effect.provideService(OrchestrationEngine.OrchestrationEngineService, engine),
+        Effect.provideService(ProjectionSnapshotQuery.ProjectionSnapshotQuery, snapshots),
+      );
+      const routed = yield* anna.subscribe.pipe(
+        Stream.map((snapshot) => snapshot.messages.find((message) => message.direction === "in")),
+        Stream.filter((message) => message?.routing != null),
+        Stream.runHead,
+      );
+      const message = Option.getOrThrow(routed);
+      assert.strictEqual(message?.status, "done");
+      assert.strictEqual(message?.threadId, origin);
+      assert.strictEqual(message?.routing?.outcome, "thread");
+      const started = commands[0];
+      assert.strictEqual(started?.type, "thread.turn.start");
+      assert.include(
+        started?.type === "thread.turn.start" ? started.message.text : "",
+        "**Message from Max**",
+      );
     }),
   );
 });

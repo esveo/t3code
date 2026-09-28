@@ -415,5 +415,14 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    // Fork: free-form JSON generation (Peers routing).
+    generateForkJson: (input) =>
+      runClaudeJson({
+        operation: "generateThreadTitle",
+        cwd: input.cwd,
+        prompt: input.prompt,
+        outputSchemaJson: input.outputSchema,
+        modelSelection: input.modelSelection,
+      }),
   } satisfies TextGeneration.TextGeneration["Service"];
 });

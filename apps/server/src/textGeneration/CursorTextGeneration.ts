@@ -266,5 +266,14 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    // Fork: free-form JSON generation (Peers routing).
+    generateForkJson: (input) =>
+      runCursorJson({
+        operation: "generateThreadTitle",
+        cwd: input.cwd,
+        prompt: input.prompt,
+        outputSchemaJson: input.outputSchema,
+        modelSelection: input.modelSelection,
+      }),
   } satisfies TextGeneration.TextGeneration["Service"];
 });

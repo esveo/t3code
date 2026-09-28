@@ -423,5 +423,14 @@ export const makeCodexTextGeneration = Effect.fn("makeCodexTextGeneration")(func
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
+    // Fork: free-form JSON generation (Peers routing).
+    generateForkJson: (input) =>
+      runCodexJson({
+        operation: "generateThreadTitle",
+        cwd: input.cwd,
+        prompt: input.prompt,
+        outputSchemaJson: input.outputSchema,
+        modelSelection: input.modelSelection,
+      }),
   } satisfies TextGeneration.TextGeneration["Service"];
 });
