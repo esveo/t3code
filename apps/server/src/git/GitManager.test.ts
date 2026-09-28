@@ -219,6 +219,11 @@ function runGit(
       cwd,
       args,
       allowNonZeroExit,
+      env: {
+        GIT_CONFIG_COUNT: "1",
+        GIT_CONFIG_KEY_0: "safe.bareRepository",
+        GIT_CONFIG_VALUE_0: "all",
+      },
     });
     return {
       exitCode: result.exitCode,
