@@ -102,6 +102,7 @@ describe("tagged thread messages", () => {
       title: 'Release "2.0"',
       state: null,
       detail: null,
+      answerId: null,
       body: "Trace the checkout retries.",
     });
 
@@ -110,6 +111,7 @@ describe("tagged thread messages", () => {
       title: "Load test",
       state: "review",
       detail: "PR #6 open",
+      answerId: "msg-9",
       text: "Line one\nLine two",
     });
     expect(parseTaggedThreadMessage(update)).toMatchObject({
@@ -117,6 +119,7 @@ describe("tagged thread messages", () => {
       threadId: "t-2",
       state: "review",
       detail: "PR #6 open",
+      answerId: "msg-9",
       body: "Line one\nLine two",
     });
   });
