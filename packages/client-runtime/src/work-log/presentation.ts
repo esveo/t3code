@@ -123,6 +123,9 @@ const T3_MCP_TOOL_LABELS: Record<
     "the device",
   ],
   device_close: ["Close", "Closing", "Closed", "a device"],
+  // Fork: read-only terminal drawer access.
+  list_terminals: ["List", "Listing", "Listed", "terminals"],
+  read_terminal: ["Read", "Reading", "Read", "terminal output"],
 };
 
 const PR_TOOL_ACTIONS: Readonly<Record<string, ToolGroupAction>> = {
