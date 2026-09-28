@@ -118,6 +118,19 @@ jobs:
         continue-on-error: true
         run: bash <(git show "$FORK_SHA:$SCRIPT") verify
 
+      # The models the org lets this token use; a --model outside them fails at once.
+      - name: List Copilot models
+        if: steps.merge.outputs.conflicts == 'true' || steps.plain.outcome == 'failure'
+        continue-on-error: true
+        env:
+          COPILOT_GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          curl -fsS https://api.githubcopilot.com/models \
+            -H "Authorization: Bearer $COPILOT_GITHUB_TOKEN" \
+            -H "Copilot-Integration-Id: copilot-developer-cli" |
+            jq -r '.data[] | select(.model_picker_enabled) | "\(.id)\t\(.policy.state // "-")"' |
+            tee "$SYNC_DIR/models.txt"
+
       - name: Let Copilot resolve and fix
         id: agent
         if: steps.merge.outputs.conflicts == 'true' || steps.plain.outcome == 'failure'
