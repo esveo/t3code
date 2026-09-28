@@ -1,6 +1,7 @@
 import type { AssetResource } from "@t3tools/contracts";
 import {
   AssetAttachmentNotFoundError,
+  AssetAzureDevOpsMediaUrlValidationError,
   AssetGitHubMediaUrlValidationError,
   AssetPreviewTypeValidationError,
   AssetProjectFaviconInspectionError,
@@ -29,6 +30,10 @@ import {
   type ImageDimensions,
 } from "@t3tools/shared/imageDimensions";
 import { githubMediaFetchUrl, githubMediaFileName } from "@t3tools/shared/githubMedia";
+import {
+  azureDevOpsMediaFetchUrl,
+  azureDevOpsMediaFileName,
+} from "@t3tools/shared/azureDevOpsMedia";
 import { PROJECT_FAVICON_FALLBACK_MARKER } from "@t3tools/shared/projectFavicon";
 import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
@@ -145,6 +150,14 @@ const AssetClaimsSchema = Schema.Union([
     cwd: Schema.String,
     expiresAt: Schema.Number,
   }),
+  // esveo fork: narrowed to an Azure DevOps pull request attachment at mint time.
+  Schema.Struct({
+    version: Schema.Literal(1),
+    kind: Schema.Literal("azure-devops-media"),
+    url: Schema.String,
+    cwd: Schema.String,
+    expiresAt: Schema.Number,
+  }),
 ]);
 type AssetClaims = typeof AssetClaimsSchema.Type;
 
@@ -167,6 +180,13 @@ export type ResolvedAsset =
       readonly cwd: string;
       /** When the signed URL that granted this stops working, which bounds how long a client
           may keep the bytes it fetched with it. */
+      readonly expiresAt: number;
+    }
+  // esveo fork
+  | {
+      readonly kind: "azure-devops-media";
+      readonly url: string;
+      readonly cwd: string;
       readonly expiresAt: number;
     };
 
@@ -691,6 +711,21 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
       fileName = githubMediaFileName(fetchUrl);
       break;
     }
+    case "azure-devops-media": {
+      const fetchUrl = azureDevOpsMediaFetchUrl(input.resource.url);
+      if (fetchUrl === null) {
+        return yield* new AssetAzureDevOpsMediaUrlValidationError({});
+      }
+      claims = {
+        version: 1,
+        kind: "azure-devops-media",
+        url: fetchUrl,
+        cwd: input.resource.cwd,
+        expiresAt,
+      };
+      fileName = azureDevOpsMediaFileName(fetchUrl);
+      break;
+    }
   }
 
   const secretStore = yield* ServerSecretStore.ServerSecretStore;
@@ -789,6 +824,16 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
     return faviconPath === claims.filePath
       ? ({ kind: "file", path: faviconPath } satisfies ResolvedAsset)
       : null;
+  }
+
+  // esveo fork
+  if (claims.kind === "azure-devops-media") {
+    return {
+      kind: "azure-devops-media",
+      url: claims.url,
+      cwd: claims.cwd,
+      expiresAt: claims.expiresAt,
+    } satisfies ResolvedAsset;
   }
 
   if (claims.kind === "github-media") {

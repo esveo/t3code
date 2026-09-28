@@ -172,6 +172,7 @@ import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsDriverRegistry from "./vcs/VcsDriverRegistry.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
 import * as GitHubCli from "./sourceControl/GitHubCli.ts";
+import * as AzureDevOpsCli from "./sourceControl/AzureDevOpsCli.ts";
 import * as VcsProcess from "./vcs/VcsProcess.ts";
 import * as GitWorkflowService from "./git/GitWorkflowService.ts";
 import * as ReviewService from "./review/ReviewService.ts";
@@ -1242,7 +1243,11 @@ const buildAppUnderTest = (options?: {
           ? FetchHttpClient.layer
           : Layer.succeed(HttpClient.HttpClient, options.layers.httpClient),
       ),
-      Layer.provide(GitHubCli.layer.pipe(Layer.provideMerge(VcsProcess.layer))),
+      Layer.provide(
+        Layer.mergeAll(GitHubCli.layer, AzureDevOpsCli.layer).pipe(
+          Layer.provideMerge(VcsProcess.layer),
+        ),
+      ),
       Layer.provide(layerConfig),
     );
 

@@ -1,6 +1,7 @@
 import { usePullRequestLinking } from "~/hooks/usePullRequestLinking";
 import { parseThreadLinkHref } from "@t3tools/shared/threadOrchestration";
 import { ThreadLinkChip } from "./threadOrchestration/ThreadLinkChip";
+import { pullRequestMediaResource } from "./pullRequest/pullRequestMediaResource";
 import { useAtomValue } from "@effect/atom-react";
 import {
   COMPOSER_CONTEXT_CLIPBOARD_MIME,
@@ -37,7 +38,6 @@ import type {
   ThreadPullRequestKey,
 } from "@t3tools/contracts";
 import { faviconUrlForOrigin } from "@t3tools/shared/favicon";
-import { githubMediaFetchUrl } from "@t3tools/shared/githubMedia";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -1646,7 +1646,14 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
   readonly environmentId: EnvironmentId;
   readonly resource: Extract<
     AssetResource,
-    { readonly _tag: "attachment" | "workspace-file" | "media-file" | "github-media" }
+    {
+      readonly _tag:
+        | "attachment"
+        | "workspace-file"
+        | "media-file"
+        | "github-media"
+        | "azure-devops-media";
+    }
   >;
   readonly kind?: "image" | "video";
   readonly alt: string;
@@ -3196,19 +3203,21 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const imageSource = classifyMarkdownImageSource(classifiedSrc, imageBaseDir ?? cwd);
     const kind = mediaKindFromPath(classifiedSrc) ?? "image";
     const directUri = imageSource._tag === "Direct" ? imageSource.uri : null;
-    const githubMediaUrl =
-      directUri === null ? null : githubMediaFetchUrl(resolveProtocolRelativeMediaUrl(directUri));
+    // esveo fork: GitHub media or an Azure DevOps attachment, both fetched by the server.
+    const githubMediaResource =
+      directUri === null || cwd === undefined
+        ? null
+        : pullRequestMediaResource(cwd, resolveProtocolRelativeMediaUrl(directUri));
     if (
       githubMedia &&
-      cwd !== undefined &&
       environmentId !== null &&
       directUri !== null &&
-      githubMediaUrl !== null
+      githubMediaResource !== null
     ) {
       return (
         <ChatMarkdownAssetImage
           environmentId={environmentId}
-          resource={{ _tag: "github-media", cwd, url: githubMediaUrl }}
+          resource={githubMediaResource}
           alt={altText}
           kind={kind}
           copyMarkdown={copyMarkdown}
@@ -3223,7 +3232,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
           // A server too old to sign this resource, or one with no route to GitHub, still leaves
           // the public half of these working exactly as it did before. The canonical URL, not the
           // authored one: a `blob` link addresses the page, and only the raw host has the bytes.
-          fallbackSrc={githubMediaUrl}
+          fallbackSrc={githubMediaResource.url}
           onImageExpand={imageExpand}
         />
       );
