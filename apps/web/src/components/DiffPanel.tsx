@@ -539,7 +539,7 @@ export default function DiffPanel({
         (candidate) => resolveFileDiffPath(candidate.fileDiff) === filePath,
       );
       const file = renderableFileEntries[index];
-      if (!file) return;
+      if (!file) return false;
       setCollapsedDiffFiles((current) => {
         const next = new Set(
           current.scopeKey === collapseScopeKey ? current.fileKeys : defaultCollapsedDiffFileKeys,
@@ -551,6 +551,7 @@ export default function DiffPanel({
         requestFile(index);
       }
       requestTreeReveal(file.fileKey);
+      return true;
     },
     [
       renderableFileEntries,
@@ -563,18 +564,22 @@ export default function DiffPanel({
     ],
   );
 
+  // A file clicked outside the panel (e.g. the chat's changed-files card) is
+  // expanded as well as scrolled to, since files start collapsed by default.
+  // A turn's patch loads after the click, so retry until the file exists.
   const externalRevealRef = useRef<{ cache: string; key: string } | null>(null);
   useEffect(() => {
-    if (!lazySource || !selectedFilePath) return;
+    if (!selectedFilePath) return;
     const key = `${selectedFilePath}:${selectedFileRevealRequestId}`;
     if (
       externalRevealRef.current?.cache === filePatchScope &&
       externalRevealRef.current.key === key
     )
       return;
-    externalRevealRef.current = { cache: filePatchScope, key };
-    revealDiffFile(selectedFilePath);
-  }, [lazySource, selectedFilePath, selectedFileRevealRequestId, filePatchScope, revealDiffFile]);
+    if (revealDiffFile(selectedFilePath)) {
+      externalRevealRef.current = { cache: filePatchScope, key };
+    }
+  }, [selectedFilePath, selectedFileRevealRequestId, filePatchScope, revealDiffFile]);
 
   const openDiffFile = useCallback(
     (filePath: string) => {
