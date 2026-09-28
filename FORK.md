@@ -144,8 +144,12 @@ one with the app's update menu. Your job ends with that build prepared.
    what should be built. It builds into
    `~/Documents/private/t3code-app/builds/<branch>`, replacing that branch's
    older build and touching neither the running app nor other branches'
-   builds. It takes one to two minutes. If it fails, fix the cause and run it
-   again.
+   builds, and then builds the branch's server when anything the server is
+   built from changed, including uncommitted changes. The service keeps
+   running; the update menu offers the switch. It takes one to two minutes,
+   more when the server is rebuilt. If it fails, fix the cause and run it
+   again; if only the server failed, `scripts/fork-app.sh prepare-server`
+   catches up on it.
 5. Update the feature's board item (see [The board](#the-board)).
 6. End with a short message: what changed, branch and commit, what you
    verified, and that the build is prepared, so the update menu offers it
@@ -154,9 +158,9 @@ one with the app's update menu. Your job ends with that build prepared.
 ### Staying current with `fork`
 
 While the app runs, it runs `scripts/fork-app.sh watch` every minute: that
-fetches `origin/fork` and, when the branch moved, prepares the new commit —
-the app into the `fork` slot, and the server with `prepare-server` when
-anything the server is built from changed. The app's update menu then offers
+fetches `origin/fork` and, when the branch moved, prepares the new commit
+into the `fork` slot, just like `prepare`: the app, and the server when
+anything it is built from changed. The app's update menu then offers
 the branch in one click: it restarts the service on the new server and the
 app side by side, and running threads, subagents and workflows continue after
 the service restart. The log is
