@@ -1,9 +1,12 @@
 import type { ExpoConfig } from "expo/config";
 
-// Fork: the esveo code Android build, a sideloaded APK that installs next to the official
-// T3 Code app. Opt in with T3CODE_ESVEO_ANDROID=1 (scripts/fork/build-esveo-apk.sh sets it);
-// without it the config stays upstream's. Built from the production variant, so it signs in
-// with upstream's public Clerk and relay config and reaches T3 Connect with the same account.
+// Fork: the esveo code Android build, a sideloaded APK published as a GitHub release by
+// .github/workflows/fork-android-apk.yml. Opt in with T3CODE_ESVEO_ANDROID=1
+// (scripts/fork/build-esveo-apk.sh sets it); without it the config stays upstream's. Built from
+// the production variant, so it signs in with upstream's public Clerk and relay config and
+// reaches T3 Connect with the same account. It keeps upstream's package name because Clerk
+// only allows the OAuth callback of that package (clerk://com.t3tools.t3code.callback), so it
+// replaces the official app instead of installing next to it.
 
 const ESVEO_ASSETS = {
   "./assets/android-icon-foreground.png": "./assets/esveo/icon-foreground.png",
@@ -33,6 +36,7 @@ export function withEsveoAndroid(config: ExpoConfig, env: Record<string, string 
     return config;
   }
   const esveo = replaceAssets(config);
+  esveo.plugins = [...(esveo.plugins ?? []), "./plugins/withEsveoVersionName.cjs"];
   return {
     ...esveo,
     name: "esveo code",
@@ -43,7 +47,6 @@ export function withEsveoAndroid(config: ExpoConfig, env: Record<string, string 
     extra: { ...esveo.extra, esveo: true },
     android: {
       ...esveo.android,
-      package: "com.esveo.code",
       // Android only installs an update over a lower versionCode; the build script passes the commit count.
       versionCode: Number(env.T3CODE_ESVEO_VERSION_CODE) || 1,
       adaptiveIcon: {

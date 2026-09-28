@@ -259,6 +259,26 @@ threads live on the server and come back on reconnect.
 Phones and app.t3.codes need no pairing. They reach the environment through the
 managed tunnel and the T3 account, which is why step 4's cloud config matters.
 
+## Android app
+
+Every push to `fork` that touches the mobile app builds esveo code for Android
+and publishes it as a
+[GitHub release](https://github.com/esveo/t3code/releases), tagged with its
+version. To install it and keep it current, install
+[Obtainium](https://github.com/ImranR98/Obtainium) on the phone and add the
+app `https://github.com/esveo/t3code`; Obtainium checks the releases and offers
+each new build.
+
+The APK keeps the official app's package name, because Clerk sends the GitHub,
+Google and Apple sign-in back only to that package. It therefore replaces the
+official T3 Code app, and Android refuses to install it over one signed by
+someone else: uninstall the official app (and an older `com.esveo.code` build)
+first.
+
+The workflow signs with the keystore in the repo secrets
+`ESVEO_ANDROID_KEYSTORE` and `ESVEO_ANDROID_KEYSTORE_PASSWORD`; Paul keeps a copy
+of it. A new key means every phone has to uninstall and reinstall.
+
 ## Dictation
 
 Settings → General → Voice input is stored per browser, but the speech model
