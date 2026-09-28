@@ -15,6 +15,9 @@
 name: Fork upstream sync
 
 on:
+  schedule:
+    # 06:00 in Germany during summer time, 05:00 in winter (cron runs in UTC).
+    - cron: "0 4 * * *"
   workflow_dispatch:
     inputs:
       upstream_ref:
