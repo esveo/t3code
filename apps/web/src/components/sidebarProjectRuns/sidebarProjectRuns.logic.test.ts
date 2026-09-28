@@ -163,13 +163,17 @@ describe("buildSidebarProjectRunPlan", () => {
 });
 
 describe("sidebarRowLead", () => {
-  it("names a coordinator Cross-project with and without project grouping", () => {
-    expect(sidebarRowLead({ coordinator: true, inProjectRun: true })).toBe("cross-project");
-    expect(sidebarRowLead({ coordinator: true, inProjectRun: false })).toBe("cross-project");
+  it("names a cross-project coordinator Cross-project with and without project grouping", () => {
+    expect(sidebarRowLead({ crossProjectCoordinator: true, inProjectRun: true })).toBe(
+      "cross-project",
+    );
+    expect(sidebarRowLead({ crossProjectCoordinator: true, inProjectRun: false })).toBe(
+      "cross-project",
+    );
   });
 
-  it("gives a child or a former coordinator its branch in a run and its project outside one", () => {
-    expect(sidebarRowLead({ coordinator: false, inProjectRun: true })).toBe("branch");
-    expect(sidebarRowLead({ coordinator: false, inProjectRun: false })).toBe("project");
+  it("gives any other row, a single-project coordinator too, its branch in a run and its project outside one", () => {
+    expect(sidebarRowLead({ crossProjectCoordinator: false, inProjectRun: true })).toBe("branch");
+    expect(sidebarRowLead({ crossProjectCoordinator: false, inProjectRun: false })).toBe("project");
   });
 });
