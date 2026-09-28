@@ -417,6 +417,6 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
         prompt: input.prompt,
         outputSchema: input.outputSchema,
         modelSelection: input.modelSelection,
-      }),
+      }).pipe(Effect.scoped),
   } satisfies TextGeneration.TextGeneration["Service"];
 });

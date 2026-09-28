@@ -274,6 +274,6 @@ export const makeCursorTextGeneration = Effect.fn("makeCursorTextGeneration")(fu
         prompt: input.prompt,
         outputSchemaJson: input.outputSchema,
         modelSelection: input.modelSelection,
-      }),
+      }).pipe(Effect.scoped),
   } satisfies TextGeneration.TextGeneration["Service"];
 });

@@ -276,6 +276,6 @@ export const makeGrokTextGeneration = Effect.fn("makeGrokTextGeneration")(functi
         prompt: input.prompt,
         outputSchemaJson: input.outputSchema,
         modelSelection: input.modelSelection,
-      }),
+      }).pipe(Effect.scoped),
   } satisfies TextGeneration.TextGeneration["Service"];
 });

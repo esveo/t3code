@@ -14,6 +14,7 @@ import {
   type PeerRouting,
   ThreadId,
 } from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -168,9 +169,11 @@ export const decideRoute = (input: {
     Effect.catchCause((cause) =>
       Effect.gen(function* () {
         yield* Effect.logWarning("peers: automatic routing failed", cause);
+        const error = Cause.squash(cause);
+        const detail = error instanceof Error ? error.message : String(error);
         return stay(
           DateTime.formatIso(yield* DateTime.now),
-          "Automatic routing failed; place the message yourself.",
+          `Automatic routing failed (${detail.slice(0, 300)}); place the message yourself.`,
         );
       }),
     ),

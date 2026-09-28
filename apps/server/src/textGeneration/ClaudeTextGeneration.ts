@@ -423,6 +423,6 @@ export const makeClaudeTextGeneration = Effect.fn("makeClaudeTextGeneration")(fu
         prompt: input.prompt,
         outputSchemaJson: input.outputSchema,
         modelSelection: input.modelSelection,
-      }),
+      }).pipe(Effect.scoped),
   } satisfies TextGeneration.TextGeneration["Service"];
 });

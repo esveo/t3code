@@ -1,11 +1,13 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
+import * as Scope from "effect/Scope";
 import { createModelSelection } from "@t3tools/shared/model";
 import { expect } from "vite-plus/test";
 
@@ -661,6 +663,28 @@ it.layer(CodexTextGenerationTestLayer)("CodexTextGeneration", (it) => {
               "Codex CLI command failed: codex execution failed",
             );
           }
+        }),
+    ),
+  );
+
+  // Fork: Peers routing calls generateForkJson from a background fiber whose
+  // ambient scope may already be closed; the call brings its own.
+  it.effect("generates fork JSON even when the ambient scope is closed", () =>
+    withFakeCodexEnv(
+      { output: JSON.stringify({ threadId: "t-1", reason: "same repository" }) },
+      (textGeneration) =>
+        Effect.gen(function* () {
+          const closed = yield* Scope.make();
+          yield* Scope.close(closed, Exit.void);
+          const generate = textGeneration.generateForkJson;
+          expect(generate).toBeDefined();
+          const answer = yield* generate!({
+            cwd: process.cwd(),
+            prompt: "Route this",
+            outputSchema: Schema.Struct({ threadId: Schema.String, reason: Schema.String }),
+            modelSelection: DEFAULT_TEST_MODEL_SELECTION,
+          }).pipe(Effect.provideService(Scope.Scope, closed));
+          expect(answer).toEqual({ threadId: "t-1", reason: "same repository" });
         }),
     ),
   );

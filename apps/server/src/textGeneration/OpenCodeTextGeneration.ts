@@ -466,6 +466,6 @@ export const makeOpenCodeTextGeneration = Effect.fn("makeOpenCodeTextGeneration"
         prompt: input.prompt,
         outputSchemaJson: input.outputSchema,
         modelSelection: input.modelSelection,
-      }),
+      }).pipe(Effect.scoped),
   } satisfies TextGeneration.TextGeneration["Service"];
 });
