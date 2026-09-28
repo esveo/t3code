@@ -30,6 +30,7 @@ export const CLI_RUNTIME_EXTERNAL_PREFIXES = [
   "ffi-rs",
   "@yuuang/",
   "@ff-labs/",
+  "@napi-rs/keyring",
   "@clerk/electron-passkeys",
   // Fork: whisper.cpp for dictation, with its per-platform binary packages.
   "@fugood/",
