@@ -223,6 +223,7 @@ export const make = Effect.gen(function* () {
       commitGraph: true,
       subagentChat: true,
       threadDecisions: true,
+      peers: true,
       inlineMessageContext: true,
       requiredWorktreeBootstrap: true,
       threadSettlement: true,

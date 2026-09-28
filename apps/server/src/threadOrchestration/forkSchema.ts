@@ -29,4 +29,40 @@ export const ensureForkSchema = Effect.gen(function* () {
       PRIMARY KEY (coordinator_thread_id, decision_id)
     )
   `;
+  // Peers: linked environments, the messages exchanged with them, and settings.
+  yield* sql`
+    CREATE TABLE IF NOT EXISTS fork_peer_contacts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      base_url TEXT,
+      outbound_token TEXT NOT NULL,
+      inbound_token_hash TEXT NOT NULL,
+      is_self INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL
+    )
+  `;
+  yield* sql`
+    CREATE TABLE IF NOT EXISTS fork_peer_messages (
+      id TEXT NOT NULL,
+      direction TEXT NOT NULL,
+      contact_id TEXT NOT NULL,
+      text TEXT NOT NULL,
+      context TEXT,
+      reply_to_id TEXT,
+      thread_id TEXT,
+      status TEXT NOT NULL,
+      error TEXT,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (id, direction)
+    )
+  `;
+  yield* sql`
+    CREATE INDEX IF NOT EXISTS fork_peer_messages_created_at ON fork_peer_messages (created_at)
+  `;
+  yield* sql`
+    CREATE TABLE IF NOT EXISTS fork_peer_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)
+  `;
 }).pipe(Effect.withSpan("ensureForkSchema"));

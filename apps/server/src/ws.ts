@@ -48,6 +48,7 @@ import {
   ORCHESTRATION_WS_METHODS,
   SUBAGENT_CHAT_WS_METHODS,
   THREAD_DECISIONS_WS_METHODS,
+  PEERS_WS_METHODS,
   VOICE_INPUT_WS_METHODS,
   ProjectId,
   type ProjectEntriesFailure,
@@ -138,6 +139,7 @@ import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration/workflowScriptQuery.ts";
 import * as SubagentChat from "./subagentChat/SubagentChat.ts";
 import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
+import * as Peers from "./peers/Peers.ts";
 import * as VoiceInput from "./voiceInput/VoiceInput.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
@@ -3823,6 +3825,15 @@ const makeWsRpcLayer = (
         [THREAD_DECISIONS_WS_METHODS.act]: (input) =>
           observeRpcEffect(THREAD_DECISIONS_WS_METHODS.act, ThreadDecisions.actRpc(input), {
             "rpc.aggregate": "orchestration",
+          }),
+        // Fork: messages between linked environments.
+        [PEERS_WS_METHODS.subscribe]: (_input) =>
+          observeRpcStream(PEERS_WS_METHODS.subscribe, Peers.subscribeRpc(), {
+            "rpc.aggregate": "server",
+          }),
+        [PEERS_WS_METHODS.act]: (input) =>
+          observeRpcEffect(PEERS_WS_METHODS.act, Peers.actRpc(input), {
+            "rpc.aggregate": "server",
           }),
         // Fork: dictation in the composer.
         [VOICE_INPUT_WS_METHODS.prepare]: (input) =>

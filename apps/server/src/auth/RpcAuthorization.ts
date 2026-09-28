@@ -10,6 +10,7 @@ import {
   ORCHESTRATION_WS_METHODS,
   SUBAGENT_CHAT_WS_METHODS,
   THREAD_DECISIONS_WS_METHODS,
+  PEERS_WS_METHODS,
   VOICE_INPUT_WS_METHODS,
   type AuthEnvironmentScope,
   WS_METHODS,
@@ -181,6 +182,9 @@ export const RPC_REQUIRED_SCOPES = {
   // Fork: coordinator decisions.
   [THREAD_DECISIONS_WS_METHODS.subscribe]: AuthOrchestrationReadScope,
   [THREAD_DECISIONS_WS_METHODS.act]: AuthOrchestrationOperateScope,
+  // Fork: peers.
+  [PEERS_WS_METHODS.subscribe]: AuthOrchestrationReadScope,
+  [PEERS_WS_METHODS.act]: AuthOrchestrationOperateScope,
   // Fork: dictation in the composer.
   [VOICE_INPUT_WS_METHODS.prepare]: AuthOrchestrationOperateScope,
   [VOICE_INPUT_WS_METHODS.transcribe]: AuthOrchestrationOperateScope,

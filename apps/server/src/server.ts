@@ -96,6 +96,8 @@ import * as PullRequestSyncReactor from "./orchestration/PullRequestSyncReactor.
 import * as ThreadPullRequestReactor from "./orchestration/ThreadPullRequestReactor.ts";
 import * as ThreadOrchestrationReactor from "./threadOrchestration/ThreadOrchestrationReactor.ts";
 import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
+import * as Peers from "./peers/Peers.ts";
+import { peersRouteLayer } from "./peers/PeersHttp.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry.ts";
@@ -278,6 +280,8 @@ const ReactorLayerLive = Layer.empty.pipe(
   Layer.provideMerge(ThreadOrchestrationReactor.startedLayer),
   // Fork: decisions a coordinator asks the user for (Inbox panel, MCP tools).
   Layer.provideMerge(ThreadDecisions.layer),
+  // Fork: contacts in other environments and the messages exchanged with them.
+  Layer.provideMerge(Peers.layer),
   Layer.provideMerge(AgentAwarenessRelay.layer.pipe(Layer.provide(ServerSecretStore.layer))),
   Layer.provideMerge(RuntimeReceiptBusLive),
 );
@@ -611,6 +615,8 @@ export const makeRoutesLayer = Layer.mergeAll(
     assetRouteLayer,
     attachmentUploadRouteLayer,
     deviceHubProxyRouteLayer,
+    // Fork: peers, called by linked environments.
+    peersRouteLayer,
     staticAndDevRouteLayer,
     websocketRpcRouteLayer,
   ),

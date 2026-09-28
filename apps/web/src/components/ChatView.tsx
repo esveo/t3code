@@ -236,6 +236,7 @@ import { ThreadOverviewPanel } from "./threadOrchestration/ThreadOverviewPanel";
 import { useThreadOverviewSurface } from "./threadOrchestration/useThreadOverviewSurface";
 import { ThreadInboxPanel } from "./threadInbox/ThreadInboxPanel";
 import { useThreadInboxSurface } from "./threadInbox/useThreadInboxSurface";
+import { PeerReplyCards } from "./peers/PeerReplyCards";
 import { useAgentStageEnabled } from "./agentStage/agentStageStore";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import { isEditableFocused } from "../lib/editableFocus";
@@ -10099,6 +10100,8 @@ export default function ChatView(props: ChatViewProps) {
                   data-chat-composer-stack="true"
                   className="group/composer-stack pointer-events-auto relative z-10 mx-auto w-full max-w-(--chat-max-width)"
                 >
+                  {/* Fork: contacts' answers to messages this thread sent. */}
+                  {activeThreadRef ? <PeerReplyCards threadRef={activeThreadRef} /> : null}
                   {isDraftHeroState ? (
                     <div className="absolute inset-x-0 bottom-full z-0">
                       <div

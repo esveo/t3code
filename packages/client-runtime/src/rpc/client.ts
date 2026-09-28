@@ -2,6 +2,7 @@ import {
   ORCHESTRATION_WS_METHODS,
   SUBAGENT_CHAT_WS_METHODS,
   THREAD_DECISIONS_WS_METHODS,
+  PEERS_WS_METHODS,
   VOICE_INPUT_WS_METHODS,
   WS_METHODS,
 } from "@t3tools/contracts";
@@ -68,6 +69,7 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.terminalAttach
   | typeof SUBAGENT_CHAT_WS_METHODS.subscribeTranscript
   | typeof THREAD_DECISIONS_WS_METHODS.subscribe
+  | typeof PEERS_WS_METHODS.subscribe
   | typeof VOICE_INPUT_WS_METHODS.prepare;
 
 export type EnvironmentStreamCommandRpcTag =

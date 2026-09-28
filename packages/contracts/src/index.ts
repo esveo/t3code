@@ -47,4 +47,5 @@ export * from "./rpc.ts";
 export * from "./worktreeSetup.ts";
 export * from "./subagentChat.ts";
 export * from "./threadDecisions.ts";
+export * from "./peers.ts";
 export * from "./voiceInput.ts";

@@ -42,6 +42,12 @@ const accessOf = (settings: ServerSettingsValue): OrchestrationToolAccess => ({
   decisions: settings.enableThreadOrchestration && settings.enableThreadDecisions,
 });
 
+// Fork: other fork tools (Peers) whose availability changes without a settings switch.
+let announceListChanged: () => void = () => {};
+
+/** Tells every open MCP connection to list the tools again. */
+export const announceToolListChanged = (): void => announceListChanged();
+
 const encoder = new TextEncoder();
 export const LIST_CHANGED_MESSAGE = `{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}`;
 const LIST_CHANGED_EVENT = encoder.encode(`event: message\ndata: ${LIST_CHANGED_MESSAGE}\n\n`);
@@ -73,6 +79,8 @@ export const layer = Layer.effect(
       Effect.orElseSucceed(() => off),
     );
     yield* Effect.addFinalizer(() => Effect.sync(() => (current = off)));
+    announceListChanged = () => PubSub.publishUnsafe(listChanged, undefined);
+    yield* Effect.addFinalizer(() => Effect.sync(() => (announceListChanged = () => {})));
     yield* changes.pipe(
       Stream.runForEach((next) => {
         const access = accessOf(next);

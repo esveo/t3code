@@ -31,6 +31,7 @@ import { Route as SettingsArchivedRouteImport } from './routes/settings.archived
 import { Route as SettingsAppearanceRouteImport } from './routes/settings.appearance'
 import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
+import { Route as ChatPeersRouteImport } from './routes/_chat.peers'
 import { Route as ChatGitGraphRouteImport } from './routes/_chat.git-graph'
 import { Route as PopoutEnvironmentIdThreadIdRouteImport } from './routes/popout.$environmentId.$threadId'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
@@ -146,6 +147,11 @@ const ChatPullRequestsRoute = ChatPullRequestsRouteImport.update({
   path: '/pull-requests',
   getParentRoute: () => ChatRoute,
 } as any)
+const ChatPeersRoute = ChatPeersRouteImport.update({
+  id: '/peers',
+  path: '/peers',
+  getParentRoute: () => ChatRoute,
+} as any)
 const ChatGitGraphRoute = ChatGitGraphRouteImport.update({
   id: '/git-graph',
   path: '/git-graph',
@@ -177,6 +183,7 @@ export interface FileRoutesByFullPath {
   '/usage': typeof UsageRoute
   '/welcome': typeof WelcomeRoute
   '/git-graph': typeof ChatGitGraphRoute
+  '/peers': typeof ChatPeersRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
@@ -203,6 +210,7 @@ export interface FileRoutesByTo {
   '/usage': typeof UsageRoute
   '/welcome': typeof WelcomeRoute
   '/git-graph': typeof ChatGitGraphRoute
+  '/peers': typeof ChatPeersRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
@@ -232,6 +240,7 @@ export interface FileRoutesById {
   '/usage': typeof UsageRoute
   '/welcome': typeof WelcomeRoute
   '/_chat/git-graph': typeof ChatGitGraphRoute
+  '/_chat/peers': typeof ChatPeersRoute
   '/_chat/pull-requests': typeof ChatPullRequestsRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
   '/settings/appearance': typeof SettingsAppearanceRoute
@@ -262,6 +271,7 @@ export interface FileRouteTypes {
     | '/usage'
     | '/welcome'
     | '/git-graph'
+    | '/peers'
     | '/pull-requests'
     | '/projects/$projectKey'
     | '/settings/appearance'
@@ -288,6 +298,7 @@ export interface FileRouteTypes {
     | '/usage'
     | '/welcome'
     | '/git-graph'
+    | '/peers'
     | '/pull-requests'
     | '/projects/$projectKey'
     | '/settings/appearance'
@@ -316,6 +327,7 @@ export interface FileRouteTypes {
     | '/usage'
     | '/welcome'
     | '/_chat/git-graph'
+    | '/_chat/peers'
     | '/_chat/pull-requests'
     | '/projects/$projectKey'
     | '/settings/appearance'
@@ -504,6 +516,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatPullRequestsRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/_chat/peers': {
+      id: '/_chat/peers'
+      path: '/peers'
+      fullPath: '/peers'
+      preLoaderRoute: typeof ChatPeersRouteImport
+      parentRoute: typeof ChatRoute
+    }
     '/_chat/git-graph': {
       id: '/_chat/git-graph'
       path: '/git-graph'
@@ -537,6 +556,7 @@ declare module '@tanstack/react-router' {
 
 interface ChatRouteChildren {
   ChatGitGraphRoute: typeof ChatGitGraphRoute
+  ChatPeersRoute: typeof ChatPeersRoute
   ChatPullRequestsRoute: typeof ChatPullRequestsRoute
   ChatIndexRoute: typeof ChatIndexRoute
   ChatEnvironmentIdThreadIdRoute: typeof ChatEnvironmentIdThreadIdRoute
@@ -545,6 +565,7 @@ interface ChatRouteChildren {
 
 const ChatRouteChildren: ChatRouteChildren = {
   ChatGitGraphRoute: ChatGitGraphRoute,
+  ChatPeersRoute: ChatPeersRoute,
   ChatPullRequestsRoute: ChatPullRequestsRoute,
   ChatIndexRoute: ChatIndexRoute,
   ChatEnvironmentIdThreadIdRoute: ChatEnvironmentIdThreadIdRoute,

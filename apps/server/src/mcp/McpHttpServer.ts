@@ -36,6 +36,8 @@ import { PullRequestsToolkitHandlersLive } from "./toolkits/pullRequests/handler
 import { PullRequestsToolkit } from "./toolkits/pullRequests/tools.ts";
 // Fork: thread orchestration.
 import { ThreadsToolkitHandlersLive } from "./toolkits/threads/handlers.ts";
+import { PeersToolkitHandlersLive } from "./toolkits/peers/handlers.ts";
+import { PeersToolkit } from "./toolkits/peers/tools.ts";
 import { ThreadsToolkit } from "./toolkits/threads/tools.ts";
 import {
   DeviceScreenshotToolkitHandlersLive,
@@ -660,6 +662,11 @@ const ThreadsToolkitRegistrationLive = McpServer.toolkit(ThreadsToolkit).pipe(
   Layer.provide(ThreadsToolkitHandlersLive),
 );
 
+// Fork: messages to linked environments.
+const PeersToolkitRegistrationLive = McpServer.toolkit(PeersToolkit).pipe(
+  Layer.provide(PeersToolkitHandlersLive),
+);
+
 const DeviceStandardToolkitRegistrationLive = McpServer.toolkit(DeviceStandardToolkit).pipe(
   Layer.provide(DeviceStandardToolkitHandlersLive),
 );
@@ -685,4 +692,5 @@ export const layer = Layer.mergeAll(
   PullRequestsToolkitRegistrationLive,
   DeviceToolkitRegistrationLive,
   ThreadsToolkitRegistrationLive,
+  PeersToolkitRegistrationLive,
 ).pipe(Layer.provideMerge(McpTransportLive));
