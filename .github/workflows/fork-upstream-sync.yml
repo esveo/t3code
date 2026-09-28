@@ -54,6 +54,7 @@ jobs:
       fork_sha: ${{ steps.upstream.outputs.fork_sha }}
       target: ${{ steps.upstream.outputs.target }}
       green: ${{ steps.verdict.outputs.green }}
+      bundled: ${{ steps.verdict.outputs.bundled }}
     steps:
       - name: Checkout fork
         uses: actions/checkout@v5
@@ -184,7 +185,13 @@ jobs:
           feature depends on) or verify stays red after honest attempts, write
           "blocked" to $SYNC_DIR/status and commit what you have, conflict
           markers included, so the maintainer can pick it up from there.
+
+          The runner has limited memory: run typecheck, tests, installs and builds
+          one at a time, never in parallel with each other, and never from several
+          sub-agents at once.
           EOF
+          git rev-parse HEAD > "$SYNC_DIR/head-before"
+          git status --porcelain > "$SYNC_DIR/status-before"
           copilot -p "$(cat "$RUNNER_TEMP/prompt.md")" \
             --model "$MODEL" \
             --no-ask-user --allow-all-tools --allow-all-paths \
@@ -194,18 +201,28 @@ jobs:
             --share "$SYNC_DIR/transcript.md" \
             --usage-output-file "$SYNC_DIR/usage.json"
 
-      # A Copilot that never started (model not enabled, auth refused) leaves
-      # only the conflicted merge: fail the run instead of opening a PR of it.
+      # Everything below runs even when the runner cancelled the Copilot step (as
+      # it did once after 8 minutes, without a manual cancel), so the work done
+      # so far still lands as a draft PR or at least as the artifact.
       - name: Check that Copilot ran
-        if: steps.agent.outcome == 'failure'
+        id: ran
+        if: always() && (steps.agent.outcome == 'failure' || steps.agent.outcome == 'cancelled')
         run: |
-          [ -s "$SYNC_DIR/transcript.md" ] && exit 0
-          echo "::error::Copilot did not start; see the step above."
-          exit 1
+          free -m
+          sudo dmesg 2>/dev/null | grep -iE 'out of memory|oom-kill|killed process' | tail -5 || true
+          # A Copilot that never started (model not enabled, auth refused) leaves
+          # only the conflicted merge: fail the run instead of opening a PR of it.
+          if [ "$(git rev-parse HEAD)" = "$(cat "$SYNC_DIR/head-before" 2>/dev/null)" ] &&
+            [ "$(git status --porcelain)" = "$(cat "$SYNC_DIR/status-before" 2>/dev/null)" ]; then
+            echo "::error::Copilot changed nothing; see the step above."
+            exit 1
+          fi
 
       - name: Commit what the agent left
-        if: steps.agent.outcome != 'skipped'
+        if: always() && steps.agent.outcome != 'skipped' && steps.ran.outcome != 'failure'
         run: |
+          rm -f .git/index.lock
+          if [ "${{ steps.agent.outcome }}" = cancelled ]; then echo blocked > "$SYNC_DIR/status"; fi
           if git rev-parse -q --verify MERGE_HEAD >/dev/null; then
             echo blocked > "$SYNC_DIR/status"
             git add -A
@@ -217,13 +234,13 @@ jobs:
 
       - name: Verify the agent's result
         id: fixed
-        if: steps.agent.outcome != 'skipped'
+        if: "!cancelled() && steps.agent.outcome != 'skipped' && steps.ran.outcome != 'failure'"
         continue-on-error: true
         run: bash <(git show "$FORK_SHA:$SCRIPT") verify
 
       - name: Verdict
         id: verdict
-        if: steps.upstream.outputs.behind != '0'
+        if: always() && steps.merge.outcome == 'success' && steps.ran.outcome != 'failure'
         run: |
           green=false
           if [ "${{ steps.plain.outcome }}" = success ]; then green=true; fi
@@ -231,16 +248,17 @@ jobs:
           echo "green=$green" >> "$GITHUB_OUTPUT"
           git branch -f sync HEAD
           git bundle create "$SYNC_DIR/sync.bundle" sync "^$FORK_SHA"
+          echo "bundled=true" >> "$GITHUB_OUTPUT"
 
       - name: Save conflict resolutions
-        if: steps.verdict.outputs.green == 'true'
+        if: always() && steps.verdict.outputs.green == 'true'
         uses: actions/cache/save@v4
         with:
           path: .git/rr-cache
           key: fork-sync-rerere-${{ github.run_id }}
 
       - name: Upload the result
-        if: steps.upstream.outputs.behind != '0'
+        if: always() && steps.upstream.outputs.behind != '0'
         uses: actions/upload-artifact@v4
         with:
           name: sync
@@ -249,7 +267,8 @@ jobs:
 
   publish:
     needs: merge
-    if: needs.merge.outputs.behind != '0'
+    # Also after a failed merge job, as long as it bundled a result.
+    if: "!cancelled() && needs.merge.outputs.bundled == 'true'"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -361,7 +380,7 @@ jobs:
 
   report:
     needs: [merge, publish]
-    if: failure()
+    if: failure() && needs.publish.result != 'success'
     runs-on: ubuntu-latest
     permissions:
       issues: write
