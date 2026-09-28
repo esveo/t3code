@@ -25,9 +25,8 @@ background service at the fork server and pair your clients.
 ```bash
 git clone https://github.com/esveo/t3code.git && cd t3code
 npx pnpm@11.10.0 install
-scripts/fork-app.sh prepare          # build the desktop app
-scripts/fork-app.sh restart fork     # launch it
-scripts/fork-app.sh prepare-server   # build the fork server
+scripts/fork-app.sh prepare          # build the desktop app and the fork server
+scripts/fork-app.sh restart fork     # launch the app
 ```
 
 ## Prerequisites
@@ -80,7 +79,7 @@ Everything lives outside the checkout, under `$T3CODE_FORK_APP_ROOT`
 | `builds/<branch>/`      | the newest prepared build of each branch, waiting to be switched to    |
 | `staging/`              | where `prepare` builds; recycled from a replaced build                 |
 | `home/`                 | the app's own `T3CODE_HOME`: settings and the saved service connection |
-| `servers/<branch>.json` | the newest fork server `prepare-server` built from each branch         |
+| `servers/<branch>.json` | the newest fork server `prepare` built from each branch                |
 
 `scripts/fork-app.sh status` prints which build is where. Each branch keeps
 one waiting build — a second `prepare` from the same branch replaces it —
@@ -105,15 +104,14 @@ the background service. Your threads and projects live in the service's
 
 ## 3. Build and install the fork server
 
-```bash
-scripts/fork-app.sh prepare-server
-```
-
-This mirrors the release pipeline — single executable, web client, resource
-monitor — and installs the result into
+`prepare` from step 2 already did this after the app;
+`scripts/fork-app.sh prepare-server` does it on its own. It mirrors the release
+pipeline (single executable, web client, resource monitor) and installs the
+result into
 `~/.t3/runtime/versions/<version>`, where `<version>` is one patch above the
 checkout's server version plus a branch-and-commit prerelease tag, for example
-`0.0.43-fork.feat-git-graph.2763366`, and records it in
+`0.0.43-fork.feat-git-graph.2763366`, with `.changes-<time>` appended when the
+server has uncommitted changes, and records it in
 `servers/<branch>.json` beside the app slots. When the server is unchanged
 since the branch's last one built (or, before that, since the one the service
 runs), it builds nothing and records that version for the branch.
@@ -315,11 +313,10 @@ For the app, `scripts/fork-app.sh stop` is enough; the official
 
 ## Rebuilding later
 
-For the app: `scripts/fork-app.sh prepare`, then the branch in the update
-menu.
-
-For the server: `scripts/fork-app.sh prepare-server`, then the same menu
-entry. Both happen on their own for commits pushed to `origin/fork`. The plist
+`scripts/fork-app.sh prepare`, then the branch in the update menu. It rebuilds
+the server too when that changed; `scripts/fork-app.sh prepare-server` rebuilds
+only the server, for example after a server build failed. Both happen on their
+own for commits pushed to `origin/fork`. The plist
 and the cloud environment variables stay valid and do not need redoing —
 unless a rebase brings a `SERVICE_LAUNCHER_PROTOCOL` bump, in which case step 4
 has to be repeated, because the plist would still name a launcher speaking the

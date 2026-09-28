@@ -14,7 +14,8 @@
 #
 #   scripts/fork-app.sh prepare           build this checkout (including uncommitted
 #                                         changes) into builds/<branch>/, replacing
-#                                         that branch's older build — agents run this
+#                                         that branch's older build, then its server
+#                                         as prepare-server does — agents run this
 #   scripts/fork-app.sh restart <branch>  switch to that branch's build and relaunch;
 #                                         the app's update menu runs this, beside
 #                                         restart-service when the branch's server
@@ -25,10 +26,11 @@
 # Features with a server side need the fork's server too, because the app only
 # ever talks to the machine's t3 service:
 #
-#   scripts/fork-app.sh prepare-server    when the server changed since the branch's
-#                                         last one built, build this checkout into a
-#                                         t3 runtime and install it beside the
-#                                         others; the service keeps running
+#   scripts/fork-app.sh prepare-server    the server half of prepare on its own: when
+#                                         the server changed since the branch's last
+#                                         one built, build this checkout into a t3
+#                                         runtime and install it beside the others;
+#                                         the service keeps running
 #   scripts/fork-app.sh restart-service <version>
 #                                         switch the service to that runtime
 #                                         and restart it; running threads,
@@ -54,6 +56,9 @@ SCRIPT_REPO="${T3CODE_FORK_REPO:-${0:A:h:h}}"
 # Inside a function $0 is the function's name, so the path is taken here.
 SCRIPT_PATH="${0:A}"
 ROOT="${T3CODE_FORK_APP_ROOT:-$HOME/Documents/private/t3code-app}"
+# The runtimes the servers go to are global, but only the default root knows
+# every branch's server; a scratch root prunes none of them.
+DEFAULT_ROOT="$HOME/Documents/private/t3code-app"
 HOME_DIR="$ROOT/home"
 LOG_DIR="$ROOT/logs"
 BUILDS_DIR="$ROOT/builds"
@@ -327,6 +332,18 @@ prepare() {
   echo "Prepared $label into builds/$slug. The app's update menu now offers it."
 }
 
+# The app and, unless it is unchanged, its server. The server runs as its own
+# process, so a failure there cannot take the finished app build with it.
+prepare_with_server() {
+  prepare
+  "$SCRIPT_PATH" prepare-server || {
+    echo "The app build is prepared, but its server is missing: the menu would keep" >&2
+    echo "the service on its current server. Fix the cause and run" >&2
+    echo "'scripts/fork-app.sh prepare-server' in this checkout." >&2
+    return 1
+  }
+}
+
 # Builds a t3 runtime from this checkout and makes it the service's active
 # version. Mirrors the release pipeline (single-executable, web client,
 # resource monitor, runtime externals) so the result is layout-identical to an
@@ -365,23 +382,25 @@ prepare_server() {
   use_node
   [[ -f "$SERVICE_STATE" ]] || { echo "No t3 service state at $SERVICE_STATE." >&2; return 1; }
 
-  local branch slug sha commit
+  local branch slug sha commit changes
   branch="$(branch_of "$source_repo")"
   slug="$(slug_of "$branch")"
   sha="$(git -C "$source_repo" rev-parse HEAD)"
   commit="${sha[1,7]}"
+  changes="$(git -C "$source_repo" status --porcelain -- "${SERVER_PATHS[@]}")"
   local server_info="$SERVERS_DIR/$slug.json"
 
   # The baseline is the server a switch to this branch would run: the
   # branch's newest server built, or the service's own version. Fork versions
-  # end in their commit.
-  local base_version base_commit
+  # end in their commit; one built with uncommitted changes (.changes-<time>)
+  # matches no commit, and neither do uncommitted changes, so both rebuild.
+  local base_version base_commit=""
   base_version="$(json_field "$server_info" version)"
   [[ -n "$base_version" && -x "$RUNTIME_DIR/versions/$base_version/t3" ]] ||
     base_version="$(active_server_version)"
-  base_commit=""
-  [[ "$base_version" == *-fork.* ]] && base_commit="${base_version##*.}"
-  if [[ -n "$base_commit" ]] &&
+  [[ "$base_version" == *-fork.* && "$base_version" != *.changes-* ]] &&
+    base_commit="${base_version##*.}"
+  if [[ -n "$base_commit" && -z "$changes" ]] &&
     git -C "$source_repo" rev-parse --verify --quiet "$base_commit^{commit}" >/dev/null &&
     git -C "$source_repo" diff --quiet "$base_commit" -- "${SERVER_PATHS[@]}"
   then
@@ -409,9 +428,25 @@ prepare_server() {
   # the fork. The service refuses to start a child whose own version differs
   # from the directory it was started from, so this string has to be baked
   # into the build.
+  # Uncommitted changes get a time on top, so each such build has a version of
+  # its own: it never overwrites a runtime the service may be running, and the
+  # update menu sees a server that differs.
   local base version
   base="$(node -e "const v=require('$source_repo/apps/server/package.json').version.split('.');console.log([v[0],v[1],Number(v[2])+1].join('.'))")"
   version="$base-fork.$slug.$commit"
+  [[ -n "$changes" ]] && version+=".changes-$(date +%Y%m%d%H%M%S)"
+
+  # A committed state installed before, say one the branch moved away from and
+  # back to, is the same runtime; rebuilding it would delete one in use, and
+  # the one the service runs or falls back to is never replaced.
+  local target="$RUNTIME_DIR/versions/$version"
+  if [[ "$version" == "$(active_server_version)" ||
+    "$version" == "$(cat "$RUNTIME_DIR/.fork-previous-version" 2>/dev/null || true)" ||
+    ( -x "$target/t3" && "$(cat "$target/.install-complete" 2>/dev/null)" == "$version" ) ]]; then
+    write_server_info "$server_info" "$branch" "$version" "$sha" ""
+    echo "Server $version is already installed; nothing to build."
+    return
+  fi
 
   # Its own staging directory: the version is written into its package.json,
   # which must not reach an app build.
@@ -479,7 +514,6 @@ prepare_server() {
   archive="$(echo "$staging"/release-cli/*.tar.gz)"
   [[ -f "$archive" ]] || { echo "No archive was produced." >&2; return 1; }
 
-  local target="$RUNTIME_DIR/versions/$version"
   echo "Installing into $target …"
   rm -rf "$target"
   mkdir -p "$target"
@@ -505,7 +539,7 @@ write_server_info() {
 prune_server_versions() {
   # The runtimes are global, but the keep list below only knows this root's
   # builds: a scratch root would delete every other branch's server.
-  if [[ "$ROOT" != "$HOME/Documents/private/t3code-app" ]]; then
+  if [[ "${ROOT:A}" != "${DEFAULT_ROOT:A}" ]]; then
     echo "Not pruning servers from the scratch root $ROOT."
     return 0
   fi
@@ -555,7 +589,8 @@ WATCH_BRANCH="${T3CODE_FORK_WATCH_BRANCH:-fork}"
 WATCH_SOURCE="$ROOT/source"
 
 # One pass: prepare the app and the server for what was pushed to the fork
-# branch, skipping whichever is already built for that commit. Never touches
+# branch, skipping whichever is already built for that commit (prepare brings
+# the server along and skips it on its own when unchanged). Never touches
 # the working checkout beyond the fetch — it builds from its own detached
 # worktree. The running app starts one every minute.
 watch_once() {
@@ -590,7 +625,7 @@ watch_once() {
   echo "$(date '+%F %T') origin/$WATCH_BRANCH is at ${remote[1,7]}; preparing …"
   export T3CODE_FORK_REPO="$WATCH_SOURCE" T3CODE_FORK_BUILD_BRANCH="$WATCH_BRANCH"
   if { (( app_built )) || "$SCRIPT_PATH" prepare; } &&
-    { (( server_built )) || "$SCRIPT_PATH" prepare-server; }; then
+    { (( ! app_built || server_built )) || "$SCRIPT_PATH" prepare-server; }; then
     rm -f "$failed"
   else
     echo "$remote" >"$failed"
@@ -669,7 +704,7 @@ status() {
 }
 
 case "${1:-}" in
-  prepare) prepare ;;
+  prepare) prepare_with_server ;;
   prepare-server) prepare_server ;;
   restart-service) restart_service "${2:-}" ;;
   watch) watch_once ;;
