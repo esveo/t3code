@@ -2,6 +2,7 @@
 
 Every feature and fix this fork adds on top of [T3 Code](https://github.com/pingdotgg/t3code), each with the commits that made it.
 
+- Fix: clicking a file in a turn's changed-files card opens the diff panel with that file expanded ([5726e1a](https://github.com/esveo/t3code/commit/5726e1a571828640f802e70d8a05ec28ce329223)).
 - Fix: `fork-app.sh prepare` builds the branch's server too, and a server with uncommitted changes gets a version of its own instead of replacing the one the service runs ([e5caeb5](https://github.com/esveo/t3code/commit/e5caeb57aaf962fdfe5766b6ae139ca2b17adbbc)).
 - Agents can read the output of the terminals in a thread's terminal drawer with list_terminals and read_terminal, read-only and limited to threads of their own project ([ab4c638](https://github.com/esveo/t3code/commit/ab4c6383065daf8be3b3df9ca45e9f6c35c38e87)).
 - Fix: Claude's usage limits show again; the limits read gets 15 seconds instead of 4, taken over from upstream PR [#14064](https://github.com/pingdotgg/t3code/pull/14064) ([6373d95](https://github.com/esveo/t3code/commit/6373d9527a8fd29d426d695ea314f1bf9f1b53a6)).
