@@ -49,13 +49,14 @@ disturbing the build people work in all day.
   the record of what everyone has been running.
 - Only merge a feature the user asked to go live. Ask when in doubt — an
   unfinished branch in `fork` is a broken app for everyone at esveo.
-- Upstream reaches `fork` by itself: every morning at 06:00 the "Upstream-Sync"
-  Copilot automation (repo → Agents → Automations) merges upstream's `main`,
-  resolves conflicts, typechecks and opens a PR into `fork`, and
-  `fork-copilot-automerge.yml` merges it on its next check (every 15 minutes
-  until 09:00) when its title says it is green.
-  What Copilot cannot resolve stays open as a PR that mentions Paul, the
-  maintainer. Rebase feature branches onto `fork` to pick upstream up.
+- Upstream reaches `fork` by itself: every morning at 06:00
+  `fork-upstream-sync.yml` merges upstream's `main`, lets the Copilot CLI
+  resolve conflicts and fix what broke, and lands the result as a PR it merges
+  itself once typecheck, the related tests and its checks against dropped fork
+  code are green. Otherwise the PR stays open as a draft that mentions Paul,
+  the maintainer. Run it by hand from the Actions tab; an older upstream commit
+  as `upstream_ref` merges a large backlog in stages. Rebase feature branches
+  onto `fork` to pick upstream up.
 
 ## Staying mergeable with upstream
 
