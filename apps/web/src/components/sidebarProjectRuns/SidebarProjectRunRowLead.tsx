@@ -11,9 +11,9 @@ import { cn } from "~/lib/utils";
  * with their third line. Rows without a branch fall back to a spacer, which
  * keeps the status slot hard right.
  *
- * A coordinator shows "Cross-project" instead, in and outside a run, like its
- * children below it show their projects: its own project would say less (see
- * `sidebarRowLead`).
+ * A coordinator whose children span projects shows "Cross-project" instead,
+ * in and outside a run, like its children below it show their projects: its
+ * own project would say less (see `sidebarRowLead`).
  */
 export function SidebarProjectRunRowLead(props: {
   thread: Pick<SidebarThreadSummary, "id" | "branch" | "worktreePath">;

@@ -1072,8 +1072,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
    * and drops the project label its run header already carries.
    */
   projectRunPlacement?: SidebarProjectRunPlacement | null | undefined;
-  /** Fork (thread orchestration): the row is a coordinator, a thread with children. */
-  coordinator?: boolean | undefined;
+  /** Fork (thread orchestration): the row coordinates children in more than one project. */
+  crossProjectCoordinator?: boolean | undefined;
 }) {
   const {
     isRenaming,
@@ -1108,7 +1108,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   const projectRunPlacement = props.projectRunPlacement ?? null;
   // Fork: what the first line leads with — project, run branch or "Cross-project".
   const rowLead = sidebarRowLead({
-    coordinator: props.coordinator === true,
+    crossProjectCoordinator: props.crossProjectCoordinator === true,
     inProjectRun: projectRunPlacement !== null,
   });
   const projectRunClassName = sidebarProjectRunRowClassName({
@@ -4971,7 +4971,7 @@ export default function Sidebar() {
                             onUnpin={attemptUnpin}
                             onAcknowledgeWoke={acknowledgeWoke}
                             onFileDropThreads={handleThreadFileDrop}
-                            coordinator={childThreadGroups.childrenByParentKey.has(threadKey)}
+                            crossProjectCoordinator={crossProjectRunKeys.has(threadKey)}
                             projectRunPlacement={
                               (section === "active"
                                 ? activeRuns

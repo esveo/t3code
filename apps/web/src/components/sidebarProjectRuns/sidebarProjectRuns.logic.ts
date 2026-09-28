@@ -139,16 +139,17 @@ export function buildSidebarProjectRunPlan<TThread>(input: {
 export type SidebarRowLead = "cross-project" | "branch" | "project";
 
 /**
- * A coordinator — a thread with children under it — always names itself
- * "Cross-project": its work is not its own project's, whichever project it
- * sits in and however the sidebar groups. Once it has no children left it is
- * an ordinary thread again. Other rows in a project run show their branch,
- * since the run header carries the project; rows outside a run show it.
+ * A cross-project coordinator — a thread whose children cover more than one
+ * project (`crossProjectCoordinatorKeys`) — names itself "Cross-project": its
+ * work is no single project's, whichever project it sits in and however the
+ * sidebar groups. A coordinator whose children all stay in its project is an
+ * ordinary row of that project. Rows in a project run show their branch, since
+ * the run header carries the project; rows outside a run show it.
  */
 export function sidebarRowLead(input: {
-  readonly coordinator: boolean;
+  readonly crossProjectCoordinator: boolean;
   readonly inProjectRun: boolean;
 }): SidebarRowLead {
-  if (input.coordinator) return "cross-project";
+  if (input.crossProjectCoordinator) return "cross-project";
   return input.inProjectRun ? "branch" : "project";
 }
