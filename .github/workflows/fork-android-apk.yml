@@ -74,6 +74,7 @@ jobs:
       - name: Build APK
         id: build
         run: |
+          set -o pipefail
           apk="$(scripts/fork/build-esveo-apk.sh | tail -1)"
           aapt2="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)aapt2"
           version="$("$aapt2" dump badging "$apk" | sed -nE "s/.*versionName='([^']+)'.*/\1/p")"
