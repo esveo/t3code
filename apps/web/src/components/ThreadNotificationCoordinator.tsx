@@ -199,24 +199,15 @@ function EnvironmentNotifications({
                 project={project ? { ...project, environmentId } : null}
                 statusIcon={
                   kind === "completion" ? (
-                    <CircleCheckIcon
-                      aria-hidden
-                      className="size-4 text-emerald-700 dark:text-emerald-300"
-                    />
+                    <CircleCheckIcon aria-hidden className="size-4 text-success-foreground" />
                   ) : status === "approval" ? (
-                    <ShieldQuestionIcon
-                      aria-hidden
-                      className="size-4 text-amber-700 dark:text-amber-300"
-                    />
+                    <ShieldQuestionIcon aria-hidden className="size-4 text-warning-foreground" />
                   ) : status === "failed" ? (
-                    <CircleAlertIcon
-                      aria-hidden
-                      className="size-4 text-red-700 dark:text-red-300"
-                    />
+                    <CircleAlertIcon aria-hidden className="size-4 text-destructive-foreground" />
                   ) : (
                     <MessageCircleQuestionIcon
                       aria-hidden
-                      className="size-4 text-indigo-600 dark:text-indigo-300"
+                      className="size-4 text-info-foreground"
                     />
                   )
                 }

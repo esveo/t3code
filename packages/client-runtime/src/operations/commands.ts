@@ -44,6 +44,7 @@ export type UnpinThreadInput = CommandInput<"thread.unpin">;
 /** Fork: thread orchestration. */
 export type SetThreadParentInput = CommandInput<"thread.parent.set">;
 export type ReorderPinnedThreadInput = CommandInput<"thread.pin.reorder">;
+export type SetThreadAutoSettleInput = CommandInput<"thread.auto-settle.set">;
 export type ReorderActiveThreadInput = CommandInput<"thread.active.reorder">;
 export type UpdateThreadMetadataInput = CommandInput<"thread.meta.update">;
 export type LinkThreadPullRequestInput = CommandInput<"thread.pull-request.link">;
@@ -235,6 +236,16 @@ export const setThreadParent: (input: SetThreadParentInput) => CommandEffect = E
   return yield* dispatch({
     ...input,
     type: "thread.parent.set",
+    commandId: yield* commandId(input),
+  });
+});
+
+export const setThreadAutoSettle: (input: SetThreadAutoSettleInput) => CommandEffect = Effect.fn(
+  "EnvironmentCommands.setThreadAutoSettle",
+)(function* (input) {
+  return yield* dispatch({
+    ...input,
+    type: "thread.auto-settle.set",
     commandId: yield* commandId(input),
   });
 });
