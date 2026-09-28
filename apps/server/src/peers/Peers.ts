@@ -59,6 +59,7 @@ import { announceToolListChanged } from "../mcp/McpOrchestrationTools.ts";
 import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
 import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import { readManagedEndpoint } from "./managedEndpoint.ts";
 import { decideRoute } from "./PeersRouting.ts";
 
 /** How many messages a snapshot carries; the channel shows the latest. */
@@ -226,7 +227,10 @@ export const makeWith = Effect.fn("Peers.make")(function* (self: PeersIdentity) 
     ).pipe(Effect.asVoid, Effect.mapError(storeFailed("save the peer settings")));
 
   const ownName = Effect.map(readSetting("own_name"), (name) => name ?? self.defaultName);
-  const ownBaseUrl = readSetting("own_base_url");
+  // The address set in Peers wins over the one T3 Connect gives the tunnel.
+  const ownBaseUrl = Effect.flatMap(readSetting("own_base_url"), (url) =>
+    url ? Effect.succeed(url) : readManagedEndpoint,
+  );
   const adoptMode = Effect.map(readSetting("adopt_mode"), (mode): PeerAdoptMode =>
     mode === "send" ? "send" : "composer",
   );
@@ -340,6 +344,7 @@ export const makeWith = Effect.fn("Peers.make")(function* (self: PeersIdentity) 
       environmentId: self.environmentId,
       ownName: yield* ownName,
       ownBaseUrl: baseUrl,
+      detectedBaseUrl: yield* readManagedEndpoint,
       inviteLink: baseUrl ? buildPeerInviteLink(baseUrl, yield* inviteSecret) : null,
       adoptMode: yield* adoptMode,
       autoRoute: yield* autoRoute,

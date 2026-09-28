@@ -71,6 +71,7 @@ import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as AgentAwarenessRelay from "../relay/AgentAwarenessRelay.ts";
 import * as ManagedEndpointRuntime from "./ManagedEndpointRuntime.ts";
+import { rememberManagedEndpoint } from "../peers/managedEndpoint.ts";
 import {
   SERVICE_STATE_FILE,
   SERVICE_STOP_MARKER_FILE,
@@ -848,6 +849,8 @@ const reconcileDesiredCloudLinkWith = Effect.fn("environment.cloud.reconcileDesi
       schema: RelayEnvironmentLinkResponse,
       timeout: MANAGED_ENDPOINT_PROVISION_REQUEST_TIMEOUT,
     });
+    // Fork: Peers offers the tunnel's address as this environment's.
+    yield* rememberManagedEndpoint(dependencies.secrets, link.endpoint);
     yield* setCliDesiredCloudLink(true, mode);
     yield* applyCloudRelayConfig(
       dependencies,

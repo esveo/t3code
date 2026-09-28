@@ -110,8 +110,13 @@ export const PeersSnapshot = Schema.Struct({
   environmentId: TrimmedNonEmptyString,
   /** How contacts see this environment. */
   ownName: PeerName,
-  /** The address contacts reach this environment at; needed for a contact link. */
+  /**
+   * The address contacts reach this environment at; needed for a contact
+   * link. The one set in Peers, or else the T3 Connect address.
+   */
   ownBaseUrl: Schema.NullOr(TrimmedNonEmptyString),
+  /** The T3 Connect address of this environment, when it has a tunnel. */
+  detectedBaseUrl: Schema.NullOr(TrimmedNonEmptyString),
   /** The reusable contact link, once there is an address. */
   inviteLink: Schema.NullOr(Schema.String),
   adoptMode: PeerAdoptMode,

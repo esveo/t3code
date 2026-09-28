@@ -86,7 +86,7 @@ export function PeersView({
   const environmentId = usePeersEnvironmentId();
   const { snapshot, error } = usePeersSnapshot(environmentId);
   const run = usePeersAct(environmentId);
-  const detected = useDetectedAddress(environmentId);
+  const detected = useDetectedAddress(environmentId, snapshot?.detectedBaseUrl ?? null);
   const [dialog, setDialog] = useState<"settings" | "add" | null>(null);
 
   // The address is found, not asked for: once known, it is saved for the link.
@@ -184,11 +184,14 @@ interface DetectedAddress {
 }
 
 /**
- * Where contacts reach this environment, as far as the client can tell: its
- * T3 Connect address from the account, or else the address this app itself
- * uses when that is not one only this machine can reach.
+ * Where contacts reach this environment: the T3 Connect address the server
+ * knows, else the one the signed-in account lists, else the address this app
+ * itself uses when that is not one only this machine can reach.
  */
-function useDetectedAddress(environmentId: EnvironmentId | null): DetectedAddress | null {
+function useDetectedAddress(
+  environmentId: EnvironmentId | null,
+  serverKnown: string | null,
+): DetectedAddress | null {
   const discovery = useRelayEnvironmentDiscovery();
   const refresh = useAtomCommand(relayEnvironmentDiscovery.refresh, { reportFailure: false });
   const connectionUrl = useEnvironmentHttpBaseUrl(environmentId);
@@ -196,6 +199,8 @@ function useDetectedAddress(environmentId: EnvironmentId | null): DetectedAddres
     void refresh();
   }, [refresh]);
   if (!environmentId) return null;
+  // The server keeps its tunnel's address from linking; that needs no sign-in here.
+  if (serverKnown) return { url: serverKnown, source: "T3 Connect" };
   for (const entry of discovery.environments.values()) {
     if (entry.environment.environmentId !== environmentId) continue;
     const url = normalizePeerBaseUrl(entry.environment.endpoint.httpBaseUrl);
@@ -286,6 +291,11 @@ function Onboarding({
                 <code className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
                   {snapshot.ownBaseUrl}
                 </code>
+                {snapshot.ownBaseUrl === snapshot.detectedBaseUrl ? (
+                  <Badge size="sm" variant="success">
+                    T3 Connect
+                  </Badge>
+                ) : null}
                 <Button size="xs" variant="ghost" onClick={onEditAddress}>
                   Change
                 </Button>
