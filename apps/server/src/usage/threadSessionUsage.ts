@@ -15,10 +15,13 @@ import { cacheSavingsUsd, priceUsage, type RateTable } from "./usagePricing.ts";
 
 /** Drivers whose transcripts the usage scanner reads. The rest report nothing. */
 const PROVIDER_BY_DRIVER: Readonly<Record<string, UsageProviderKind>> = {
+  antigravity: "antigravity",
   claudeAgent: "claude",
   claude: "claude",
   codex: "codex",
+  cursor: "cursor",
   grok: "grok",
+  opencode: "opencode",
 };
 
 export function usageProviderForDriver(driver: string | null): UsageProviderKind | null {
@@ -33,9 +36,12 @@ export function usageProviderForDriver(driver: string | null): UsageProviderKind
  * whenever those ids happened to collide.
  */
 const SESSION_KEY_BY_PROVIDER: Readonly<Record<UsageProviderKind, string>> = {
+  antigravity: "sessionId",
   claude: "resume",
   codex: "threadId",
+  cursor: "sessionId",
   grok: "sessionId",
+  opencode: "sessionId",
 };
 
 /** The provider session a resume cursor names, or nothing when it names none. */
@@ -87,6 +93,8 @@ export interface ThreadSessionUsage {
 interface ModelAccumulator {
   totals: UsageTokenTotals;
   reportedCostUsd: number | null;
+  rateModel?: string;
+  fast: boolean;
   records: number;
 }
 
@@ -124,6 +132,8 @@ export function summarizeSessionRecords(input: {
     const current = byModel.get(record.model) ?? {
       totals: EMPTY_TOTALS,
       reportedCostUsd: null,
+      ...(record.rateModel === undefined ? {} : { rateModel: record.rateModel }),
+      fast: record.fast,
       records: 0,
     };
     byModel.set(record.model, {
@@ -132,6 +142,8 @@ export function summarizeSessionRecords(input: {
         record.reportedCostUsd === null
           ? current.reportedCostUsd
           : (current.reportedCostUsd ?? 0) + record.reportedCostUsd,
+      ...(current.rateModel === undefined ? {} : { rateModel: current.rateModel }),
+      fast: current.fast,
       records: current.records + 1,
     });
   }
@@ -143,12 +155,26 @@ export function summarizeSessionRecords(input: {
   for (const [model, accumulator] of byModel) {
     const priced = priceUsage(
       input.rates,
-      model,
-      accumulator.totals,
-      accumulator.reportedCostUsd,
+      {
+        model,
+        totals: accumulator.totals,
+        reportedCostUsd: accumulator.reportedCostUsd,
+        fast: accumulator.fast,
+        ...(accumulator.rateModel === undefined ? {} : { rateModel: accumulator.rateModel }),
+      },
       input.priceOverrides,
     );
-    const savings = cacheSavingsUsd(input.rates, model, accumulator.totals, input.priceOverrides);
+    const savings = cacheSavingsUsd(
+      input.rates,
+      {
+        model,
+        totals: accumulator.totals,
+        reportedCostUsd: accumulator.reportedCostUsd,
+        fast: accumulator.fast,
+        ...(accumulator.rateModel === undefined ? {} : { rateModel: accumulator.rateModel }),
+      },
+      input.priceOverrides,
+    );
     models.push({
       model,
       totals: accumulator.totals,

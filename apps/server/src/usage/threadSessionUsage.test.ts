@@ -30,6 +30,7 @@ const record = (overrides: Partial<UsageRecord> = {}): UsageRecord => ({
     reasoningTokens: 100,
   },
   reportedCostUsd: null,
+  fast: false,
   dedupeKey: null,
   ...overrides,
 });
