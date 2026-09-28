@@ -197,6 +197,12 @@ import {
 } from "../browser/openFileInPreview";
 import { resolveLinkTarget } from "../browser/browserLinkTarget";
 import { PullRequestLinkPreview } from "./pullRequest/PullRequestLinkPreview";
+// Fork: math and mermaid diagrams.
+import {
+  RICH_MARKDOWN_REMARK_PLUGINS,
+  withRichMarkdownSanitizeSchema,
+} from "./richMarkdown/remarkRichMarkdown";
+import { RICH_MARKDOWN_COMPONENTS } from "./richMarkdown/RichMarkdownComponents";
 
 interface ChatMarkdownProps {
   text: string;
@@ -463,7 +469,7 @@ function rehypePreserveImageSourceMeta() {
   };
 }
 
-const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
+const CHAT_MARKDOWN_SANITIZE_SCHEMA = withRichMarkdownSanitizeSchema({
   ...defaultSchema,
   attributes: {
     ...defaultSchema.attributes,
@@ -491,10 +497,11 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
     ],
     src: [...(defaultSchema.protocols?.src ?? []), "file", "t3-context"],
   },
-} satisfies Parameters<typeof rehypeSanitize>[0];
+} satisfies Parameters<typeof rehypeSanitize>[0]);
 
 const CHAT_MARKDOWN_REMARK_PLUGINS = [
   remarkGfm,
+  ...RICH_MARKDOWN_REMARK_PLUGINS,
   remarkGithubAlerts,
   remarkNormalizeListItemIndentation,
   remarkCodexDirectives,
@@ -504,6 +511,7 @@ const CHAT_MARKDOWN_REMARK_PLUGINS = [
 
 const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS = [
   remarkGfm,
+  ...RICH_MARKDOWN_REMARK_PLUGINS,
   remarkGithubAlerts,
   remarkNormalizeListItemIndentation,
   remarkCodexDirectives,
@@ -2758,6 +2766,7 @@ function markdownHeadingRenderer(level: 1 | 2 | 3 | 4 | 5 | 6) {
 
 // Keep component types stable when streaming changes the message state.
 const CHAT_MARKDOWN_COMPONENTS = {
+  ...RICH_MARKDOWN_COMPONENTS,
   h1: markdownHeadingRenderer(1),
   h2: markdownHeadingRenderer(2),
   h3: markdownHeadingRenderer(3),

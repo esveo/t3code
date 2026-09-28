@@ -571,6 +571,19 @@
         "licenseId": "MIT",
         "copyrights": ["Copyright (c) 2025 opencode"]
       }
+    },
+    {
+      "name": "remark-math",
+      "sourceUrl": "https://github.com/remarkjs/remark-math",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2017 Junyoung Choi <fluke8259@gmail.com>"]
+      }
+    },
+    {
+      "name": "khroma",
+      "license": "MIT",
+      "sourceUrl": "https://github.com/fabiospampinato/khroma"
     }
   ]
 }
