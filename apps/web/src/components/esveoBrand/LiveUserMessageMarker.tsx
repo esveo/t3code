@@ -8,7 +8,10 @@
  */
 export function LiveUserMessageMarker({ rowId }: { rowId: string | null }) {
   if (rowId === null) return null;
-  const id = CSS.escape(rowId);
+  const id =
+    typeof CSS === "undefined"
+      ? rowId.replaceAll("\\", "\\\\").replaceAll('"', '\\"')
+      : CSS.escape(rowId);
   return (
     <style>{`[data-timeline-row-id="${id}"],[data-pinned-user-message-row-id="${id}"]{--live-user-message:1}`}</style>
   );

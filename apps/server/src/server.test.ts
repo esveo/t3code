@@ -853,6 +853,9 @@ const buildAppUnderTest = (options?: {
           getSettings: Effect.succeed(DEFAULT_SERVER_SETTINGS),
           updateSettings: () => Effect.succeed(DEFAULT_SERVER_SETTINGS),
           streamChanges: Stream.empty,
+          subscribeChanges: Effect.flatMap(PubSub.unbounded<void>(), (pubsub) =>
+            PubSub.subscribe(pubsub),
+          ),
           ...options?.layers?.serverSettings,
         }),
       ),

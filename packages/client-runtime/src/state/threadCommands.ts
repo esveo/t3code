@@ -85,6 +85,7 @@ export type {
   PinThreadInput,
   ReorderPinnedThreadInput,
   ReorderActiveThreadInput,
+  SetThreadParentInput,
   SetThreadAutoSettleInput,
   SettleThreadInput,
   SnoozeThreadInput,

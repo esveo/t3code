@@ -716,14 +716,9 @@ export const BranchToolbar = memo(function BranchToolbar({
             data-composer-context-control
             className="ml-auto inline-flex shrink-0"
             render={
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Open Git graph"
-                onClick={onOpenGitGraph}
-              >
+              <ComposerControl size="xs" aria-label="Open Git graph" onClick={onOpenGitGraph}>
                 <GitCommitHorizontalIcon className="size-3.5 opacity-70" />
-              </Button>
+              </ComposerControl>
             }
           />
           <TooltipPopup>Git graph</TooltipPopup>
