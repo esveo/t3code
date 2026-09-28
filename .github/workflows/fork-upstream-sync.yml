@@ -24,6 +24,9 @@ on:
         description: Leave the PR as a draft even when everything is green
         type: boolean
         default: false
+      max_ai_credits:
+        description: Copilot's budget for this run in AI credits (1 credit = $0.01); a large backlog needs more
+        default: "300"
 
 concurrency:
   group: fork-upstream-sync
@@ -119,6 +122,7 @@ jobs:
         timeout-minutes: 90
         env:
           COPILOT_GITHUB_TOKEN: ${{ github.token }}
+          MAX_AI_CREDITS: ${{ inputs.max_ai_credits || '300' }}
         run: |
           npm install -g @github/copilot
           cat > "$RUNNER_TEMP/prompt.md" <<EOF
@@ -154,7 +158,9 @@ jobs:
 
           Rules: do not change anything under .github (the sync is refused if you
           do); do not delete, skip or weaken tests or fork features to get green;
-          do not push, and do not use gh. When done or stuck, write
+          do not push, and do not use gh. Your budget is $MAX_AI_CREDITS AI credits
+          and the session ends without warning when it runs out, so commit as you
+          go. When done or stuck, and early enough to still have budget, write
           $SYNC_DIR/summary.md: the conflicts and how you resolved each, the fixes
           you made, what remains open and the options you see. If you cannot
           finish with confidence (for example upstream rebuilt the code a fork
@@ -167,7 +173,7 @@ jobs:
             --no-ask-user --allow-all-tools --allow-all-paths \
             --deny-tool 'shell(git push)' --deny-tool 'shell(gh)' \
             --secret-env-vars=COPILOT_GITHUB_TOKEN \
-            --max-ai-credits 300 \
+            --max-ai-credits "$MAX_AI_CREDITS" \
             --share "$SYNC_DIR/transcript.md" \
             --usage-output-file "$SYNC_DIR/usage.json"
 
@@ -285,6 +291,14 @@ jobs:
               echo "## Copilot's summary"
               echo
               cat "$SYNC_DIR/summary.md"
+            elif [ -s "$SYNC_DIR/transcript.md" ]; then
+              echo
+              echo "## Copilot's last words"
+              echo
+              echo "Copilot wrote no summary, most likely because its budget ran out. The end of its transcript:"
+              echo
+              awk '/^### Copilot$/ { buf = ""; keep = 1; next } /^### / { keep = 0 } keep { buf = buf $0 "\n" } END { printf "%s", buf }' \
+                "$SYNC_DIR/transcript.md" | sed '/^---$/,$d' | sed 's/^/> /'
             fi
             for f in checks guards audit; do
               [ -s "$SYNC_DIR/$f.md" ] && { echo; cat "$SYNC_DIR/$f.md"; }
