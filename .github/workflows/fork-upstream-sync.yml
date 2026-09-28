@@ -27,6 +27,9 @@ on:
       max_ai_credits:
         description: Copilot's budget for this run in AI credits (1 credit = $0.01); a large backlog needs more
         default: "300"
+      model:
+        description: Copilot model for this run
+        default: claude-opus-5.5
 
 concurrency:
   group: fork-upstream-sync
@@ -123,6 +126,7 @@ jobs:
         env:
           COPILOT_GITHUB_TOKEN: ${{ github.token }}
           MAX_AI_CREDITS: ${{ inputs.max_ai_credits || '300' }}
+          MODEL: ${{ inputs.model || 'claude-opus-5.5' }}
         run: |
           npm install -g @github/copilot
           cat > "$RUNNER_TEMP/prompt.md" <<EOF
@@ -169,13 +173,22 @@ jobs:
           markers included, so the maintainer can pick it up from there.
           EOF
           copilot -p "$(cat "$RUNNER_TEMP/prompt.md")" \
-            --model claude-opus-5.5 \
+            --model "$MODEL" \
             --no-ask-user --allow-all-tools --allow-all-paths \
             --deny-tool 'shell(git push)' --deny-tool 'shell(gh)' \
             --secret-env-vars=COPILOT_GITHUB_TOKEN \
             --max-ai-credits "$MAX_AI_CREDITS" \
             --share "$SYNC_DIR/transcript.md" \
             --usage-output-file "$SYNC_DIR/usage.json"
+
+      # A Copilot that never started (model not enabled, auth refused) leaves
+      # only the conflicted merge: fail the run instead of opening a PR of it.
+      - name: Check that Copilot ran
+        if: steps.agent.outcome == 'failure'
+        run: |
+          [ -s "$SYNC_DIR/transcript.md" ] && exit 0
+          echo "::error::Copilot did not start; see the step above."
+          exit 1
 
       - name: Commit what the agent left
         if: steps.agent.outcome != 'skipped'
@@ -310,7 +323,8 @@ jobs:
             --title "chore: merge upstream/main ($short)" --body-file "$RUNNER_TEMP/body.md")
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "ready=$ready" >> "$GITHUB_OUTPUT"
-          # An older sync PR is superseded: this one starts from the current fork.
+          # A green sync supersedes older ones; a red one leaves them for comparison.
+          [ "$ready" = true ] || exit 0
           for old in $(gh pr list --base fork --state open --json number,headRefName \
             --jq ".[] | select(.headRefName | startswith(\"sync/upstream-\")) | select(.headRefName != \"$branch\") | .number"); do
             gh pr close "$old" --delete-branch --comment "Superseded by $url"
