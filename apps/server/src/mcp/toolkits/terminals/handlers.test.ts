@@ -3,17 +3,16 @@ import {
   ProjectId,
   ProviderInstanceId,
   ThreadId,
-  type OrchestrationThreadShell,
+  type OrchestrationV2ThreadShell,
   type TerminalSummary,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import type { Tool } from "effect/unstable/ai";
 
-import { ProjectionSnapshotQuery } from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { OrchestratorV2 } from "../../../orchestration-v2/Orchestrator.ts";
 import { TerminalManager } from "../../../terminal/Manager.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { TerminalsToolkitHandlersLive } from "./handlers.ts";
@@ -24,7 +23,7 @@ const SIBLING = ThreadId.make("thread-sibling");
 const STRANGER = ThreadId.make("thread-stranger");
 
 const shell = (id: ThreadId, projectId: string) =>
-  ({ id, projectId: ProjectId.make(projectId) }) as OrchestrationThreadShell;
+  ({ id, projectId: ProjectId.make(projectId) }) as OrchestrationV2ThreadShell;
 const threads = new Map([
   [CALLER, shell(CALLER, "project-1")],
   [SIBLING, shell(SIBLING, "project-1")],
@@ -59,8 +58,8 @@ const loaded = [
 ];
 
 const dependencies = Layer.mergeAll(
-  Layer.mock(ProjectionSnapshotQuery)({
-    getThreadShellById: (threadId) => Effect.succeed(Option.fromNullishOr(threads.get(threadId))),
+  Layer.mock(OrchestratorV2)({
+    getThreadShell: (threadId) => Effect.succeed(threads.get(threadId) ?? null),
   }),
   Layer.mock(TerminalManager)({
     inspectLoadedThread: (threadId) =>

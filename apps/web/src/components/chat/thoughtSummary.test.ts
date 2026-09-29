@@ -2,19 +2,19 @@ import { describe, expect, it } from "vite-plus/test";
 import { deriveThoughtTrail, deriveTurnsWithThoughts, readTurnThoughts } from "./thoughtSummary";
 
 const entries = [
-  { kind: "message", message: { role: "user", text: "fix the bug", turnId: "turn-1" } },
+  { kind: "message", message: { role: "user", text: "fix the bug", runId: "turn-1" } },
   {
     kind: "message",
-    message: { role: "reasoning", text: "First I read the file.", turnId: "turn-1" },
+    message: { role: "reasoning", text: "First I read the file.", runId: "turn-1" },
   },
   { kind: "work" },
-  { kind: "message", message: { role: "assistant", text: "Fixed it.", turnId: "turn-1" } },
+  { kind: "message", message: { role: "assistant", text: "Fixed it.", runId: "turn-1" } },
   {
     kind: "message",
-    message: { role: "reasoning", text: "Then I checked the test.", turnId: "turn-1" },
+    message: { role: "reasoning", text: "Then I checked the test.", runId: "turn-1" },
   },
-  { kind: "message", message: { role: "reasoning", text: "   ", turnId: "turn-2" } },
-  { kind: "message", message: { role: "reasoning", text: "Still going.", turnId: "turn-3" } },
+  { kind: "message", message: { role: "reasoning", text: "   ", runId: "turn-2" } },
+  { kind: "message", message: { role: "reasoning", text: "Still going.", runId: "turn-3" } },
 ];
 
 describe("deriveTurnsWithThoughts", () => {

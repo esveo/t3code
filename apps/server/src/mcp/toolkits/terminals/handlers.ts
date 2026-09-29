@@ -1,7 +1,7 @@
 import type { TerminalSummary, ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
-import * as ProjectionSnapshotQuery from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { OrchestratorV2 } from "../../../orchestration-v2/Orchestrator.ts";
 import * as TerminalManager from "../../../terminal/Manager.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { terminalTail } from "./terminalText.ts";
@@ -16,16 +16,16 @@ import {
 } from "./tools.ts";
 
 const make = Effect.gen(function* () {
-  const snapshots = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+  const orchestrator = yield* OrchestratorV2;
   const terminals = yield* TerminalManager.TerminalManager;
 
   const threadShell = (threadId: ThreadId) =>
-    snapshots.getThreadShellById(threadId).pipe(
+    orchestrator.getThreadShell(threadId).pipe(
       Effect.mapError((cause) => new TerminalLookupFailedError({ cause })),
       Effect.flatMap((thread) =>
-        Effect.fromOption(thread).pipe(
-          Effect.mapError(() => new TerminalThreadNotFoundError({ threadId })),
-        ),
+        thread === null
+          ? Effect.fail(new TerminalThreadNotFoundError({ threadId }))
+          : Effect.succeed(thread),
       ),
     );
 

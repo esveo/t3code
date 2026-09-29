@@ -1,6 +1,6 @@
 import { BrainIcon } from "lucide-react";
 import { memo, useMemo, useState } from "react";
-import type { TurnId } from "@t3tools/contracts";
+import type { RunId } from "@t3tools/contracts";
 
 import { Button } from "../ui/button";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
@@ -17,16 +17,16 @@ const TRIGGER_LABEL = "Read back the thinking";
  * holds, so it costs nothing and is there in the first frame.
  */
 export const ThoughtTrailButton = memo(function ThoughtTrailButton({
-  turnId,
+  runId,
   timelineKey,
 }: {
-  turnId: TurnId | null;
+  runId: RunId | null;
   timelineKey: string | null;
 }) {
   const turns = useTimelineThoughtTurns(timelineKey);
   const [open, setOpen] = useState(false);
 
-  if (turnId === null || timelineKey === null || !turns.has(turnId)) {
+  if (runId === null || timelineKey === null || !turns.has(runId)) {
     return null;
   }
 
@@ -63,16 +63,16 @@ export const ThoughtTrailButton = memo(function ThoughtTrailButton({
         // worse than the trace it stands in for.
         className="w-[min(40rem,calc(100vw-2rem))] max-w-none text-left whitespace-normal"
       >
-        {open ? <ThoughtTrailContent timelineKey={timelineKey} turnId={turnId} /> : null}
+        {open ? <ThoughtTrailContent timelineKey={timelineKey} runId={runId} /> : null}
       </PopoverPopup>
     </Popover>
   );
 });
 
-function ThoughtTrailContent({ timelineKey, turnId }: { timelineKey: string; turnId: TurnId }) {
+function ThoughtTrailContent({ timelineKey, runId }: { timelineKey: string; runId: RunId }) {
   const trail = useMemo(
-    () => deriveThoughtTrail(readTimelineThoughts(timelineKey, turnId)),
-    [timelineKey, turnId],
+    () => deriveThoughtTrail(readTimelineThoughts(timelineKey, runId)),
+    [timelineKey, runId],
   );
 
   return (

@@ -16,10 +16,7 @@ import {
 } from "../../state/entities";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { useRightPanelStore } from "../../rightPanelStore";
 import { buildThreadRouteParams } from "../../threadRoutes";
-import { useSubagentChatSupport } from "../subagentChat/useSubagentChatSupport";
-import { useSubagentChatOpenStore } from "../subagentChat/subagentChatOpenStore";
 import { AgentStage, type StageOpenAction } from "./AgentStage";
 import {
   applyStageVisibility,
@@ -177,8 +174,8 @@ function useFleetStageModel(
 
 /**
  * Where the selected agent can be talked to. A thread sprite opens its
- * thread; a subagent opens the Agents panel, straight into its chat where the
- * provider supports one. The open thread's own main agent needs no button:
+ * thread; a subagent has no target until the stage reads V2. The open
+ * thread's own main agent needs no button:
  * its chat is right there.
  */
 function useStageOpenAction(
@@ -187,7 +184,6 @@ function useStageOpenAction(
   refs: ReadonlyMap<string, ScopedThreadRef>,
 ) {
   const navigate = useNavigate();
-  const chatSupported = useSubagentChatSupport(threadRef.environmentId, threadRef.threadId);
   const threadKey = scopedThreadKey(threadRef);
   return useCallback(
     (agent: StageAgent): StageOpenAction | null => {
@@ -203,16 +199,11 @@ function useStageOpenAction(
             }),
         };
       }
-      if (agent.kind !== "subagent") return null;
-      return {
-        label: chatSupported ? "Open chat" : "Show in Agents",
-        onOpen: () => {
-          if (chatSupported) useSubagentChatOpenStore.getState().setOpen(threadKey, agent.id);
-          useRightPanelStore.getState().open(threadRef, "agents");
-        },
-      };
+      // TODO(orchestrator-v2): V2 dropped the Agents panel and the subagent chat
+      // viewer is gone; open the subagent's child thread once the stage reads V2.
+      return null;
     },
-    [chatSupported, everything, navigate, refs, threadKey, threadRef],
+    [everything, navigate, refs, threadKey],
   );
 }
 

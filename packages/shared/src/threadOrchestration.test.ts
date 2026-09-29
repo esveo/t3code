@@ -1,7 +1,7 @@
-import type { OrchestrationThreadShell } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  type ChildThreadShell,
   describeChildThread,
   parseTaggedThreadMessage,
   parseThreadLinkHref,
@@ -14,7 +14,7 @@ import {
   wrapThreadUpdate,
 } from "./threadOrchestration.ts";
 
-const shell = (overrides: Partial<OrchestrationThreadShell>) =>
+const shell = (overrides: Partial<ChildThreadShell>) =>
   ({
     hasPendingApprovals: false,
     hasPendingUserInput: false,
@@ -23,14 +23,14 @@ const shell = (overrides: Partial<OrchestrationThreadShell>) =>
     pullRequests: [],
     planProgress: null,
     ...overrides,
-  }) as OrchestrationThreadShell;
+  }) as ChildThreadShell;
 
 const session = (status: string, lastError: string | null = null) =>
-  ({ status, lastError }) as OrchestrationThreadShell["session"];
+  ({ status, lastError }) as ChildThreadShell["session"];
 const openPullRequest = {
   number: 6,
   snapshot: { state: "open", isDraft: false },
-} as unknown as OrchestrationThreadShell["pullRequests"][number];
+} as unknown as ChildThreadShell["pullRequests"][number];
 
 describe("resolveChildThreadState", () => {
   it("puts a thread that waits on the user above everything else", () => {

@@ -86,8 +86,8 @@ export class DesktopEnvironment extends Context.Service<
     readonly linuxWmClass: string;
     readonly linuxApplicationsDir: string;
     readonly appImagePath: Option.Option<string>;
-    readonly userDataDirName: string;
-    readonly legacyUserDataDirName: string;
+    /** Fork: `T3CODE_DESKTOP_USER_DATA_DIR_NAME`, the Chromium profile a fork app slot runs in. */
+    readonly userDataDirNameOverride?: Option.Option<string>;
     readonly defaultDesktopSettings: DesktopAppSettings.DesktopSettings;
     readonly runtimeInfo: DesktopRuntimeInfo;
     readonly resolvePickFolderDefaultPath: (rawOptions: unknown) => Option.Option<string>;
@@ -190,14 +190,6 @@ const make = Effect.fn("desktop.environment.make")(function* (
     joinPath: path.join,
     t3Home: config.t3Home,
   });
-  const userDataDirName = Option.getOrElse(config.userDataDirNameOverride, () =>
-    isDevelopment ? "t3code-dev" : "t3code",
-  );
-  const legacyUserDataDirName = Option.isSome(config.userDataDirNameOverride)
-    ? userDataDirName
-    : isDevelopment
-      ? "T3 Code (Dev)"
-      : "T3 Code (Alpha)";
   const linuxApplicationsDir = path.join(
     Option.getOrElse(config.xdgDataHome, () => path.join(homeDirectory, ".local", "share")),
     "applications",
@@ -254,8 +246,7 @@ const make = Effect.fn("desktop.environment.make")(function* (
     linuxWmClass: isDevelopment ? "t3code-dev" : "t3code",
     linuxApplicationsDir,
     appImagePath: config.appImagePath,
-    userDataDirName,
-    legacyUserDataDirName,
+    userDataDirNameOverride: config.userDataDirNameOverride,
     defaultDesktopSettings: DesktopAppSettings.resolveDefaultDesktopSettings(input.appVersion),
     runtimeInfo: resolveDesktopRuntimeInfo({
       platform: input.platform,

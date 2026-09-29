@@ -14,14 +14,18 @@ export interface ThoughtTrail {
   readonly steps: ReadonlyArray<string>;
 }
 
-/** A timeline entry, narrowed to the part a trail is built from. */
+/**
+ * A timeline entry, narrowed to the part a trail is built from.
+ * TODO(orchestrator-v2): V2 timelines carry reasoning outside `message`
+ * entries, so no trail is found until this reads V2's reasoning items.
+ */
 export interface ThoughtEntry {
   readonly kind: string;
   readonly message?:
     | {
         readonly role: string;
         readonly text: string;
-        readonly turnId: string | null;
+        readonly runId: string | null;
       }
     | undefined;
 }
@@ -43,11 +47,11 @@ export function deriveTurnsWithThoughts(
     const message = entry.message;
     if (
       message?.role === "reasoning" &&
-      message.turnId !== null &&
-      message.turnId !== skipTurnId &&
+      message.runId !== null &&
+      message.runId !== skipTurnId &&
       message.text.trim().length > 0
     ) {
-      turns.add(message.turnId);
+      turns.add(message.runId);
     }
   }
   return turns;
@@ -58,7 +62,7 @@ export function readTurnThoughts(entries: ReadonlyArray<ThoughtEntry>, turnId: s
   const traces: string[] = [];
   for (const entry of entries) {
     const message = entry.message;
-    if (message?.role === "reasoning" && message.turnId === turnId) {
+    if (message?.role === "reasoning" && message.runId === turnId) {
       const trace = message.text.trim();
       if (trace.length > 0) {
         traces.push(trace);

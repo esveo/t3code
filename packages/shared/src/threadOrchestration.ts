@@ -4,20 +4,34 @@
  * client's overview both read a child's state from its shell through these
  * helpers, so the agent and the user see the same word for the same thread.
  */
-import type { OrchestrationThreadShell } from "@t3tools/contracts";
+import type { ThreadPullRequestLink } from "@t3tools/contracts";
 
 export type ChildThreadState = "waiting" | "failed" | "working" | "review" | "stopped" | "done";
 
-type ChildThreadShell = Pick<
-  OrchestrationThreadShell,
-  | "hasPendingApprovals"
-  | "hasPendingUserInput"
-  | "session"
-  | "latestTurn"
-  | "pullRequests"
-  | "planProgress"
-  | "backgroundLiveness"
->;
+/**
+ * The V1 thread shell fields these helpers read. V2 removed that shell, so the
+ * shape is spelled out here until the callers read V2's shell.
+ * TODO(orchestrator-v2): derive it from `OrchestrationV2ThreadShell`.
+ */
+export interface ChildThreadShell {
+  readonly hasPendingApprovals: boolean;
+  readonly hasPendingUserInput: boolean;
+  readonly session: {
+    readonly status: string;
+    readonly lastError?: string | null;
+  } | null;
+  readonly latestTurn: {
+    readonly state: string;
+    readonly completedAt: string | null;
+  } | null;
+  readonly pullRequests: ReadonlyArray<ThreadPullRequestLink>;
+  readonly planProgress?: {
+    readonly step: string;
+    readonly completedSteps: number;
+    readonly totalSteps: number;
+  } | null;
+  readonly backgroundLiveness?: "working" | "monitoring" | null;
+}
 
 /** Open pull requests of the thread, newest link first. */
 function openPullRequests(thread: ChildThreadShell) {
