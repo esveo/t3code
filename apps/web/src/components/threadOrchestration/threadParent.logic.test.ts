@@ -7,15 +7,19 @@ import { parentThreadCandidates, withThreadParentMenuItems } from "./threadParen
 const ENV = EnvironmentId.make("env-1");
 const thread = (
   id: string,
-  overrides: Partial<EnvironmentThreadShell> = {},
+  overrides: Partial<EnvironmentThreadShell> & { parentThreadId?: ThreadId } = {},
 ): EnvironmentThreadShell =>
   ({
     id: ThreadId.make(id),
     environmentId: ENV,
     archivedAt: null,
     updatedAt: "2026-09-23T10:00:00.000Z",
+    source: { lineage: { relationshipToParent: null }, creationSource: "web" },
     ...overrides,
   }) as EnvironmentThreadShell;
+// The coordinator links, as the tests' `parentThreadId`.
+const coordinatorOf = (shell: object) =>
+  (shell as { parentThreadId?: ThreadId }).parentThreadId ?? null;
 
 describe("parentThreadCandidates", () => {
   it("offers open top-level threads of the environment, coordinators first", () => {
@@ -28,19 +32,21 @@ describe("parentThreadCandidates", () => {
     const candidates = parentThreadCandidates(
       [analysis, coordinator, recent, child, archived, elsewhere],
       analysis,
+      coordinatorOf,
     );
     expect(candidates.map((candidate) => candidate.id)).toEqual(["coordinator", "recent"]);
     // A child can move, but not to the coordinator it already has.
-    expect(parentThreadCandidates([analysis, coordinator, recent, child], child)).toEqual([
-      recent,
-      analysis,
-    ]);
+    expect(
+      parentThreadCandidates([analysis, coordinator, recent, child], child, coordinatorOf),
+    ).toEqual([recent, analysis]);
   });
 
   it("offers nothing to a thread that coordinates threads of its own", () => {
     const coordinator = thread("coordinator");
     const child = thread("child", { parentThreadId: coordinator.id });
-    expect(parentThreadCandidates([coordinator, child, thread("other")], coordinator)).toEqual([]);
+    expect(
+      parentThreadCandidates([coordinator, child, thread("other")], coordinator, coordinatorOf),
+    ).toEqual([]);
   });
 });
 

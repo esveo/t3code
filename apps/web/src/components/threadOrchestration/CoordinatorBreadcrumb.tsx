@@ -10,10 +10,11 @@ import {
 } from "~/components/WorkspaceBreadcrumb";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useThreadShell } from "~/state/entities";
+import { useThreadCoordinatorId } from "./coordinatorLinks";
 import { useOpenThread } from "./useOpenThread";
 
 /**
- * Fork: in a thread a coordinator started, the coordinator sits in the header
+ * Fork: in a thread a coordinator follows, the coordinator sits in the header
  * breadcrumb before the title, the way back to where the work was planned.
  */
 export function CoordinatorBreadcrumb(props: { environmentId: EnvironmentId; threadId: ThreadId }) {
@@ -22,7 +23,7 @@ export function CoordinatorBreadcrumb(props: { environmentId: EnvironmentId; thr
     () => scopeThreadRef(environmentId, threadId),
     [environmentId, threadId],
   );
-  const parentThreadId = useThreadShell(threadRef)?.parentThreadId ?? null;
+  const parentThreadId = useThreadCoordinatorId(threadRef);
   const parentRef = useMemo(
     () => (parentThreadId ? scopeThreadRef(environmentId, parentThreadId) : null),
     [environmentId, parentThreadId],
@@ -47,7 +48,7 @@ export function CoordinatorBreadcrumb(props: { environmentId: EnvironmentId; thr
             <NetworkIcon aria-hidden className="size-3.5 shrink-0" />
             <WorkspaceBreadcrumbText className="max-w-40">{parent.title}</WorkspaceBreadcrumbText>
           </TooltipTrigger>
-          <TooltipPopup side="top">Started by {parent.title}</TooltipPopup>
+          <TooltipPopup side="top">Coordinated by {parent.title}</TooltipPopup>
         </Tooltip>
       </WorkspaceBreadcrumbItem>
       <WorkspaceBreadcrumbSeparator>

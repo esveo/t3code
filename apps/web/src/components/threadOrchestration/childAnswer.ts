@@ -1,12 +1,11 @@
 import { useAtomValue } from "@effect/atom-react";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { parseThreadKey, threadKey } from "@t3tools/client-runtime/state/entities";
-import type { OrchestrationMessage, ScopedThreadRef } from "@t3tools/contracts";
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import { parseThreadUpdates } from "@t3tools/shared/threadOrchestration";
 import { Atom } from "effect/unstable/reactivity";
-import { useMemo } from "react";
 
-import { useProject, useThreadDetail, useThreadShell } from "~/state/entities";
+import { useProject, useThreadShell } from "~/state/entities";
 import { environmentThreadDetails } from "~/state/threads";
 
 /**
@@ -15,11 +14,11 @@ import { environmentThreadDetails } from "~/state/threads";
  * does not re-render the update cards.
  */
 const latestUpdateMessageIdAtom = Atom.family((key: string) =>
-  Atom.make((get): OrchestrationMessage["id"] | null => {
-    const messages = get(environmentThreadDetails.messagesAtom(parseThreadKey(key)));
-    const latestUserMessage = messages.findLast((message) => message.role === "user");
-    return latestUserMessage && parseThreadUpdates(latestUserMessage.text)
-      ? latestUserMessage.id
+  Atom.make((get): string | null => {
+    const rows = get(environmentThreadDetails.visibleTurnItemsAtom(parseThreadKey(key)));
+    const latestUserMessage = rows.findLast((row) => row.item.type === "user_message")?.item;
+    return latestUserMessage?.type === "user_message" && parseThreadUpdates(latestUserMessage.text)
+      ? latestUserMessage.messageId
       : null;
   }).pipe(Atom.setIdleTTL(0), Atom.withLabel(`fork-latest-thread-update:${key}`)),
 );
@@ -38,21 +37,12 @@ export function useIsLatestThreadUpdate(
 }
 
 /**
- * The child's full answer an update summarizes, and the directory its paths
- * are relative to (its worktree, else its project). Pass `load: false` to skip
- * the child's detail subscription while the answer is not shown.
+ * The directory a child's answer is written against: its worktree, else its
+ * project. Updates carry the child's full answer; its relative paths and
+ * images resolve from here.
  */
-export function useChildAnswer(input: {
-  childRef: ScopedThreadRef;
-  answerId: string | null;
-  load: boolean;
-}): { text: string | null; cwd: string | undefined } {
-  const shell = useThreadShell(input.childRef);
+export function useChildAnswerCwd(childRef: ScopedThreadRef): string | undefined {
+  const shell = useThreadShell(childRef);
   const project = useProject(shell ? scopeProjectRef(shell.environmentId, shell.projectId) : null);
-  const detail = useThreadDetail(input.load && input.answerId ? input.childRef : null);
-  const text = useMemo(
-    () => detail?.messages.find((message) => message.id === input.answerId)?.text ?? null,
-    [detail?.messages, input.answerId],
-  );
-  return { text, cwd: shell?.worktreePath ?? project?.workspaceRoot ?? undefined };
+  return shell?.worktreePath ?? project?.workspaceRoot ?? undefined;
 }

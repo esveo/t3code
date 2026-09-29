@@ -3,6 +3,11 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/model
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { resolveChildThreadState } from "@t3tools/shared/threadOrchestration";
 
+/** The coordinator a thread reports to (see useCoordinatorOf), or null. */
+export type CoordinatorOf = (
+  thread: Pick<EnvironmentThreadShell, "environmentId" | "source">,
+) => ThreadId | null;
+
 /** Same key the sidebar uses for its rows. */
 const keyOf = (environmentId: EnvironmentId, threadId: ThreadId) =>
   scopedThreadKey(scopeThreadRef(environmentId, threadId));
@@ -39,6 +44,7 @@ export function sidebarShelfOf(
  */
 export function groupChildThreads(
   threads: ReadonlyArray<EnvironmentThreadShell>,
+  coordinatorOf: CoordinatorOf,
   now: string = new Date().toISOString(),
 ): ChildThreadGroups {
   const shelfByKey = new Map(
@@ -49,8 +55,9 @@ export function groupChildThreads(
   const childrenByParentKey = new Map<string, EnvironmentThreadShell[]>();
   const nestedThreadKeys = new Set<string>();
   for (const thread of threads) {
-    if (!thread.parentThreadId || thread.archivedAt !== null) continue;
-    const parentKey = keyOf(thread.environmentId, thread.parentThreadId);
+    const coordinatorId = coordinatorOf(thread);
+    if (!coordinatorId || thread.archivedAt !== null) continue;
+    const parentKey = keyOf(thread.environmentId, coordinatorId);
     const parentShelf = shelfByKey.get(parentKey);
     if (parentShelf === undefined || parentShelf !== sidebarShelfOf(thread, now)) continue;
     const group = childrenByParentKey.get(parentKey);
@@ -76,7 +83,7 @@ export function countChildThreads(
   let waiting = 0;
   let working = 0;
   for (const child of children) {
-    const state = resolveChildThreadState(child);
+    const state = resolveChildThreadState(child.source);
     if (state === "waiting" || state === "failed") waiting += 1;
     else if (state === "working") working += 1;
   }
@@ -91,7 +98,7 @@ export function visibleChildThreads(input: {
 }): ReadonlyArray<EnvironmentThreadShell> {
   if (!input.collapsed) return input.children;
   return input.children.filter((child) => {
-    const state = resolveChildThreadState(child);
+    const state = resolveChildThreadState(child.source);
     return (
       state === "waiting" ||
       state === "failed" ||
@@ -124,4 +131,32 @@ export function crossProjectCoordinatorKeys(input: {
     if (projects.size > 1) keys.add(parentKey);
   }
   return keys;
+}
+
+/**
+ * The sidebar's own rows: the threads it lists anyway (`listed`), without the
+ * children nested under their coordinator, plus T3-owned delegated children
+ * that stand on their own (released, or their coordinator is on another
+ * shelf), which the sidebar otherwise leaves to their parent's agents surface.
+ */
+export function sidebarRowsWithCoordinators(
+  listed: ReadonlyArray<EnvironmentThreadShell>,
+  input: {
+    readonly threads: ReadonlyArray<EnvironmentThreadShell>;
+    readonly scopedProjectKeys: ReadonlySet<string> | null;
+    readonly groups: ChildThreadGroups;
+  },
+): EnvironmentThreadShell[] {
+  const listedSet = new Set(listed);
+  return input.threads.filter((thread) => {
+    if (input.groups.nestedThreadKeys.has(keyOf(thread.environmentId, thread.id))) return false;
+    if (listedSet.has(thread)) return true;
+    return (
+      thread.archivedAt === null &&
+      thread.lineage.relationshipToParent === "subagent" &&
+      thread.source.creationSource !== "provider" &&
+      (input.scopedProjectKeys === null ||
+        input.scopedProjectKeys.has(`${thread.environmentId}:${thread.projectId}`))
+    );
+  });
 }

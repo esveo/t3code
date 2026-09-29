@@ -4,6 +4,7 @@ import { useCallback, useMemo } from "react";
 import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { useThreadShell, useThreadShells } from "~/state/entities";
+import { useCoordinatorOf } from "./coordinatorLinks";
 import { childThreadsOf, waitingThreadCount } from "./threadOverview.logic";
 
 /**
@@ -18,18 +19,21 @@ export function useThreadOverviewSurface(threadRef: ScopedThreadRef | null) {
     threadRef?.environmentId ?? ("" as ScopedThreadRef["environmentId"]),
     (settings) => settings.enableThreadOrchestration,
   );
+  const coordinatorOf = useCoordinatorOf(threads);
   const children = useMemo(
     () =>
       threadRef
-        ? childThreadsOf(threads, {
-            environmentId: threadRef.environmentId,
-            id: threadRef.threadId,
-          })
+        ? childThreadsOf(
+            threads,
+            { environmentId: threadRef.environmentId, id: threadRef.threadId },
+            coordinatorOf,
+          )
         : [],
-    [threadRef, threads],
+    [coordinatorOf, threadRef, threads],
   );
   const available =
-    threadRef !== null && (children.length > 0 || (enabled && !thread?.parentThreadId));
+    threadRef !== null &&
+    (children.length > 0 || (enabled && thread !== null && coordinatorOf(thread) === null));
   const open = useCallback(() => {
     if (!threadRef || !available) return;
     useRightPanelStore.getState().open(threadRef, "thread-overview");
@@ -40,11 +44,15 @@ export function useThreadOverviewSurface(threadRef: ScopedThreadRef | null) {
 /** Whether a thread has started any threads, for chrome that only shows then. */
 export function useHasChildThreads(threadRef: ScopedThreadRef | null): boolean {
   const threads = useThreadShells();
+  const coordinatorOf = useCoordinatorOf(threads);
   return useMemo(
     () =>
       threadRef !== null &&
-      childThreadsOf(threads, { environmentId: threadRef.environmentId, id: threadRef.threadId })
-        .length > 0,
-    [threadRef, threads],
+      childThreadsOf(
+        threads,
+        { environmentId: threadRef.environmentId, id: threadRef.threadId },
+        coordinatorOf,
+      ).length > 0,
+    [coordinatorOf, threadRef, threads],
   );
 }

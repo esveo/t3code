@@ -243,6 +243,7 @@ import { resolveSnoozePresets, snoozeWakeLabel, type SnoozePreset } from "./Side
 import { ProjectFavicon, type ProjectFaviconProject } from "./ProjectFavicon";
 // Fork: per-project runs in the thread list.
 import { SidebarChildThreads } from "./threadOrchestration/SidebarChildThreads";
+import { useChildThreadGroups } from "./threadOrchestration/coordinatorLinks";
 import {
   ThreadParentDialogHost,
   useThreadParentActions,
@@ -250,7 +251,7 @@ import {
 import {
   CROSS_PROJECT_RUN_KEY,
   crossProjectCoordinatorKeys,
-  groupChildThreads,
+  sidebarRowsWithCoordinators,
 } from "./threadOrchestration/childThreads.logic";
 import { SidebarProjectRunHeader } from "./sidebarProjectRuns/SidebarProjectRunHeader";
 import {
@@ -2358,7 +2359,7 @@ export default function Sidebar() {
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threads = useThreadShells();
   // Fork: threads a coordinator started render under it, not as rows of their own.
-  const childThreadGroups = useMemo(() => groupChildThreads(threads), [threads]);
+  const childThreadGroups = useChildThreadGroups(threads);
   const threadParentActions = useThreadParentActions();
   // Fork: coordinators whose work spans projects gather under "Cross-project".
   const crossProjectRunKeys = useMemo(
@@ -2767,12 +2768,10 @@ export default function Sidebar() {
     const preciseNow = new Date().toISOString();
     // Subagent child threads live in the parent's Agents surface, not the
     // sidebar roster (v2 models them as real threads with lineage).
-    const visible = filterSidebarV2VisibleThreads(threads, scopedProjectKeys).filter(
+    const visible = sidebarRowsWithCoordinators(
+      filterSidebarV2VisibleThreads(threads, scopedProjectKeys),
       // Fork: a coordinator's child threads sit nested under it instead.
-      (thread) =>
-        !childThreadGroups.nestedThreadKeys.has(
-          scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
-        ),
+      { threads, scopedProjectKeys, groups: childThreadGroups },
     );
     const pinned: EnvironmentThreadShell[] = [];
     const active: EnvironmentThreadShell[] = [];
