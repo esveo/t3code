@@ -10,7 +10,13 @@ import {
   sidebarRowsWithCoordinators,
   visibleChildThreads,
 } from "./childThreads.logic";
-import { buildThreadOverview, waitingThreadCount } from "./threadOverview.logic";
+import {
+  buildThreadOverview,
+  describeOverviewOrigin,
+  subagentThreadsOf,
+  threadOverviewEntries,
+  waitingThreadCount,
+} from "./threadOverview.logic";
 
 const ENV = EnvironmentId.make("env-1");
 type Source = Partial<OrchestrationV2ThreadShell>;
@@ -211,13 +217,112 @@ describe("buildThreadOverview", () => {
         },
       ),
     ];
-    const groups = buildThreadOverview(children);
-    expect(groups.map((group) => [group.id, group.threads.map((t) => t.id)])).toEqual([
+    const entries = threadOverviewEntries({ children, subagentThreads: [], subagents: new Map() });
+    const groups = buildThreadOverview(entries);
+    expect(groups.map((group) => [group.id, group.entries.map((e) => e.thread.id)])).toEqual([
       ["waiting", expect.arrayContaining(["failed", "asks"])],
       ["working", ["working"]],
       ["active", ["done"]],
       ["settled", ["settled"]],
     ]);
-    expect(waitingThreadCount(children)).toBe(2);
+    expect(waitingThreadCount(entries)).toBe(2);
+    expect(describeOverviewOrigin(entries)).toBe("5 threads coordinated from here");
+  });
+
+  /** A subagent Claude Code's Agent tool started, with its own thread. */
+  const nativeSubagent = (
+    id: string,
+    parent: string,
+    overrides: Partial<EnvironmentThreadShell> = {},
+  ) => {
+    const lineage = {
+      parentThreadId: ThreadId.make(parent),
+      relationshipToParent: "subagent" as const,
+      rootThreadId: ThreadId.make(parent),
+    };
+    return thread(id, { lineage, ...overrides }, { lineage, creationSource: "provider" });
+  };
+  const snapshot = (status: "running" | "waiting" | "failed" | "completed" | "interrupted") => ({
+    status,
+    updatedAt: "2026-09-23T11:00:00.000Z",
+  });
+
+  it("lists the agent's own subagents beside its threads, once each", () => {
+    const threads = [
+      thread("coord"),
+      delegated("child", "coord"),
+      nativeSubagent("agent", "coord"),
+      nativeSubagent("elsewhere", "other"),
+      nativeSubagent("archived", "coord", { archivedAt: "2026-09-23T10:00:00.000Z" }),
+      nativeSubagent("moved", "coord"),
+      nativeSubagent("adopted", "coord"),
+    ];
+    const lookup = adopted([
+      ["moved", "other"],
+      ["adopted", "coord"],
+    ]);
+    const parent = { environmentId: ENV, id: ThreadId.make("coord") };
+    const children = threads.filter((shell) => lookup(shell) === parent.id);
+    const entries = threadOverviewEntries({
+      children,
+      subagentThreads: subagentThreadsOf(threads, parent, lookup),
+      subagents: new Map(),
+    });
+    expect(entries.map((entry) => [entry.thread.id, entry.kind])).toEqual([
+      ["child", "thread"],
+      ["adopted", "thread"],
+      ["agent", "subagent"],
+    ]);
+    expect(describeOverviewOrigin(entries)).toBe("2 threads and 1 subagent started from here");
+  });
+
+  it("sorts subagents by the status of their record, as their threads have no runs", () => {
+    const subagentThreads = [
+      nativeSubagent("running", "coord"),
+      nativeSubagent("asks", "coord"),
+      nativeSubagent("failed", "coord"),
+      nativeSubagent("finished", "coord"),
+      nativeSubagent("stopped", "coord", { settledOverride: "settled" }),
+      nativeSubagent("unknown", "coord"),
+    ];
+    const subagents = new Map([
+      [ThreadId.make("running"), snapshot("running")],
+      [ThreadId.make("asks"), snapshot("waiting")],
+      [ThreadId.make("failed"), snapshot("failed")],
+      [ThreadId.make("finished"), snapshot("completed")],
+      [ThreadId.make("stopped"), snapshot("interrupted")],
+    ]);
+    const entries = threadOverviewEntries({ children: [], subagentThreads, subagents });
+    const groups = buildThreadOverview(entries);
+    expect(groups.map((group) => [group.id, group.entries.map((e) => e.thread.id)])).toEqual([
+      ["waiting", expect.arrayContaining(["asks", "failed"])],
+      ["working", ["running"]],
+      ["active", expect.arrayContaining(["finished", "unknown"])],
+      ["settled", ["stopped"]],
+    ]);
+    expect(waitingThreadCount(entries)).toBe(2);
+    // The record's activity counts, the idle thread shell's does not.
+    expect(entries.find((entry) => entry.thread.id === "running")?.updatedAt).toBe(
+      "2026-09-23T11:00:00.000Z",
+    );
+  });
+
+  it("lets a request pending on a subagent's thread win over its record", () => {
+    const asking = nativeSubagent("asking", "coord");
+    const withRequest = {
+      ...asking,
+      source: {
+        ...asking.source,
+        pendingRuntimeRequest: {
+          kind: "command",
+        } as OrchestrationV2ThreadShell["pendingRuntimeRequest"],
+      },
+    };
+    const [entry] = threadOverviewEntries({
+      children: [],
+      subagentThreads: [withRequest],
+      subagents: new Map([[ThreadId.make("asking"), snapshot("running")]]),
+    });
+    expect([entry?.state, entry?.detail]).toEqual(["waiting", "Needs your approval"]);
   });
 });

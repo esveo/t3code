@@ -1,10 +1,11 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 
 import { useRightPanelStore } from "~/rightPanelStore";
 import { useThreadShell, useThreadShells } from "~/state/entities";
 import { useCoordinatorOf } from "./coordinatorLinks";
-import { childThreadsOf, waitingThreadCount } from "./threadOverview.logic";
+import { waitingThreadCount } from "./threadOverview.logic";
+import { useThreadOverviewEntries } from "./useThreadOverviewEntries";
 
 /**
  * Fork: whether the thread overview can open for this thread, how many of its
@@ -15,17 +16,7 @@ export function useThreadOverviewSurface(threadRef: ScopedThreadRef | null) {
   const threads = useThreadShells();
   const thread = useThreadShell(threadRef);
   const coordinatorOf = useCoordinatorOf(threads);
-  const children = useMemo(
-    () =>
-      threadRef
-        ? childThreadsOf(
-            threads,
-            { environmentId: threadRef.environmentId, id: threadRef.threadId },
-            coordinatorOf,
-          )
-        : [],
-    [coordinatorOf, threadRef, threads],
-  );
+  const children = useThreadOverviewEntries(threadRef);
   const available =
     threadRef !== null &&
     (children.length > 0 || (thread !== null && coordinatorOf(thread) === null));
