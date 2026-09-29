@@ -10,7 +10,7 @@ import {
   type ChatImageAttachment,
   getProviderAttachmentLimitError,
   isProviderSendTurnSupportedImageMimeType,
-  type OrchestrationMessage,
+  type OrchestrationV2ConversationMessage,
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   type ThreadId,
@@ -49,7 +49,7 @@ const isKnownAttachment = (attachment: ChatAttachment): attachment is KnownAttac
  * sees it in its prompt (`ref=file_…`).
  */
 export function findMessageAttachment(
-  messages: ReadonlyArray<OrchestrationMessage>,
+  messages: ReadonlyArray<OrchestrationV2ConversationMessage>,
   reference: string,
 ): ChatAttachment | undefined {
   for (const message of messages) {
@@ -69,7 +69,7 @@ export function findMessageAttachment(
 
 /** What read_thread reports about a message's attachments. */
 export function describeMessageAttachments(
-  messages: ReadonlyArray<OrchestrationMessage>,
+  messages: ReadonlyArray<OrchestrationV2ConversationMessage>,
   attachmentsDir: string,
 ) {
   return messages.flatMap((message) =>
@@ -123,9 +123,12 @@ export const makeThreadAttachments = Effect.gen(function* () {
     readonly threadsToSearch: ReadonlyArray<ThreadId>;
     readonly readMessages: (
       threadId: ThreadId,
-    ) => Effect.Effect<ReadonlyArray<OrchestrationMessage>, ThreadOrchestrationFailedError>;
+    ) => Effect.Effect<
+      ReadonlyArray<OrchestrationV2ConversationMessage>,
+      ThreadOrchestrationFailedError
+    >;
   }) {
-    const messagesByThread = new Map<string, ReadonlyArray<OrchestrationMessage>>();
+    const messagesByThread = new Map<string, ReadonlyArray<OrchestrationV2ConversationMessage>>();
     const findStored = Effect.fn("ThreadAttachments.findStored")(function* (reference: string) {
       const namedThread = parseThreadSegmentFromAttachmentId(reference);
       const candidates = [
@@ -136,7 +139,9 @@ export const makeThreadAttachments = Effect.gen(function* () {
         if (!messages) {
           messages = yield* input
             .readMessages(threadId as ThreadId)
-            .pipe(Effect.orElseSucceed((): ReadonlyArray<OrchestrationMessage> => []));
+            .pipe(
+              Effect.orElseSucceed((): ReadonlyArray<OrchestrationV2ConversationMessage> => []),
+            );
           messagesByThread.set(threadId, messages);
         }
         const found = findMessageAttachment(messages, reference);

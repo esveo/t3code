@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import { ThreadId } from "@t3tools/contracts";
+
 import {
   type ChildThreadShell,
+  coordinatorThreadIdOf,
   describeChildThread,
   parseTaggedThreadMessage,
   parseThreadLinkHref,
@@ -16,76 +19,107 @@ import {
 
 const shell = (overrides: Partial<ChildThreadShell>) =>
   ({
-    hasPendingApprovals: false,
-    hasPendingUserInput: false,
-    session: null,
-    latestTurn: null,
+    status: "idle",
+    activityRunStatus: null,
+    pendingRuntimeRequest: null,
+    lastError: null,
     pullRequests: [],
-    planProgress: null,
+    pendingBackgroundTasks: [],
     ...overrides,
   }) as ChildThreadShell;
 
-const session = (status: string, lastError: string | null = null) =>
-  ({ status, lastError }) as ChildThreadShell["session"];
 const openPullRequest = {
   number: 6,
   snapshot: { state: "open", isDraft: false },
-} as unknown as ChildThreadShell["pullRequests"][number];
+} as unknown as NonNullable<ChildThreadShell["pullRequests"]>[number];
+const pendingRequest = (kind: string) =>
+  ({ id: "request-1", kind }) as unknown as NonNullable<ChildThreadShell["pendingRuntimeRequest"]>;
+const backgroundTask = (kind: string) =>
+  ({ taskId: "task-1", kind, description: "tests" }) as unknown as NonNullable<
+    ChildThreadShell["pendingBackgroundTasks"]
+  >[number];
 
 describe("resolveChildThreadState", () => {
   it("puts a thread that waits on the user above everything else", () => {
     expect(
-      resolveChildThreadState(shell({ session: session("running"), hasPendingApprovals: true })),
+      resolveChildThreadState(
+        shell({ status: "running", pendingRuntimeRequest: pendingRequest("command_execution") }),
+      ),
     ).toBe("waiting");
   });
 
-  it("reads working, review and done from session, pull requests and turn", () => {
-    expect(
-      resolveChildThreadState(
-        shell({
-          session: session("running"),
-          planProgress: { step: "Adding an alert", completedSteps: 4, totalSteps: 6 },
-        }),
-      ),
-    ).toBe("working");
-    expect(
-      resolveChildThreadState(
-        shell({ session: session("ready"), pullRequests: [openPullRequest] }),
-      ),
-    ).toBe("review");
-    expect(resolveChildThreadState(shell({ session: session("ready") }))).toBe("done");
-    expect(resolveChildThreadState(shell({ session: session("error", "boom") }))).toBe("failed");
+  it("reads working, review, stopped, failed and done from the shell", () => {
+    expect(resolveChildThreadState(shell({ status: "running" }))).toBe("working");
+    expect(resolveChildThreadState(shell({ status: "preparing" }))).toBe("working");
+    expect(resolveChildThreadState(shell({ pullRequests: [openPullRequest] }))).toBe("review");
+    expect(resolveChildThreadState(shell({ status: "completed" }))).toBe("done");
+    expect(resolveChildThreadState(shell({ status: "interrupted" }))).toBe("stopped");
+    expect(resolveChildThreadState(shell({ status: "failed", lastError: "boom" }))).toBe("failed");
   });
 
   it("keeps a thread working while its background tasks outlive the turn", () => {
-    const idleWithSubagents = shell({ session: session("ready"), backgroundLiveness: "working" });
+    const idleWithSubagents = shell({
+      status: "completed",
+      pendingBackgroundTasks: [backgroundTask("subagent")],
+    });
     expect(resolveChildThreadState(idleWithSubagents)).toBe("working");
     expect(describeChildThread(idleWithSubagents)).toBe("Waiting on its subagents");
     const idleWithMonitor = shell({
-      session: session("ready"),
+      status: "completed",
       pullRequests: [openPullRequest],
-      backgroundLiveness: "monitoring",
+      pendingBackgroundTasks: [backgroundTask("monitor")],
     });
     expect(resolveChildThreadState(idleWithMonitor)).toBe("working");
     expect(describeChildThread(idleWithMonitor)).toBe("Waiting on background commands");
-    expect(
-      describeChildThread(shell({ session: session("running"), backgroundLiveness: "working" })),
-    ).toBe("Working");
   });
 
   it("describes what the thread is doing or needs", () => {
+    expect(describeChildThread(shell({ status: "preparing" }))).toBe("Setting up");
     expect(
-      describeChildThread(
-        shell({
-          session: session("running"),
-          planProgress: { step: "Adding an alert", completedSteps: 4, totalSteps: 6 },
-        }),
-      ),
-    ).toBe("Adding an alert");
-    expect(describeChildThread(shell({ hasPendingUserInput: true }))).toBe(
-      "Has a question for you",
-    );
+      describeChildThread(shell({ pendingRuntimeRequest: pendingRequest("user_input") })),
+    ).toBe("Has a question for you");
+    expect(describeChildThread(shell({ status: "failed", lastError: "boom\ntrace" }))).toBe("boom");
     expect(describeChildThread(shell({ pullRequests: [openPullRequest] }))).toBe("PR #6 open");
+  });
+});
+
+describe("coordinatorThreadIdOf", () => {
+  const coordinator = ThreadId.make("coordinator");
+  const other = ThreadId.make("other");
+  const thread = (
+    relationshipToParent: "subagent" | "fork" | null,
+    creationSource: "mcp" | "provider" | "web",
+  ) => ({
+    id: ThreadId.make("child"),
+    creationSource,
+    lineage: {
+      parentThreadId: relationshipToParent === null ? null : coordinator,
+      relationshipToParent,
+      rootThreadId: coordinator,
+    },
+  });
+
+  it("puts a T3-owned delegated child under the thread that started it", () => {
+    expect(coordinatorThreadIdOf(thread("subagent", "mcp") as never, new Map())).toBe(coordinator);
+  });
+
+  it("leaves provider subagents, forks and top-level threads alone", () => {
+    expect(coordinatorThreadIdOf(thread("subagent", "provider") as never, new Map())).toBe(null);
+    expect(coordinatorThreadIdOf(thread("fork", "web") as never, new Map())).toBe(null);
+    expect(coordinatorThreadIdOf(thread(null, "web") as never, new Map())).toBe(null);
+  });
+
+  it("follows a moved, adopted or released thread", () => {
+    const child = ThreadId.make("child");
+    expect(
+      coordinatorThreadIdOf(thread("subagent", "mcp") as never, new Map([[child, other]])),
+    ).toBe(other);
+    expect(
+      coordinatorThreadIdOf(thread("subagent", "mcp") as never, new Map([[child, null]])),
+    ).toBe(null);
+    expect(coordinatorThreadIdOf(thread(null, "web") as never, new Map([[child, other]]))).toBe(
+      other,
+    );
   });
 });
 

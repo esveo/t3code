@@ -127,6 +127,16 @@ export class ThreadLaunchService extends Context.Service<
     readonly launch: (
       input: ThreadLaunchInput,
     ) => Effect.Effect<ThreadLaunchResult, ThreadLaunchError>;
+    /**
+     * Fork: provisions the workspace of a thread created elsewhere whose first
+     * run waits in "preparing" (a delegated task with its own worktree), then
+     * releases that run, exactly as `launch` does in the background.
+     */
+    readonly prepareWorkspace?: (
+      input: ThreadLaunchInput,
+      threadId: ThreadId,
+      runId: RunId,
+    ) => Effect.Effect<void>;
   }
 >()("t3/orchestration-v2/ThreadLaunchService") {}
 
@@ -801,7 +811,20 @@ const make = Effect.gen(function* () {
     },
   );
 
-  return ThreadLaunchService.of({ launch });
+  // Fork: see ThreadLaunchService.prepareWorkspace.
+  const prepareWorkspace: NonNullable<ThreadLaunchService["Service"]["prepareWorkspace"]> = (
+    input,
+    threadId,
+    runId,
+  ) =>
+    Effect.gen(function* () {
+      if (!(yield* reservePreparation(input.commandId))) return;
+      yield* schedulePreparation(input, threadId, runId).pipe(
+        Effect.onError(() => releasePreparation(input.commandId)),
+      );
+    });
+
+  return ThreadLaunchService.of({ launch, prepareWorkspace });
 });
 
 export const layer = Layer.effect(ThreadLaunchService, make);

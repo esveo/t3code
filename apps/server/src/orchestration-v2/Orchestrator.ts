@@ -67,6 +67,7 @@ import { CommandPolicyV2, resolveMessageDispatchIntent } from "./CommandPolicy.t
 import { CommandReceiptStoreV2 } from "./CommandReceiptStore.ts";
 import { ContextHandoffServiceV2 } from "./ContextHandoffService.ts";
 import { notificationTurnItem } from "./Notification.ts";
+import { withDelegatedTaskResults } from "../threadOrchestration/delegatedCompletionText.ts"; // Fork
 import { isRestartNoteSource } from "./RestartBackgroundNote.ts";
 import { isUndeliveredMailboxSteer } from "./NotificationMailbox.ts";
 import { EventSinkV2 } from "./EventSink.ts";
@@ -407,11 +408,17 @@ function hasLiveRun(projection: Pick<OrchestrationV2ThreadProjection, "runs">): 
   );
 }
 
-function delegatedCompletionWakeDetail(taskIds: ReadonlyArray<string>): string {
+function delegatedCompletionWakeDetail(
+  taskIds: ReadonlyArray<string>,
+  // Fork: the tasks, so their results travel with the wake.
+  tasks: ReadonlyArray<OrchestrationV2Subagent> = [],
+): string {
   const taskList = taskIds.join(", ");
-  return taskIds.length === 1
-    ? `Delegated task ${taskList} reached a terminal state. Use task_status with taskId ${taskList} to read the result.`
-    : `Delegated tasks ${taskList} reached terminal states. Use task_status with each taskId to read the results.`;
+  const detail =
+    taskIds.length === 1
+      ? `Delegated task ${taskList} reached a terminal state. Use task_status with taskId ${taskList} to read the result.`
+      : `Delegated tasks ${taskList} reached terminal states. Use task_status with each taskId to read the results.`;
+  return withDelegatedTaskResults(detail, taskIds, tasks);
 }
 
 function isTerminalDelegatedTaskStatus(status: OrchestrationV2Subagent["status"]): boolean {
@@ -1892,7 +1899,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
             occurredAt: now,
             payload: {
               ...message,
-              text: delegatedCompletionWakeDetail(remainingTaskIds),
+              text: delegatedCompletionWakeDetail(remainingTaskIds, projection.subagents),
               delegatedCompletion: {
                 parentRunId: parentRun.id,
                 generation: delivery.generation,
@@ -4347,7 +4354,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const dispatchText =
         delegatedCompletion === undefined
           ? command.text
-          : delegatedCompletionWakeDetail(delegatedCompletion.taskIds);
+          : delegatedCompletionWakeDetail(delegatedCompletion.taskIds, projection.subagents);
       const sourcePlanProjection =
         command.sourcePlanRef === undefined
           ? null
@@ -6146,6 +6153,14 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         }),
         runtimeMode: command.runtimeMode,
         interactionMode: command.interactionMode,
+        // Fork: the child's own workspace instead of the parent's.
+        ...(command.workspace === undefined
+          ? {}
+          : {
+              projectId: command.workspace.projectId,
+              branch: command.workspace.branch,
+              worktreePath: command.workspace.worktreePath,
+            }),
       };
       const task: OrchestrationV2Subagent = {
         id: taskNodeId,
@@ -6261,9 +6276,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         senderThreadId: command.parentThreadId,
         messageId: childMessageId,
         text: command.task,
-        attachments: [],
+        // Fork: files for the child and a run that waits for its worktree.
+        attachments: command.attachments ?? [],
         modelSelection: command.modelSelection,
-        dispatchMode: { type: "start_immediately" },
+        dispatchMode:
+          command.workspace?.prepare === true
+            ? { type: "defer_start" }
+            : { type: "start_immediately" },
       } satisfies Extract<OrchestrationV2Command, { readonly type: "message.dispatch" }>;
       yield* dispatchMessage(childMessageCommand, events, effects);
 
@@ -8141,7 +8160,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               ? undefined
               : {
                   ...message,
-                  text: delegatedCompletionWakeDetail(taskIds),
+                  text: delegatedCompletionWakeDetail(taskIds, [
+                    ...input.parentProjection.subagents.filter((task) => task.id !== input.task.id),
+                    input.updatedTask,
+                  ]),
                   delegatedCompletion: {
                     parentRunId: input.parentRun.id,
                     generation: delivery.generation,

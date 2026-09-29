@@ -79,9 +79,11 @@ import * as EnvironmentTheme from "./environmentTheme.ts";
 import * as Keybindings from "./keybindings.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
 import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
-// TODO(orchestrator-v2): fork thread orchestration and decisions, unmounted below.
-// import * as ThreadOrchestrationReactor from "./threadOrchestration/ThreadOrchestrationReactor.ts";
-// import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
+// Fork: thread orchestration and the decisions a coordinator asks for.
+import * as CoordinatorUpdates from "./threadOrchestration/CoordinatorUpdates.ts";
+import * as DelegatedWorkspace from "./threadOrchestration/DelegatedWorkspace.ts";
+import * as ThreadCoordinators from "./threadOrchestration/ThreadCoordinators.ts";
+import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry.ts";
 import * as ServerSettings from "./serverSettings.ts";
@@ -527,11 +529,12 @@ const RuntimeCoreDependenciesBaseLive = Layer.mergeAll(
   ProviderUsageLimitsIngestionLive,
   AntigravityInstallationRefreshLive,
   ReplayMarkers.layer,
-  // Fork: thread orchestration updates for coordinator threads, and the
-  // decisions a coordinator asks the user for (Inbox panel, MCP tools).
-  // TODO(orchestrator-v2): mount again once both are ported to V2:
-  // ThreadOrchestrationReactor.startedLayer,
-  // ThreadDecisions.layer,
+  // Fork: which coordinator each thread reports to, the updates it gets about
+  // them, delegate_task into another workspace, and the decisions a
+  // coordinator asks the user for (Inbox panel, MCP tools).
+  CoordinatorUpdates.startedLayer.pipe(Layer.provideMerge(ThreadCoordinators.layer)),
+  DelegatedWorkspace.layer,
+  ThreadDecisions.layer,
 ).pipe(
   // Core Services
   Layer.provideMerge(OrchestrationApplicationLayerLive),

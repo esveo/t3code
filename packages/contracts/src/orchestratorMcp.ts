@@ -186,6 +186,32 @@ export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
   clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
   runtimeMode: Schema.optional(OrchestratorMcpRuntimeMode),
   interactionMode: Schema.optional(OrchestratorMcpInteractionMode),
+  // Fork: run the child in another project and/or its own worktree.
+  workspace: Schema.optional(
+    Schema.Struct({
+      project: Schema.optional(
+        TrimmedNonEmptyString.annotate({
+          description:
+            "Project to run the child in, by id, workspace path or title (t3_project_list). Defaults to this thread's project.",
+        }),
+      ),
+      worktree: Schema.optional(
+        Schema.Boolean.annotate({
+          description:
+            "true: the child gets a new git worktree on its own branch. false (default): it works in this thread's checkout, or in the other project's root checkout.",
+        }),
+      ),
+      baseRef: Schema.optional(
+        TrimmedNonEmptyString.annotate({
+          description:
+            "Branch or commit the new worktree starts from (origin/<branch> for a remote-only branch). Defaults to this thread's branch, or the other project's HEAD.",
+        }),
+      ),
+    }).annotate({
+      description:
+        "Where the child works. Omit to share this thread's workspace. Use worktree: true for independent implementation work that must not step on other changes.",
+    }),
+  ),
 });
 export type OrchestratorMcpDelegateTaskInput = typeof OrchestratorMcpDelegateTaskInput.Type;
 

@@ -51,9 +51,9 @@ import { WorktreeToolkit } from "./toolkits/worktree/tools.ts";
 import * as WorktreeMcpService from "./WorktreeMcpService.ts";
 import { PullRequestsToolkitHandlersLive } from "./toolkits/pullRequests/handlers.ts";
 import { PullRequestsToolkit } from "./toolkits/pullRequests/tools.ts";
-// Fork: thread orchestration. TODO(orchestrator-v2): mount again once ported to V2.
-// import { ThreadsToolkitHandlersLive } from "./toolkits/threads/handlers.ts";
-// import { ThreadsToolkit } from "./toolkits/threads/tools.ts";
+// Fork: thread orchestration.
+import { ThreadsToolkitHandlersLive } from "./toolkits/threads/handlers.ts";
+import { ThreadsToolkit } from "./toolkits/threads/tools.ts";
 // Fork: read-only terminal drawer access.
 import { TerminalsToolkitRegistrationLive } from "./toolkits/terminals/registration.ts";
 import {
@@ -706,10 +706,11 @@ export const PullRequestsToolkitRegistrationLive = McpServer.toolkit(PullRequest
   Layer.provide(PullRequestsToolkitHandlersLive),
 );
 
-// Fork: thread orchestration. TODO(orchestrator-v2): mount again once ported to V2.
-// const ThreadsToolkitRegistrationLive = McpServer.toolkit(ThreadsToolkit).pipe(
-//   Layer.provide(ThreadsToolkitHandlersLive),
-// );
+// Fork: thread orchestration.
+const ThreadsToolkitRegistrationLive = McpServer.toolkit(ThreadsToolkit).pipe(
+  Layer.provide(ThreadsToolkitHandlersLive),
+  Layer.provide(OrchestratorMcpService.layer),
+);
 
 const DeviceStandardToolkitRegistrationLive = McpServer.toolkit(DeviceStandardToolkit).pipe(
   Layer.provide(DeviceStandardToolkitHandlersLive),
@@ -742,6 +743,6 @@ export const layer = Layer.mergeAll(
   WorktreeToolkitRegistrationLive,
   PullRequestsToolkitRegistrationLive,
   DeviceToolkitRegistrationLive,
-  // ThreadsToolkitRegistrationLive, TODO(orchestrator-v2)
+  ThreadsToolkitRegistrationLive,
   TerminalsToolkitRegistrationLive,
 ).pipe(Layer.provideMerge(McpTransportLive));

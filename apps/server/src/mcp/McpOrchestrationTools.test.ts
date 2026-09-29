@@ -16,8 +16,6 @@ import { McpServer } from "effect/unstable/ai";
 import { HttpBody, HttpClient, HttpRouter } from "effect/unstable/http";
 
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
-import { OrchestrationEngineService } from "../orchestration/Services/OrchestrationEngine.ts";
-import { ProjectionSnapshotQuery } from "../orchestration/Services/ProjectionSnapshotQuery.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as McpHttpServer from "./McpHttpServer.ts";
 import * as McpOrchestrationTools from "./McpOrchestrationTools.ts";
@@ -52,12 +50,6 @@ const ThreadsToolkitStubLive = McpServer.toolkit(ThreadsToolkit).pipe(
           () => Effect.succeed(name === "list_decisions" ? { decisions: [] } : ({} as never)),
         ]),
       ) as never,
-    ),
-  ),
-  Layer.provide(
-    Layer.mergeAll(
-      Layer.mock(ProjectionSnapshotQuery)({}),
-      Layer.mock(OrchestrationEngineService)({}),
     ),
   ),
 );

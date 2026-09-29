@@ -1,4 +1,5 @@
 import {
+  type ChatAttachment,
   CommandId,
   type RunId,
   isProviderAvailable,
@@ -77,6 +78,7 @@ import {
 import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
 import type { McpInvocationScope } from "./McpInvocationContext.ts";
+import { DelegatedWorkspace } from "../threadOrchestration/DelegatedWorkspace.ts"; // Fork
 
 const DEFAULT_WAIT_TIMEOUT_MS = 10 * 60 * 1_000;
 const MAX_WAIT_TIMEOUT_MS = 60 * 60 * 1_000;
@@ -102,6 +104,8 @@ export interface OrchestratorMcpServiceShape {
   readonly delegateTask: (
     scope: McpInvocationScope,
     input: OrchestratorMcpDelegateTaskInput,
+    // Fork: files for the child's first message (start_thread).
+    fork?: { readonly attachments?: ReadonlyArray<ChatAttachment> },
   ) => Effect.Effect<OrchestratorMcpDelegateTaskResult, OrchestratorMcpFailure>;
   readonly taskStatus: (
     scope: McpInvocationScope,
@@ -1360,7 +1364,7 @@ const make = Effect.gen(function* () {
           },
         };
       }),
-    delegateTask: (scope, input) =>
+    delegateTask: (scope, input, fork) =>
       Effect.gen(function* () {
         yield* requireCapability(scope);
         const parent = yield* loadProjection(scope.threadId);
@@ -1394,6 +1398,18 @@ const make = Effect.gen(function* () {
           requestKey: key,
           operation: "delegate-task",
         });
+        // Fork: another project and/or its own worktree (threadOrchestration/DelegatedWorkspace.ts).
+        const delegatedWorkspace = yield* Effect.serviceOption(DelegatedWorkspace);
+        if (input.workspace !== undefined && Option.isNone(delegatedWorkspace)) {
+          return yield* failure(
+            "invalid_request",
+            "This server cannot delegate into another workspace.",
+          );
+        }
+        const workspacePlan =
+          input.workspace === undefined || Option.isNone(delegatedWorkspace)
+            ? undefined
+            : yield* delegatedWorkspace.value.plan(parent.thread, input.workspace);
         const result = yield* threadManagement
           .dispatch({
             type: "delegated_task.request",
@@ -1412,6 +1428,8 @@ const make = Effect.gen(function* () {
             // delegations deliver through the blocking tool call, so a wake is
             // only needed if the parent settled first (timeout, disconnect).
             completionWake: input.mode === "wait" ? "settled_only" : "always",
+            ...(workspacePlan === undefined ? {} : { workspace: workspacePlan.command }),
+            ...(fork?.attachments === undefined ? {} : { attachments: fork.attachments }),
           })
           .pipe(
             Effect.mapError((error) =>
@@ -1432,6 +1450,27 @@ const make = Effect.gen(function* () {
           );
         }
         const taskId = taskEvent.event.payload.id;
+        // Fork: provision the child's worktree; its first run waits for it.
+        if (workspacePlan?.worktree != null && Option.isSome(delegatedWorkspace)) {
+          const childThreadId = taskEvent.event.payload.childThreadId;
+          const childRun = result.storedEvents.find(
+            (stored) =>
+              stored.event.type === "run.created" && stored.event.threadId === childThreadId,
+          );
+          if (childThreadId !== null && childRun?.event.type === "run.created") {
+            yield* delegatedWorkspace.value.prepare({
+              commandId,
+              plan: workspacePlan,
+              childThreadId,
+              childRunId: childRun.event.payload.id,
+              title: input.title ?? input.task,
+              task: input.task,
+              modelSelection: target.modelSelection,
+              runtimeMode,
+              interactionMode,
+            });
+          }
+        }
 
         if (input.mode !== "wait") {
           return yield* readTask(scope, taskId, false, true);
