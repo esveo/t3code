@@ -17,13 +17,35 @@ export interface ChildThreadGroups {
   readonly childrenByParentKey: ReadonlyMap<string, ReadonlyArray<EnvironmentThreadShell>>;
   /** Children that render under their coordinator instead of as their own rows. */
   readonly nestedThreadKeys: ReadonlySet<string>;
+  /** False while the sidebar setting is off: children are hidden, not listed under anyone. */
+  readonly listsChildren: boolean;
 }
 
-/** The groups while the sidebar setting for child threads is off: nothing nests. */
-export const NO_CHILD_THREAD_GROUPS: ChildThreadGroups = {
-  childrenByParentKey: new Map(),
-  nestedThreadKeys: new Set(),
-};
+/**
+ * The groups while the sidebar setting for child threads is off: every thread
+ * of a listed coordinator stays out of the sidebar and is reached through the
+ * coordinator's Threads panel. A child whose coordinator was archived or
+ * deleted still stands on its own.
+ */
+export function hiddenChildThreadGroups(
+  threads: ReadonlyArray<EnvironmentThreadShell>,
+  coordinatorOf: CoordinatorOf,
+): ChildThreadGroups {
+  const listed = new Set(
+    threads
+      .filter((thread) => thread.archivedAt === null)
+      .map((thread) => keyOf(thread.environmentId, thread.id)),
+  );
+  const nestedThreadKeys = new Set<string>();
+  for (const thread of threads) {
+    const coordinatorId = coordinatorOf(thread);
+    if (!coordinatorId || thread.archivedAt !== null) continue;
+    if (listed.has(keyOf(thread.environmentId, coordinatorId))) {
+      nestedThreadKeys.add(keyOf(thread.environmentId, thread.id));
+    }
+  }
+  return { childrenByParentKey: new Map(), nestedThreadKeys, listsChildren: false };
+}
 
 export function parentKeyOf(thread: Pick<EnvironmentThreadShell, "environmentId" | "id">): string {
   return keyOf(thread.environmentId, thread.id);
@@ -74,7 +96,7 @@ export function groupChildThreads(
   for (const group of childrenByParentKey.values()) {
     group.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   }
-  return { childrenByParentKey, nestedThreadKeys };
+  return { childrenByParentKey, nestedThreadKeys, listsChildren: true };
 }
 
 export interface ChildThreadCounts {
@@ -153,8 +175,12 @@ export function sidebarRowsWithCoordinators(
     readonly groups: ChildThreadGroups;
   },
 ): EnvironmentThreadShell[] {
-  // Setting off: the sidebar lists threads exactly as upstream does.
-  if (input.groups === NO_CHILD_THREAD_GROUPS) return [...listed];
+  // Setting off: upstream's rows, minus the threads that report to a coordinator.
+  if (!input.groups.listsChildren) {
+    return listed.filter(
+      (thread) => !input.groups.nestedThreadKeys.has(keyOf(thread.environmentId, thread.id)),
+    );
+  }
   const listedSet = new Set(listed);
   return input.threads.filter((thread) => {
     if (input.groups.nestedThreadKeys.has(keyOf(thread.environmentId, thread.id))) return false;

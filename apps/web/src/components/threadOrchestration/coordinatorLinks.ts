@@ -18,7 +18,7 @@ import {
   type ChildThreadGroups,
   type CoordinatorOf,
   groupChildThreads,
-  NO_CHILD_THREAD_GROUPS,
+  hiddenChildThreadGroups,
 } from "./childThreads.logic";
 
 /**
@@ -92,14 +92,17 @@ export function useThreadCoordinatorId(threadRef: ScopedThreadRef | null): Threa
   return thread ? coordinatorOf(thread) : null;
 }
 
-/** The sidebar's coordinator groups, following the coordinator links; none while the setting is off. */
+/** The sidebar's coordinator groups, following the coordinator links; hidden while the setting is off. */
 export function useChildThreadGroups(
   threads: ReadonlyArray<EnvironmentThreadShell>,
 ): ChildThreadGroups {
   const coordinatorOf = useCoordinatorOf(threads);
   const enabled = useSidebarChildThreadsEnabled();
   return useMemo(
-    () => (enabled ? groupChildThreads(threads, coordinatorOf) : NO_CHILD_THREAD_GROUPS),
+    () =>
+      enabled
+        ? groupChildThreads(threads, coordinatorOf)
+        : hiddenChildThreadGroups(threads, coordinatorOf),
     [coordinatorOf, enabled, threads],
   );
 }
