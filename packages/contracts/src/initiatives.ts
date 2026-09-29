@@ -178,6 +178,7 @@ export type PreflightProviderStats = typeof PreflightProviderStats.Type;
 /** How much of one thread's work was rolled back. */
 export const PreflightThreadRollbacks = Schema.Struct({
   threadId: ThreadId,
+  title: Schema.NullOr(Schema.String).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
   provider: Schema.NullOr(Schema.String),
   rolledBack: NonNegativeInt,
   base: NonNegativeInt,

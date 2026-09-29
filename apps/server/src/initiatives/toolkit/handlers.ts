@@ -9,6 +9,9 @@ import {
   agentAuthor,
   CHECKED_ENTRY_TYPES,
   checkPromptBlock,
+  checkStateOf,
+  describeCheck,
+  isCheckedEntry,
   type InitiativeRole,
   type InitiativeToolName,
   mayUseTool,
@@ -520,6 +523,11 @@ const make = Effect.gen(function* () {
               supersedes: entry.supersedes,
               needsReview: entry.details["needsReview"] === true,
               inbox: entry.inbox !== null,
+              check: isCheckedEntry(entry)
+                ? `${checkStateOf(entry)}${entry.acceptanceCheck ? `: ${describeCheck(entry.acceptanceCheck)}` : ""}`
+                : null,
+              attempts: entry.attempts ?? 0,
+              threadId: entry.threadId ?? null,
             })),
         };
       }),

@@ -213,6 +213,7 @@ export const makePreflight = (options: {
         .listThreads()
         .pipe(Effect.orElseSucceed(() => []));
       const providers = new Map<string, string>();
+      const titles = new Map(shells.map((shell) => [shell.id as string, shell.title]));
       for (const shell of shells) {
         const instanceId = shell.modelSelection?.instanceId;
         if (instanceId) providers.set(shell.id, instanceId);
@@ -221,6 +222,7 @@ export const makePreflight = (options: {
         observations,
         tasks: entries.filter((entry) => entry.inbox === null),
         providerOf: (threadId) => providers.get(threadId) ?? null,
+        titleOf: (threadId) => titles.get(threadId) ?? null,
       });
       return {
         providers: preflightStats(observations, rollbacks.byProvider),

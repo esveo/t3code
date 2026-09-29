@@ -148,6 +148,7 @@ export function rollbackReport(input: {
   >;
   /** Providers of threads the requests do not name, e.g. from the live thread list. */
   readonly providerOf: (threadId: string) => string | null;
+  readonly titleOf?: ((threadId: string) => string | null) | undefined;
 }): {
   readonly threads: ReadonlyArray<PreflightThreadRollbacks>;
   readonly byProvider: ReadonlyMap<string, { readonly rolledBack: number; readonly base: number }>;
@@ -178,6 +179,7 @@ export function rollbackReport(input: {
     if (counted.rolledBack > 0) {
       threads.push({
         threadId: threadId as PreflightThreadRollbacks["threadId"],
+        title: input.titleOf?.(threadId) ?? null,
         provider: providerId,
         ...counted,
       });

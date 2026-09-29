@@ -418,6 +418,12 @@ export const EntrySummary = Schema.Struct({
   inbox: Schema.Boolean.annotate({
     description: "An Inbox item for the user; answer it through the Inbox, not entry_status.",
   }),
+  check: Schema.NullOr(Schema.String).annotate({
+    description:
+      "A task's or plan's acceptance check and where it stands: missing, pending, passed, failed or acceptedWithout.",
+  }),
+  attempts: Schema.Int.annotate({ description: "How often the task went back for a correction." }),
+  threadId: Schema.NullOr(Schema.String).annotate({ description: "The thread doing the task." }),
 });
 
 const QuestionAskTool = writing(
