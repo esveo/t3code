@@ -41,7 +41,15 @@ export function TaggedThreadMessage<Row extends TaggedRow>(props: {
   const bodyRow = useMemo(
     () =>
       tagged
-        ? ({ ...props.row, message: { ...props.row.message, text: tagged.body } } as Row)
+        ? ({
+            ...props.row,
+            message: {
+              ...props.row.message,
+              text: tagged.body,
+              // "From <coordinator>" names the sender; upstream's "Sent by another agent" would repeat it.
+              ...(tagged.tag === FROM_COORDINATOR_TAG ? { createdBy: "user" } : {}),
+            },
+          } as Row)
         : props.row,
     [props.row, tagged],
   );
