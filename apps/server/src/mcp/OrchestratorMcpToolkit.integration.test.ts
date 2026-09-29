@@ -2318,31 +2318,32 @@ describe("orchestrator MCP toolkit", () => {
               branch: null,
               worktreePath: cwd,
             });
+            // Fork: thread tools reach threads in other projects of the
+            // environment; the list stays on the calling project by default.
+            const foreignProjectId = ProjectId.make("project:mcp-foreign");
             const foreignOrganizeCall = yield* invoke("t3_thread_organize", {
               threadId: foreignThreadId,
               action: "pin",
             });
-            expect(foreignOrganizeCall.structuredContent).toMatchObject({
-              code: "thread_not_found",
-            });
-            expect((yield* orchestrator.getThreadShell(foreignThreadId))?.pinnedAt).toBeNull();
+            expect(foreignOrganizeCall.isError).toBe(false);
+            expect((yield* orchestrator.getThreadShell(foreignThreadId))?.pinnedAt).not.toBeNull();
 
             const foreignReadCall = yield* invoke("t3_thread_read", {
               threadId: foreignThreadId,
             });
-            expect(foreignReadCall.structuredContent).toMatchObject({
-              _tag: "OrchestratorMcpFailure",
-              code: "thread_not_found",
-            });
+            const foreignRead = yield* decodeThreadReadResult(
+              foreignReadCall.structuredContent,
+            ).pipe(Effect.orDie);
+            expect(foreignRead.thread.projectId).toBe(foreignProjectId);
             const foreignUpdateCall = yield* invoke("t3_thread_update", {
               threadId: foreignThreadId,
               action: "rename",
-              title: "Should stay foreign",
+              title: "Renamed across projects",
             });
-            expect(foreignUpdateCall.structuredContent).toMatchObject({
-              _tag: "OrchestratorMcpFailure",
-              code: "thread_not_found",
-            });
+            expect(foreignUpdateCall.isError).toBe(false);
+            expect((yield* orchestrator.getThreadShell(foreignThreadId))?.title).toBe(
+              "Renamed across projects",
+            );
             const listCall = yield* invoke("t3_thread_list", {
               includeSubagents: false,
               limit: 100,
@@ -2364,10 +2365,28 @@ describe("orchestrator MCP toolkit", () => {
             ).toMatchObject({
               createdBy: "agent",
               creationSource: "mcp",
+              projectId,
             });
             expect(listed.threads.some((thread) => thread.threadId === foreignThreadId)).toBe(
               false,
             );
+            const allListed = yield* decodeThreadListResult(
+              (yield* invoke("t3_thread_list", { scope: "all", limit: 100 })).structuredContent,
+            ).pipe(Effect.orDie);
+            expect(
+              allListed.threads.find((thread) => thread.threadId === foreignThreadId),
+            ).toMatchObject({ projectId: foreignProjectId });
+            expect(allListed.threads.some((thread) => thread.threadId === parentThreadId)).toBe(
+              true,
+            );
+            const foreignListed = yield* decodeThreadListResult(
+              (yield* invoke("t3_thread_list", { projectId: foreignProjectId, limit: 100 }))
+                .structuredContent,
+            ).pipe(Effect.orDie);
+            expect(foreignListed.projectId).toBe(foreignProjectId);
+            expect(foreignListed.threads.map((thread) => thread.threadId)).toEqual([
+              foreignThreadId,
+            ]);
             expect(
               listed.threads.some((thread) => thread.relationshipToParent === "subagent"),
             ).toBe(false);

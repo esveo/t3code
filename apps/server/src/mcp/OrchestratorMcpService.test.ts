@@ -11,6 +11,7 @@ import {
   type OrchestrationV2ThreadProjection,
   type ServerProvider,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
@@ -1026,5 +1027,130 @@ describe("OrchestratorMcpService provider resolution", () => {
           }).pipe(Effect.provide(OrchestratorMcpService.layer.pipe(Layer.provide(dependencies))));
         }
       }),
+  );
+});
+
+// Fork: t3_thread_* tools reach threads in every project (forkThreadReach.ts).
+describe("fork: OrchestratorMcpService across projects", () => {
+  const callerProject = ProjectId.make("project:fork-caller");
+  const otherProject = ProjectId.make("project:fork-other");
+  const callerId = ThreadId.make("thread:fork-caller");
+  const otherId = ThreadId.make("thread:fork-other");
+  const shell = (id: ThreadId, projectId: ProjectId) =>
+    ({
+      id,
+      projectId,
+      title: String(id),
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      deletedAt: null,
+      archivedAt: null,
+      lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: id },
+      modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt" },
+      settledAt: null,
+      createdAt: DateTime.makeUnsafe(0),
+      updatedAt: DateTime.makeUnsafe(0),
+    }) as never as OrchestrationV2ThreadProjection["thread"];
+  const shells = [shell(callerId, callerProject), shell(otherId, otherProject)];
+  const projection = (thread: OrchestrationV2ThreadProjection["thread"]) =>
+    ({
+      thread,
+      runs: [],
+      messages: [],
+      subagents: [],
+      providerThreads: [],
+      providerTurns: [],
+      runtimeRequests: [],
+      contextTransfers: [],
+      turnItems: [],
+    }) as unknown as OrchestrationV2ThreadProjection;
+  const scope: McpInvocationScope = {
+    environmentId: EnvironmentId.make("environment:fork-reach"),
+    threadId: callerId,
+    providerSessionId: "provider-session:fork-reach",
+    providerInstanceId: ProviderInstanceId.make("codex"),
+    capabilities: new Set(["orchestration"]),
+    issuedAt: 1,
+  };
+
+  const withService = <A, E>(
+    body: (
+      service: OrchestratorMcpService.OrchestratorMcpService["Service"],
+      sent: Array<{ projectId: ProjectId; threadId: ThreadId }>,
+    ) => Effect.Effect<A, E>,
+  ) => {
+    const sent: Array<{ projectId: ProjectId; threadId: ThreadId }> = [];
+    const byId = (threadId: ThreadId) => shells.find((candidate) => candidate.id === threadId);
+    const dependencies = Layer.mergeAll(
+      NodeServices.layer,
+      Layer.mock(ThreadManagementService)({
+        getThreadShell: (threadId) => Effect.succeed((byId(threadId) ?? null) as never),
+        getThreadRecords: ((threadId: ThreadId) =>
+          Effect.succeed(projection(byId(threadId)!))) as never,
+        // Like the real service: a thread is only found in its own project.
+        getProjectThreadRecords: ((input: { projectId: ProjectId; threadId: ThreadId }) => {
+          const found = byId(input.threadId);
+          return found !== undefined && found.projectId === input.projectId
+            ? Effect.succeed(projection(found))
+            : Effect.fail({ _tag: "ThreadManagementThreadNotFoundError", ...input } as never);
+        }) as never,
+        getShellSnapshot: () =>
+          Effect.succeed({
+            schemaVersion: 1,
+            snapshotSequence: 0,
+            threads: shells,
+            archivedThreads: [],
+          } as never),
+        listProjectThreads: (input) =>
+          Effect.succeed(shells.filter((thread) => thread.projectId === input.projectId) as never),
+        sendToThread: (input) =>
+          Effect.sync(() => {
+            sent.push({ projectId: input.projectId, threadId: input.threadId });
+            return {
+              run: { id: RunId.make("run:fork-sent"), status: "running" },
+              delivery: "started",
+            } as never;
+          }),
+      }),
+      Layer.mock(ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+      Layer.mock(ProviderAdapterRegistryV2)({ list: () => Effect.succeed([]) }),
+      Layer.mock(ScheduledTaskService)({}),
+    );
+    return Effect.gen(function* () {
+      return yield* body(yield* OrchestratorMcpService.OrchestratorMcpService, sent);
+    }).pipe(Effect.provide(OrchestratorMcpService.layer.pipe(Layer.provide(dependencies))));
+  };
+
+  it.effect("sends to a thread in another project, in that project", () =>
+    withService((service, sent) =>
+      Effect.gen(function* () {
+        const result = yield* service.sendToThread(scope, { threadId: otherId, message: "Go on." });
+        assert.equal(result.delivery, "started");
+        assert.deepEqual(sent, [{ projectId: otherProject, threadId: otherId }]);
+      }),
+    ),
+  );
+
+  it.effect("lists the calling project by default and widens with projectId or scope", () =>
+    withService((service) =>
+      Effect.gen(function* () {
+        const ids = (result: { threads: ReadonlyArray<{ threadId: ThreadId }> }) =>
+          result.threads.map((thread) => thread.threadId);
+        const own = yield* service.listThreads(scope, {});
+        assert.equal(own.projectId, callerProject);
+        assert.deepEqual(ids(own), [callerId]);
+        const other = yield* service.listThreads(scope, { projectId: otherProject });
+        assert.equal(other.projectId, otherProject);
+        assert.deepEqual(ids(other), [otherId]);
+        const all = yield* service.listThreads(scope, { scope: "all" });
+        assert.deepEqual(
+          all.threads.map((thread) => [thread.threadId, thread.projectId]).toSorted(),
+          [
+            [callerId, callerProject],
+            [otherId, otherProject],
+          ].toSorted(),
+        );
+      }),
+    ),
   );
 });

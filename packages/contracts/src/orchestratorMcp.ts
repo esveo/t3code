@@ -315,11 +315,23 @@ export const OrchestratorMcpThreadListInput = Schema.Struct({
   includeSubagents: Schema.optional(Schema.Boolean),
   cursor: Schema.optional(NonNegativeInt),
   limit: Schema.optional(PositiveInt.check(Schema.isLessThanOrEqualTo(100))),
+  // Fork: list another project's threads, or every project's.
+  projectId: Schema.optional(
+    ProjectId.annotate({
+      description: "List this project's threads (t3_project_list) instead of the calling one's.",
+    }),
+  ),
+  scope: Schema.optional(
+    Schema.Literals(["project", "all"]).annotate({
+      description: "project (default): one project. all: every project of this environment.",
+    }),
+  ),
 });
 export type OrchestratorMcpThreadListInput = typeof OrchestratorMcpThreadListInput.Type;
 
 export const OrchestratorMcpThreadListItem = Schema.Struct({
   threadId: ThreadId,
+  projectId: ProjectId, // Fork: listings can span projects
   title: Schema.String,
   createdBy: OrchestrationV2Actor,
   creationSource: OrchestrationV2CreationSource,

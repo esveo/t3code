@@ -11,6 +11,7 @@ import * as Effect from "effect/Effect";
 import * as ThreadManagement from "../orchestration-v2/ThreadManagementService.ts";
 import * as OrchestrationMcp from "./OrchestratorMcpService.ts";
 import { type McpInvocationScope, McpInvocationContext } from "./McpInvocationContext.ts";
+import { threadProjectId } from "./forkThreadReach.ts"; // Fork
 
 export const unavailable = () =>
   new OrchestratorMcpFailure({
@@ -66,18 +67,19 @@ export const readThread = Effect.fn("mcp.readThread")(function* <
   K extends ProjectionRecordField = never,
 >(threadId?: ThreadId, fields: ReadonlyArray<K> = []) {
   const { scope, threads, caller } = yield* readCaller();
+  // Fork: a thread in any project of the environment (forkThreadReach.ts).
+  const targetId = threadId ?? caller.id;
+  const projectId = yield* threadProjectId(threads, targetId, caller.projectId);
   const projection = yield* threads
-    .getProjectThreadRecords(
-      { projectId: caller.projectId, threadId: threadId ?? caller.id },
-      fields,
-      { turnItemTypes: ["user_input_request"] },
-    )
+    .getProjectThreadRecords({ projectId, threadId: targetId }, fields, {
+      turnItemTypes: ["user_input_request"],
+    })
     .pipe(
       Effect.mapError((error) =>
         error._tag === "ThreadManagementThreadNotFoundError"
           ? new OrchestratorMcpFailure({
               code: "thread_not_found",
-              message: "The thread was not found in the calling project.",
+              message: "The thread was not found.",
             })
           : unavailable(),
       ),

@@ -19,6 +19,7 @@ import {
   ThreadManagementService,
 } from "../orchestration-v2/ThreadManagementService.ts";
 import type { McpInvocationScope } from "./McpInvocationContext.ts";
+import { threadProjectId } from "./forkThreadReach.ts"; // Fork
 
 export class ThreadMetadataMcpService extends Context.Service<
   ThreadMetadataMcpService,
@@ -175,7 +176,18 @@ const make = Effect.gen(function* () {
       threadId === scope.threadId
         ? parent
         : yield* threadManagement
-            .getProjectThreadRecords({ projectId: parent.thread.projectId, threadId }, [])
+            .getProjectThreadRecords(
+              // Fork: a thread in any project (forkThreadReach.ts).
+              {
+                projectId: yield* threadProjectId(
+                  threadManagement,
+                  threadId,
+                  parent.thread.projectId,
+                ),
+                threadId,
+              },
+              [],
+            )
             .pipe(Effect.mapError(threadLookupFailure));
     const requestKey =
       input.clientRequestId === undefined

@@ -417,6 +417,9 @@ it("readThread reaches a thread the user attached as context, but not one an age
             }
             return Effect.die(`unexpected thread ${threadId}`);
           },
+          // Fork: tools look a thread up in its own project (forkThreadReach.ts);
+          // without a shell only the user-attached fallback reaches it.
+          getThreadShell: () => Effect.succeed(null),
           getTimelinePage: (threadId) =>
             Effect.succeed({
               items: foreignProjection(threadId).visibleTurnItems,

@@ -110,7 +110,10 @@ export const ThreadToolkitHandlersLive = ThreadToolkit.toLayer({
     Effect.gen(function* () {
       const { caller } = yield* readCaller();
       const threadSearch = yield* ThreadSearch.ThreadSearch;
-      const result = yield* threadSearch.search(input).pipe(Effect.mapError(unavailable));
+      // Fork: scope "all" keeps the matches of every project.
+      const { scope, ...search } = input;
+      const result = yield* threadSearch.search(search).pipe(Effect.mapError(unavailable));
+      if (scope === "all") return { matches: result.matches };
       return { matches: result.matches.filter((match) => match.projectId === caller.projectId) };
     }),
   t3_thread_fork: (input) =>
@@ -134,7 +137,13 @@ export const ThreadToolkitHandlersLive = ThreadToolkit.toLayer({
     }),
   t3_thread_merge_back: (input) =>
     Effect.gen(function* () {
-      const { threads, caller } = yield* readWritableThread(input.targetThreadId);
+      const { threads, caller, projection } = yield* readWritableThread(input.targetThreadId);
+      // Fork: thread lookups reach other projects; merging back stays within one.
+      if (projection.thread.projectId !== caller.projectId)
+        return yield* new OrchestratorMcpFailure({
+          code: "thread_not_found",
+          message: "The thread was not found in the calling project.",
+        });
       const result = yield* threads
         .dispatch({
           type: "thread.merge_back",

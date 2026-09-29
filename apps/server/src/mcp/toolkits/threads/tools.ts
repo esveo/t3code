@@ -45,7 +45,7 @@ export class ThreadNotFoundError extends Schema.TaggedError<ThreadNotFoundError>
   { threadId: Schema.String },
 ) {
   override get message(): string {
-    return `Thread ${this.threadId} was not found. Find a thread's id with t3_thread_list or t3_thread_search.`;
+    return `Thread ${this.threadId} was not found. Find a thread's id with t3_thread_list or t3_thread_search, with scope 'all' for other projects.`;
   }
 }
 
