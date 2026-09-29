@@ -8,6 +8,7 @@ import {
   insertThreadBeside,
   ROUTE_LEAF_ID,
   sameThread,
+  setLeafThread,
 } from "./splitLayout.logic";
 
 let paneIdCounter = 0;
@@ -81,6 +82,30 @@ export function openThreadBeside(thread: ScopedThreadRef): void {
   setActiveLeaf(next.leafId);
   focusPane(next.leafId);
   flashPane(next.leafId);
+}
+
+/**
+ * Opens a thread reached from inside a pane — a subagent, its parent, a
+ * related thread — in that same pane, instead of handing the route pane to it.
+ * A thread already on screen just takes focus. Reports whether the split
+ * handled it; the route pane, and a view without a split, navigate as usual.
+ */
+export function openThreadInPane(leafId: string, thread: ScopedThreadRef): boolean {
+  const { layout, routeThread, setLayout, setActiveLeaf } = useSplitThreadStore.getState();
+  if (layout.kind === "leaf") return false;
+  const existing =
+    findThreadLeaf(layout, thread)?.id ??
+    (routeThread && sameThread(thread, routeThread) ? ROUTE_LEAF_ID : null);
+  if (existing !== null) {
+    setActiveLeaf(existing);
+    focusPane(existing);
+    if (existing !== leafId) flashPane(existing);
+    return true;
+  }
+  if (leafId === ROUTE_LEAF_ID) return false;
+  setLayout(setLeafThread(layout, leafId, thread));
+  setActiveLeaf(leafId);
+  return true;
 }
 
 /** Whether a pane of the split already shows this thread. */

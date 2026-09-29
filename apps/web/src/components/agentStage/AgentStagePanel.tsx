@@ -4,7 +4,6 @@ import type {
   RuntimeRequestId,
   ScopedThreadRef,
 } from "@t3tools/contracts";
-import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
 
 import {
@@ -16,7 +15,7 @@ import {
 } from "../../state/entities";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { buildThreadRouteParams } from "../../threadRoutes";
+import { useOpenThreadInPane } from "../split/useOpenThreadInPane";
 import { AgentStage, type StageOpenAction } from "./AgentStage";
 import {
   applyStageVisibility,
@@ -182,7 +181,7 @@ function useStageOpenAction(
   everything: boolean,
   refs: ReadonlyMap<string, ScopedThreadRef>,
 ) {
-  const navigate = useNavigate();
+  const openThread = useOpenThreadInPane();
   const threadKey = scopedThreadKey(threadRef);
   return useCallback(
     (agent: StageAgent): StageOpenAction | null => {
@@ -191,11 +190,7 @@ function useStageOpenAction(
         if (target === undefined || agent.id === threadKey) return null;
         return {
           label: "Open thread",
-          onOpen: () =>
-            void navigate({
-              to: "/$environmentId/$threadId",
-              params: buildThreadRouteParams(target),
-            }),
+          onOpen: () => openThread(target),
         };
       }
       const childThreadId = agent.childThreadId ?? null;
@@ -203,16 +198,10 @@ function useStageOpenAction(
       return {
         label: "Open chat",
         onOpen: () =>
-          void navigate({
-            to: "/$environmentId/$threadId",
-            params: buildThreadRouteParams({
-              environmentId: threadRef.environmentId,
-              threadId: childThreadId,
-            }),
-          }),
+          openThread({ environmentId: threadRef.environmentId, threadId: childThreadId }),
       };
     },
-    [everything, navigate, refs, threadKey, threadRef.environmentId],
+    [everything, openThread, refs, threadKey, threadRef.environmentId],
   );
 }
 

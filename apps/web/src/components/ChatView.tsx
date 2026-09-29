@@ -417,6 +417,7 @@ import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
 import { MessagesTimeline, type MessagesTimelineHistoryControls } from "./chat/MessagesTimeline";
 import { SubagentRelayBar } from "./subagentRelay/SubagentRelayBar"; // Fork: relay + stop
+import { useOpenThreadInPane } from "./split/useOpenThreadInPane"; // Fork: split panes
 import { getTriggerDisplayModelName } from "./chat/providerIconUtils";
 import { resolveTimelineIsAtEnd, worktreeSetupAgentStarted } from "./chat/MessagesTimeline.logic";
 import {
@@ -6947,14 +6948,10 @@ export default function ChatView(props: ChatViewProps) {
       }
     }
   }, [activeThread, environmentId, interruptThreadTurn, setThreadError]);
+  const openThreadInPane = useOpenThreadInPane(); // Fork: stay in the split pane
   const onOpenRelatedThread = useCallback(
-    (threadId: ThreadId) => {
-      void navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(scopeThreadRef(environmentId, threadId)),
-      });
-    },
-    [environmentId, navigate],
+    (threadId: ThreadId) => openThreadInPane(scopeThreadRef(environmentId, threadId)),
+    [environmentId, openThreadInPane],
   );
 
   const backgroundWorkBannerItem = useMemo<ComposerBannerStackItem | null>(() => {
