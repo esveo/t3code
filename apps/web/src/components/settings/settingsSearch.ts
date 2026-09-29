@@ -441,6 +441,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["installed cli versions newer available codex claude cursor grok opencode"],
     scope: "environment-defaults",
   },
+  // Fork: coordinator threads nested in the sidebar.
+  {
+    id: "sidebar-child-threads",
+    title: "Child threads in the sidebar",
+    to: "/settings/general",
+    searchTerms: ["coordinator subthreads nested group expand sidebar orchestration children"],
+  },
   // Fork: coordinator decisions.
   {
     id: "thread-decisions",

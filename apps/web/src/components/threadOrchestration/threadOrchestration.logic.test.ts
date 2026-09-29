@@ -7,6 +7,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   crossProjectCoordinatorKeys,
   groupChildThreads,
+  NO_CHILD_THREAD_GROUPS,
   sidebarRowsWithCoordinators,
   visibleChildThreads,
 } from "./childThreads.logic";
@@ -176,6 +177,17 @@ describe("sidebarRowsWithCoordinators", () => {
       groups,
     });
     expect(rows.map((t) => t.id)).toEqual(["coord", "c2"]);
+  });
+
+  it("lists threads as upstream does while the sidebar setting is off", () => {
+    const coordinator = thread("coord");
+    const threads = [coordinator, delegated("c1", "coord")];
+    const rows = sidebarRowsWithCoordinators([coordinator], {
+      threads,
+      scopedProjectKeys: null,
+      groups: NO_CHILD_THREAD_GROUPS,
+    });
+    expect(rows.map((t) => t.id)).toEqual(["coord"]);
   });
 });
 

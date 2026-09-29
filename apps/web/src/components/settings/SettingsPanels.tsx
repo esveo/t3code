@@ -162,6 +162,7 @@ import {
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { ThreadDecisionsSettingRow } from "../threadInbox/ThreadDecisionsSettingRow";
+import { SidebarChildThreadsSettingRow } from "../threadOrchestration/SidebarChildThreadsSetting";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
 import { AgentStageSettingRow } from "../agentStage/AgentStageSetting";
@@ -2962,8 +2963,9 @@ export function GeneralSettingsPanel() {
           }
         />
 
-        {/* Fork: coordinator decisions. */}
+        {/* Fork: coordinator decisions and child threads in the sidebar. */}
         <ThreadDecisionsSettingRow />
+        <SidebarChildThreadsSettingRow />
 
         <SettingsRow
           serverScoped
