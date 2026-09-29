@@ -5,6 +5,8 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
+import { backupV1DatabaseBeforeV2Import } from "./forkV1DatabaseBackup.ts"; // Fork
+
 export class V2DatabaseImportError extends Schema.TaggedError<V2DatabaseImportError>()(
   "V2DatabaseImportError",
   { sourcePath: Schema.String, destinationPath: Schema.String, cause: Schema.Defect() },
@@ -25,6 +27,7 @@ export const initializeV2Database = Effect.fn("initializeV2Database")(function* 
   yield* Effect.gen(function* () {
     if (yield* fs.exists(destinationPath)) return;
     if (!(yield* fs.exists(sourcePath))) return;
+    yield* backupV1DatabaseBeforeV2Import(sourcePath); // Fork: explicit V1 backup before the migration
     const temporaryDirectory = yield* fs.makeTempDirectoryScoped({
       directory,
       prefix: ".v2-import-",
