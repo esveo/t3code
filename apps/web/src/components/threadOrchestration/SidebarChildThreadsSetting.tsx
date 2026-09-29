@@ -3,7 +3,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 
 import { resolveStorage } from "../../lib/storage";
 import { SettingsRow } from "../settings/settingsLayout";
-import { searchableSetting } from "../settings/settingsSearch";
+import { esveoSearchableSetting } from "~/components/esveoSettings/EsveoSettingBadge";
 import { Switch } from "../ui/switch";
 
 /**
@@ -38,7 +38,7 @@ export function SidebarChildThreadsSettingRow() {
   const setEnabled = useSidebarChildThreadsStore((state) => state.setEnabled);
   return (
     <SettingsRow
-      {...searchableSetting("sidebar-child-threads")}
+      {...esveoSearchableSetting("sidebar-child-threads")}
       description="Lists the threads a coordinator started under it in the sidebar, in a group you can expand. Off, they are reached through the coordinator's Threads panel."
       control={
         <Switch

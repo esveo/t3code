@@ -6,7 +6,7 @@ import { useEnvironments, usePrimaryEnvironmentId } from "~/state/environments";
 import { useOptionalSettingsScope } from "../settings/SettingsScopeContext";
 import { useEnvironmentQuery } from "~/state/query";
 import { SettingsRow } from "../settings/settingsLayout";
-import { searchableSetting } from "../settings/settingsSearch";
+import { esveoSearchableSetting } from "~/components/esveoSettings/EsveoSettingBadge";
 import { Button } from "../ui/button";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Spinner } from "../ui/spinner";
@@ -41,7 +41,7 @@ export function VoiceInputSettingRow() {
   };
   return (
     <SettingsRow
-      {...searchableSetting("voice-input")}
+      {...esveoSearchableSetting("voice-input")}
       description="Adds a microphone button to the composer. Speech is transcribed on the machine running T3 Code with Whisper, so no audio leaves it. Turning this on downloads the speech model (about 550 MB). Pick the language you dictate in when Whisper guesses wrong."
       status={
         enabled && environmentId ? <VoiceInputModelStatus environmentId={environmentId} /> : null

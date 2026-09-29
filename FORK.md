@@ -77,11 +77,12 @@ write changes with that merge in mind, not just with the current diff in mind.
   `apps/web/src/components/<feature>/` holding its views, logic, tests and
   store (`agentStage/`, `gitGraph/`, `split/`). Only its mount points live in
   upstream folders.
-- A fork feature's settings go on the esveo settings page (Settings → esveo,
-  `apps/web/src/components/esveoSettings/EsveoSettingsPanel.tsx`), not into
-  upstream's settings panels, and their search entries point at
-  `/settings/esveo`. Everyone finds the fork's switches in one place, and
-  upstream's panels stay free of fork rows.
+- A fork feature's settings sit where their topic belongs (Appearance,
+  General, …), as the fork's own small components mounted with one line in
+  upstream's panels. Each row takes its `id` and title from
+  `esveoSearchableSetting` (`apps/web/src/components/esveoSettings/`), which
+  adds the esveo badge, and its search item sets `fork: true`, so searching
+  "esveo" (or clicking a badge) lists every fork setting.
 - When an upstream file has to change, make the edit as small and as local as
   possible: one import plus one call site beats an inline block, and a wrapper
   around upstream's code beats a rewrite of it.

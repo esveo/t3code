@@ -7,6 +7,7 @@ import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { Button, InlineButton } from "../ui/button";
 import { Input } from "../ui/input";
+import { EsveoSettingBadge } from "../esveoSettings/EsveoSettingBadge";
 import { Label } from "../ui/label";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 
@@ -139,18 +140,21 @@ export function BitbucketCredentialsSettings({
     >
       {/* Locked while saving: a successful save clears the drafts, which would drop edits made mid-request. */}
       <fieldset disabled={saving} className="contents">
-        <ToggleGroup
-          aria-label="Bitbucket sign-in method"
-          variant="segmented"
-          value={[method]}
-          onValueChange={(next) => {
-            const value = next[0];
-            if (value === "access-token" || value === "api-token") setMethodChoice(value);
-          }}
-        >
-          <Toggle value="access-token">{METHODS["access-token"].label}</Toggle>
-          <Toggle value="api-token">{METHODS["api-token"].label}</Toggle>
-        </ToggleGroup>
+        <div className="flex items-center justify-between gap-3">
+          <ToggleGroup
+            aria-label="Bitbucket sign-in method"
+            variant="segmented"
+            value={[method]}
+            onValueChange={(next) => {
+              const value = next[0];
+              if (value === "access-token" || value === "api-token") setMethodChoice(value);
+            }}
+          >
+            <Toggle value="access-token">{METHODS["access-token"].label}</Toggle>
+            <Toggle value="api-token">{METHODS["api-token"].label}</Toggle>
+          </ToggleGroup>
+          <EsveoSettingBadge />
+        </div>
         <p className="max-w-2xl text-xs leading-relaxed text-muted-foreground">
           {info.description}{" "}
           <InlineButton render={<a href={info.link} target="_blank" rel="noreferrer noopener" />}>
