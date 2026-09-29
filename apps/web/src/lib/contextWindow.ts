@@ -60,7 +60,8 @@ export function deriveLatestContextWindowSnapshot(
       compactsAutomatically: true,
       autoCompactThreshold: null,
       cost: null,
-      promptCache: null,
+      // Fork: prompt cache window for the composer's cache timer.
+      promptCache: liveUsage.promptCache ?? null,
       updatedAt: liveUsage.updatedAt,
     };
   }

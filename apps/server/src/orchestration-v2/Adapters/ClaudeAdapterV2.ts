@@ -155,6 +155,8 @@ import {
   makeSubagentConversationArtifacts,
   subagentThreadTitle,
 } from "../SubagentProjection.ts";
+// Fork: prompt cache window for the composer's cache timer.
+import { makeClaudePromptCacheTracker } from "./ClaudePromptCache.ts";
 
 export const CLAUDE_PROVIDER = ProviderDriverKind.make("claudeAgent");
 export const CLAUDE_AGENT_SDK_QUERY_PROTOCOL = "claude-agent-sdk.query" as const;
@@ -2819,6 +2821,7 @@ export function makeClaudeAdapterV2(
         });
         const events = yield* Queue.unbounded<ProviderAdapterV2Event>();
         const activeTurn = yield* Ref.make<ActiveClaudeTurnContext | null>(null);
+        const trackPromptCache = makeClaudePromptCacheTracker(); // Fork
         const interruptedTurns = yield* Ref.make(new Set<OrchestrationV2ProviderTurn["id"]>());
         const steeredTurns = yield* Ref.make(new Set<OrchestrationV2ProviderTurn["id"]>());
         const queryContext = yield* Ref.make<ClaudeLiveQueryContext | null>(null);
@@ -5524,11 +5527,20 @@ export function makeClaudeAdapterV2(
                   status: "running",
                   startedAt: context.startedAt,
                   completedAt: null,
-                  tokenUsage: claudeProviderTurnTokenUsage(
-                    message.message.usage,
-                    context.input.modelSelection,
-                    DateTime.formatIso(now),
-                  ),
+                  tokenUsage: {
+                    ...claudeProviderTurnTokenUsage(
+                      message.message.usage,
+                      context.input.modelSelection,
+                      DateTime.formatIso(now),
+                    ),
+                    // Fork: prompt cache window for the composer's cache timer.
+                    ...trackPromptCache({
+                      providerThreadId: context.input.providerThread.id,
+                      messageId: message.message.id,
+                      usage: message.message.usage,
+                      now: DateTime.formatIso(now),
+                    }),
+                  },
                 },
               });
             }

@@ -14,14 +14,6 @@ export type PromptCacheState =
     }
   | { readonly kind: "cold"; readonly idleMs: number };
 
-/** Reads a `promptCache` field from an untrusted context-window activity payload. */
-export function asPromptCacheWindow(value: unknown): PromptCacheWindow | null {
-  if (!value || typeof value !== "object") return null;
-  const { ttl, refreshedAt } = value as Record<string, unknown>;
-  if ((ttl !== "5m" && ttl !== "1h") || typeof refreshedAt !== "string") return null;
-  return Number.isNaN(Date.parse(refreshedAt)) ? null : { ttl, refreshedAt };
-}
-
 /**
  * Whether the prompt cache is still warm at `now`. The provider keeps it for
  * one TTL after the last request, so the next message after that pays to

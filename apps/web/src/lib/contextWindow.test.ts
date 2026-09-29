@@ -80,4 +80,15 @@ describe("live provider-turn usage (#8144)", () => {
     expect(snapshot?.maxTokens).toBeNull();
     expect(snapshot?.usedPercentage).toBeNull();
   });
+
+  // Fork: the composer's cache timer reads the window from the live report.
+  it("carries the provider's prompt cache window", () => {
+    const promptCache = { ttl: "5m", refreshedAt: "2026-08-27T00:00:00.000Z" } as const;
+    const snapshot = deriveLatestContextWindowSnapshot([], {
+      usedTokens: 42_000,
+      promptCache,
+      updatedAt: "2026-08-27T00:00:00.000Z",
+    });
+    expect(snapshot?.promptCache).toEqual(promptCache);
+  });
 });
