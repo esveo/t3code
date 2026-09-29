@@ -6,7 +6,7 @@ import {
   resolveChildThreadState,
 } from "@t3tools/shared/threadOrchestration";
 
-export type ThreadOverviewGroupId = "waiting" | "working" | "review" | "done";
+export type ThreadOverviewGroupId = "waiting" | "working" | "review" | "active" | "settled";
 
 export interface ThreadOverviewGroup {
   readonly id: ThreadOverviewGroupId;
@@ -14,7 +14,7 @@ export interface ThreadOverviewGroup {
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
 }
 
-const GROUP_OF_STATE: Record<ChildThreadState, ThreadOverviewGroupId> = {
+const GROUP_OF_STATE: Record<ChildThreadState, ThreadOverviewGroupId | "done"> = {
   waiting: "waiting",
   failed: "waiting",
   working: "working",
@@ -23,11 +23,19 @@ const GROUP_OF_STATE: Record<ChildThreadState, ThreadOverviewGroupId> = {
   done: "done",
 };
 
+/** Finished threads split like the sidebar does: still active, or settled. */
+function groupOf(child: EnvironmentThreadShell): ThreadOverviewGroupId {
+  const group = GROUP_OF_STATE[resolveChildThreadState(child.source)];
+  if (group !== "done") return group;
+  return child.settledOverride === "settled" ? "settled" : "active";
+}
+
 const GROUPS: ReadonlyArray<{ readonly id: ThreadOverviewGroupId; readonly label: string }> = [
   { id: "waiting", label: "Waiting on you" },
   { id: "working", label: "Working" },
   { id: "review", label: "Ready for review" },
-  { id: "done", label: "Done" },
+  { id: "active", label: "Active" },
+  { id: "settled", label: "Settled" },
 ];
 
 /** The children of one coordinator. */
@@ -47,7 +55,7 @@ export function childThreadsOf(
 /**
  * The overview's sections in the order the user acts on them: what blocks on
  * them first (a failure counts, it needs a decision), then running work, then
- * finished work waiting for review, then the rest. Newest activity first
+ * finished work waiting for review, then the rest: active before settled. Newest activity first
  * within a section; empty sections are left out.
  */
 export function buildThreadOverview(
@@ -55,7 +63,7 @@ export function buildThreadOverview(
 ): ReadonlyArray<ThreadOverviewGroup> {
   const byGroup = new Map<ThreadOverviewGroupId, EnvironmentThreadShell[]>();
   for (const child of children) {
-    const group = GROUP_OF_STATE[resolveChildThreadState(child.source)];
+    const group = groupOf(child);
     const list = byGroup.get(group);
     if (list) list.push(child);
     else byGroup.set(group, [child]);
@@ -69,7 +77,5 @@ export function buildThreadOverview(
 }
 
 export function waitingThreadCount(children: ReadonlyArray<EnvironmentThreadShell>): number {
-  return children.filter(
-    (child) => GROUP_OF_STATE[resolveChildThreadState(child.source)] === "waiting",
-  ).length;
+  return children.filter((child) => groupOf(child) === "waiting").length;
 }

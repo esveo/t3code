@@ -195,9 +195,10 @@ describe("crossProjectCoordinatorKeys", () => {
 });
 
 describe("buildThreadOverview", () => {
-  it("orders sections by what the user acts on first and leaves empty ones out", () => {
+  it("orders sections by what the user acts on first, splits finished ones by settlement and leaves empty ones out", () => {
     const children = [
       thread("done", {}, { status: "completed" }),
+      thread("settled", { settledOverride: "settled" }, { status: "completed" }),
       thread("failed", {}, { status: "failed" }),
       thread("working", {}, { status: "running" }),
       thread(
@@ -214,7 +215,8 @@ describe("buildThreadOverview", () => {
     expect(groups.map((group) => [group.id, group.threads.map((t) => t.id)])).toEqual([
       ["waiting", expect.arrayContaining(["failed", "asks"])],
       ["working", ["working"]],
-      ["done", ["done"]],
+      ["active", ["done"]],
+      ["settled", ["settled"]],
     ]);
     expect(waitingThreadCount(children)).toBe(2);
   });

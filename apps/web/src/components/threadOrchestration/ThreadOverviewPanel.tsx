@@ -1,7 +1,7 @@
 /**
  * Fork: the threads a coordinator started, grouped by what they need from the
  * user: what waits on them, what is running, what is ready for review, and
- * what is done. Each row opens its thread.
+ * what is done, split into still active and settled. Each row opens its thread.
  */
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
@@ -87,7 +87,7 @@ function OverviewSection({
   onOpenInPanel: (threadRef: ScopedThreadRef) => void;
 }) {
   // Finished work folds away by default; everything else stays open.
-  const [open, setOpen] = useState(group.id !== "done");
+  const [open, setOpen] = useState(group.id !== "settled");
   return (
     <section>
       <button
