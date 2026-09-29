@@ -87,14 +87,14 @@ function OverviewRow({
           </span>
         </span>
         <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+          {model ? <span className="shrink-0">{model}</span> : null}
           {branch ? (
             <>
+              {model ? <span aria-hidden>·</span> : null}
               <GitBranchIcon aria-hidden className="size-3 shrink-0" />
               <span className="min-w-0 truncate">{branch}</span>
-              {model ? <span aria-hidden>·</span> : null}
             </>
           ) : null}
-          {model ? <span className="shrink-0">{model}</span> : null}
         </span>
       </span>
       <span className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
