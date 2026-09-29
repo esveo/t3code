@@ -40,19 +40,3 @@ export function useThreadOverviewSurface(threadRef: ScopedThreadRef | null) {
   }, [available, threadRef]);
   return { available, waitingCount: waitingThreadCount(children), open };
 }
-
-/** Whether a thread has started any threads, for chrome that only shows then. */
-export function useHasChildThreads(threadRef: ScopedThreadRef | null): boolean {
-  const threads = useThreadShells();
-  const coordinatorOf = useCoordinatorOf(threads);
-  return useMemo(
-    () =>
-      threadRef !== null &&
-      childThreadsOf(
-        threads,
-        { environmentId: threadRef.environmentId, id: threadRef.threadId },
-        coordinatorOf,
-      ).length > 0,
-    [coordinatorOf, threadRef, threads],
-  );
-}

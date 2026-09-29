@@ -31,7 +31,6 @@ import {
   WorkspaceBreadcrumbText,
 } from "../WorkspaceBreadcrumb";
 import { CoordinatorBreadcrumb } from "../threadOrchestration/CoordinatorBreadcrumb";
-import { ThreadOverviewHeaderButton } from "../threadOrchestration/ThreadOverviewHeaderButton";
 import { cn } from "~/lib/utils";
 
 interface ChatHeaderProps {
@@ -341,13 +340,6 @@ export const ChatHeader = memo(function ChatHeader({
           )}
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
-      {/* Fork: the threads this one started. */}
-      {isServerThread ? (
-        <ThreadOverviewHeaderButton
-          environmentId={activeThreadEnvironmentId}
-          threadId={activeThreadId}
-        />
-      ) : null}
     </div>
   );
 });
