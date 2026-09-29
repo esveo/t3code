@@ -17,6 +17,7 @@ import { resolveChildThreadState } from "@t3tools/shared/threadOrchestration";
 
 export { INITIATIVE_SETUP_PROMPT } from "./setupPrompt.ts";
 export * from "./rulesGraph.ts";
+export * from "./checks.ts";
 
 export type InitiativeRole = "participant" | "coordinator";
 
@@ -78,6 +79,11 @@ export const INITIATIVE_TOOL_PROFILES = {
   entry_status: "coordinator",
   rule_record: "participant",
   stats_estimate: "participant",
+  // Loops: check first, return one unit, rollbacks.
+  check_define: "coordinator",
+  check_report: "participant",
+  task_return: "coordinator",
+  rollback_mark: "coordinator",
 } as const satisfies Record<string, "any" | InitiativeRole>;
 
 export type InitiativeToolName = keyof typeof INITIATIVE_TOOL_PROFILES;
@@ -190,7 +196,8 @@ const COORDINATOR_RULES = [
   "- Record each step as a task (entry_create). Give it dependsOn only when it actually reads the output of that earlier task, and name what is passed. No edge where a step merely comes later.",
   "- Tasks without an edge between them are independent: start them in parallel, each as its own thread with a context of its own, no shared scratchpad. entry_list shows per task what it waits on and whether it is ready.",
   "- Deterministic steps (merging, sorting, deduplicating, comparing) are code, not an agent: write or run a script for them.",
-  "- When you reject a result, return only the faulty unit to the thread that made it (send_to_thread), with the finding and a fixed scope: fix only this, nothing beside it. After three failed corrections of the same unit, stop and ask the user with question_ask: then the plan is wrong, not the worker.",
+  "- Check first: give every task its acceptance check (acceptanceCheck in entry_create, or check_define) before it starts, and start it with initiative_start_thread and its taskId. A task is done only when check_report reports the check passed, or the user accepts it.",
+  "- When you reject a result, return only the faulty unit with task_return, with the finding and a fixed scope: fix only this, nothing beside it. After three failed corrections of the same unit it goes to the user as a question: then the plan is wrong, not the worker.",
   "- When a cause is confirmed (what went wrong and what fixed it), record it as a rule with rule_record, short and imperative, so every later thread starts with it. Replace an outdated rule instead of adding a second one.",
 ];
 

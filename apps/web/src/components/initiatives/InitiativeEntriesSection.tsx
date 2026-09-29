@@ -32,6 +32,7 @@ import { Textarea } from "../ui/textarea";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { authorLabel, useOpenInbox } from "./InitiativesInbox";
 import { initiativesEnvironment } from "./initiativesState";
+import { canBeDone, TaskCheckBadge, TaskCheckDetails } from "./InitiativeTaskCheck";
 
 const FILTER_LABELS = {
   open: "Offen",
@@ -204,6 +205,7 @@ function EntryRow({
             </Badge>
           )
         ) : null}
+        <TaskCheckBadge entry={entry} />
         {entry.inbox ? (
           <Button
             size="xs"
@@ -229,7 +231,12 @@ function EntryRow({
             </SelectTrigger>
             <SelectPopup alignItemWithTrigger={false}>
               {statuses.map((status) => (
-                <SelectItem key={status} hideIndicator value={status}>
+                <SelectItem
+                  key={status}
+                  hideIndicator
+                  value={status}
+                  disabled={status === "done" && !canBeDone(entry)}
+                >
                   {ENTRY_STATUS_LABELS[status] ?? status}
                 </SelectItem>
               ))}
@@ -253,6 +260,7 @@ function EntryRow({
           ))}
           {supersededTitle ? <p>ersetzt: {supersededTitle}</p> : null}
           {sourceTitle ? <p>entstanden aus: {sourceTitle}</p> : null}
+          <TaskCheckDetails environmentId={environmentId} entry={entry} />
           <p>
             {authorLabel(entry.createdBy)} · {new Date(entry.createdAt).toLocaleString("de-DE")}
           </p>

@@ -17,9 +17,11 @@ import {
 import {
   actionFingerprint,
   classifyRequest,
+  collectEvidence,
   PREFLIGHT_RULE_VERSION,
   preflightStats,
   readAction,
+  rollbackReport,
 } from "@t3tools/initiatives/preflight";
 import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
@@ -68,6 +70,23 @@ export const makePreflight = (options: {
           Effect.orElseSucceed(() => null),
         );
 
+  /**
+   * The evidence behind a verdict, in its fixed order: the thread's task
+   * checks, its earlier requests in this run, and its rollbacks.
+   */
+  const evidenceFor = (initiativeId: string, threadId: string, actionHash: string) =>
+    Effect.gen(function* () {
+      const [entries, earlier] = yield* Effect.all([
+        store.list("entry", { initiativeId }),
+        store.list("observation", { groupKey: threadId }),
+      ]).pipe(Effect.mapError(fromStore));
+      return collectEvidence({
+        tasks: entries.filter((entry) => entry.type === "task" && entry.threadId === threadId),
+        earlier,
+        actionHash,
+      });
+    }).pipe(Effect.orElseSucceed(() => []));
+
   /** Records the request and the rules' verdict, for a thread of an initiative in shadow mode. */
   const observeOpened = (request: RequestOpened) =>
     Effect.gen(function* () {
@@ -98,6 +117,8 @@ export const makePreflight = (options: {
         workspaceRoot,
         warnings: request.warnings,
       });
+      const actionHash = yield* options.digest(actionFingerprint(request.requestType, action));
+      const evidence = yield* evidenceFor(initiative.id, request.threadId, actionHash);
       const latencyMs = (yield* Clock.currentTimeMillis) - started;
       const observation = yield* store
         .insert(
@@ -110,14 +131,20 @@ export const makePreflight = (options: {
             runtimeMode: shell?.runtimeMode ?? "unknown",
             requestType: request.requestType,
             action,
-            actionHash: yield* options.digest(actionFingerprint(request.requestType, action)),
+            actionHash,
             providerWarning: request.warnings[0] ?? null,
             openedAt: request.createdAt,
             resolvedBy: null,
             decision: null,
             resolvedAt: null,
             verdicts: [
-              { checker: "rules", ruleVersion: PREFLIGHT_RULE_VERSION, ...verdict, latencyMs },
+              {
+                checker: "rules",
+                ruleVersion: PREFLIGHT_RULE_VERSION,
+                ...verdict,
+                latencyMs,
+                evidence,
+              },
             ],
             markedWrongBy: null,
           },
@@ -177,11 +204,29 @@ export const makePreflight = (options: {
 
   const report = (initiativeId: string | null) =>
     Effect.gen(function* () {
-      const observations = yield* store
-        .list("observation", initiativeId === null ? {} : { initiativeId })
-        .pipe(Effect.mapError(fromStore));
+      const filter = initiativeId === null ? {} : { initiativeId };
+      const [observations, entries] = yield* Effect.all([
+        store.list("observation", filter),
+        store.list("entry", filter),
+      ]).pipe(Effect.mapError(fromStore));
+      const shells = yield* options.initiatives.threads
+        .listThreads()
+        .pipe(Effect.orElseSucceed(() => []));
+      const providers = new Map<string, string>();
+      const titles = new Map(shells.map((shell) => [shell.id as string, shell.title]));
+      for (const shell of shells) {
+        const instanceId = shell.modelSelection?.instanceId;
+        if (instanceId) providers.set(shell.id, instanceId);
+      }
+      const rollbacks = rollbackReport({
+        observations,
+        tasks: entries.filter((entry) => entry.inbox === null),
+        providerOf: (threadId) => providers.get(threadId) ?? null,
+        titleOf: (threadId) => titles.get(threadId) ?? null,
+      });
       return {
-        providers: preflightStats(observations),
+        providers: preflightStats(observations, rollbacks.byProvider),
+        threads: rollbacks.threads,
         observations: observations
           .toSorted((a, b) => b.openedAt.localeCompare(a.openedAt))
           .slice(0, 200),

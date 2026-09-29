@@ -1,6 +1,17 @@
-import { type OrchestrationThreadShell, ProjectId, ThreadId } from "@t3tools/contracts";
+import {
+  type InitiativeAcceptanceCheck,
+  InitiativesError,
+  type OrchestrationThreadShell,
+  ProjectId,
+  ThreadId,
+} from "@t3tools/contracts";
 import {
   agentAuthor,
+  CHECKED_ENTRY_TYPES,
+  checkPromptBlock,
+  checkStateOf,
+  describeCheck,
+  isCheckedEntry,
   type InitiativeRole,
   type InitiativeToolName,
   mayUseTool,
@@ -21,6 +32,7 @@ import * as Option from "effect/Option";
 
 import * as McpInvocationContext from "../../mcp/McpInvocationContext.ts";
 import * as ThreadDecisions from "../../threadDecisions/ThreadDecisions.ts";
+import type { Escalate } from "../InitiativeChecks.ts";
 import { selectEntries } from "../InitiativeEntries.ts";
 import { Initiatives, type InitiativesShape, type ThreadMembership } from "../Initiatives.ts";
 import { InitiativeToolError, InitiativesToolkit } from "./tools.ts";
@@ -30,6 +42,19 @@ const fromService = (error: { readonly message: string }) => fail(error.message)
 
 const link = (threadId: string, title: string) =>
   `[${title.replaceAll("]", ")")}](${threadLinkHref(threadId)})`;
+
+/** A check as the tools take it, with the optional fields made explicit. */
+const acceptanceCheckOf = (input: {
+  readonly kind: InitiativeAcceptanceCheck["kind"];
+  readonly description: string;
+  readonly ref?: string | undefined;
+  readonly expected?: string | undefined;
+}): InitiativeAcceptanceCheck => ({
+  kind: input.kind,
+  description: input.description,
+  ref: input.ref?.trim() || null,
+  expected: input.expected?.trim() || null,
+});
 
 interface Caller {
   readonly threadId: string;
@@ -103,6 +128,21 @@ const make = Effect.gen(function* () {
           : Effect.fail(fail(`No entry ${entryId} in this initiative.`)),
       ),
     );
+
+  /** Raises a task whose corrections ran out as a question in the coordinator's Inbox. */
+  const escalateFor =
+    (inboxThreadId: string): Escalate =>
+    ({ entry, title, question }) =>
+      Effect.gen(function* () {
+        const inboxes = yield* requireDecisions;
+        yield* inboxes.upsert(ThreadId.make(inboxThreadId), {
+          // Stable per task, so a repeated escalation updates the one question.
+          id: `task-${entry.id}-plan`,
+          title,
+          question,
+          urgency: "today",
+        });
+      }).pipe(Effect.mapError((error) => new InitiativesError({ message: error.message })));
 
   const liveShells = (initiatives: InitiativesShape) =>
     initiatives.threads.listThreads().pipe(
@@ -293,6 +333,10 @@ const make = Effect.gen(function* () {
               : `No project ${input.project} in the initiative. Projects: ${projects.map((candidate) => candidate.label).join(", ")}.`,
           );
         }
+        const task = input.taskId
+          ? yield* requireOwnEntry(initiatives, own.id, input.taskId)
+          : null;
+        if (task && task.type !== "task") return yield* fail(`${task.id} is no task.`);
         const key = input.key
           ? `${own.id}:${input.key}`
           : `${own.id}:${yield* crypto.randomUUIDv4.pipe(Effect.orDie)}`;
@@ -303,7 +347,9 @@ const make = Effect.gen(function* () {
               key,
               projectId: ProjectId.make(project.projectId),
               title: input.title,
-              prompt: input.prompt,
+              prompt: task?.acceptanceCheck
+                ? `${checkPromptBlock({ entryId: task.id, check: task.acceptanceCheck })}\n\n${input.prompt}`
+                : input.prompt,
               provider: input.provider,
               model: input.model,
               worktree: input.worktree,
@@ -313,6 +359,11 @@ const make = Effect.gen(function* () {
             authorOf(caller),
           )
           .pipe(Effect.mapError(fromService));
+        if (task) {
+          yield* initiatives.checks
+            .assignThread(task.id, job.threadId, authorOf(caller))
+            .pipe(Effect.mapError(fromService));
+        }
         return {
           threadId: job.threadId,
           link: link(job.threadId, job.spec.title),
@@ -435,6 +486,9 @@ const make = Effect.gen(function* () {
           yield* requireOwnEntry(initiatives, own, dependency.entryId);
         }
         const author = authorOf(caller);
+        if (input.acceptanceCheck && !CHECKED_ENTRY_TYPES.has(input.type)) {
+          return yield* fail("Only a task or plan carries an acceptance check.");
+        }
         const entry = yield* initiatives.entries
           .create(
             {
@@ -452,6 +506,9 @@ const make = Effect.gen(function* () {
                     }
                   : input.details,
               originThreadId: ThreadId.make(caller.threadId),
+              acceptanceCheck: input.acceptanceCheck
+                ? acceptanceCheckOf(input.acceptanceCheck)
+                : null,
             },
             author,
           )
@@ -505,6 +562,11 @@ const make = Effect.gen(function* () {
                 passes: dependency.passes,
               })),
               ready: graph.get(entry.id)?.ready ?? null,
+              check: isCheckedEntry(entry)
+                ? `${checkStateOf(entry)}${entry.acceptanceCheck ? `: ${describeCheck(entry.acceptanceCheck)}` : ""}`
+                : null,
+              attempts: entry.attempts ?? 0,
+              threadId: entry.threadId ?? null,
             })),
         };
       }),
@@ -642,6 +704,108 @@ const make = Effect.gen(function* () {
           .create({ ...fields, initiativeId: own, type: "rule" }, authorOf(caller))
           .pipe(Effect.mapError(fromService));
         return { entryId: entry.id, status: entry.status };
+      }),
+
+    check_define: ({ entryId, ...check }) =>
+      Effect.gen(function* () {
+        const { initiatives, caller } = yield* callerFor("check_define");
+        yield* requireOwnEntry(initiatives, caller.membership!.initiative.id, entryId);
+        const entry = yield* initiatives.checks
+          .setCheck(entryId, acceptanceCheckOf(check), authorOf(caller))
+          .pipe(Effect.mapError(fromService));
+        return { entryId: entry.id };
+      }),
+
+    check_report: (input) =>
+      Effect.gen(function* () {
+        const { initiatives, caller } = yield* callerFor("check_report");
+        const own = caller.membership!.initiative;
+        yield* requireOwnEntry(initiatives, own.id, input.entryId);
+        const author = authorOf(caller);
+        const entry = yield* initiatives.checks
+          .report(input.entryId, input, author)
+          .pipe(Effect.mapError(fromService));
+        // A failure seen by another thread goes back to the one doing the task;
+        // the worker reporting its own failure simply keeps fixing it.
+        const sendBack =
+          input.outcome === "failed" &&
+          entry.type === "task" &&
+          entry.threadId != null &&
+          entry.threadId !== caller.threadId;
+        if (!sendBack) {
+          return {
+            outcome: input.outcome,
+            returned: false,
+            escalated: false,
+            attempts: entry.attempts ?? 0,
+          };
+        }
+        const outcome = yield* initiatives.checks
+          .returnUnit(
+            entry.id,
+            {
+              finding:
+                `The acceptance check failed: ${input.excerpt ?? input.url ?? input.commit ?? ""}`.trim(),
+              scope: "Make the acceptance check pass; change nothing else.",
+            },
+            author,
+            escalateFor(own.coordinatorThreadId ?? caller.threadId),
+          )
+          .pipe(Effect.mapError(fromService));
+        return {
+          outcome: input.outcome,
+          returned: outcome.status === "returned",
+          escalated: outcome.status === "escalated",
+          attempts: outcome.attempts,
+        };
+      }),
+
+    task_return: (input) =>
+      Effect.gen(function* () {
+        const { initiatives, caller } = yield* callerFor("task_return");
+        const own = caller.membership!.initiative;
+        yield* requireOwnEntry(initiatives, own.id, input.entryId);
+        const outcome = yield* initiatives.checks
+          .returnUnit(
+            input.entryId,
+            {
+              finding: input.finding,
+              scope: input.scope,
+              threadId: input.threadId ? ThreadId.make(input.threadId) : undefined,
+            },
+            authorOf(caller),
+            escalateFor(own.coordinatorThreadId ?? caller.threadId),
+          )
+          .pipe(Effect.mapError(fromService));
+        return { status: outcome.status, attempts: outcome.attempts };
+      }),
+
+    rollback_mark: (input) =>
+      Effect.gen(function* () {
+        const { initiatives, caller } = yield* callerFor("rollback_mark");
+        const own = caller.membership!.initiative.id;
+        if ((input.entryId === undefined) === (input.observationId === undefined)) {
+          return yield* fail("Name either the task (entryId) or the request (observationId).");
+        }
+        if (input.entryId !== undefined) {
+          yield* requireOwnEntry(initiatives, own, input.entryId);
+        } else {
+          const observation = yield* initiatives.store
+            .get("observation", input.observationId!)
+            .pipe(Effect.mapError(fromService));
+          if (Option.isNone(observation) || observation.value.initiativeId !== own) {
+            return yield* fail(`No request ${input.observationId} in this initiative.`);
+          }
+        }
+        yield* initiatives.checks
+          .markRolledBack(
+            input.entryId !== undefined ? "entry" : "observation",
+            (input.entryId ?? input.observationId)!,
+            input.rolledBack,
+            authorOf(caller),
+          )
+          .pipe(Effect.mapError(fromService));
+        return { rolledBack: input.rolledBack };
       }),
 
     session_assign: (input) =>

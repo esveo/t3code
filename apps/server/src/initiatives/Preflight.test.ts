@@ -86,6 +86,62 @@ describe("preflight in shadow mode", () => {
     }),
   );
 
+  it.effect("names its evidence in order and counts rollbacks per thread and provider", () =>
+    Effect.gen(function* () {
+      const { initiatives, initiativeId } = yield* makeHarness;
+      const task = yield* initiatives.entries.create(
+        {
+          initiativeId,
+          type: "task",
+          title: "Contact form",
+          acceptanceCheck: {
+            kind: "criterion",
+            description: "Spam is rejected",
+            ref: null,
+            expected: null,
+          },
+        },
+        ROBERT,
+      );
+      yield* initiatives.checks.assignThread(task.id, THREAD, ROBERT);
+      yield* initiatives.checks.report(
+        task.id,
+        { outcome: "failed", excerpt: "spam got in" },
+        ROBERT,
+      );
+      yield* initiatives.preflight.observeOpened(opened("r1", "git status"));
+      yield* initiatives.preflight.observeResolution({
+        threadId: THREAD,
+        requestId: "r1",
+        by: "person",
+        decision: "accept",
+        at: "2026-09-26T10:01:00.000Z",
+      });
+      const second = yield* initiatives.preflight.observeOpened(opened("r2", "git status"));
+      const evidence = second?.verdicts[0]?.evidence ?? [];
+      assert.deepEqual(
+        evidence.map((item) => item.kind),
+        ["hard", "run", "rollbacks", "model"],
+      );
+      assert.include(evidence[0]!.text, '"Contact form": failed');
+      assert.include(evidence[1]!.text, "accepted 1");
+      assert.include(evidence[1]!.text, "same action was answered before: accept");
+
+      const first = (yield* initiatives.preflight.report(initiativeId)).observations.find(
+        (observation) => observation.requestId === "r1",
+      )!;
+      yield* initiatives.act(
+        { type: "markRolledBack", target: "observation", id: first.id, rolledBack: true },
+        ROBERT,
+      );
+      const report = yield* initiatives.preflight.report(initiativeId);
+      assert.deepInclude(report.providers[0], { rolledBack: 1, rollbackBase: 1 });
+      assert.deepInclude(report.threads[0], { threadId: THREAD, rolledBack: 1, base: 1 });
+      const third = yield* initiatives.preflight.observeOpened(opened("r3", "ls"));
+      assert.include(third!.verdicts[0]!.evidence![2]!.text, "1 of 1");
+    }),
+  );
+
   it.effect("looks only at threads of an initiative that has the preflight on", () =>
     Effect.gen(function* () {
       const { initiatives, initiativeId } = yield* makeHarness;

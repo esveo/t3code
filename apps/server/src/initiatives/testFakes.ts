@@ -55,6 +55,7 @@ export const makeFakeBridge = () => {
     { turns: number; firstAt: string | null; lastAt: string | null }
   >();
   const interrupts: Array<string> = [];
+  const messages: Array<{ threadId: string; text: string }> = [];
   const usage: Array<{
     instanceId: string;
     driver: string;
@@ -126,10 +127,14 @@ export const makeFakeBridge = () => {
         threads.set(threadId, { ...thread, session: { ...thread.session, status: "ready" } });
         return true;
       }),
+    sendMessage: (threadId, text) =>
+      threads.has(threadId)
+        ? Effect.sync(() => void messages.push({ threadId, text }))
+        : Effect.fail(new ThreadBridgeError({ message: `Thread ${threadId} was not found.` })),
     threadActivity: (threadId) => Effect.sync(() => activity.get(threadId) ?? null),
     providerUsage: () => Effect.sync(() => usage),
   };
-  return { bridge, threads, starts, state, projects, activity, usage, interrupts };
+  return { bridge, threads, starts, state, projects, activity, usage, interrupts, messages };
 };
 
 /** A brain that keeps its pages in a map and counts commits instead of running git. */

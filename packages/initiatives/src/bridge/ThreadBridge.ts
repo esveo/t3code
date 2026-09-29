@@ -91,6 +91,14 @@ export interface ThreadBridge {
   >;
   /** Stops the thread's running turn; false when it was not working. */
   readonly interruptThread: (threadId: ThreadId) => Effect.Effect<boolean, ThreadBridgeError>;
+  /**
+   * Sends the thread a message as a new turn; a working thread takes it after
+   * its current turn. Used to hand a task back for a correction.
+   */
+  readonly sendMessage: (
+    threadId: ThreadId,
+    text: string,
+  ) => Effect.Effect<void, ThreadBridgeError>;
   /** Hands a thread to another coordinator, whose updates it then reports to. */
   readonly setParent: (
     threadId: ThreadId,

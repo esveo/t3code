@@ -306,6 +306,8 @@ export const PROVIDER_COVERAGE: Record<
  */
 export function preflightStats(
   observations: ReadonlyArray<InitiativeApprovalObservation>,
+  /** Rolled-back work per provider, from rollbackReport. */
+  rollbacks?: ReadonlyMap<string, { readonly rolledBack: number; readonly base: number }>,
 ): ReadonlyArray<PreflightProviderStats> {
   const byProvider = new Map<string, Array<InitiativeApprovalObservation>>();
   for (const observation of observations) {
@@ -345,7 +347,11 @@ export function preflightStats(
         wrongAccepts,
         needlessAsks,
         markedWrong: list.filter((observation) => observation.markedWrongBy !== null).length,
+        rolledBack: rollbacks?.get(provider)?.rolledBack ?? 0,
+        rollbackBase: rollbacks?.get(provider)?.base ?? 0,
       };
     })
     .toSorted((a, b) => b.requests - a.requests);
 }
+
+export * from "./evidence.ts";

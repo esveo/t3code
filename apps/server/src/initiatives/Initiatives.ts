@@ -66,6 +66,7 @@ import * as UsageService from "../usage/UsageService.ts";
 import { readThreadUsage } from "../usage/ThreadUsageQuery.ts";
 import { type BrainArchiveShape, makeBrainArchive } from "./BrainArchive.ts";
 import { type InitiativeBrain, makeInitiativeBrain } from "./InitiativeBrain.ts";
+import { type InitiativeChecks, makeInitiativeChecks } from "./InitiativeChecks.ts";
 import { type InitiativeEntries, makeInitiativeEntries } from "./InitiativeEntries.ts";
 import { type InboxStorage, makeInboxStorage } from "./InitiativeInbox.ts";
 import { makeDigest, makePreflight, type Preflight } from "./Preflight.ts";
@@ -137,6 +138,7 @@ export interface InitiativesShape {
   /** Where the coordinator Inbox (ThreadDecisions) keeps its items. */
   readonly inbox: InboxStorage;
   readonly entries: InitiativeEntries;
+  readonly checks: InitiativeChecks;
   readonly subscribeInbox: Stream.Stream<InitiativesInboxSnapshot, InitiativesError>;
   readonly preflight: Preflight;
   readonly importer: InitiativeImport;
@@ -619,6 +621,8 @@ export const makeInitiatives = (options: {
         ),
     });
 
+    const checks = makeInitiativeChecks({ store, bridge, changed });
+
     const globallyHalted = store.get("control", GLOBAL_CONTROL_ID).pipe(
       Effect.map((control) => Option.isSome(control) && control.value.halted),
       Effect.orElseSucceed(() => false),
@@ -1076,6 +1080,26 @@ export const makeInitiatives = (options: {
             yield* stats.refresh(action.initiativeId, author);
             return { id: action.initiativeId };
           }
+          case "entryCheckSet": {
+            const entry = yield* checks.setCheck(action.entryId, action.check, author);
+            return { id: entry.id };
+          }
+          case "entryAcceptWithoutCheck": {
+            const entry = yield* checks.acceptWithoutCheck(action.entryId, author);
+            return { id: entry.id };
+          }
+          case "entryReturn": {
+            yield* checks.returnUnit(
+              action.entryId,
+              { finding: action.finding, scope: action.scope },
+              author,
+            );
+            return { id: action.entryId };
+          }
+          case "markRolledBack": {
+            yield* checks.markRolledBack(action.target, action.id, action.rolledBack, author);
+            return { id: action.id };
+          }
           case "autoAssignRuleSet": {
             const rule = yield* store
               .update("autoAssignRule", action.ruleId, { enabled: action.enabled }, { author })
@@ -1130,6 +1154,7 @@ export const makeInitiatives = (options: {
       brain,
       inbox,
       entries,
+      checks,
       subscribeInbox: subscribeTo(entries.inboxSnapshot, () => true),
       preflight,
       importer,

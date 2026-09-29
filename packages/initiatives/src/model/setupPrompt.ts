@@ -15,7 +15,7 @@ Führe ein kurzes Gespräch, eine Frage nach der anderen, auf Deutsch:
 
 Halte fest, was wir klären, jeweils nachdem du mir kurz gezeigt hast, was du speicherst, und ich zugestimmt habe:
 - Name, Ziel und Anweisungen mit initiative_update (Ziel als Liste, Anweisungen als Markdown). Mit dem ersten Ziel wird aus dem Entwurf ein aktives Vorhaben.
-- Arbeitsschritte mit entry_create als task, mit dependsOn samt dem, was übergeben wird; Meilensteine als plan, Ideen als idea, Annahmen als assumption.
+- Arbeitsschritte mit entry_create als task, jeweils mit acceptanceCheck (woran prüfbar ist, dass er fertig ist) und mit dependsOn samt dem, was übergeben wird; Meilensteine als plan, Ideen als idea, Annahmen als assumption.
 - Hintergrund, der nicht in den Steckbrief gehört, mit brain_write; die Übergabe mit handoff_update.
 
 Zum Schluss:

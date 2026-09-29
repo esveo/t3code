@@ -324,6 +324,7 @@ describe("initiatives toolkit", () => {
       const collect = yield* harness.call("coordinator", "entry_create", {
         type: "task",
         title: "Seiten sammeln",
+        acceptanceCheck: { kind: "criterion", description: "Jede Seite steht in der Liste" },
       });
       const rate = yield* harness.call("coordinator", "entry_create", {
         type: "task",
@@ -352,12 +353,108 @@ describe("initiatives toolkit", () => {
       );
       assert.include(loop.message, "loop");
 
+      // A task is done only with a passed check (or the user's acceptance).
+      yield* harness.call("coordinator", "check_report", {
+        entryId: collect.entryId,
+        outcome: "passed",
+        excerpt: "42 Seiten in der Liste",
+      });
       yield* harness.call("coordinator", "entry_status", {
         entryId: collect.entryId,
         status: "done",
       });
       const after = yield* harness.call("coordinator", "entry_list", { type: "task" });
       assert.isTrue(after.entries.find((entry) => entry.entryId === rate.entryId)?.ready);
+    }),
+  );
+
+  it.effect("runs a task from its check to a return, by profile", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      const created = yield* harness.call("coordinator", "entry_create", {
+        type: "task",
+        title: "Contact form",
+        acceptanceCheck: {
+          kind: "command",
+          description: "The form's tests pass",
+          ref: "vp test run contact",
+          expected: "0 failed",
+        },
+      });
+      const started = yield* harness.call("coordinator", "initiative_start_thread", {
+        title: "Contact form",
+        prompt: "Build the contact form.",
+        taskId: created.entryId,
+      });
+      assert.include(harness.fake.starts[0]!.prompt, "Acceptance check of this task");
+      assert.include(harness.fake.starts[0]!.prompt, "vp test run contact");
+
+      const noEvidence = yield* Effect.flip(
+        harness.call("member", "check_report", { entryId: created.entryId, outcome: "passed" }),
+      );
+      assert.include(noEvidence.message, "evidence");
+      const notMember = yield* Effect.flip(
+        harness.call("member", "task_return", {
+          entryId: created.entryId,
+          finding: "x",
+          scope: "y",
+        }),
+      );
+      assert.include(notMember.message, "coordinator");
+
+      // A failure seen by another thread than the worker sends the task back to it.
+      const reported = yield* harness.call("member", "check_report", {
+        entryId: created.entryId,
+        outcome: "failed",
+        excerpt: "2 failed",
+      });
+      assert.deepEqual(reported, {
+        outcome: "failed",
+        returned: true,
+        escalated: false,
+        attempts: 1,
+      });
+      assert.equal(harness.fake.messages[0]?.threadId, started.threadId);
+      assert.include(harness.fake.messages[0]!.text, "2 failed");
+
+      const done = yield* Effect.flip(
+        harness.call("coordinator", "entry_status", { entryId: created.entryId, status: "done" }),
+      );
+      assert.include(done.message, "failed last");
+      yield* harness.call("coordinator", "rollback_mark", {
+        entryId: created.entryId,
+        rolledBack: true,
+      });
+      const entry = yield* harness.initiatives.entries.requireEntry(created.entryId);
+      assert.equal(entry.rolledBackBy, "role:coordinator:coordinator");
+    }),
+  );
+
+  it.effect("starts a task's thread with the initiative's rules and the task's check", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      yield* harness.call("coordinator", "rule_record", {
+        rule: "Vor jeder Schemaänderung den Migrationstest laufen lassen.",
+      });
+      const task = yield* harness.call("coordinator", "entry_create", {
+        type: "task",
+        title: "Contact form",
+        acceptanceCheck: {
+          kind: "command",
+          description: "The form's tests pass",
+          ref: "vp test run contact",
+          expected: "0 failed",
+        },
+      });
+      yield* harness.call("coordinator", "initiative_start_thread", {
+        title: "Contact form",
+        prompt: "Build the contact form.",
+        taskId: task.entryId,
+      });
+      const prompt = harness.fake.starts.at(-1)!.prompt;
+      assert.include(prompt, "1. Vor jeder Schemaänderung den Migrationstest laufen lassen.");
+      assert.include(prompt, "Acceptance check of this task");
+      assert.include(prompt, "Build the contact form.");
     }),
   );
 });

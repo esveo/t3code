@@ -100,6 +100,7 @@ export function InitiativePreflightSection({
               <th className="font-medium">Übereinstimmung</th>
               <th className="font-medium">falsch freigegeben</th>
               <th className="font-medium">unnötig gefragt</th>
+              <th className="font-medium">zurückgedreht</th>
             </tr>
           </thead>
           <tbody className="tabular-nums">
@@ -119,6 +120,10 @@ export function InitiativePreflightSection({
                 <td>{percent(stats.agreed, stats.byPerson)}</td>
                 <td>{stats.wrongAccepts}</td>
                 <td>{stats.needlessAsks}</td>
+                <td>
+                  {percent(stats.rolledBack, stats.rollbackBase)} ({stats.rolledBack}/
+                  {stats.rollbackBase})
+                </td>
               </tr>
             ))}
           </tbody>
@@ -126,6 +131,17 @@ export function InitiativePreflightSection({
       ) : (
         <p className="text-sm text-muted-foreground">Noch keine Freigabe-Anfragen gesehen.</p>
       )}
+      {report.data && report.data.threads.length > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          Zurückgedreht je Thread:{" "}
+          {report.data.threads
+            .map(
+              (thread) =>
+                `${thread.title ?? thread.threadId} (${thread.provider ?? "?"}) ${thread.rolledBack}/${thread.base}`,
+            )
+            .join(" · ")}
+        </p>
+      ) : null}
       {report.data && report.data.observations.length > 0 ? (
         <>
           <ToggleGroup
@@ -156,6 +172,17 @@ export function InitiativePreflightSection({
                     input: { type: "preflightMarkWrong", observationId: observation.id, wrong },
                   }).then(() => report.refresh())
                 }
+                onMarkRolledBack={(rolledBack) =>
+                  void act({
+                    environmentId,
+                    input: {
+                      type: "markRolledBack",
+                      target: "observation",
+                      id: observation.id,
+                      rolledBack,
+                    },
+                  }).then(() => report.refresh())
+                }
               />
             ))}
             {observations.length === 0 ? (
@@ -168,6 +195,13 @@ export function InitiativePreflightSection({
   );
 }
 
+const EVIDENCE_LABELS = {
+  hard: "Harte Ergebnisse",
+  run: "Verlauf dieses Laufs",
+  rollbacks: "Zurückgedreht",
+  model: "Selbsteinschätzung des Modells",
+} as const;
+
 const RESOLVED_LABELS = {
   person: "von dir",
   "provider-auto": "vom Provider",
@@ -177,9 +211,11 @@ const RESOLVED_LABELS = {
 function ObservationRow({
   observation,
   onMarkWrong,
+  onMarkRolledBack,
 }: {
   readonly observation: InitiativeApprovalObservation;
   readonly onMarkWrong: (wrong: boolean) => void;
+  readonly onMarkRolledBack: (rolledBack: boolean) => void;
 }) {
   const verdict = observation.verdicts[0];
   const what =
@@ -217,11 +253,29 @@ function ObservationRow({
         >
           {observation.markedWrongBy === null ? "Als falsch markieren" : "Markierung lösen"}
         </Button>
+        {answerOf(observation.decision) === "accept" ? (
+          <Button
+            size="xs"
+            variant="ghost"
+            onClick={() => onMarkRolledBack(!observation.rolledBackBy)}
+          >
+            {observation.rolledBackBy ? "Nicht zurückgedreht" : "Zurückgedreht"}
+          </Button>
+        ) : null}
       </div>
       {verdict ? (
         <span className="text-muted-foreground">
           {observation.provider} · {verdict.category} · {verdict.reason}
         </span>
+      ) : null}
+      {verdict?.evidence && verdict.evidence.length > 0 ? (
+        <ol className="list-decimal pl-5 text-muted-foreground">
+          {verdict.evidence.map((item) => (
+            <li key={item.kind}>
+              {EVIDENCE_LABELS[item.kind]}: {item.text}
+            </li>
+          ))}
+        </ol>
       ) : null}
     </li>
   );

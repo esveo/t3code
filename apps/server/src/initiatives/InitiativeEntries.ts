@@ -7,6 +7,7 @@
  */
 import {
   type Initiative,
+  type InitiativeAcceptanceCheck,
   type InitiativeAuthor,
   type InitiativeEntry,
   type InitiativeEntryLinkKind,
@@ -20,6 +21,7 @@ import {
   ENTRY_STATUSES,
   entryStatusBlocker,
   isEntryOpen,
+  taskDoneBlocker,
 } from "@t3tools/initiatives/model";
 import type { InitiativeStore } from "@t3tools/initiatives/store";
 import * as Effect from "effect/Effect";
@@ -36,6 +38,8 @@ export interface EntryInput {
   readonly originThreadId?: ThreadId | null | undefined;
   readonly supersedes?: string | null | undefined;
   readonly status?: string | undefined;
+  /** For a task or plan: the check fixed before the work starts. */
+  readonly acceptanceCheck?: InitiativeAcceptanceCheck | null | undefined;
 }
 
 export const makeInitiativeEntries = (options: {
@@ -80,6 +84,7 @@ export const makeInitiativeEntries = (options: {
             routeToThreadId: null,
             snoozedAt: null,
             legacyKey: null,
+            ...(input.acceptanceCheck ? { acceptanceCheck: input.acceptanceCheck } : {}),
           },
           author,
         )
@@ -98,7 +103,9 @@ export const makeInitiativeEntries = (options: {
       if (entry.inbox) {
         return yield* failure("This is an Inbox item; answer it in its coordinator's Inbox.");
       }
-      const blocker = entryStatusBlocker(entry, status, author);
+      const blocker =
+        entryStatusBlocker(entry, status, author) ??
+        (status === "done" ? taskDoneBlocker(entry) : null);
       if (blocker) return yield* failure(blocker);
       const updated = yield* store
         .update(
