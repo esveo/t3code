@@ -48,7 +48,8 @@ import { ProviderAdapterRegistryV2 } from "./ProviderAdapterRegistry.ts";
 import { ProjectionStoreV2 } from "./ProjectionStore.ts";
 
 const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
-const DEFAULT_MAX_IDLE_PIN_MS = 4 * 60 * 60 * 1000;
+// Fork: 24h instead of 4h so long watch loops and monitors keep their session.
+const DEFAULT_MAX_IDLE_PIN_MS = 24 * 60 * 60 * 1000;
 const RELEASE_SCOPE_CLOSE_TIMEOUT_MS = 30 * 1000;
 const UNLOAD_THREAD_TIMEOUT_MS = 10 * 1000;
 
