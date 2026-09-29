@@ -2,7 +2,8 @@
  * Fork: an initiative's entries: its decisions, assumptions, issues, tasks
  * and the rest of the log, with who wrote them and what replaced them. Inbox
  * questions are answered in their coordinator's Inbox; everything else moves
- * on here through its statuses.
+ * on here through its statuses. A task shows what it waits on and whether it
+ * can start; a rule shows where it came from.
  */
 import type {
   EnvironmentId,
@@ -16,6 +17,8 @@ import {
   ENTRY_STATUSES,
   ENTRY_TYPE_LABELS,
   isEntryOpen,
+  type TaskNode,
+  taskGraph,
 } from "@t3tools/initiatives/model";
 import { PlusIcon } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -30,7 +33,14 @@ import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { authorLabel, useOpenInbox } from "./InitiativesInbox";
 import { initiativesEnvironment } from "./initiativesState";
 
-type Filter = "open" | "decision" | "all";
+const FILTER_LABELS = {
+  open: "Offen",
+  task: "Tasks",
+  rule: "Regeln",
+  decision: "Entscheidungen",
+  all: "Alle",
+} as const;
+type Filter = keyof typeof FILTER_LABELS;
 
 const CREATABLE: ReadonlyArray<InitiativeEntryType> = [
   "decision",
@@ -41,6 +51,7 @@ const CREATABLE: ReadonlyArray<InitiativeEntryType> = [
   "idea",
   "insight",
   "risk",
+  "rule",
 ];
 
 export function InitiativeEntriesSection({
@@ -61,15 +72,18 @@ export function InitiativeEntriesSection({
       entries
         .filter((entry) =>
           filter === "open"
-            ? isEntryOpen(entry) || entry.details["needsReview"] === true
-            : filter === "decision"
-              ? entry.type === "decision"
-              : true,
+            ? // An active rule stands; it waits on no one.
+              (isEntryOpen(entry) && !(entry.type === "rule" && entry.status === "active")) ||
+              entry.details["needsReview"] === true
+            : filter === "all"
+              ? true
+              : entry.type === filter,
         )
         .toSorted((a, b) => b.createdAt.localeCompare(a.createdAt)),
     [entries, filter],
   );
   const titles = useMemo(() => new Map(entries.map((entry) => [entry.id, entry.title])), [entries]);
+  const graph = useMemo(() => taskGraph(entries, links), [entries, links]);
 
   return (
     <section className="flex flex-col gap-2">
@@ -79,18 +93,14 @@ export function InitiativeEntriesSection({
           value={[filter]}
           onValueChange={(value) => {
             const next = value[0];
-            if (next === "open" || next === "decision" || next === "all") setFilter(next);
+            if (next && next in FILTER_LABELS) setFilter(next as Filter);
           }}
         >
-          <Toggle value="open" size="sm">
-            Offen
-          </Toggle>
-          <Toggle value="decision" size="sm">
-            Entscheidungen
-          </Toggle>
-          <Toggle value="all" size="sm">
-            Alle
-          </Toggle>
+          {(Object.keys(FILTER_LABELS) as Array<Filter>).map((key) => (
+            <Toggle key={key} value={key} size="sm">
+              {FILTER_LABELS[key]}
+            </Toggle>
+          ))}
         </ToggleGroup>
         <Button size="xs" variant="ghost" onClick={() => setCreating((value) => !value)}>
           <PlusIcon />
@@ -106,7 +116,11 @@ export function InitiativeEntriesSection({
       ) : null}
       {shown.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          {filter === "open" ? "Nichts offen." : "Noch keine Einträge."}
+          {filter === "open"
+            ? "Nichts offen."
+            : filter === "rule"
+              ? "Noch keine Regeln. Aus einer bestätigten Ursache wird eine Regel, die jeder neue Thread des Vorhabens mitbekommt."
+              : "Noch keine Einträge."}
         </p>
       ) : (
         <ul className="flex flex-col divide-y divide-border rounded-lg border border-border">
@@ -116,9 +130,20 @@ export function InitiativeEntriesSection({
               environmentId={environmentId}
               entry={entry}
               related={links
-                .filter((link) => link.fromId === entry.id)
+                // A task's dependencies show in its own line.
+                .filter(
+                  (link) =>
+                    link.fromId === entry.id &&
+                    !(entry.type === "task" && link.kind === "dependsOn"),
+                )
                 .map((link) => ({ kind: link.kind, title: titles.get(link.toId) ?? link.toId }))}
               supersededTitle={entry.supersedes ? (titles.get(entry.supersedes) ?? null) : null}
+              task={graph.get(entry.id) ?? null}
+              sourceTitle={
+                typeof entry.details["sourceEntryId"] === "string"
+                  ? (titles.get(entry.details["sourceEntryId"]) ?? null)
+                  : null
+              }
             />
           ))}
         </ul>
@@ -140,6 +165,8 @@ function EntryRow({
   entry,
   related,
   supersededTitle,
+  task,
+  sourceTitle,
 }: {
   readonly environmentId: EnvironmentId;
   readonly entry: InitiativeEntry;
@@ -148,6 +175,8 @@ function EntryRow({
     readonly title: string;
   }>;
   readonly supersededTitle: string | null;
+  readonly task: TaskNode | null;
+  readonly sourceTitle: string | null;
 }) {
   const act = useAtomCommand(initiativesEnvironment.act);
   const openInbox = useOpenInbox();
@@ -166,6 +195,15 @@ function EntryRow({
           {entry.title}
         </button>
         {needsReview ? <Badge variant="warning">prüfen</Badge> : null}
+        {task && entry.status === "open" && task.dependsOn.length > 0 ? (
+          task.ready ? (
+            <Badge variant="success">startbereit</Badge>
+          ) : (
+            <Badge variant="secondary">
+              wartet auf {task.dependsOn.filter((dependency) => !dependency.done).length}
+            </Badge>
+          )
+        ) : null}
         {entry.inbox ? (
           <Button
             size="xs"
@@ -199,6 +237,7 @@ function EntryRow({
           </Select>
         )}
       </div>
+      {task && task.dependsOn.length > 0 ? <TaskDependencies task={task} /> : null}
       {expanded ? (
         <div className="flex flex-col gap-1 pl-1 text-xs text-muted-foreground">
           {entry.bodyMd ? (
@@ -213,12 +252,32 @@ function EntryRow({
             </p>
           ))}
           {supersededTitle ? <p>ersetzt: {supersededTitle}</p> : null}
+          {sourceTitle ? <p>entstanden aus: {sourceTitle}</p> : null}
           <p>
             {authorLabel(entry.createdBy)} · {new Date(entry.createdAt).toLocaleString("de-DE")}
           </p>
         </div>
       ) : null}
     </li>
+  );
+}
+
+/** What a task reads from which entry, and which of those are done. */
+export function TaskDependencies({ task }: { readonly task: TaskNode }) {
+  return (
+    <ul className="flex flex-col gap-0.5 pl-1 text-xs text-muted-foreground">
+      {task.dependsOn.map((dependency) => (
+        <li key={dependency.entryId} className="flex gap-1">
+          <span className={dependency.done ? "text-success" : undefined}>
+            {dependency.done ? "✓" : "○"}
+          </span>
+          <span className="min-w-0 truncate">
+            liest von {dependency.entry?.title ?? "(nicht gefunden)"}
+            {dependency.passes ? ` – übergibt: ${dependency.passes}` : ""}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -287,7 +346,11 @@ function CreateEntryForm({
       </div>
       <Textarea
         placeholder={
-          type === "decision" ? "Begründung (deine Entscheidung gilt sofort)" : "Details"
+          type === "decision"
+            ? "Begründung (deine Entscheidung gilt sofort)"
+            : type === "rule"
+              ? "Warum: die Ursache, aus der die Regel kommt (gilt sofort für neue Threads)"
+              : "Details"
         }
         value={body}
         onChange={(event) => setBody(event.target.value)}

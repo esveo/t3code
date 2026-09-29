@@ -1,9 +1,9 @@
 /**
  * Fork: the Inbox over every initiative: open questions and tasks for the
  * user, grouped by initiative ("Ohne Zuordnung" for those of none), and the
- * decisions agents proposed. Questions are answered in their coordinator's
- * Inbox panel, which keeps drafts, the outbox and delivery to the right
- * thread; a proposed decision is confirmed or reopened right here.
+ * decisions and rules agents proposed. Questions are answered in their
+ * coordinator's Inbox panel, which keeps drafts, the outbox and delivery to
+ * the right thread; a proposed decision or rule is settled right here.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, InitiativesInboxSnapshot, ThreadId } from "@t3tools/contracts";
@@ -78,7 +78,11 @@ export function InitiativesInbox({ environmentId }: { readonly environmentId: En
             {group.items.map(({ entry }) => (
               <li key={entry.id} className="flex items-center gap-2 p-2 text-sm">
                 <Badge variant={entry.urgency === "now" ? "warning" : "outline"}>
-                  {entry.inbox ? ENTRY_TYPE_LABELS[entry.type] : "Vorschlag"}
+                  {entry.inbox
+                    ? ENTRY_TYPE_LABELS[entry.type]
+                    : entry.type === "rule"
+                      ? "Regel-Vorschlag"
+                      : "Vorschlag"}
                 </Badge>
                 <span className="min-w-0 flex-1 truncate">{entry.title}</span>
                 {entry.snoozedAt ? <Badge variant="secondary">zurückgestellt</Badge> : null}
@@ -101,11 +105,15 @@ export function InitiativesInbox({ environmentId }: { readonly environmentId: En
                       onClick={() =>
                         void act({
                           environmentId,
-                          input: { type: "entryStatus", entryId: entry.id, status: "valid" },
+                          input: {
+                            type: "entryStatus",
+                            entryId: entry.id,
+                            status: entry.type === "rule" ? "active" : "valid",
+                          },
                         })
                       }
                     >
-                      Gilt
+                      {entry.type === "rule" ? "Übernehmen" : "Gilt"}
                     </Button>
                     <Button
                       size="xs"
@@ -113,11 +121,15 @@ export function InitiativesInbox({ environmentId }: { readonly environmentId: En
                       onClick={() =>
                         void act({
                           environmentId,
-                          input: { type: "entryStatus", entryId: entry.id, status: "reopened" },
+                          input: {
+                            type: "entryStatus",
+                            entryId: entry.id,
+                            status: entry.type === "rule" ? "dismissed" : "reopened",
+                          },
                         })
                       }
                     >
-                      Nicht so
+                      {entry.type === "rule" ? "Verwerfen" : "Nicht so"}
                     </Button>
                   </>
                 )}
