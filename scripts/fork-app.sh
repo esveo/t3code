@@ -193,6 +193,7 @@ start() {
   echo "Starting $(label_of "$ROOT/current") (log: $log) …"
   # The launcher in the app bundle runs this script for Dock and Finder starts.
   echo "$SCRIPT_REPO/scripts/fork-app.sh" > "$ROOT/app-script"
+  install_dock_launcher "$ROOT"/current/apps/desktop/.electron-runtime/*.app(N[1])
   (
     cd "$ROOT/current"
     app_env
@@ -306,14 +307,16 @@ prepare_electron() {
   (cd "$desktop" && env -u VITE_DEV_SERVER_URL node -e \
     'import("./scripts/electron-launcher.mjs").then((m) => m.resolveElectronLaunchCommand())')
   sed -i '' "s|\"$1/|\"$ROOT/current/|" "$desktop/.electron-runtime/metadata.json"
-  install_dock_launcher "$desktop"/.electron-runtime/*.app(N[1])
 }
 
 # Electron answers a start without an app path, which is how the Dock and
 # Finder open a bundle, with its default app. The bundle's executable becomes a
-# launcher that hands over to `launch`; `start` runs Electron directly.
+# launcher that hands over to `launch`; `start` runs Electron directly. `start`
+# installs it while the app is stopped, so every build gets it, older ones too.
 install_dock_launcher() {
-  local bundle="$1" name="esveo code Launcher"
+  local bundle="${1:-}" name="esveo code Launcher"
+  [[ -d "$bundle" ]] || return 0
+  [[ "$(plutil -extract CFBundleExecutable raw "$bundle/Contents/Info.plist")" == "$name" ]] && return
   printf '#!/bin/sh\nexec /bin/zsh "$(cat %q)" launch\n' "$ROOT/app-script" \
     > "$bundle/Contents/MacOS/$name"
   chmod 755 "$bundle/Contents/MacOS/$name"
