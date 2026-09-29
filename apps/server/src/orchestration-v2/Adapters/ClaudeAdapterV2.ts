@@ -1,6 +1,7 @@
 import * as NodeCrypto from "node:crypto";
 
 import { makeProviderTextDeltaCoalescer } from "./ProviderTextDeltaCoalescer.ts";
+import { makeClaudeUndeliveredPrompts } from "./ClaudeUndeliveredPrompts.ts"; // Fork
 import { formatReadToolLabel, formatSearchToolLabel } from "@t3tools/shared/toolActivity";
 import { isWorkspaceImagePreviewPath } from "@t3tools/shared/filePreview";
 import { normalizeClaudeTurnTokenUsage } from "../../provider/ClaudeTurnTokenUsage.ts";
@@ -3058,6 +3059,8 @@ export function makeClaudeAdapterV2(
         // tool_use frame is handled, in whichever run that frame is routed
         // to (the prompt's turn, or the continuation that drains a wake).
         const heldProposedPlansByToolUseId = new Map<string, string>();
+        // Fork: prompts an early interrupt dropped, carried into the next turn.
+        const forkUndeliveredPrompts = makeClaudeUndeliveredPrompts();
         const runtimeContext = yield* Effect.context<never>();
         const runPromise = Effect.runPromiseWith(runtimeContext);
 
@@ -4550,6 +4553,7 @@ export function makeClaudeAdapterV2(
           readonly threadDisposition?: "reusable" | "broken";
           readonly result?: SDKResultMessage;
         }) {
+          forkUndeliveredPrompts.settle(input.context.providerTurnId, input.status); // Fork
           yield* reasoningDeltas.flushTurn(input.context.nativeTurnId);
           for (const toolCall of input.context.toolCalls.values()) {
             const artifacts = buildToolCallArtifacts({
@@ -6148,6 +6152,9 @@ export function makeClaudeAdapterV2(
           const message = input.message;
           const context = yield* Ref.get(activeTurn);
           const liveQuery = yield* Ref.get(queryContext);
+          if (context !== null && liveQuery?.query === input.query) {
+            forkUndeliveredPrompts.observe(context.providerTurnId, message); // Fork
+          }
           if (
             context === null ||
             context.promptUuid === null ||
@@ -6778,7 +6785,15 @@ export function makeClaudeAdapterV2(
               // afterwards with correct attribution.
               // Counted only here, so a turn that failed to start does not age reports.
               yield* startUserTurnForWakeReports(nativeThreadId);
-              yield* querySession.query.offer(userMessage);
+              yield* querySession.query.offer(
+                // Fork: carries prompts an early interrupt dropped.
+                forkUndeliveredPrompts.begin({
+                  nativeThreadId,
+                  providerTurnId,
+                  promptUuid: claudePromptUuid(turnInput.attemptId),
+                  message: userMessage,
+                }),
+              );
               return;
             }
             const drained = yield* Ref.modify(wakeBuffers, (current) => {
@@ -7189,6 +7204,7 @@ export function makeClaudeAdapterV2(
               }
 
               const nativeThreadId = yield* getNativeThreadId(rollbackInput.providerThread);
+              forkUndeliveredPrompts.discard(nativeThreadId); // Fork
               yield* closeLiveQueryForNativeThread(nativeThreadId);
               const now = yield* DateTime.now;
 
