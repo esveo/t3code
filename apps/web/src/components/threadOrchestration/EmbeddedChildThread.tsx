@@ -11,11 +11,10 @@ import { ChatPaneContext } from "~/components/split/chatPane";
 import { Button } from "~/components/ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
-import { useThreadDetail, useThreadShell, useThreadStatus } from "~/state/entities";
+import { useThreadShell } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
 import { environmentShell } from "~/state/shell";
 import { resolveThreadRouteRenderState } from "~/threadRoutes";
-import { resolveThreadSyncPhase } from "~/threadSync";
 import { CHILD_THREAD_DOT_CLASS } from "./childThreadStateVisuals";
 import { useOpenThread } from "./useOpenThread";
 
@@ -31,22 +30,14 @@ export function EmbeddedChildThread(props: { threadRef: ScopedThreadRef; onBack:
   const { threadRef } = props;
   const shell = useEnvironmentQuery(environmentShell.stateAtom(threadRef.environmentId));
   const threadShell = useThreadShell(threadRef);
-  const threadDetail = useThreadDetail(threadRef);
-  const threadStatus = useThreadStatus(threadRef);
   const openThread = useOpenThread();
   const renderState = resolveThreadRouteRenderState({
     bootstrapComplete: shell.data?.snapshot._tag === "Some",
-    serverThreadShellExists: threadShell !== null,
-    serverThreadDetailExists: threadDetail !== null,
-    serverThreadDetailDeleted: threadStatus === "deleted",
+    serverThreadExists: threadShell !== null,
+    serverThreadDeleted: threadShell?.deletedAt != null,
     draftThreadExists: false,
   });
-  const threadSyncPhase = resolveThreadSyncPhase({
-    detailExists: threadDetail !== null,
-    shellExists: threadShell !== null,
-    status: threadStatus,
-  });
-  const state = threadShell ? resolveChildThreadState(threadShell) : null;
+  const state = threadShell ? resolveChildThreadState(threadShell.source) : null;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
@@ -102,7 +93,6 @@ export function EmbeddedChildThread(props: { threadRef: ScopedThreadRef; onBack:
               environmentId={threadRef.environmentId}
               threadId={threadRef.threadId}
               routeKind="server"
-              threadSyncPhase={threadSyncPhase}
               reserveTitleBarControlInset={false}
               embedded
             />

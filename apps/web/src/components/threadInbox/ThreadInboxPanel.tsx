@@ -37,6 +37,7 @@ import {
 } from "./threadInbox.logic";
 import { threadInboxEnvironment } from "./threadInboxState";
 import { useInboxDrafts, useInboxView, useThreadInboxStore } from "./threadInboxStore";
+import { ChildRequestsSection } from "./ChildRequestsSection";
 import { useThreadInboxSurface } from "./useThreadInboxSurface";
 
 const isTyping = (target: EventTarget) =>
@@ -295,6 +296,9 @@ function ThreadInbox({ threadRef, cwd }: { threadRef: ScopedThreadRef; cwd: stri
                   : "The coordinator asks here instead of numbering questions in the chat."}
             </p>
           </header>
+
+          {/* Fork: approvals and questions of the coordinator's threads. */}
+          <ChildRequestsSection threadRef={threadRef} />
 
           {ordered.length > 0 ? (
             <div className="flex items-center justify-between gap-2 px-1">

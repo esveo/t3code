@@ -41,7 +41,7 @@ export interface SidebarProjectRuns {
 
 /**
  * Fork: gathers one sidebar section's threads into per-project runs when
- * Settings → Appearance asks for it. The section keeps its own sort; the
+ * Settings → esveo asks for it. The section keeps its own sort; the
  * plan only decides which rows sit next to each other, which run headers
  * appear, and which rows draw a rail.
  */
@@ -82,7 +82,7 @@ export function useSidebarProjectRuns(input: {
           null,
         isCollapsed: (projectKey) => collapsed.has(`${section}:${projectKey}`),
         isRunning: (thread) =>
-          thread.session?.status === "running" && thread.session.activeTurnId != null,
+          thread.runtime?.status === "running" && thread.runtime.activeRunId != null,
         // The states that wait on a person rather than on the agent.
         needsAttention: (thread) => {
           const status = resolveSidebarThreadStatus(thread);

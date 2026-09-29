@@ -8,7 +8,10 @@ import { type ContextWindowSnapshot, formatContextWindowTokens } from "~/lib/con
 import { ComposerControl, type ComposerControlSize } from "../chat/ComposerControl";
 import { useComposerMenuProps } from "../chat/composerEventScope";
 import { useComposerMenuState } from "../chat/useComposerMenuState";
-import { formatContextWindowCompactionMessage } from "../chat/ContextWindowMeter.logic";
+import {
+  formatContextWindowCompactionMessage,
+  formatContextWindowCost,
+} from "../chat/ContextWindowMeter.logic";
 import {
   formatContextWindowPercentage,
   hasContextWindowFill,
@@ -45,6 +48,10 @@ type ThreadUsageTab = "context" | "cost";
  * file untouched, so its future edits land as a file to read rather than as a
  * merge conflict. The trigger and the context readout are deliberately a copy
  * of upstream's, and upstream's pure helpers are imported, not duplicated.
+ *
+ * It also replaces upstream's opt-in legacy `ContextWindowMeter`: the context
+ * tab shows every figure that meter does, including the cost an ACP provider
+ * reports, so the fork keeps this one control rather than a second meter.
  */
 export function ThreadUsageControl(props: {
   usage: ContextWindowSnapshot;
@@ -141,7 +148,7 @@ export function ThreadUsageControl(props: {
         className="w-72 max-w-none text-left whitespace-normal"
       >
         <div
-          className="flex flex-col gap-2 p-[var(--floating-content-inset)]"
+          className="flex flex-col gap-2 p-(--floating-content-inset)"
           onMouseDown={(event) => {
             // Keep a tab click from reaching the composer behind the popup.
             event.stopPropagation();
@@ -163,7 +170,7 @@ export function ThreadUsageControl(props: {
             </ToggleGroup>
             <div
               className={cn(
-                "text-secondary-label text-[11px] tabular-nums",
+                "text-secondary-label text-2xs tabular-nums",
                 tab === "cost" && "hidden",
               )}
             >
@@ -206,7 +213,7 @@ export function ThreadUsageControl(props: {
                 {contextWindowRows(usage).map((row) => (
                   <div
                     key={row.key}
-                    className="flex items-center justify-between gap-3 text-[11px] leading-4"
+                    className="flex items-center justify-between gap-3 text-2xs leading-4"
                   >
                     <span
                       className={cn(
@@ -221,9 +228,19 @@ export function ThreadUsageControl(props: {
                     </span>
                   </div>
                 ))}
+                {usage.cost != null ? (
+                  // What the provider itself billed for this session (ACP
+                  // agents), next to the transcript-priced Cost tab.
+                  <div className="flex items-center justify-between gap-3 text-2xs leading-4">
+                    <span className="text-secondary-label">Reported cost</span>
+                    <span className="font-medium tabular-nums text-secondary-label">
+                      {formatContextWindowCost(usage.cost)}
+                    </span>
+                  </div>
+                ) : null}
               </div>
               {usage.compactsAutomatically ? (
-                <div className="mt-1 text-pretty font-medium text-secondary-label text-[11px]">
+                <div className="mt-1 text-pretty font-medium text-secondary-label text-2xs">
                   {formatContextWindowCompactionMessage(
                     modelDisplayName,
                     usage.autoCompactThreshold,
@@ -243,7 +260,7 @@ export function ThreadUsageControl(props: {
                     Compact context
                   </Button>
                   {compactDisabled && compactDisabledReason ? (
-                    <div className="text-pretty text-secondary-label text-[11px]">
+                    <div className="text-pretty text-secondary-label text-2xs">
                       {compactDisabledReason}
                     </div>
                   ) : null}

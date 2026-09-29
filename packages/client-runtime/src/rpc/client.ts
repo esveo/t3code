@@ -1,6 +1,6 @@
 import {
-  ORCHESTRATION_WS_METHODS,
-  SUBAGENT_CHAT_WS_METHODS,
+  ORCHESTRATION_V2_WS_METHODS,
+  THREAD_COORDINATORS_WS_METHODS,
   THREAD_DECISIONS_WS_METHODS,
   VOICE_INPUT_WS_METHODS,
   WS_METHODS,
@@ -49,11 +49,12 @@ type RpcMethod<TTag extends EnvironmentRpcTag> = WsRpcProtocolClient[TTag];
 export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.providerAuthSubscribe
   | typeof WS_METHODS.providerInstallSubscribe
-  | typeof ORCHESTRATION_WS_METHODS.subscribeShell
-  | typeof ORCHESTRATION_WS_METHODS.subscribeThread
+  | typeof ORCHESTRATION_V2_WS_METHODS.subscribeShell
+  | typeof ORCHESTRATION_V2_WS_METHODS.subscribeThread
   | typeof WS_METHODS.subscribeAuthAccess
   | typeof WS_METHODS.subscribeServerConfig
   | typeof WS_METHODS.subscribeServerLifecycle
+  | typeof WS_METHODS.scheduledTasksSubscribe
   | typeof WS_METHODS.subscribeTerminalEvents
   | typeof WS_METHODS.subscribeTerminalMetadata
   | typeof WS_METHODS.subscribePreviewEvents
@@ -66,8 +67,8 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.subscribeWorktreeSetup
   | typeof WS_METHODS.subscribeProjectClones
   | typeof WS_METHODS.terminalAttach
-  | typeof SUBAGENT_CHAT_WS_METHODS.subscribeTranscript
   | typeof THREAD_DECISIONS_WS_METHODS.subscribe
+  | typeof THREAD_COORDINATORS_WS_METHODS.subscribe
   | typeof VOICE_INPUT_WS_METHODS.prepare;
 
 export type EnvironmentStreamCommandRpcTag =
@@ -138,6 +139,13 @@ const currentSession = Effect.fn("EnvironmentRpc.currentSession")(function* () {
     ),
   );
 });
+
+export const getInitialServerConfig = Effect.fn("EnvironmentRpc.getInitialServerConfig")(
+  function* () {
+    const session = yield* currentSession();
+    return yield* session.initialConfig;
+  },
+);
 
 export const request = Effect.fn("EnvironmentRpc.request")(function* <
   TTag extends EnvironmentUnaryRpcTag,

@@ -9,12 +9,12 @@ import * as Tool from "effect/unstable/ai/Tool";
 import * as Toolkit from "effect/unstable/ai/Toolkit";
 
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
-import * as ProjectionSnapshotQuery from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { OrchestratorV2 } from "../../../orchestration-v2/Orchestrator.ts";
 import * as TerminalManager from "../../../terminal/Manager.ts";
 
 const dependencies = [
   McpInvocationContext.McpInvocationContext,
-  ProjectionSnapshotQuery.ProjectionSnapshotQuery,
+  OrchestratorV2,
   TerminalManager.TerminalManager,
 ];
 

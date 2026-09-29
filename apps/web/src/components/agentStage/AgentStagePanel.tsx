@@ -1,34 +1,32 @@
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type {
-  ApprovalRequestId,
   ProviderApprovalDecision,
+  RuntimeRequestId,
   ScopedThreadRef,
 } from "@t3tools/contracts";
-import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useMemo, useState } from "react";
 
 import {
   useProject,
   useProjects,
-  useThread,
+  useThreadProjection,
   useThreadShell,
   useThreadShells,
 } from "../../state/entities";
 import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { useRightPanelStore } from "../../rightPanelStore";
-import { buildThreadRouteParams } from "../../threadRoutes";
-import { useSubagentChatSupport } from "../subagentChat/useSubagentChatSupport";
-import { useSubagentChatOpenStore } from "../subagentChat/subagentChatOpenStore";
+import { useOpenThreadInPane } from "../split/useOpenThreadInPane";
 import { AgentStage, type StageOpenAction } from "./AgentStage";
 import {
   applyStageVisibility,
   deriveStageModel,
   MAIN_AGENT_ID,
+  stageSubagents,
   type StageAgent,
 } from "./agentStage.logic";
 import { deriveFleetStageModel, type FleetThread } from "./agentStageFleet.logic";
 import { AGENT_STAGE_EVERYTHING_KEY, useAgentStageStore } from "./agentStageStore";
+import { useStageSubagentThreads } from "./useStageSubagentThreads";
 
 const EMPTY: ReadonlyArray<never> = [];
 
@@ -56,50 +54,48 @@ function ThreadAgentStage({
   workspaceRoot: string | null | undefined;
 }) {
   const threadKey = scopedThreadKey(threadRef);
-  const thread = useThread(threadRef);
-  const activities = thread?.activities ?? EMPTY;
-  const messages = thread?.messages ?? EMPTY;
-  const session = thread?.session ?? null;
-  const latestTurn = thread?.latestTurn ?? null;
-  const threadTitle = thread?.title;
-  const backgroundLiveness = useThreadShell(threadRef)?.backgroundLiveness ?? null;
+  const shell = useThreadShell(threadRef);
+  const projection = useThreadProjection(threadRef)?.projection ?? null;
+  const threadTitle = shell?.title;
+  const pendingBackgroundTasks = shell?.pendingBackgroundTasks ?? EMPTY;
   const project = useProject(
-    thread === null
-      ? null
-      : { environmentId: threadRef.environmentId, projectId: thread.projectId },
-  );
-  const threadModel = useMemo(
-    () =>
-      deriveStageModel({
-        activities,
-        messages,
-        session,
-        latestTurn,
-        workspaceRoot: workspaceRoot ?? undefined,
-        threadTitle,
-        project,
-        backgroundLiveness,
-      }),
-    [
-      activities,
-      backgroundLiveness,
-      latestTurn,
-      messages,
-      project,
-      session,
-      threadTitle,
-      workspaceRoot,
-    ],
+    shell === null ? null : { environmentId: threadRef.environmentId, projectId: shell.projectId },
   );
   const mode = useAgentStageStore((state) => state.mode);
   const setMode = useAgentStageStore((state) => state.setMode);
   const everything = mode === "everything";
-  const fleet = useFleetStageModel(everything, threadKey, threadModel);
-  const fullModel = everything ? fleet.model : threadModel;
-
   // Hidden agents are filed per thread; the everything view has a key of its own.
   const visibilityKey = everything ? AGENT_STAGE_EVERYTHING_KEY : threadKey;
   const hiddenIds = useAgentStageStore((state) => state.hiddenByThread[visibilityKey]) ?? EMPTY;
+
+  // Only the thread view draws subagents, and only the ones not hidden are followed.
+  const followedThreadIds = useMemo(
+    () =>
+      everything
+        ? EMPTY
+        : stageSubagents(projection).flatMap((agent) =>
+            agent.childThreadId === null || hiddenIds.includes(agent.id)
+              ? []
+              : [agent.childThreadId],
+          ),
+    [everything, hiddenIds, projection],
+  );
+  const subagentThreads = useStageSubagentThreads(threadRef.environmentId, followedThreadIds);
+  const threadModel = useMemo(
+    () =>
+      deriveStageModel({
+        projection,
+        subagentThreads,
+        pendingBackgroundTasks,
+        workspaceRoot: workspaceRoot ?? undefined,
+        threadTitle,
+        project,
+      }),
+    [pendingBackgroundTasks, project, projection, subagentThreads, threadTitle, workspaceRoot],
+  );
+  const fleet = useFleetStageModel(everything, threadKey, threadModel);
+  const fullModel = everything ? fleet.model : threadModel;
+
   const { model, hidden } = useMemo(
     () => applyStageVisibility(fullModel, hiddenIds),
     [fullModel, hiddenIds],
@@ -177,17 +173,15 @@ function useFleetStageModel(
 
 /**
  * Where the selected agent can be talked to. A thread sprite opens its
- * thread; a subagent opens the Agents panel, straight into its chat where the
- * provider supports one. The open thread's own main agent needs no button:
- * its chat is right there.
+ * thread, a subagent its own thread. The open thread's own main agent needs
+ * no button: its chat is right there.
  */
 function useStageOpenAction(
   threadRef: ScopedThreadRef,
   everything: boolean,
   refs: ReadonlyMap<string, ScopedThreadRef>,
 ) {
-  const navigate = useNavigate();
-  const chatSupported = useSubagentChatSupport(threadRef.environmentId, threadRef.threadId);
+  const openThread = useOpenThreadInPane();
   const threadKey = scopedThreadKey(threadRef);
   return useCallback(
     (agent: StageAgent): StageOpenAction | null => {
@@ -196,23 +190,18 @@ function useStageOpenAction(
         if (target === undefined || agent.id === threadKey) return null;
         return {
           label: "Open thread",
-          onOpen: () =>
-            void navigate({
-              to: "/$environmentId/$threadId",
-              params: buildThreadRouteParams(target),
-            }),
+          onOpen: () => openThread(target),
         };
       }
-      if (agent.kind !== "subagent") return null;
+      const childThreadId = agent.childThreadId ?? null;
+      if (childThreadId === null) return null;
       return {
-        label: chatSupported ? "Open chat" : "Show in Agents",
-        onOpen: () => {
-          if (chatSupported) useSubagentChatOpenStore.getState().setOpen(threadKey, agent.id);
-          useRightPanelStore.getState().open(threadRef, "agents");
-        },
+        label: "Open chat",
+        onOpen: () =>
+          openThread({ environmentId: threadRef.environmentId, threadId: childThreadId }),
       };
     },
-    [chatSupported, everything, navigate, refs, threadKey, threadRef],
+    [everything, openThread, refs, threadKey, threadRef.environmentId],
   );
 }
 
@@ -223,11 +212,11 @@ function useStageOpenAction(
  */
 function useStageApprovals(threadRef: ScopedThreadRef) {
   const respond = useAtomCommand(threadEnvironment.respondToApproval);
-  const [respondingRequestIds, setRespondingRequestIds] = useState<
-    ReadonlyArray<ApprovalRequestId>
-  >([]);
+  const [respondingRequestIds, setRespondingRequestIds] = useState<ReadonlyArray<RuntimeRequestId>>(
+    [],
+  );
   const onRespondToApproval = async (
-    requestId: ApprovalRequestId,
+    requestId: RuntimeRequestId,
     decision: ProviderApprovalDecision,
   ) => {
     setRespondingRequestIds((existing) =>

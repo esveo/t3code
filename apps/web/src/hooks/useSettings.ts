@@ -14,6 +14,7 @@ import { useAtomValue } from "@effect/atom-react";
 import {
   DEFAULT_SERVER_SETTINGS,
   type EnvironmentId,
+  type ProviderInstanceMutation,
   ServerSettings,
   type ServerSettingsPatch,
 } from "@t3tools/contracts";
@@ -380,7 +381,7 @@ export function useLegacySidebarEnabled(): boolean {
 }
 
 /**
- * Fork: whether sidebar thread cards are two lines (Settings → General).
+ * Fork: whether sidebar thread cards are two lines (Settings → esveo).
  *
  * Read without the hydration gate `useLegacySidebarEnabled` needs: this only
  * picks a card layout, never a different sidebar, so the worst a pre-hydration
@@ -393,7 +394,7 @@ export function useTwoLineThreadCards(): boolean {
 
 /**
  * Fork: whether the sidebar gathers threads into per-project runs
- * (Settings → Appearance). Read like the card layout above, without the
+ * (Settings → esveo). Read like the card layout above, without the
  * hydration gate: the worst a pre-hydration read costs is one repaint.
  */
 export function useGroupSidebarThreadsByProject(): boolean {
@@ -407,6 +408,21 @@ export function useEnvironmentSettings<T = UnifiedSettings>(
 ): T {
   const serverSettings = useAtomValue(serverEnvironment.settingsValueAtom(environmentId));
   return useMergedSettings(serverSettings ?? DEFAULT_SERVER_SETTINGS, selector);
+}
+
+/** Atomically mutate one provider instance against the server's latest settings snapshot. */
+export function usePersistEnvironmentProviderInstanceMutation(environmentId: EnvironmentId) {
+  const mutateProviderInstance = useAtomCommand(serverEnvironment.mutateProviderInstance, {
+    reportFailure: false,
+  });
+  return useCallback(
+    (providerInstanceMutation: ProviderInstanceMutation, patch: ServerSettingsPatch = {}) =>
+      mutateProviderInstance({
+        environmentId,
+        input: { patch, providerInstanceMutation },
+      }),
+    [environmentId, mutateProviderInstance],
+  );
 }
 
 /** Primary-only settings access for the settings UI and other explicitly global surfaces. */

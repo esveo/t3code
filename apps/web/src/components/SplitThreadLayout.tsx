@@ -17,7 +17,7 @@ import ChatView from "./ChatView";
 import { SidebarInset } from "./ui/sidebar";
 import { Button } from "./ui/button";
 import { cn } from "~/lib/utils";
-import { useThreadDetail, useThreadShell, useThreadStatus } from "../state/entities";
+import { useThreadShell } from "../state/entities";
 import { useEnvironmentQuery } from "../state/query";
 import { environmentShell } from "../state/shell";
 import {
@@ -25,7 +25,6 @@ import {
   resolveThreadRouteRenderState,
   type ThreadRouteTarget,
 } from "../threadRoutes";
-import { resolveThreadSyncPhase } from "../threadSync";
 import { setPendingPaneDrop, useSplitThreadStore, type SplitDragSource } from "../splitThreadStore";
 import {
   closeLeaf,
@@ -458,19 +457,11 @@ function PaneThreadView({
 }): ReactNode {
   const shell = useEnvironmentQuery(environmentShell.stateAtom(threadRef.environmentId));
   const threadShell = useThreadShell(threadRef);
-  const threadDetail = useThreadDetail(threadRef);
-  const threadStatus = useThreadStatus(threadRef);
   const renderState = resolveThreadRouteRenderState({
     bootstrapComplete: shell.data?.snapshot._tag === "Some",
-    serverThreadShellExists: threadShell !== null,
-    serverThreadDetailExists: threadDetail !== null,
-    serverThreadDetailDeleted: threadStatus === "deleted",
+    serverThreadExists: threadShell !== null,
+    serverThreadDeleted: threadShell?.deletedAt != null,
     draftThreadExists: false,
-  });
-  const threadSyncPhase = resolveThreadSyncPhase({
-    detailExists: threadDetail !== null,
-    shellExists: threadShell !== null,
-    status: threadStatus,
   });
 
   const handleMissing = useEffectEvent(onMissing);
@@ -485,7 +476,6 @@ function PaneThreadView({
         environmentId={threadRef.environmentId}
         threadId={threadRef.threadId}
         routeKind="server"
-        threadSyncPhase={threadSyncPhase}
         reserveTitleBarControlInset={reserveTitleBarControlInset}
       />
     );
@@ -520,6 +510,14 @@ function SplitDragOverlay({
     const resolveTarget = (x: number, y: number): DropTarget | null => {
       const grid = gridRef.current;
       if (!grid) return null;
+      // A sidebar thread released on a composer attaches as context (see
+      // chat/threadContextDrag.ts), so the composer is no split target.
+      if (
+        drag.kind === "thread" &&
+        document.elementFromPoint(x, y)?.closest("[data-thread-context-drop]")
+      ) {
+        return null;
+      }
       for (const element of grid.querySelectorAll<HTMLElement>("[data-chat-pane]")) {
         const rect = element.getBoundingClientRect();
         if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) continue;
@@ -587,7 +585,8 @@ function SplitDragOverlay({
           style={rectStyle(highlight)}
         />
       ) : null}
-      {pointer ? (
+      {/* A sidebar thread drag has its own ghost (ThreadContextDragGhost). */}
+      {pointer && drag.kind === "leaf" ? (
         <div
           aria-hidden
           className="pointer-events-none fixed z-50 max-w-64 truncate rounded-md border bg-popover px-2 py-1 text-popover-foreground text-xs shadow-md"

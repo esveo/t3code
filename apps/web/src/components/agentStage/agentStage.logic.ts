@@ -1,29 +1,24 @@
+import { derivePendingThreadRequests } from "@t3tools/client-runtime/state/thread-requests";
+import type { ThreadPendingApproval } from "@t3tools/client-runtime/state/thread-requests";
+import { isActiveSubagentStatus } from "@t3tools/client-runtime/state/subagentRuntime";
+import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import {
-  derivePendingRequests,
-  type PendingApproval,
-  type PendingUserInput,
-} from "@t3tools/client-runtime/pending-requests";
-import {
-  foldSubagentActivities,
-  isActiveSubagentStatus,
-  type RuntimeSubagent,
-} from "@t3tools/client-runtime/state/subagentRuntime";
-import {
-  liveActivityToolStatus,
   toolGroupAction,
   workEntryDisplayIndicatesToolFailure,
-  workLogEntryIsToolLike,
 } from "@t3tools/client-runtime/work-log/presentation";
-import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
 import type {
-  OrchestrationLatestTurn,
-  OrchestrationMessage,
-  OrchestrationSession,
-  OrchestrationThreadActivity,
+  NodeId,
+  OrchestrationV2PendingBackgroundTask,
+  OrchestrationV2ProjectedTurnItem,
+  OrchestrationV2Subagent,
+  OrchestrationV2ThreadProjection,
+  ThreadId,
 } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 
+import { deriveLatestContextWindowSnapshot } from "../../lib/contextWindow";
 import { liveWorkEntryLabel } from "../chat/MessagesTimeline.logic";
-import { deriveWorkLogEntries, type WorkLogEntry } from "../../session-logic";
+import { deriveTimelineEntriesFromVisibleTurnItems, type WorkLogEntry } from "../../session-logic";
 import {
   contextFinding,
   riskyCommandTitle,
@@ -101,7 +96,7 @@ export interface StageAttention {
   readonly title: string;
   readonly detail: string | null;
   /** Answerable from the stage; questions and subagents are not. */
-  readonly approval: PendingApproval | null;
+  readonly approval: ThreadPendingApproval | null;
   readonly since: string;
 }
 
@@ -142,6 +137,8 @@ export interface StageAgent {
   /** When the agent arrived where it stands; null once it rests. */
   readonly since: string | null;
   readonly alerts: ReadonlyArray<StageAlert>;
+  /** A subagent's own thread, where its conversation can be opened. */
+  readonly childThreadId?: ThreadId | null;
 }
 
 export interface StageModel {
@@ -153,87 +150,168 @@ export interface StageModel {
   readonly findings: ReadonlyArray<StageFinding>;
 }
 
+/** The slice of the V2 thread projection the stage reads. */
+export type StageProjection = Pick<
+  OrchestrationV2ThreadProjection,
+  | "runs"
+  | "nodes"
+  | "subagents"
+  | "runtimeRequests"
+  | "turnItems"
+  | "visibleTurnItems"
+  | "providerTurns"
+  | "providerThreads"
+> & {
+  readonly thread: Pick<OrchestrationV2ThreadProjection["thread"], "activeProviderThreadId">;
+};
+
 export interface StageInput {
-  readonly activities: ReadonlyArray<OrchestrationThreadActivity>;
-  readonly messages: ReadonlyArray<OrchestrationMessage>;
-  readonly session: OrchestrationSession | null;
-  readonly latestTurn: OrchestrationLatestTurn | null;
+  /** The open thread; null while it loads. */
+  readonly projection: StageProjection | null;
+  /**
+   * The timelines of the subagents' own threads, by thread id. A subagent's
+   * tool calls live in its child thread, not in the parent's projection, so
+   * the stage can only follow it tool to tool once that thread is loaded.
+   */
+  readonly subagentThreads?: ReadonlyMap<string, ReadonlyArray<OrchestrationV2ProjectedTurnItem>>;
+  /**
+   * The shell's roster of work that outlives the turn: background subagents
+   * and tasks, and watch loops (monitors, background shells).
+   */
+  readonly pendingBackgroundTasks?: ReadonlyArray<OrchestrationV2PendingBackgroundTask>;
   readonly workspaceRoot?: string | undefined;
   /** The thread's title and project, for the main agent's sprite. */
   readonly threadTitle?: string | undefined;
   readonly project?: StageProject | null | undefined;
-  /**
-   * The server's read of work that outlives the turn, from the thread shell:
-   * "monitoring" when watch loops (Monitor, background shells) are all that
-   * is left running.
-   */
-  readonly backgroundLiveness?: "working" | "monitoring" | null | undefined;
 }
 
+type Run = OrchestrationV2ThreadProjection["runs"][number];
+
 const SNIPPET_LIMIT = 220;
+const RUNNING_RUN_STATUSES = new Set<Run["status"]>(["preparing", "starting", "running"]);
+
+/** The turn the stage shows: the newest run that has left the queue. */
+function stageRun(projection: StageProjection | null): Run | null {
+  return projection?.runs.findLast((run) => run.status !== "queued") ?? null;
+}
+
+function iso(value: DateTime.Utc): string {
+  return DateTime.formatIso(value);
+}
+
+/**
+ * The subagents on the stage: everyone still at work, wherever they started,
+ * and whoever the shown turn spawned, oldest first. Background subagents
+ * outlive the turn that started them, so liveness, not the turn, decides.
+ */
+export function stageSubagents(
+  projection: StageProjection | null,
+): ReadonlyArray<OrchestrationV2Subagent> {
+  if (projection === null) return [];
+  const run = stageRun(projection);
+  const runStartedAt = run?.startedAt ?? run?.requestedAt ?? null;
+  return projection.subagents
+    .filter(
+      (agent) =>
+        isActiveSubagentStatus(agent.status) ||
+        (run !== null && agent.runId === run.id) ||
+        (runStartedAt !== null &&
+          DateTime.toEpochMillis(agent.updatedAt) >= DateTime.toEpochMillis(runStartedAt)),
+    )
+    .toSorted(
+      (left, right) =>
+        DateTime.toEpochMillis(left.startedAt ?? left.updatedAt) -
+          DateTime.toEpochMillis(right.startedAt ?? right.updatedAt) ||
+        left.id.localeCompare(right.id),
+    );
+}
 
 export function deriveStageModel(input: StageInput): StageModel {
-  const running = input.session?.status === "running";
-  const turnId = running
-    ? (input.session?.activeTurnId ?? input.latestTurn?.turnId ?? null)
-    : (input.latestTurn?.turnId ?? null);
-  const turnStartedAt = input.latestTurn?.startedAt ?? null;
+  const projection = input.projection;
+  const run = stageRun(projection);
+  const running = run !== null && RUNNING_RUN_STATUSES.has(run.status);
+  const turnStartedAt = run === null ? null : iso(run.startedAt ?? run.requestedAt);
+  const rows =
+    projection === null || run === null
+      ? []
+      : projection.visibleTurnItems.filter((row) => row.item.runId === run.id);
 
-  // Background subagents outlive the turn that started them, so only a dead
-  // session orphans them; the chat's agent panel draws the same line.
-  const sessionLive = stageSessionLive(input.session);
-  const subagents = foldSubagentActivities(input.activities, { sessionLive }).filter(
-    (agent) =>
-      agent.kind !== "workflow" &&
-      (isActiveSubagentStatus(agent.status) ||
-        (turnStartedAt !== null && agent.updatedAt >= turnStartedAt)),
-  );
-  const toolsByAgent = collectAttributedTools(input.activities);
-  const progressByAgent = collectLatestProgress(input.activities);
+  const subagents = stageSubagents(projection);
   const liveSubagentCount = subagents.filter((agent) =>
     isActiveSubagentStatus(agent.status),
   ).length;
-
-  const pending = derivePendingRequests(input.activities);
-  const entries =
-    turnId === null
-      ? []
-      : deriveWorkLogEntries(input.activities).filter((entry) => entry.turnId === turnId);
+  const pending =
+    projection === null
+      ? { approvals: [], userInputs: [] }
+      : derivePendingThreadRequests(projection);
+  const requestOwner = requestOwnerResolver(projection, subagents);
+  const mainWork = collectWork(rows, input.workspaceRoot, { spawns: true });
+  const subagentWork = new Map(
+    subagents.map((agent) => {
+      const childRows =
+        agent.childThreadId === null ? undefined : input.subagentThreads?.get(agent.childThreadId);
+      return [
+        agent.id,
+        childRows === undefined ? null : collectSubagentWork(agent, childRows, input),
+      ];
+    }),
+  );
 
   const main = deriveMainAgent(input, {
+    run,
     running,
-    turnId,
+    rows,
     turnStartedAt,
     liveSubagentCount,
     pending,
-    entries,
+    work: mainWork,
   });
   const agents = [
     main,
-    ...subagents
-      .slice()
-      .sort((a, b) => a.firstSeenAt.localeCompare(b.firstSeenAt) || a.id.localeCompare(b.id))
-      .map((agent) =>
-        deriveSubagent(
-          agent,
-          toolsByAgent.get(agent.id) ?? null,
-          progressByAgent.get(agent.id) ?? null,
-        ),
-      ),
+    ...subagents.map((agent) =>
+      deriveSubagent(agent, subagentWork.get(agent.id) ?? null, input.workspaceRoot),
+    ),
   ];
   return {
     agents,
     running: agents.some((agent) => agent.live),
-    attention: deriveAttention(pending, subagents),
+    attention: deriveAttention(pending, subagents, requestOwner),
     findings: deriveFindings(input, {
+      run,
       running,
-      turnId,
-      entries,
+      rows,
       pending,
-      subagentIds: agents.slice(1).map((agent) => agent.id),
-      toolsByAgent,
-      progressByAgent,
+      mainWork,
+      subagents,
+      subagentWork,
     }),
+  };
+}
+
+/**
+ * The agent a request holds up: the subagent whose node it hangs under, or
+ * the main agent. Providers file a subagent's approvals in the parent thread,
+ * under the subagent's node.
+ */
+function requestOwnerResolver(
+  projection: StageProjection | null,
+  subagents: ReadonlyArray<OrchestrationV2Subagent>,
+): (requestId: string) => string {
+  if (projection === null || subagents.length === 0) return () => MAIN_AGENT_ID;
+  const subagentIds = new Set<string>(subagents.map((agent) => agent.id));
+  const nodes = new Map(projection.nodes.map((node) => [node.id, node] as const));
+  const requests = new Map(
+    projection.runtimeRequests.map((request) => [request.id as string, request.nodeId] as const),
+  );
+  return (requestId) => {
+    let nodeId: NodeId | null = requests.get(requestId) ?? null;
+    const seen = new Set<string>();
+    while (nodeId !== null && !seen.has(nodeId)) {
+      if (subagentIds.has(nodeId)) return nodeId;
+      seen.add(nodeId);
+      nodeId = nodes.get(nodeId)?.parentNodeId ?? null;
+    }
+    return MAIN_AGENT_ID;
   };
 }
 
@@ -243,92 +321,94 @@ const RISKY_PER_AGENT = 3;
 function deriveFindings(
   input: StageInput,
   context: {
+    run: Run | null;
     running: boolean;
-    turnId: string | null;
-    entries: ReadonlyArray<WorkLogEntry>;
-    pending: { userInputs: ReadonlyArray<PendingUserInput> };
-    subagentIds: ReadonlyArray<string>;
-    toolsByAgent: ReadonlyMap<string, AttributedWork>;
-    progressByAgent: ReadonlyMap<string, SubagentProgress>;
+    rows: ReadonlyArray<OrchestrationV2ProjectedTurnItem>;
+    pending: ReturnType<typeof derivePendingThreadRequests>;
+    mainWork: AgentWork;
+    subagents: ReadonlyArray<OrchestrationV2Subagent>;
+    subagentWork: ReadonlyMap<string, AgentWork | null>;
   },
 ): ReadonlyArray<StageFinding> {
   const findings: StageFinding[] = [];
   const risky = (agentId: string, key: string, command: string, at: string) => {
     const title = riskyCommandTitle(command);
-    if (title === null) return null;
-    return {
-      id: `risky:${agentId}:${key}`,
-      kind: "risky" as const,
-      agentId,
-      title,
-      detail: command,
-      since: at,
-    };
+    if (title === null) return [];
+    return [
+      {
+        id: `risky:${agentId}:${key}`,
+        kind: "risky" as const,
+        agentId,
+        title,
+        detail: command,
+        since: at,
+      },
+    ];
   };
+  const commandFindings = (agentId: string, work: AgentWork | null) =>
+    (work?.steps ?? []).flatMap((step) =>
+      step.command === null ? [] : risky(agentId, step.id, step.command, step.start),
+    );
 
-  const mainRisky = context.entries.flatMap((entry) => {
-    const finding = entry.command
-      ? risky(MAIN_AGENT_ID, entry.id, entry.command, entry.createdAt)
-      : null;
-    return finding === null ? [] : [finding];
-  });
-  findings.push(...mainRisky.slice(-RISKY_PER_AGENT));
+  findings.push(...commandFindings(MAIN_AGENT_ID, context.mainWork).slice(-RISKY_PER_AGENT));
 
-  for (const agentId of context.subagentIds) {
-    const calls = context.toolsByAgent.get(agentId)?.commands ?? [];
-    const found = calls.flatMap((call) => {
-      const finding = risky(agentId, call.key, call.command, call.at);
-      return finding === null ? [] : [finding];
-    });
-    const progress = context.progressByAgent.get(agentId);
-    const announced =
-      progress?.toolName && progress.detail
-        ? risky(
-            agentId,
-            `progress:${progress.at}`,
-            progress.detail.replace(/^running\s+/i, ""),
-            progress.at,
-          )
-        : null;
-    if (announced !== null) found.push(announced);
+  for (const agent of context.subagents) {
+    const found = commandFindings(agent.id, context.subagentWork.get(agent.id) ?? null);
+    // Claude's progress summaries name the command a subagent is running
+    // ("Running rm -rf dist") even when its own thread is not loaded.
+    if (agent.progress && isActiveSubagentStatus(agent.status)) {
+      found.push(
+        ...risky(
+          agent.id,
+          `progress:${iso(agent.updatedAt)}`,
+          agent.progress.replace(/^running\s+/i, ""),
+          iso(agent.updatedAt),
+        ),
+      );
+    }
     findings.push(...found.slice(-RISKY_PER_AGENT));
   }
 
   if (
     !context.running &&
-    input.latestTurn?.state === "completed" &&
+    context.run?.status === "completed" &&
     context.pending.userInputs.length === 0
   ) {
-    const answer = input.messages.findLast(
-      (message) =>
-        message.turnId === context.turnId && message.role === "assistant" && !message.streaming,
-    );
-    const question = answer === undefined ? null : trailingQuestion(answer.text);
-    if (answer !== undefined && question !== null) {
-      findings.push({
-        id: `question:${answer.id}`,
-        kind: "question",
-        agentId: MAIN_AGENT_ID,
-        title: "The answer ends with a question",
-        detail: question,
-        since: answer.updatedAt,
-      });
+    const answer = context.rows.findLast(
+      (row) => row.item.type === "assistant_message" && !row.item.streaming,
+    )?.item;
+    if (answer?.type === "assistant_message") {
+      const question = trailingQuestion(answer.text);
+      if (question !== null) {
+        findings.push({
+          id: `question:${answer.messageId}`,
+          kind: "question",
+          agentId: MAIN_AGENT_ID,
+          title: "The answer ends with a question",
+          detail: question,
+          since: iso(answer.updatedAt),
+        });
+      }
     }
   }
 
-  const contextFull = contextFinding(input.activities, MAIN_AGENT_ID);
-  if (contextFull !== null) findings.push(contextFull);
+  const projection = input.projection;
+  if (projection !== null) {
+    // The same reading the chat's context meter takes.
+    const liveUsage =
+      projection.providerTurns.findLast((turn) => turn.tokenUsage !== undefined)?.tokenUsage ??
+      null;
+    const providerThread = projection.providerThreads.find(
+      (thread) => thread.id === projection.thread.activeProviderThreadId,
+    );
+    const contextFull = contextFinding(
+      deriveLatestContextWindowSnapshot(projection.visibleTurnItems, liveUsage, providerThread),
+      MAIN_AGENT_ID,
+    );
+    if (contextFull !== null) findings.push(contextFull);
+  }
 
   return findings.sort((left, right) => right.since.localeCompare(left.since));
-}
-
-function stageSessionLive(session: OrchestrationSession | null): boolean {
-  return (
-    session !== null &&
-    session.status !== "stopped" &&
-    session.status !== "interrupted" &&
-    session.status !== "error"
-  );
 }
 
 const APPROVAL_TITLES: Record<string, string> = {
@@ -344,17 +424,15 @@ const APPROVAL_TITLES: Record<string, string> = {
  * answers the oldest request first, so that one leads.
  */
 function deriveAttention(
-  pending: {
-    approvals: ReadonlyArray<PendingApproval>;
-    userInputs: ReadonlyArray<PendingUserInput>;
-  },
-  subagents: ReadonlyArray<RuntimeSubagent>,
+  pending: ReturnType<typeof derivePendingThreadRequests>,
+  subagents: ReadonlyArray<OrchestrationV2Subagent>,
+  requestOwner: (requestId: string) => string,
 ): ReadonlyArray<StageAttention> {
   const items: StageAttention[] = [
     ...pending.approvals.map((approval) => ({
       id: `approval:${approval.requestId}`,
       kind: "approval" as const,
-      agentId: MAIN_AGENT_ID,
+      agentId: requestOwner(approval.requestId),
       title: APPROVAL_TITLES[approval.requestKind] ?? "Approve a step",
       detail: approval.detail ?? approval.appName ?? null,
       approval,
@@ -363,7 +441,7 @@ function deriveAttention(
     ...pending.userInputs.map((request) => ({
       id: `question:${request.requestId}`,
       kind: "question" as const,
-      agentId: MAIN_AGENT_ID,
+      agentId: requestOwner(request.requestId),
       title: request.questions[0]?.question ?? "A question for you",
       detail: request.questions.length > 1 ? `and ${request.questions.length - 1} more` : null,
       approval: null,
@@ -376,45 +454,37 @@ function deriveAttention(
         kind: "subagent" as const,
         agentId: agent.id,
         title: `${subagentLabel(agent)} is waiting for you`,
-        detail: agent.progress,
+        detail: agent.progress ?? null,
         approval: null,
-        since: agent.updatedAt,
+        since: iso(agent.updatedAt),
       })),
   ];
   return items.sort((left, right) => left.since.localeCompare(right.since));
 }
 
+function waitingForSubagents(count: number): string {
+  return `Waiting for ${count} ${count === 1 ? "subagent" : "subagents"}`;
+}
+
 function deriveMainAgent(
   input: StageInput,
   context: {
+    run: Run | null;
     running: boolean;
-    turnId: string | null;
+    rows: ReadonlyArray<OrchestrationV2ProjectedTurnItem>;
     turnStartedAt: string | null;
     liveSubagentCount: number;
-    pending: {
-      approvals: ReadonlyArray<PendingApproval>;
-      userInputs: ReadonlyArray<PendingUserInput>;
-    };
-    /** The turn's work-log rows. */
-    entries: ReadonlyArray<WorkLogEntry>;
+    pending: ReturnType<typeof derivePendingThreadRequests>;
+    work: AgentWork;
   },
 ): StageAgent {
-  const { running, turnId, turnStartedAt, liveSubagentCount, pending, entries } = context;
-  const steps = entries.filter(
-    (entry) => entry.agentSpawn !== undefined || workLogEntryIsToolLike(entry),
-  );
-  const toolSteps = entries
-    .filter((entry) => workLogEntryIsToolLike(entry))
-    .map((entry) => ({
-      label: liveWorkEntryLabel(entry, input.workspaceRoot, false),
-      failed: workEntryDisplayIndicatesToolFailure(entry),
-    }));
-  const turnState = input.latestTurn?.state;
-  const timing = deriveMainTiming(steps, turnStartedAt, {
+  const { run, running, rows, turnStartedAt, liveSubagentCount, pending, work } = context;
+  const toolSteps = work.steps.filter((step) => !step.spawn);
+  const timing = deriveTiming(work.steps, turnStartedAt, {
     // Once the turn is over, the tail after the last step was the answer,
     // unless the turn broke off, in which case nobody was answering.
-    settledAt: running ? null : (input.latestTurn?.completedAt ?? null),
-    tailStation: turnState === "completed" ? "writing" : "thinking",
+    settledAt: running || run?.completedAt == null ? null : iso(run.completedAt),
+    tailStation: run?.status === "completed" ? "writing" : "thinking",
   });
   const base = {
     id: MAIN_AGENT_ID,
@@ -423,7 +493,7 @@ function deriveMainAgent(
     role: null,
     project: input.project ?? null,
     initials: input.threadTitle === undefined ? null : stageInitials(input.threadTitle),
-    thought: latestThought(input.messages, turnId),
+    thought: latestThought(rows),
     stationTimes: sortStationTimes(timing.times),
     steps: toolSteps.length,
     failedSteps: toolSteps.filter((step) => step.failed).length,
@@ -431,33 +501,33 @@ function deriveMainAgent(
   };
   const restingAt = running ? (timing.boundary ?? turnStartedAt) : null;
 
-  const current = findCurrentWorkEntry(entries);
+  const current = work.steps.at(-1) ?? null;
   if (current !== null && running) {
-    if (current.agentSpawn !== undefined) {
+    if (current.spawn) {
       if (liveSubagentCount > 0) {
         return {
           ...base,
           station: "delegate",
           live: true,
-          headline: `Waiting for ${liveSubagentCount} ${liveSubagentCount === 1 ? "subagent" : "subagents"}`,
+          headline: waitingForSubagents(liveSubagentCount),
           detail: null,
           since: restingAt,
         };
       }
-    } else if (workEntryInProgress(current)) {
+    } else if (current.running && current.entry !== null) {
       return {
         ...base,
-        station: stationForWorkEntry(current),
+        station: current.station,
         live: true,
-        headline: liveWorkEntryLabel(current, input.workspaceRoot, true),
-        detail: workEntryDetail(current),
-        since: timing.activeSince ?? current.createdAt,
+        headline: liveWorkEntryLabel(current.entry, input.workspaceRoot, true),
+        detail: workEntryDetail(current.entry),
+        since: timing.activeSince ?? current.start,
       };
     }
   }
 
   if (pending.approvals.length > 0) {
-    const approval = pending.approvals[pending.approvals.length - 1]!;
+    const approval = pending.approvals.at(-1)!;
     return {
       ...base,
       station: "waiting",
@@ -468,7 +538,7 @@ function deriveMainAgent(
     };
   }
   if (pending.userInputs.length > 0) {
-    const request = pending.userInputs[pending.userInputs.length - 1]!;
+    const request = pending.userInputs.at(-1)!;
     return {
       ...base,
       station: "waiting",
@@ -485,13 +555,13 @@ function deriveMainAgent(
         ...base,
         station: "delegate",
         live: true,
-        headline: `Waiting for ${liveSubagentCount} ${liveSubagentCount === 1 ? "subagent" : "subagents"}`,
+        headline: waitingForSubagents(liveSubagentCount),
         detail: null,
         since: restingAt,
       };
     }
-    const streaming = findStreamingMessage(input.messages, turnId);
-    if (streaming?.role === "assistant") {
+    const streaming = findStreamingItem(rows);
+    if (streaming?.type === "assistant_message") {
       return {
         ...base,
         station: "writing",
@@ -506,34 +576,32 @@ function deriveMainAgent(
       station: "thinking",
       live: true,
       headline: "Thinking",
-      detail: streaming?.role === "reasoning" ? tailSnippet(streaming.text) : null,
+      detail: streaming?.type === "reasoning" ? tailSnippet(streaming.text) : null,
       since: restingAt,
     };
   }
 
   // The turn is over, but work it sent to the background still runs.
-  if (liveSubagentCount > 0 || input.backgroundLiveness === "working") {
+  const settledAt = run?.completedAt == null ? null : iso(run.completedAt);
+  const background = backgroundWork(input.pendingBackgroundTasks ?? []);
+  if (liveSubagentCount > 0 || background?.station === "delegate") {
     return {
       ...base,
       station: "delegate",
       live: true,
-      headline:
-        liveSubagentCount > 0
-          ? `Waiting for ${liveSubagentCount} ${liveSubagentCount === 1 ? "subagent" : "subagents"}`
-          : "Background work",
-      detail: null,
-      since: input.latestTurn?.completedAt ?? null,
+      headline: liveSubagentCount > 0 ? waitingForSubagents(liveSubagentCount) : "Background work",
+      detail: liveSubagentCount > 0 ? null : (background?.detail ?? null),
+      since: settledAt,
     };
   }
-  if (input.backgroundLiveness === "monitoring") {
-    const watch = latestOpenWatchTask(input.activities);
+  if (background !== null) {
     return {
       ...base,
       station: "monitoring",
       live: true,
       headline: "Monitoring",
-      detail: watch?.detail ?? null,
-      since: watch?.since ?? input.latestTurn?.completedAt ?? null,
+      detail: background.detail,
+      since: settledAt,
     };
   }
 
@@ -542,12 +610,12 @@ function deriveMainAgent(
     station: "idle",
     live: false,
     headline:
-      turnState === "error"
-        ? "The turn failed"
-        : turnState === "interrupted"
-          ? "Interrupted"
-          : turnId === null
-            ? "Waiting for a prompt"
+      run === null
+        ? "Waiting for a prompt"
+        : run.status === "failed"
+          ? "The turn failed"
+          : run.status === "interrupted" || run.status === "cancelled"
+            ? "Interrupted"
             : "Done",
     detail: null,
     since: null,
@@ -555,33 +623,23 @@ function deriveMainAgent(
 }
 
 /**
- * The newest watch loop that has not ended, for what the monitoring headline
- * is about. Whether anything is watched at all is the server's call; this
- * only names it.
+ * What the background roster amounts to. Subagents and unnamed tasks are
+ * work; monitors and background shells are watch loops, which is what the
+ * Monitoring station is for. Work outranks watching.
  */
-function latestOpenWatchTask(
-  activities: ReadonlyArray<OrchestrationThreadActivity>,
-): { readonly detail: string | null; readonly since: string } | null {
-  const open = new Map<string, { detail: string | null; since: string }>();
-  for (const activity of activities) {
-    if (!activity.kind.startsWith("task.")) continue;
-    const payload = asRecord(activity.payload);
-    const taskId = asString(payload?.taskId);
-    if (payload === null || taskId === null) continue;
-    if (activity.kind === "task.completed") {
-      open.delete(taskId);
-    } else if (
-      activity.kind === "task.started" &&
-      payload.agentKind === "background" &&
-      asString(payload.agentId) === null
-    ) {
-      open.set(taskId, {
-        detail: asString(payload.detail) ?? asString(payload.title),
-        since: activity.createdAt,
-      });
-    }
+export function backgroundWork(
+  tasks: ReadonlyArray<OrchestrationV2PendingBackgroundTask>,
+): { readonly station: "delegate" | "monitoring"; readonly detail: string | null } | null {
+  const working = tasks.filter(
+    (task) => task.kind === "subagent" || task.kind === "background_task",
+  );
+  if (working.length > 0) {
+    return { station: "delegate", detail: working.at(-1)?.description ?? null };
   }
-  return [...open.values()].at(-1) ?? null;
+  const watching = tasks.at(-1);
+  return watching === undefined
+    ? null
+    : { station: "monitoring", detail: watching.description ?? null };
 }
 
 interface StationTiming {
@@ -593,31 +651,34 @@ interface StationTiming {
 }
 
 /**
- * Time per station for the turn. A finished row carries the moment its work
- * ended, so the span since the row before it is charged to its station; the
- * gap in front of a row that is still running is thinking, and the row's own
- * time is still accruing, which is what `activeSince` is for.
+ * Time per station for the turn. Each step carries its own start and end, so
+ * its span is charged to its station and the gap in front of it to thinking.
+ * The step still running is left out; `activeSince` is where it began.
+ * Parallel calls overlap, so a span is only counted from the last boundary on.
  */
-function deriveMainTiming(
-  steps: ReadonlyArray<WorkLogEntry>,
-  turnStartedAt: string | null,
+function deriveTiming(
+  steps: ReadonlyArray<StageWorkStep>,
+  startedAt: string | null,
   tail: { settledAt: string | null; tailStation: StageStation },
 ): StationTiming {
   const times = new Map<StageStation, number>();
-  let boundary = turnStartedAt;
+  let boundary = startedAt;
   let activeSince: string | null = null;
-  for (const entry of steps) {
-    const running = workEntryInProgress(entry);
-    if (boundary !== null) {
-      addStationTime(
-        times,
-        running ? "thinking" : stationForWorkEntry(entry),
-        boundary,
-        entry.createdAt,
-      );
+  for (const step of steps) {
+    if (boundary !== null && step.start > boundary) {
+      addStationTime(times, "thinking", boundary, step.start);
+      boundary = step.start;
     }
-    boundary = entry.createdAt;
-    activeSince = running ? entry.createdAt : null;
+    boundary ??= step.start;
+    if (step.running || step.end === null) {
+      activeSince = step.start;
+      continue;
+    }
+    activeSince = null;
+    if (step.end > boundary) {
+      addStationTime(times, step.station, boundary, step.end);
+      boundary = step.end;
+    }
   }
   if (tail.settledAt !== null && boundary !== null && activeSince === null) {
     addStationTime(times, tail.tailStation, boundary, tail.settledAt);
@@ -630,6 +691,24 @@ function deriveMainTiming(
 interface StageStep {
   readonly label: string;
   readonly failed: boolean;
+}
+
+/** One step of an agent's turn: a tool call, or for the main agent a spawn. */
+interface StageWorkStep extends StageStep {
+  readonly id: string;
+  readonly start: string;
+  /** When it finished; null while it runs. */
+  readonly end: string | null;
+  readonly running: boolean;
+  readonly station: StageStation;
+  readonly command: string | null;
+  readonly spawn: boolean;
+  /** The timeline row behind a tool call, for its live label and detail. */
+  readonly entry: WorkLogEntry | null;
+}
+
+interface AgentWork {
+  readonly steps: ReadonlyArray<StageWorkStep>;
 }
 
 /** How many of the latest steps a repeat or a run of failures is read from. */
@@ -661,57 +740,114 @@ function deriveStepAlerts(steps: ReadonlyArray<StageStep>): ReadonlyArray<StageA
   return alerts;
 }
 
+/** Turn items that are work an agent did, as opposed to talk or requests. */
+const TOOL_ITEM_TYPES = new Set<OrchestrationV2ProjectedTurnItem["item"]["type"]>([
+  "command_execution",
+  "file_change",
+  "file_search",
+  "web_search",
+  "dynamic_tool",
+]);
+
 /**
- * A tool row still runs while its lifecycle says so. An update without any
- * status is the start of a call whose provider reports no phases, so it counts
- * as running until a completion row replaces it.
+ * The tool calls of a timeline, oldest first, in the same shape for the main
+ * agent and a subagent's own thread. The chat's timeline derivation labels
+ * them, so the stage names a tool the way the chat does.
  */
-function workEntryInProgress(entry: WorkLogEntry): boolean {
-  if (entry.toolLifecycleStatus !== undefined) {
-    return liveActivityToolStatus(entry.toolLifecycleStatus, false) === "inProgress";
-  }
-  return entry.sourceActivityKind === "tool.updated";
+function collectWork(
+  rows: ReadonlyArray<OrchestrationV2ProjectedTurnItem>,
+  workspaceRoot: string | undefined,
+  options: { spawns: boolean },
+): AgentWork {
+  const toolRows = rows.filter(
+    (row) => TOOL_ITEM_TYPES.has(row.item.type) || (options.spawns && row.item.type === "subagent"),
+  );
+  if (toolRows.length === 0) return { steps: [] };
+  const entries = new Map(
+    deriveTimelineEntriesFromVisibleTurnItems({
+      visibleTurnItems: toolRows,
+      optimisticMessages: [],
+    }).flatMap((entry) => (entry.kind === "work" ? [[entry.id, entry.entry] as const] : [])),
+  );
+  return {
+    steps: toolRows.flatMap((row): StageWorkStep[] => {
+      const { item } = row;
+      const running =
+        item.status === "pending" || item.status === "running" || item.status === "waiting";
+      const start = iso(item.startedAt ?? item.updatedAt);
+      const end = running ? null : iso(item.completedAt ?? item.updatedAt);
+      if (item.type === "subagent") {
+        return [
+          {
+            id: item.id,
+            start,
+            end,
+            running,
+            station: "delegate",
+            label: item.title ?? "Subagent",
+            failed: item.status === "failed",
+            command: null,
+            spawn: true,
+            entry: null,
+          },
+        ];
+      }
+      // Rows the chat leaves out, such as workspace preparation, are no steps.
+      const entry = entries.get(item.id);
+      if (entry === undefined) return [];
+      return [
+        {
+          id: item.id,
+          start,
+          end,
+          running,
+          station: stationForWorkEntry(entry),
+          // A command says more than its program name; repeats compare on it.
+          label: entry.command ?? liveWorkEntryLabel(entry, workspaceRoot, false),
+          failed: workEntryDisplayIndicatesToolFailure(entry),
+          command: entry.command ?? null,
+          spawn: false,
+          entry,
+        },
+      ];
+    }),
+  };
 }
 
-/** The last row that says what the agent is doing: a tool call or a spawn. */
-function findCurrentWorkEntry(entries: ReadonlyArray<WorkLogEntry>): WorkLogEntry | null {
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const entry = entries[index]!;
-    if (entry.agentSpawn !== undefined || workLogEntryIsToolLike(entry)) return entry;
-  }
-  return null;
+/** The part of a subagent's own thread that belongs to its latest activation. */
+function collectSubagentWork(
+  agent: OrchestrationV2Subagent,
+  rows: ReadonlyArray<OrchestrationV2ProjectedTurnItem>,
+  input: StageInput,
+): AgentWork {
+  const startedAt = agent.startedAt === null ? null : DateTime.toEpochMillis(agent.startedAt);
+  const current =
+    startedAt === null
+      ? rows
+      : rows.filter(
+          (row) => DateTime.toEpochMillis(row.item.startedAt ?? row.item.updatedAt) >= startedAt,
+        );
+  return collectWork(current, input.workspaceRoot, { spawns: false });
 }
 
-function latestThought(
-  messages: ReadonlyArray<OrchestrationMessage>,
-  turnId: string | null,
-): string | null {
-  if (turnId === null) return null;
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]!;
-    if (message.turnId === turnId && message.role === "reasoning") {
-      return tailSnippet(message.text);
+function latestThought(rows: ReadonlyArray<OrchestrationV2ProjectedTurnItem>): string | null {
+  const reasoning = rows.findLast((row) => row.item.type === "reasoning")?.item;
+  return reasoning?.type === "reasoning" ? tailSnippet(reasoning.text) : null;
+}
+
+function findStreamingItem(rows: ReadonlyArray<OrchestrationV2ProjectedTurnItem>) {
+  for (let index = rows.length - 1; index >= 0; index -= 1) {
+    const item = rows[index]!.item;
+    if (item.type === "user_message") return null;
+    if ((item.type === "assistant_message" || item.type === "reasoning") && item.streaming) {
+      return item;
     }
   }
   return null;
 }
 
-function findStreamingMessage(
-  messages: ReadonlyArray<OrchestrationMessage>,
-  turnId: string | null,
-): OrchestrationMessage | null {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]!;
-    if (message.turnId !== turnId) continue;
-    if (message.role === "user") return null;
-    if (message.streaming) return message;
-  }
-  return null;
-}
-
 function stationForWorkEntry(entry: WorkLogEntry): StageStation {
-  if (entry.agentSpawn !== undefined) return "delegate";
-  if (entry.itemType === "collab_agent_tool_call") return "delegate";
+  if (entry.itemType === "subagent") return "delegate";
   switch (toolGroupAction(entry)) {
     case "read":
       return "read";
@@ -725,10 +861,12 @@ function stationForWorkEntry(entry: WorkLogEntry): StageStation {
     case "code-search":
     case "search":
       return "search";
+    case "thread-create":
+      return "delegate";
     case "update":
       return "tool";
     default:
-      return stationForToolName(entry.toolTitle ?? entry.label, entry.toolSurface);
+      return stationForToolName(entry.toolTitle ?? entry.label, entry.toolSurface, entry.command);
   }
 }
 
@@ -800,251 +938,110 @@ function stationForToolTitle(
   return "tool";
 }
 
-interface AttributedTool {
-  readonly title: string | null;
-  readonly detail: string | null;
-  readonly command: string | null;
-  readonly surface: "browser" | "computer" | undefined;
-  readonly status: "inProgress" | "completed" | "failed" | "declined";
-}
-
-interface AttributedWork {
-  readonly tool: AttributedTool;
-  readonly timing: StationTiming;
-  /** Every finished call, oldest first: the alerts read the tail, the recap counts all. */
-  readonly steps: ReadonlyArray<StageStep>;
-  /** Shell commands it ran, oldest first, one per call: what the findings screen. */
-  readonly commands: ReadonlyArray<{
-    readonly key: string;
-    readonly command: string;
-    readonly at: string;
-  }>;
-}
+const PROGRESS_STATIONS: ReadonlyArray<{
+  readonly pattern: RegExp;
+  readonly station: StageStation;
+}> = [
+  { pattern: /^read(ing)?\b|^view(ing)?\b/i, station: "read" },
+  {
+    pattern: /^(search(ing)?|find(ing)?|grep(ping)?|glob(bing)?|list(ing)?|look(ing)?\s+for)\b/i,
+    station: "search",
+  },
+  { pattern: /^(fetch(ing)?|web\s*search)\b/i, station: "search" },
+  {
+    pattern: /^(edit(ing)?|writ(e|ing)|updat(e|ing)|creat(e|ing)|patch(ing)?)\b/i,
+    station: "edit",
+  },
+  { pattern: /^(running|bash:)\s/i, station: "command" },
+];
 
 /**
- * The latest tool call of each subagent, and how its turn divides between the
- * stations. Tool rows owned by an agent carry its id; the main timeline hides
- * them, which is exactly why the stage has to read them here.
+ * Where a progress line puts a subagent. Claude reports a line per tool a
+ * subagent starts ("Reading src/x.ts", "Running npm test") and a summary every
+ * so often; a line that names no tool leaves it thinking.
  */
-function collectAttributedTools(
-  activities: ReadonlyArray<OrchestrationThreadActivity>,
-): Map<string, AttributedWork> {
-  const latest = new Map<
-    string,
-    {
-      toolCallId: string | null;
-      tool: AttributedTool;
-      times: Map<StageStation, number>;
-      boundary: string | null;
-      activeSince: string | null;
-      steps: Array<StageStep & { toolCallId: string | null }>;
-      commands: Map<string, { key: string; command: string; at: string }>;
-    }
-  >();
-  for (const activity of activities) {
-    if (!activity.kind.startsWith("tool.")) continue;
-    const payload = asRecord(activity.payload);
-    if (payload === null) continue;
-    const agentId = asString(payload.agentId);
-    if (agentId === null) continue;
-    const data = asRecord(payload.data);
-    const toolCallId = asString(payload.toolCallId) ?? asString(data?.toolCallId);
-    const previous = latest.get(agentId);
-    const status = toolStatus(payload.status, activity.kind);
-    const item = asRecord(data?.item);
-    const command =
-      asString(item?.command) ??
-      asString(asRecord(item?.input)?.command) ??
-      asString(data?.command) ??
-      null;
-    const tool: AttributedTool = {
-      title: asString(payload.title) ?? asString(data?.toolName) ?? previous?.tool.title ?? null,
-      detail: asString(payload.detail) ?? (activity.summary || null),
-      command: command ?? (previous?.toolCallId === toolCallId ? previous.tool.command : null),
-      surface:
-        payload.toolSurface === "browser" || payload.toolSurface === "computer"
-          ? payload.toolSurface
-          : undefined,
-      status,
-    };
-    const times = previous?.times ?? new Map<StageStation, number>();
-    const steps = previous?.steps ?? [];
-    const commands =
-      previous?.commands ?? new Map<string, { key: string; command: string; at: string }>();
-    if (tool.command !== null) {
-      const key = toolCallId ?? activity.id;
-      commands.set(key, {
-        key,
-        command: tool.command,
-        at: commands.get(key)?.at ?? activity.createdAt,
-      });
-    }
-    let boundary = previous?.boundary ?? null;
-    let activeSince = previous?.activeSince ?? null;
-    if (status !== "inProgress") {
-      // A call ends once; a second terminal row for it restates, not repeats.
-      const step = {
-        toolCallId,
-        label: [tool.title, tool.command ?? tool.detail].filter(Boolean).join(" "),
-        failed: status === "failed",
-      };
-      const last = steps[steps.length - 1];
-      if (last !== undefined && toolCallId !== null && last.toolCallId === toolCallId) {
-        steps[steps.length - 1] = step;
-      } else {
-        steps.push(step);
-      }
-    }
-    if (status === "inProgress") {
-      // Progress rows repeat for one call; only its first row starts the clock.
-      if (previous === undefined || previous.toolCallId !== toolCallId || activeSince === null) {
-        if (boundary !== null) addStationTime(times, "thinking", boundary, activity.createdAt);
-        boundary = activity.createdAt;
-        activeSince = activity.createdAt;
-      }
-    } else {
-      const from = activeSince ?? boundary;
-      if (from !== null) {
-        addStationTime(
-          times,
-          stationForToolName(tool.title, tool.surface, tool.command ?? tool.detail),
-          from,
-          activity.createdAt,
-        );
-      }
-      boundary = activity.createdAt;
-      activeSince = null;
-    }
-    latest.set(agentId, { toolCallId, tool, times, boundary, activeSince, steps, commands });
-  }
-  const result = new Map<string, AttributedWork>();
-  for (const [agentId, entry] of latest) {
-    result.set(agentId, {
-      tool: entry.tool,
-      timing: { times: entry.times, boundary: entry.boundary, activeSince: entry.activeSince },
-      steps: entry.steps.map(({ label, failed }) => ({ label, failed })),
-      commands: [...entry.commands.values()],
-    });
-  }
-  return result;
+export function stationForProgress(progress: string | null | undefined): StageStation {
+  const text = progress?.trim() ?? "";
+  const match = PROGRESS_STATIONS.find(({ pattern }) => pattern.test(text));
+  if (match === undefined) return "thinking";
+  return match.station === "command" && isSearchCommand(text) ? "search" : match.station;
 }
 
-/** A subagent's latest progress row: the tool it just started, or a summary. */
-interface SubagentProgress {
-  readonly toolName: string | null;
-  readonly detail: string | null;
-  readonly at: string;
-}
-
-/**
- * Claude's background subagents stream no tool rows, but announce each tool
- * they start on task.progress ("Reading src/x.ts"), and every ~30s a summary
- * in its place. The server keeps one such row per task, so the latest one is
- * where the agent is now; usage-only ticks live in a row of their own.
- */
-function collectLatestProgress(
-  activities: ReadonlyArray<OrchestrationThreadActivity>,
-): Map<string, SubagentProgress> {
-  const latest = new Map<string, SubagentProgress>();
-  for (const activity of activities) {
-    if (activity.kind !== "task.progress") continue;
-    const payload = asRecord(activity.payload);
-    const taskId = asString(payload?.taskId);
-    if (payload === null || taskId === null || payload.usageSnapshot === true) continue;
-    latest.set(taskId, {
-      toolName: asString(payload.lastToolName),
-      detail: asString(payload.summary) ?? asString(payload.detail),
-      at: activity.createdAt,
-    });
-  }
-  return latest;
-}
-
-function toolStatus(value: unknown, kind: string): AttributedTool["status"] {
-  if (
-    value === "inProgress" ||
-    value === "completed" ||
-    value === "failed" ||
-    value === "declined"
-  ) {
-    return value;
-  }
-  return kind === "tool.completed" ? "completed" : "inProgress";
-}
-
-function subagentLabel(agent: RuntimeSubagent): string {
-  return agent.title && agent.title !== agent.id ? agent.title : (agent.role ?? "Subagent");
+function subagentLabel(agent: OrchestrationV2Subagent): string {
+  if (agent.title) return agent.title;
+  const prompt = agent.prompt.trim();
+  if (prompt.length === 0) return "Subagent";
+  return prompt.length > 80 ? `${prompt.slice(0, 77)}...` : prompt;
 }
 
 function deriveSubagent(
-  agent: RuntimeSubagent,
-  work: AttributedWork | null,
-  progress: SubagentProgress | null,
+  agent: OrchestrationV2Subagent,
+  work: AgentWork | null,
+  workspaceRoot: string | undefined,
 ): StageAgent {
-  const tool = work?.tool ?? null;
-  const timing = work?.timing ?? null;
-  const started = agent.startedAt ?? agent.firstSeenAt;
+  const started = iso(agent.startedAt ?? agent.updatedAt);
   const steps = work?.steps ?? [];
-  // Providers that attribute no tool rows still report progress lines; a
-  // line that keeps coming back is the same loop, read from the other side.
-  const stepAlerts = deriveStepAlerts(
-    steps.length > 0
-      ? steps
-      : agent.recentActivity.map((entry) => ({ label: entry.summary, failed: false })),
-  );
+  const timing =
+    work === null
+      ? null
+      : deriveTiming(steps, started, {
+          settledAt: null,
+          tailStation: "thinking",
+        });
+  const progress = agent.progress ?? null;
+  const stepAlerts = deriveStepAlerts(steps);
   const base = {
     id: agent.id,
     kind: "subagent" as const,
     label: subagentLabel(agent),
-    role: agent.role,
+    role: null,
     project: null,
     initials: null,
-    thought: agent.progress,
+    thought: progress,
     stationTimes: timing === null ? [] : sortStationTimes(timing.times),
     steps: steps.length,
     failedSteps: steps.filter((step) => step.failed).length,
     alerts:
       agent.status === "failed"
-        ? [{ kind: "failed" as const, text: agent.error ?? "The subagent failed" }, ...stepAlerts]
+        ? [{ kind: "failed" as const, text: agent.result ?? "The subagent failed" }, ...stepAlerts]
         : stepAlerts,
+    childThreadId: agent.childThreadId,
   };
   if (agent.status === "running") {
-    if (tool !== null && tool.status === "inProgress") {
+    const current = steps.at(-1);
+    if (current?.running && current.entry !== null) {
       return {
         ...base,
-        station: stationForToolName(tool.title, tool.surface, tool.command ?? tool.detail),
+        station: current.station,
         live: true,
-        headline: tool.title ?? "Using a tool",
-        detail: tool.command ?? tool.detail,
-        since: timing?.activeSince ?? started,
+        headline: liveWorkEntryLabel(current.entry, workspaceRoot, true),
+        detail: workEntryDetail(current.entry),
+        since: timing?.activeSince ?? current.start,
       };
     }
-    // No tool rows: the latest progress row names the tool it started, which
-    // is where it works until the next row says otherwise.
-    if (work === null && progress?.toolName) {
-      return {
-        ...base,
-        station: stationForToolName(progress.toolName, undefined, progress.detail),
-        live: true,
-        headline: progress.toolName,
-        detail: progress.detail,
-        since: progress.at,
-      };
+    // Without its thread's tool calls, the latest progress line is where it
+    // works until the next line says otherwise.
+    if (work === null || steps.length === 0) {
+      const station = stationForProgress(progress);
+      if (station !== "thinking") {
+        return {
+          ...base,
+          station,
+          live: true,
+          headline: progress!,
+          detail: null,
+          since: iso(agent.updatedAt),
+        };
+      }
     }
     // Without any tool signal the stage cannot tell thinking from tool use.
-    const headline =
-      work === null
-        ? "Working"
-        : agent.lastToolName
-          ? `Thinking after ${agent.lastToolName}`
-          : "Thinking";
     return {
       ...base,
       station: "thinking",
       live: true,
-      headline,
-      detail: agent.progress,
-      since: timing?.boundary ?? progress?.at ?? started,
+      headline: work === null || steps.length === 0 ? "Working" : "Thinking",
+      detail: progress,
+      since: timing?.boundary ?? started,
     };
   }
   if (agent.status === "waiting") {
@@ -1053,8 +1050,8 @@ function deriveSubagent(
       station: "waiting",
       live: true,
       headline: "Waiting for you",
-      detail: agent.progress,
-      since: agent.updatedAt,
+      detail: progress,
+      since: iso(agent.updatedAt),
     };
   }
   if (agent.status === "pending") {
@@ -1063,7 +1060,7 @@ function deriveSubagent(
       station: "idle",
       live: true,
       headline: "Starting",
-      detail: agent.progress,
+      detail: progress,
       since: started,
     };
   }
@@ -1079,7 +1076,7 @@ function deriveSubagent(
           : agent.status === "idle"
             ? "Idle"
             : "Done",
-    detail: agent.error ?? agent.result ?? agent.progress,
+    detail: agent.result ?? progress,
     since: null,
   };
 }
@@ -1157,14 +1154,6 @@ function tailSnippet(text: string): string | null {
   if (trimmed.length === 0) return null;
   const tail = trimmed.length <= SNIPPET_LIMIT ? trimmed : `…${trimmed.slice(-SNIPPET_LIMIT)}`;
   return tail.replace(/\s+/g, " ");
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;
-}
-
-function asString(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
 /**

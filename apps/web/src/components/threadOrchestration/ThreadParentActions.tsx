@@ -8,14 +8,12 @@ import { MessageSquareIcon, NetworkIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { create } from "zustand";
 
-import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { useProjects, useThreadShells } from "~/state/entities";
-import { serverEnvironment } from "~/state/server";
-import { threadEnvironment } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { Command, CommandInput, CommandItem, CommandList } from "../ui/command";
 import { Dialog, DialogPopup, DialogTitle } from "../ui/dialog";
 import { stackedThreadToast, toastManager } from "../ui/toast";
+import { coordinatorLinksEnvironment, useCoordinatorOf } from "./coordinatorLinks";
 import {
   hasChildThreads,
   parentThreadCandidates,
@@ -49,6 +47,7 @@ export function ThreadParentDialogHost() {
 
 function ThreadParentDialog({ thread }: { thread: EnvironmentThreadShell }) {
   const threads = useThreadShells();
+  const coordinatorOf = useCoordinatorOf(threads);
   const projects = useProjects();
   const [query, setQuery] = useState("");
   const projectNames = new Map(
@@ -57,10 +56,13 @@ function ThreadParentDialog({ thread }: { thread: EnvironmentThreadShell }) {
       .map((project) => [project.id, project.title]),
   );
   const coordinatorIds = new Set(
-    threads.flatMap((t) => (t.parentThreadId ? [t.parentThreadId] : [])),
+    threads.flatMap((t) => {
+      const coordinatorId = coordinatorOf(t);
+      return coordinatorId ? [coordinatorId] : [];
+    }),
   );
   const search = query.trim().toLocaleLowerCase();
-  const candidates = parentThreadCandidates(threads, thread).filter((candidate) =>
+  const candidates = parentThreadCandidates(threads, thread, coordinatorOf).filter((candidate) =>
     `${candidate.title} ${projectNames.get(candidate.projectId) ?? ""}`
       .toLocaleLowerCase()
       .includes(search),
@@ -121,12 +123,15 @@ function ThreadParentDialog({ thread }: { thread: EnvironmentThreadShell }) {
  */
 export function useThreadParentActions() {
   const threads = useThreadShells();
+  const coordinatorOf = useCoordinatorOf(threads);
   // Read when a menu opens, so the actions stay stable while threads change.
-  const threadsRef = useRef(threads);
+  const threadsRef = useRef({ threads, coordinatorOf });
   useEffect(() => {
-    threadsRef.current = threads;
-  }, [threads]);
-  const setParent = useAtomCommand(threadEnvironment.setParent, { reportFailure: false });
+    threadsRef.current = { threads, coordinatorOf };
+  }, [coordinatorOf, threads]);
+  const setCoordinator = useAtomCommand(coordinatorLinksEnvironment.set, {
+    reportFailure: false,
+  });
 
   const showMenu = useCallback(
     (api: LocalApi, thread: EnvironmentThreadShell) =>
@@ -136,11 +141,12 @@ export function useThreadParentActions() {
       ) =>
         api.contextMenu.show<Id | ThreadParentMenuId>(
           withThreadParentMenuItems(items, {
-            orchestrationEnabled:
-              appAtomRegistry.get(serverEnvironment.settingsValueAtom(thread.environmentId))
-                ?.enableThreadOrchestration === true,
-            hasParent: Boolean(thread.parentThreadId),
-            hasChildren: hasChildThreads(threadsRef.current, thread),
+            hasParent: threadsRef.current.coordinatorOf(thread) !== null,
+            hasChildren: hasChildThreads(
+              threadsRef.current.threads,
+              thread,
+              threadsRef.current.coordinatorOf,
+            ),
           }),
           position,
         ),
@@ -152,9 +158,9 @@ export function useThreadParentActions() {
       if (id !== "assign-parent" && id !== "detach-parent") return false;
       const parentThreadId = id === "assign-parent" ? await requestParentThread(thread) : null;
       if (id === "assign-parent" && parentThreadId === null) return true;
-      const result = await setParent({
+      const result = await setCoordinator({
         environmentId: thread.environmentId,
-        input: { threadId: thread.id, parentThreadId },
+        input: { threadId: thread.id, coordinatorThreadId: parentThreadId },
       });
       if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
@@ -171,7 +177,7 @@ export function useThreadParentActions() {
       }
       return true;
     },
-    [setParent],
+    [setCoordinator],
   );
 
   return { showMenu, handle };

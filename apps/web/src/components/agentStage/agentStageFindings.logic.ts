@@ -1,6 +1,4 @@
-import type { OrchestrationThreadActivity } from "@t3tools/contracts";
-
-import { deriveLatestContextWindowSnapshot } from "../../lib/contextWindow";
+import type { ContextWindowSnapshot } from "../../lib/contextWindow";
 
 /**
  * Something the user may want to step in for, though nothing waits on them:
@@ -69,13 +67,16 @@ const CONTEXT_FULL = 0.85;
 
 /**
  * How full the main agent's context is, against the point where the provider
- * compacts it when it says so, else against the window itself.
+ * compacts it when it says so, else against the window itself. The snapshot is
+ * the one the chat's context meter reads.
  */
 export function contextFinding(
-  activities: ReadonlyArray<OrchestrationThreadActivity>,
+  snapshot: Pick<
+    ContextWindowSnapshot,
+    "usedTokens" | "maxTokens" | "compactsAutomatically" | "autoCompactThreshold" | "updatedAt"
+  > | null,
   agentId: string,
 ): StageFinding | null {
-  const snapshot = deriveLatestContextWindowSnapshot(activities);
   if (snapshot === null) return null;
   const compactAt = snapshot.compactsAutomatically ? (snapshot.autoCompactThreshold ?? null) : null;
   const limit = compactAt ?? snapshot.maxTokens ?? null;

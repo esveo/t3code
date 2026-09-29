@@ -1,6 +1,6 @@
 /**
  * Fork: thread orchestration. Which project a coordinator means when it names
- * one for start_thread or list_threads: by id, workspace path or title.
+ * one as delegate_task's workspace.project: by id, workspace path or title.
  */
 interface ProjectCandidate {
   readonly id: string;

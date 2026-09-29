@@ -123,10 +123,8 @@ function renderTabs(
       onAddDiff={() => undefined}
       onAddGitGraph={() => undefined}
       onAddFiles={() => undefined}
-      onAddAgents={() => undefined}
       onAddAgentStage={() => undefined}
       onAddDevice={() => undefined}
-      liveAgentCount={0}
       browserAvailable
       terminalAvailable={false}
       diffAvailable={false}
@@ -134,7 +132,6 @@ function renderTabs(
       filesAvailable={false}
       pullRequestAvailable={false}
       pullRequestsAvailable={false}
-      agentsAvailable={false}
       agentStageAvailable={false}
       deviceAvailable={false}
     >

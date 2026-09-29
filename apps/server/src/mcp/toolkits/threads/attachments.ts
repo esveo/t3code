@@ -1,8 +1,12 @@
 /**
  * Fork: thread orchestration. Hands attachments from a coordinator to a child
- * thread. Each one is copied into the attachment store under the child's id,
+ * it starts with delegate_task. Each one is copied into the attachment store
+ * under the coordinator's id (the child's id exists only once the task does),
  * exactly as an upload from the composer would be claimed, so the child sees
- * it as if the user had attached it there.
+ * it as if the user had attached it to its first message.
+ *
+ * OrchestratorMcpService reads `DelegatedAttachments` optionally, so its own
+ * tests and layers stay as upstream builds them.
  */
 import {
   type ChatAttachment,
@@ -10,13 +14,17 @@ import {
   type ChatImageAttachment,
   getProviderAttachmentLimitError,
   isProviderSendTurnSupportedImageMimeType,
-  type OrchestrationMessage,
+  type OrchestrationV2ConversationMessage,
+  type OrchestratorMcpDelegateAttachment,
+  OrchestratorMcpFailure,
   PROVIDER_SEND_TURN_MAX_FILE_BYTES,
   PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   type ThreadId,
 } from "@t3tools/contracts";
+import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Mime from "effect/unstable/http/Mime";
@@ -28,9 +36,12 @@ import {
   resolveAttachmentPath,
 } from "../../../attachmentStore.ts";
 import * as ServerConfig from "../../../config.ts";
-import { ThreadOrchestrationFailedError, type ThreadAttachmentInput } from "./tools.ts";
+import type { OrchestratorV2Error } from "../../../orchestration-v2/Orchestrator.ts";
+import { ThreadManagementService } from "../../../orchestration-v2/ThreadManagementService.ts";
+import { ThreadCoordinators } from "../../../threadOrchestration/ThreadCoordinators.ts";
 
-const failure = (detail: string) => new ThreadOrchestrationFailedError({ detail });
+const failure = (message: string) =>
+  new OrchestratorMcpFailure({ code: "invalid_request", message });
 
 type KnownAttachment = ChatImageAttachment | ChatFileAttachment;
 
@@ -49,7 +60,7 @@ const isKnownAttachment = (attachment: ChatAttachment): attachment is KnownAttac
  * sees it in its prompt (`ref=file_…`).
  */
 export function findMessageAttachment(
-  messages: ReadonlyArray<OrchestrationMessage>,
+  messages: ReadonlyArray<OrchestrationV2ConversationMessage>,
   reference: string,
 ): ChatAttachment | undefined {
   for (const message of messages) {
@@ -65,25 +76,6 @@ export function findMessageAttachment(
     }
   }
   return undefined;
-}
-
-/** What read_thread reports about a message's attachments. */
-export function describeMessageAttachments(
-  messages: ReadonlyArray<OrchestrationMessage>,
-  attachmentsDir: string,
-) {
-  return messages.flatMap((message) =>
-    (message.attachments ?? []).filter(isKnownAttachment).map((attachment) => ({
-      messageId: message.id,
-      role: message.role,
-      attachmentId: attachment.id,
-      type: attachment.type,
-      name: attachment.name,
-      mimeType: attachment.mimeType,
-      sizeBytes: attachment.sizeBytes,
-      path: resolveAttachmentPath({ attachmentsDir, attachment }),
-    })),
-  );
 }
 
 /** How a local file travels: as an image when a provider can take it as one, else as a file. */
@@ -119,13 +111,13 @@ export const makeThreadAttachments = Effect.gen(function* () {
    * attachment id names is searched first.
    */
   const resolve = Effect.fn("ThreadAttachments.resolve")(function* (input: {
-    readonly attachments: ReadonlyArray<ThreadAttachmentInput>;
+    readonly attachments: ReadonlyArray<OrchestratorMcpDelegateAttachment>;
     readonly threadsToSearch: ReadonlyArray<ThreadId>;
     readonly readMessages: (
       threadId: ThreadId,
-    ) => Effect.Effect<ReadonlyArray<OrchestrationMessage>, ThreadOrchestrationFailedError>;
+    ) => Effect.Effect<ReadonlyArray<OrchestrationV2ConversationMessage>, OrchestratorV2Error>;
   }) {
-    const messagesByThread = new Map<string, ReadonlyArray<OrchestrationMessage>>();
+    const messagesByThread = new Map<string, ReadonlyArray<OrchestrationV2ConversationMessage>>();
     const findStored = Effect.fn("ThreadAttachments.findStored")(function* (reference: string) {
       const namedThread = parseThreadSegmentFromAttachmentId(reference);
       const candidates = [
@@ -136,7 +128,9 @@ export const makeThreadAttachments = Effect.gen(function* () {
         if (!messages) {
           messages = yield* input
             .readMessages(threadId as ThreadId)
-            .pipe(Effect.orElseSucceed((): ReadonlyArray<OrchestrationMessage> => []));
+            .pipe(
+              Effect.orElseSucceed((): ReadonlyArray<OrchestrationV2ConversationMessage> => []),
+            );
           messagesByThread.set(threadId, messages);
         }
         const found = findMessageAttachment(messages, reference);
@@ -154,7 +148,7 @@ export const makeThreadAttachments = Effect.gen(function* () {
         const stored = yield* findStored(entry.attachmentId);
         if (!stored || !isKnownAttachment(stored)) {
           return yield* failure(
-            `No attachment ${entry.attachmentId} was found in the thread it names, this thread or the threads you started. Pass its path instead.`,
+            `No attachment ${entry.attachmentId} was found in the thread it names, this thread or your threads. Pass its path instead.`,
           );
         }
         const sourcePath = resolveAttachmentPath({ attachmentsDir, attachment: stored });
@@ -213,7 +207,12 @@ export const makeThreadAttachments = Effect.gen(function* () {
       return claimed;
     }).pipe(
       Effect.catchTag("PlatformError", (error) =>
-        Effect.fail(failure(`Could not copy the attachment: ${error.message}`)),
+        Effect.fail(
+          new OrchestratorMcpFailure({
+            code: "orchestration_error",
+            message: `Could not copy the attachment: ${error.message}`,
+          }),
+        ),
       ),
       Effect.tapError(() => removeWritten),
     );
@@ -228,3 +227,76 @@ export const makeThreadAttachments = Effect.gen(function* () {
 
   return { resolve, claim, release, attachmentsDir };
 });
+
+export class DelegatedAttachments extends Context.Service<
+  DelegatedAttachments,
+  {
+    /** Copies the files into the store as attachments of the coordinator, before the task exists. */
+    readonly claim: (
+      coordinatorId: ThreadId,
+      attachments: ReadonlyArray<OrchestratorMcpDelegateAttachment>,
+    ) => Effect.Effect<ReadonlyArray<ChatAttachment>, OrchestratorMcpFailure>;
+    /** Removes claimed files whose task was then not created. */
+    readonly release: (attachments: ReadonlyArray<ChatAttachment>) => Effect.Effect<void>;
+  }
+>()("t3/mcp/toolkits/threads/attachments/DelegatedAttachments") {}
+
+export const layer = Layer.effect(
+  DelegatedAttachments,
+  Effect.gen(function* () {
+    const threadAttachments = yield* makeThreadAttachments;
+    const threads = yield* ThreadManagementService;
+    const coordinators = yield* ThreadCoordinators;
+
+    const readMessages = (threadId: ThreadId) =>
+      Effect.gen(function* () {
+        // Threads carried over from V1 load their transcript on first read.
+        yield* threads.ensureLegacyTranscript(threadId).pipe(Effect.ignore);
+        const records = yield* threads.getThreadRecords(threadId, ["messages"]);
+        return records.messages;
+      });
+
+    return DelegatedAttachments.of({
+      // An id is looked up in the thread it names, then in the coordinator's
+      // own thread and its children.
+      claim: (coordinatorId, attachments) =>
+        Effect.gen(function* () {
+          const children = attachments.some((entry) => entry.attachmentId !== undefined)
+            ? (yield* coordinators
+                .childrenOf(coordinatorId)
+                .pipe(Effect.orElseSucceed(() => []))).map((thread) => thread.id)
+            : [];
+          const sources = yield* threadAttachments.resolve({
+            attachments,
+            threadsToSearch: [coordinatorId, ...children],
+            readMessages,
+          });
+          return yield* threadAttachments.claim(coordinatorId, sources);
+        }),
+      release: (attachments) => threadAttachments.release(attachments).pipe(Effect.asVoid),
+    });
+  }),
+);
+
+/** The files for a delegated child, claimed; none when the server cannot attach any. */
+export const claimDelegatedAttachments = (
+  coordinatorId: ThreadId,
+  attachments: ReadonlyArray<OrchestratorMcpDelegateAttachment> | undefined,
+) =>
+  Effect.gen(function* () {
+    if (attachments === undefined || attachments.length === 0) return [];
+    const service = yield* Effect.serviceOption(DelegatedAttachments);
+    if (Option.isNone(service)) {
+      return yield* failure("This server cannot attach files to delegated tasks.");
+    }
+    return yield* service.value.claim(coordinatorId, attachments);
+  });
+
+export const releaseDelegatedAttachments = (attachments: ReadonlyArray<ChatAttachment>) =>
+  attachments.length === 0
+    ? Effect.void
+    : Effect.serviceOption(DelegatedAttachments).pipe(
+        Effect.flatMap((service) =>
+          Option.isNone(service) ? Effect.void : service.value.release(attachments),
+        ),
+      );

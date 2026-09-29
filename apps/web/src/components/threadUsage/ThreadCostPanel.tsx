@@ -21,7 +21,7 @@ function Row(props: {
   readonly indent?: boolean;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 text-[11px] leading-4">
+    <div className="flex items-center justify-between gap-3 text-2xs leading-4">
       <span className={cn("text-secondary-label", props.indent && "ps-2 opacity-80")}>
         {props.label}
       </span>
@@ -38,7 +38,7 @@ function Row(props: {
 }
 
 function Message({ children }: { readonly children: React.ReactNode }) {
-  return <div className="text-pretty text-secondary-label text-[11px] leading-4">{children}</div>;
+  return <div className="text-pretty text-secondary-label text-2xs leading-4">{children}</div>;
 }
 
 /**
@@ -62,7 +62,7 @@ export function ThreadCostPanel(props: {
   }
   if (data === null) {
     return (
-      <div className="flex items-center gap-2 text-secondary-label text-[11px]">
+      <div className="flex items-center gap-2 text-secondary-label text-2xs">
         <Spinner className="size-3" />
         Reading this thread's transcript...
       </div>
@@ -85,7 +85,7 @@ export function ThreadCostPanel(props: {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-3">
-        <span className="font-medium text-secondary-label text-[11px]">Thread cost</span>
+        <span className="font-medium text-secondary-label text-2xs">Thread cost</span>
         <span className="font-medium text-sm tabular-nums">{formatThreadCost(data.costUsd)}</span>
       </div>
       <div className="flex flex-col gap-1">

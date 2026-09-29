@@ -50,13 +50,19 @@ disturbing the build people work in all day.
 - Only merge a feature the user asked to go live. Ask when in doubt — an
   unfinished branch in `fork` is a broken app for everyone at esveo.
 - Upstream reaches `fork` by itself: every morning at 06:00
-  `fork-upstream-sync.yml` merges upstream's `main`, lets the Copilot CLI
+  `fork-upstream-sync.yml` merges upstream (see below), lets the Copilot CLI
   resolve conflicts and fix what broke, and lands the result as a PR it merges
   itself once typecheck, the related tests and its checks against dropped fork
   code are green. Otherwise the PR stays open as a draft that mentions Paul,
   the maintainer. Run it by hand from the Actions tab; an older upstream commit
   as `upstream_ref` merges a large backlog in stages. Rebase feature branches
   onto `fork` to pick upstream up.
+- The fork already runs upstream's Orchestrator V2 (`orchestration-v2/`,
+  pingdotgg/t3code#2829), which upstream has not merged into its `main` yet.
+  Until it has, the sync follows upstream's V2 branch
+  `t3code/codex-turn-mapping` (`DEFAULT_UPSTREAM_REF` in the workflow), which
+  merges upstream's `main` in itself. Switch it back to `main` once #2829 is
+  merged. Build fork features on V2; the V1 orchestration is gone.
 
 ## Staying mergeable with upstream
 
@@ -71,6 +77,11 @@ write changes with that merge in mind, not just with the current diff in mind.
   `apps/web/src/components/<feature>/` holding its views, logic, tests and
   store (`agentStage/`, `gitGraph/`, `split/`). Only its mount points live in
   upstream folders.
+- A fork feature's settings go on the esveo settings page (Settings → esveo,
+  `apps/web/src/components/esveoSettings/EsveoSettingsPanel.tsx`), not into
+  upstream's settings panels, and their search entries point at
+  `/settings/esveo`. Everyone finds the fork's switches in one place, and
+  upstream's panels stay free of fork rows.
 - When an upstream file has to change, make the edit as small and as local as
   possible: one import plus one call site beats an inline block, and a wrapper
   around upstream's code beats a rewrite of it.

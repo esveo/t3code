@@ -19,10 +19,13 @@ export type SettingsPath =
   | "/settings/snap-shot"
   | "/settings/providers"
   | "/settings/integrations"
+  | "/settings/scheduled-tasks"
   | "/settings/source-control"
   | "/settings/storage"
   | "/settings/connections"
-  | "/settings/archived";
+  | "/settings/archived"
+  // Fork: esveo's own settings page.
+  | "/settings/esveo";
 
 /**
  * Where a setting can be edited. Device-local rows have no scope: they render
@@ -90,10 +93,12 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/snap-shot": "SnapShots",
   "/settings/providers": "Providers",
   "/settings/integrations": "Integrations",
+  "/settings/scheduled-tasks": "Scheduled Tasks",
   "/settings/source-control": "Source Control",
   "/settings/storage": "Storage",
   "/settings/connections": "Connections",
   "/settings/archived": "Archive",
+  "/settings/esveo": "esveo", // Fork
 };
 
 /** Anchor id of the first row bound to `command` on the Keybindings page. */
@@ -206,18 +211,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["transparent transparency solid menus dialogs composer"],
   },
   {
-    id: "two-line-thread-cards",
-    title: "Two-line thread cards",
-    to: "/settings/appearance",
-    searchTerms: ["sidebar compact row height branch provider icon diff pull request"],
-  },
-  {
-    id: "group-sidebar-threads-by-project",
-    title: "Group threads by project",
-    to: "/settings/appearance",
-    searchTerms: ["sidebar project folder runs grouping collapse header repository"],
-  },
-  {
     id: "diff-color-scheme",
     title: "Diff colors",
     to: "/settings/appearance",
@@ -280,10 +273,27 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["long lines code blocks tables diffs file previews"],
   },
   {
+    id: "composer-context",
+    title: "Composer context",
+    to: "/settings/appearance",
+  },
+  {
     id: "project-grouping",
     title: "Project grouping",
     to: "/settings/general",
     searchTerms: ["combine matching repositories environments sidebar"],
+  },
+  {
+    id: "snooze-limited-threads",
+    title: "Snooze limited threads",
+    to: "/settings/general",
+    searchTerms: ["usage quota rate limit reset wake recover continue"],
+  },
+  {
+    id: "auto-resume-limited-threads",
+    title: "Auto-resume limited threads",
+    to: "/settings/general",
+    searchTerms: ["usage quota rate limit reset recover continue"],
   },
   {
     id: "auto-settle-inactive-threads",
@@ -390,50 +400,11 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["queue steer running turn send default behavior composer"],
   },
   {
-    id: "context-window-control",
-    title: "Context window usage",
-    to: "/settings/general",
-    searchTerms: ["composer tokens usage meter percentage compaction"],
-  },
-  {
-    id: "prompt-cache-timer",
-    title: "Prompt cache timer",
-    to: "/settings/general",
-    searchTerms: ["composer claude cache ttl expire minutes warm cold tokens"],
-  },
-  {
-    id: "agent-stage",
-    title: "Agent stage",
-    to: "/settings/general",
-    searchTerms: ["sprites stations subagents thinking editing terminal right panel everything"],
-  },
-  {
-    id: "voice-input",
-    title: "Voice input",
-    to: "/settings/general",
-    searchTerms: [
-      "dictation speech to text microphone whisper transcribe language spracheingabe diktat sprache",
-    ],
-  },
-  {
     id: "provider-update-checks",
     title: "Provider update checks",
     to: "/settings/general",
     searchTerms: ["installed cli versions newer available codex claude cursor grok opencode"],
     scope: "environment-defaults",
-  },
-  // Fork: thread orchestration.
-  {
-    id: "thread-orchestration",
-    title: "Thread orchestration",
-    to: "/settings/general",
-    searchTerms: ["coordinator child threads orchestrate parallel agents overview subthreads"],
-  },
-  {
-    id: "thread-decisions",
-    title: "Coordinator decisions",
-    to: "/settings/general",
-    searchTerms: ["inbox questions answers decide approve coordinator open items"],
   },
   {
     id: "continue-threads-after-server-update",
@@ -755,6 +726,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     scope: "environment-defaults",
   },
   {
+    id: "worktree-branch-naming",
+    title: "Worktree branch naming",
+    to: "/settings/source-control",
+    searchTerms: ["static semantic prefix custom prompt instructions feat fix refactor chore"],
+    environmentOnly: true,
+    scope: "project-defaults",
+  },
+  {
     id: "source-control-writing-style",
     title: "Source control writing style",
     to: "/settings/source-control",
@@ -884,6 +863,63 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/archived",
     searchTerms: ["restore reopen deleted history projects"],
   },
+  // Fork: the rows of the esveo page.
+  {
+    id: "two-line-thread-cards",
+    title: "Two-line thread cards",
+    to: "/settings/esveo",
+    searchTerms: ["sidebar compact row height branch provider icon diff pull request"],
+  },
+  {
+    id: "group-sidebar-threads-by-project",
+    title: "Group threads by project",
+    to: "/settings/esveo",
+    searchTerms: ["sidebar project folder runs grouping collapse header repository"],
+  },
+  {
+    id: "sidebar-child-threads",
+    title: "Child threads in the sidebar",
+    to: "/settings/esveo",
+    searchTerms: ["coordinator subthreads nested group expand sidebar orchestration children"],
+  },
+  {
+    id: "context-window-control",
+    title: "Context window usage",
+    to: "/settings/esveo",
+    searchTerms: ["composer tokens usage meter percentage compaction"],
+  },
+  {
+    id: "prompt-cache-timer",
+    title: "Prompt cache timer",
+    to: "/settings/esveo",
+    searchTerms: ["composer claude cache ttl expire minutes warm cold tokens"],
+  },
+  {
+    id: "voice-input",
+    title: "Voice input",
+    to: "/settings/esveo",
+    searchTerms: [
+      "dictation speech to text microphone whisper transcribe language spracheingabe diktat sprache",
+    ],
+  },
+  {
+    id: "agent-stage",
+    title: "Agent stage",
+    to: "/settings/esveo",
+    searchTerms: ["sprites stations subagents thinking editing terminal right panel everything"],
+  },
+  {
+    id: "thread-decisions",
+    title: "Coordinator decisions",
+    to: "/settings/esveo",
+    searchTerms: ["inbox questions answers decide approve coordinator open items"],
+  },
+  {
+    id: "cross-project-threads",
+    title: "Cross-project threads",
+    to: "/settings/esveo",
+    searchTerms: ["agents coordinator other projects read message start threads repositories"],
+  },
 ] as const satisfies ReadonlyArray<SettingsSearchItem>;
 
 export type SettingsSearchItemId = (typeof SETTINGS_SEARCH_ITEMS)[number]["id"];
@@ -903,7 +939,9 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/source-control": "environment-defaults",
   "/settings/storage": "project-defaults",
   "/settings/connections": "connections",
+  "/settings/scheduled-tasks": null,
   "/settings/archived": "project-defaults",
+  "/settings/esveo": null, // Fork
 };
 
 /** Search keeps the selected target. A missing row can explain its owning scope instead. */

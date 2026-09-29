@@ -51,15 +51,11 @@ The composer shows context usage, the thread's cost and how long the prompt cach
 
 ### Subagent chats
 
-The Agents panel lists every subagent. Click one to open its chat, live while it runs.
-
-<p align="center">
-  <img src="docs/fork/media/subagent-chat.gif" alt="Opening the Agents panel and a subagent's chat" width="100%">
-</p>
+Every subagent opens as its own thread, live while it runs. From there you can send it a message through the main agent, and stop a Claude subagent.
 
 ### Thread orchestration
 
-A coordinator thread starts child threads in any project, waits for them and collects their results.
+A coordinator thread starts child threads, waits for them and collects their results. Existing threads can be moved under a coordinator, to another one, or released again. To let it start and reach threads in other projects too, turn on Cross-project threads in Settings → esveo.
 
 <p align="center">
   <img src="docs/fork/media/orchestration.gif" alt="A coordinator starts three child threads across three projects" width="100%">
@@ -83,7 +79,7 @@ Read back the thinking behind any answer.
 
 ### Dictation
 
-Speak into the composer with the microphone button or <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Space</kbd>. Whisper transcribes on the machine that runs the server, in German and English, and no audio leaves it. Turn it on under Settings → General → Voice input; Android phones and older iPhones then dictate through the same model.
+Speak into the composer with the microphone button or <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Space</kbd>. Whisper transcribes on the machine that runs the server, in German and English, and no audio leaves it. Turn it on under Settings → esveo → Voice input; Android phones and older iPhones then dictate through the same model.
 
 <p align="center">
   <img src="docs/fork/media/dictation.webp" alt="The composer recording a dictation, with cancel, timer and finish beside the send button" width="100%">
@@ -99,6 +95,7 @@ _esveo_ and _esveo Midnight_, each in light and dark.
 
 ### And more
 
+- Runs on upstream's Orchestrator V2 ahead of upstream's own release: fork a thread from any answer, switch provider mid-thread, attach threads as context, scheduled tasks, and usage limits that resume by themselves. Your chats are backed up before the one-time move to it.
 - Threads, subagents and workflows survive a server restart.
 - Two-line thread cards, grouped by project.
 - Prompts lost to an early interrupt carry over to the next turn.
