@@ -137,7 +137,6 @@ const make = Effect.gen(function* () {
           title,
           question,
           urgency: "today",
-          ...(entry.threadId ? { sourceThreadId: entry.threadId } : {}),
         });
       }).pipe(Effect.mapError((error) => new InitiativesError({ message: error.message })));
 

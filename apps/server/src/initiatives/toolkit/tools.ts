@@ -621,7 +621,7 @@ const CheckDefineTool = writing(
 
 const CheckReportTool = writing(
   Tool.make("check_report", {
-    description: `Report the result of a task's or plan's acceptance check, with evidence: the output excerpt that shows the expected result, the link to the merged pull request, or the commit that meets the criterion. "No error occurred" is not a pass: report passed only when the check itself showed it, and failed when it did not run or showed something else. A failure reported by another thread than the one doing the task sends the task back to that thread.`,
+    description: `Report the result of a task's or plan's acceptance check, with evidence: the output excerpt that shows the expected result, the link to the merged pull request, or the commit that meets the criterion. "No error occurred" is not a pass: report passed only when the check itself showed it, and failed when it did not run or showed something else. A failure reported by another thread than the one doing the task sends the task back to that thread. A passed check does not finish the task by itself: the coordinator then moves it to done with entry_status.`,
     parameters: Schema.Struct({
       entryId: TrimmedNonEmptyString,
       outcome: Schema.Literals(["passed", "failed"]),
