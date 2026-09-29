@@ -1,4 +1,6 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+
+import type { CoordinatorOf } from "./childThreads.logic";
 import {
   type ChildThreadState,
   resolveChildThreadState,
@@ -32,12 +34,13 @@ const GROUPS: ReadonlyArray<{ readonly id: ThreadOverviewGroupId; readonly label
 export function childThreadsOf(
   threads: ReadonlyArray<EnvironmentThreadShell>,
   coordinator: Pick<EnvironmentThreadShell, "environmentId" | "id">,
+  coordinatorOf: CoordinatorOf,
 ): ReadonlyArray<EnvironmentThreadShell> {
   return threads.filter(
     (thread) =>
       thread.environmentId === coordinator.environmentId &&
-      thread.parentThreadId === coordinator.id &&
-      thread.archivedAt === null,
+      thread.archivedAt === null &&
+      coordinatorOf(thread) === coordinator.id,
   );
 }
 
@@ -52,7 +55,7 @@ export function buildThreadOverview(
 ): ReadonlyArray<ThreadOverviewGroup> {
   const byGroup = new Map<ThreadOverviewGroupId, EnvironmentThreadShell[]>();
   for (const child of children) {
-    const group = GROUP_OF_STATE[resolveChildThreadState(child)];
+    const group = GROUP_OF_STATE[resolveChildThreadState(child.source)];
     const list = byGroup.get(group);
     if (list) list.push(child);
     else byGroup.set(group, [child]);
@@ -66,6 +69,7 @@ export function buildThreadOverview(
 }
 
 export function waitingThreadCount(children: ReadonlyArray<EnvironmentThreadShell>): number {
-  return children.filter((child) => GROUP_OF_STATE[resolveChildThreadState(child)] === "waiting")
-    .length;
+  return children.filter(
+    (child) => GROUP_OF_STATE[resolveChildThreadState(child.source)] === "waiting",
+  ).length;
 }

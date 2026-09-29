@@ -12,7 +12,7 @@ import { type ReactNode, useLayoutEffect, useMemo, useRef, useState } from "reac
 
 import ChatMarkdown from "~/components/ChatMarkdown";
 import { cn } from "~/lib/utils";
-import { useChildAnswer, useIsLatestThreadUpdate } from "./childAnswer";
+import { useChildAnswerCwd, useIsLatestThreadUpdate } from "./childAnswer";
 import { CHILD_THREAD_DOT_CLASS } from "./childThreadStateVisuals";
 import { ThreadLinkChip } from "./ThreadLinkChip";
 
@@ -97,7 +97,7 @@ export function TaggedThreadMessage<Row extends TaggedRow>(props: {
 /** Answers taller than this start clamped, with a toggle to show all of it. */
 const CLAMPED_ANSWER_HEIGHT_PX = 320;
 
-function ThreadUpdateCard(props: {
+export function ThreadUpdateCard(props: {
   update: ParsedTaggedThreadMessage;
   environmentId: EnvironmentId;
   threadRef: ScopedThreadRef | null;
@@ -111,9 +111,9 @@ function ThreadUpdateCard(props: {
     () => scopeThreadRef(props.environmentId, update.threadId as ThreadId),
     [props.environmentId, update.threadId],
   );
-  const answer = useChildAnswer({ childRef, answerId: update.answerId, load: open });
-  // The update carries a clamped copy; the child's own message has all of it.
-  const text = answer.text ?? update.body;
+  const answerCwd = useChildAnswerCwd(childRef);
+  // The update carries the child's full answer.
+  const text = update.body;
   const hasBody = text.trim().length > 0;
   return (
     <div className="rounded-xl border border-border/70 bg-card/40 text-sm">
@@ -154,7 +154,7 @@ function ThreadUpdateCard(props: {
         <ChildAnswerBody
           text={text}
           cwd={props.markdownCwd}
-          answerCwd={answer.cwd}
+          answerCwd={answerCwd}
           threadRef={props.threadRef}
         />
       ) : null}

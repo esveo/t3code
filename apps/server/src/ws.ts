@@ -58,8 +58,8 @@ import {
   OrchestrationV2ThreadLaunchError,
   type OrchestrationProjectShell,
   type OrchestrationV2ShellSnapshot,
+  THREAD_COORDINATORS_WS_METHODS,
   THREAD_DECISIONS_WS_METHODS,
-  ThreadDecisionsError, // Fork: TODO(orchestrator-v2) decisions stub
   VOICE_INPUT_WS_METHODS,
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS,
   type ProjectEntriesFailure,
@@ -193,8 +193,8 @@ import * as PortScanner from "./preview/PortScanner.ts";
 import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration-v2/workflowScriptQuery.ts";
-// TODO(orchestrator-v2): fork decisions still import V1 modules; stubbed below until ported.
-// import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
+import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
+import * as ThreadCoordinators from "./threadOrchestration/ThreadCoordinators.ts";
 import * as VoiceInput from "./voiceInput/VoiceInput.ts";
 import * as ProviderSubagentControl from "./providerSubagentControl/ProviderSubagentControl.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
@@ -3670,24 +3670,27 @@ const makeWsRpcLayer = (
             { "rpc.aggregate": "server" },
           ),
         // Fork: decisions a coordinator asks the user for.
-        // TODO(orchestrator-v2): restore ThreadDecisions.subscribeRpc/actRpc once ported
-        // to V2. Until then the inbox stays empty and acting on a decision fails.
-        [THREAD_DECISIONS_WS_METHODS.subscribe]: (_input) =>
+        [THREAD_DECISIONS_WS_METHODS.subscribe]: (input) =>
           observeRpcStream(
             THREAD_DECISIONS_WS_METHODS.subscribe,
-            Stream.concat(Stream.make({ decisions: [] }), Stream.never),
+            ThreadDecisions.subscribeRpc(input),
             { "rpc.aggregate": "orchestration" },
           ),
-        [THREAD_DECISIONS_WS_METHODS.act]: (_input) =>
-          observeRpcEffect(
-            THREAD_DECISIONS_WS_METHODS.act,
-            Effect.fail(
-              new ThreadDecisionsError({
-                message: "Coordinator decisions are not available on Orchestrator V2 yet.",
-              }),
-            ),
+        [THREAD_DECISIONS_WS_METHODS.act]: (input) =>
+          observeRpcEffect(THREAD_DECISIONS_WS_METHODS.act, ThreadDecisions.actRpc(input), {
+            "rpc.aggregate": "orchestration",
+          }),
+        // Fork: which coordinator a thread reports to.
+        [THREAD_COORDINATORS_WS_METHODS.subscribe]: (_input) =>
+          observeRpcStream(
+            THREAD_COORDINATORS_WS_METHODS.subscribe,
+            ThreadCoordinators.subscribeRpc(),
             { "rpc.aggregate": "orchestration" },
           ),
+        [THREAD_COORDINATORS_WS_METHODS.set]: (input) =>
+          observeRpcEffect(THREAD_COORDINATORS_WS_METHODS.set, ThreadCoordinators.setRpc(input), {
+            "rpc.aggregate": "orchestration",
+          }),
         // Fork: dictation in the composer.
         [VOICE_INPUT_WS_METHODS.prepare]: (input) =>
           observeRpcStream(VOICE_INPUT_WS_METHODS.prepare, VoiceInput.prepareRpc(input), {

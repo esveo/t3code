@@ -28,7 +28,7 @@ export function ThreadLinkChip(props: {
   );
   const thread = useThreadShell(threadRef);
   const openThread = useOpenThread();
-  const state = thread ? resolveChildThreadState(thread) : null;
+  const state = thread ? resolveChildThreadState(thread.source) : null;
   const title = thread?.title ?? props.label;
   return (
     <Tooltip>

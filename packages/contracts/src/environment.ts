@@ -110,6 +110,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   commitGraph: Schema.optionalKey(Schema.Boolean),
   /** Fork: server keeps a coordinator's open decisions for the Inbox panel. */
   threadDecisions: Schema.optionalKey(Schema.Boolean),
+  /** Fork: server keeps coordinator links (threadCoordinators.subscribe/set). */
+  threadCoordinators: Schema.optionalKey(Schema.Boolean),
   pullRequestChecks: Schema.optionalKey(Schema.Boolean),
   /** Server understands canonical inline context links plus their message context records.
       Absent on servers from before inline context shipped, which drop the records and forward

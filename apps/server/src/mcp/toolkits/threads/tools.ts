@@ -16,14 +16,8 @@ import * as Toolkit from "effect/unstable/ai/Toolkit";
 
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { isOrchestrationToolOn } from "../../McpOrchestrationTools.ts";
-import * as OrchestrationEngine from "../../../orchestration/Services/OrchestrationEngine.ts";
-import * as ProjectionSnapshotQuery from "../../../orchestration/Services/ProjectionSnapshotQuery.ts";
 
-const dependencies = [
-  McpInvocationContext.McpInvocationContext,
-  OrchestrationEngine.OrchestrationEngineService,
-  ProjectionSnapshotQuery.ProjectionSnapshotQuery,
-];
+const dependencies = [McpInvocationContext.McpInvocationContext];
 
 // Offered in tools/list, and callable, only while the user has the switch on (Settings).
 const whileThreadsOn = () => isOrchestrationToolOn("threads");
@@ -107,7 +101,6 @@ export const ChildThreadSummary = Schema.Struct({
       "waiting: blocked on the user (approval or question); working; failed; review: has an open pull request; stopped; done.",
   }),
   detail: Schema.String,
-  progress: Schema.NullOr(Schema.Struct({ completed: Schema.Int, total: Schema.Int })),
   projectId: Schema.String,
   branch: Schema.NullOr(Schema.String),
   worktreePath: Schema.NullOr(Schema.String),
@@ -201,8 +194,11 @@ export type CreateThreadInput = typeof CreateThreadInput.Type;
 
 export const CreateThreadResult = Schema.Struct({
   threadId: Schema.String,
+  taskId: Schema.String.annotate({ description: "The delegated task, for task_status." }),
   link: Schema.String,
-  branch: Schema.NullOr(Schema.String),
+  branch: Schema.NullOr(Schema.String).annotate({
+    description: "Null while its new worktree is prepared; its branch then shows in list_threads.",
+  }),
   worktree: Schema.Boolean,
 });
 export type CreateThreadResult = typeof CreateThreadResult.Type;
@@ -312,7 +308,7 @@ export const SettleThreadResult = Schema.Struct({
 export type SettleThreadResult = typeof SettleThreadResult.Type;
 
 const CreateThreadTool = Tool.make("start_thread", {
-  description: `Start a new thread that works on a task in parallel, as a child of this one. ${WHEN_TO_USE} It gets its own session, sidebar entry and (by default) git worktree and branch, in your project or another one (see list_projects). Attach files the user gave you with attachments instead of pasting their paths. You do not need to poll: when it finishes, fails or waits on the user, you receive a message about it. ${LINKING}`,
+  description: `Start a new thread that works on a task in parallel, as a child of this one (a delegated task: task_status reads it by its taskId too). ${WHEN_TO_USE} It gets its own session, sidebar entry and (by default) git worktree and branch, in your project or another one (see list_projects). Attach files the user gave you with attachments instead of pasting their paths. You do not need to poll: whenever it finishes or fails, its full answer reaches you as a message; questions and approvals it has for the user show in the user's Inbox. ${LINKING}`,
   parameters: CreateThreadInput,
   success: CreateThreadResult,
   failure: ThreadsToolError,
@@ -419,7 +415,7 @@ const CreateProjectTool = Tool.make("create_project", {
   .annotate(McpSchema.EnabledWhen, whileThreadsOn);
 
 const ListThreadsTool = Tool.make("list_threads", {
-  description: `List your threads (the ones you started or the user assigned to you) with their state, what they are doing, todo progress, branch and pull requests. With scope "all" it finds any thread of this environment, by title or project, to read it with read_thread. ${LINKING}`,
+  description: `List your threads (the ones you started or the user assigned to you) with their state, what they are doing, branch and pull requests. With scope "all" it finds any thread of this environment, by title or project, to read it with read_thread. ${LINKING}`,
   parameters: ListThreadsInput,
   success: ListThreadsResult,
   failure: ThreadsToolError,

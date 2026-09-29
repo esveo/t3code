@@ -113,6 +113,7 @@ import {
 import { PREFERRED_HIGHLIGHTER } from "../../lib/syntaxHighlighting";
 import ChatMarkdown, { ChatMarkdownAssetImage } from "../ChatMarkdown";
 import { TaggedThreadMessage } from "../threadOrchestration/TaggedThreadMessage";
+import { DelegatedCompletionCards } from "../threadOrchestration/DelegatedCompletionCards";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { Root, RootContent } from "mdast";
@@ -5263,6 +5264,16 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
         </>
       }
     >
+      {/* Fork: a delegated task's wake shows the children's answers. */}
+      {workEntry.projectedItem?.item.type === "notification" &&
+      workEntry.projectedItem.item.source.kind === "delegated_task" ? (
+        <DelegatedCompletionCards
+          environmentId={ctx.activeThreadEnvironmentId}
+          threadRef={threadRef}
+          taskIds={workEntry.projectedItem.item.source.taskIds}
+          markdownCwd={ctx.markdownCwd}
+        />
+      ) : null}
       {expanded && viewedImage && threadRef ? (
         <WorkLogDetails kind="media">
           <ChatMarkdownAssetImage

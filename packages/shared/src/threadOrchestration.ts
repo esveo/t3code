@@ -1,44 +1,59 @@
 /**
  * Fork: thread orchestration. A coordinator thread starts child threads
- * (`parentThreadId`) and follows them. The server's thread tools and the
+ * (delegate_task children, or threads put under it) and follows them. The server's thread tools and the
  * client's overview both read a child's state from its shell through these
  * helpers, so the agent and the user see the same word for the same thread.
  */
-import type { ThreadPullRequestLink } from "@t3tools/contracts";
+import {
+  isProviderNativeSubagentThread,
+  type OrchestrationV2ThreadShell,
+  type ThreadId,
+} from "@t3tools/contracts";
 
 export type ChildThreadState = "waiting" | "failed" | "working" | "review" | "stopped" | "done";
 
+/** The V2 thread shell fields these helpers read. */
+export type ChildThreadShell = Pick<
+  OrchestrationV2ThreadShell,
+  "status" | "activityRunStatus" | "pendingRuntimeRequest" | "lastError" | "pullRequests"
+> &
+  Partial<Pick<OrchestrationV2ThreadShell, "pendingBackgroundTasks">>;
+
 /**
- * The V1 thread shell fields these helpers read. V2 removed that shell, so the
- * shape is spelled out here until the callers read V2's shell.
- * TODO(orchestrator-v2): derive it from `OrchestrationV2ThreadShell`.
+ * The coordinator a thread reports to. The user or a coordinator can put a
+ * thread under another one, or release it (`overrides`, the server's
+ * fork_thread_coordinators rows; null releases it). Without such a row, a
+ * T3-owned delegated child (delegate_task / start_thread) belongs to the thread
+ * that started it; provider-native subagents never do: their provider owns them.
  */
-export interface ChildThreadShell {
-  readonly hasPendingApprovals: boolean;
-  readonly hasPendingUserInput: boolean;
-  readonly session: {
-    readonly status: string;
-    readonly lastError?: string | null;
-  } | null;
-  readonly latestTurn: {
-    readonly state: string;
-    readonly completedAt: string | null;
-  } | null;
-  readonly pullRequests: ReadonlyArray<ThreadPullRequestLink>;
-  readonly planProgress?: {
-    readonly step: string;
-    readonly completedSteps: number;
-    readonly totalSteps: number;
-  } | null;
-  readonly backgroundLiveness?: "working" | "monitoring" | null;
+export function coordinatorThreadIdOf(
+  thread: Pick<OrchestrationV2ThreadShell, "id" | "lineage" | "creationSource">,
+  overrides: ReadonlyMap<ThreadId, ThreadId | null>,
+): ThreadId | null {
+  const override = overrides.get(thread.id);
+  if (override !== undefined) return override;
+  if (thread.lineage.relationshipToParent !== "subagent") return null;
+  if (isProviderNativeSubagentThread(thread)) return null;
+  return thread.lineage.parentThreadId;
 }
 
 /** Open pull requests of the thread, newest link first. */
 function openPullRequests(thread: ChildThreadShell) {
-  const open = thread.pullRequests.filter(
+  const open = (thread.pullRequests ?? []).filter(
     (link) => link.snapshot === null || link.snapshot.state === "open",
   );
   return open.map((_, index) => open[open.length - 1 - index]!);
+}
+
+function isRunning(thread: ChildThreadShell): boolean {
+  const status = thread.activityRunStatus ?? thread.status;
+  return (
+    status === "preparing" ||
+    status === "queued" ||
+    status === "starting" ||
+    status === "running" ||
+    status === "waiting"
+  );
 }
 
 /**
@@ -48,20 +63,11 @@ function openPullRequests(thread: ChildThreadShell) {
  * with an open pull request and nothing running is ready for review.
  */
 export function resolveChildThreadState(thread: ChildThreadShell): ChildThreadState {
-  if (thread.hasPendingApprovals || thread.hasPendingUserInput) return "waiting";
-  if (thread.session?.status === "error" || thread.latestTurn?.state === "error") return "failed";
-  if (
-    thread.session?.status === "starting" ||
-    thread.session?.status === "running" ||
-    thread.latestTurn?.state === "running" ||
-    thread.backgroundLiveness != null
-  ) {
-    return "working";
-  }
+  if (thread.pendingRuntimeRequest !== null) return "waiting";
+  if (thread.status === "failed") return "failed";
+  if (isRunning(thread) || (thread.pendingBackgroundTasks?.length ?? 0) > 0) return "working";
   if (openPullRequests(thread).length > 0) return "review";
-  if (thread.latestTurn?.state === "interrupted" && thread.latestTurn.completedAt === null) {
-    return "stopped";
-  }
+  if (thread.status === "interrupted" || thread.status === "cancelled") return "stopped";
   return "done";
 }
 
@@ -79,17 +85,20 @@ export function describeChildThread(thread: ChildThreadShell): string {
   const state = resolveChildThreadState(thread);
   switch (state) {
     case "waiting":
-      return thread.hasPendingApprovals ? "Needs your approval" : "Has a question for you";
+      return thread.pendingRuntimeRequest?.kind === "user_input"
+        ? "Has a question for you"
+        : "Needs your approval";
     case "failed":
-      return thread.session?.lastError?.split("\n")[0]?.slice(0, 160) ?? "The last turn failed";
-    case "working":
-      if (thread.planProgress) return thread.planProgress.step;
-      if (thread.session?.status === "starting") return "Setting up";
-      if (thread.session?.status !== "running" && thread.latestTurn?.state !== "running") {
-        if (thread.backgroundLiveness === "working") return "Waiting on its subagents";
-        if (thread.backgroundLiveness === "monitoring") return "Waiting on background commands";
+      return thread.lastError?.split("\n")[0]?.slice(0, 160) ?? "The last turn failed";
+    case "working": {
+      if (thread.status === "preparing") return "Setting up";
+      if (!isRunning(thread)) {
+        const kinds = new Set((thread.pendingBackgroundTasks ?? []).map((task) => task.kind));
+        if (kinds.has("subagent")) return "Waiting on its subagents";
+        if (kinds.size > 0) return "Waiting on background commands";
       }
       return "Working";
+    }
     case "review": {
       const pullRequest = openPullRequests(thread)[0]!;
       return pullRequest.snapshot?.isDraft
@@ -101,15 +110,6 @@ export function describeChildThread(thread: ChildThreadShell): string {
     case "done":
       return "Finished";
   }
-}
-
-/** Todo progress of the running turn, when the agent keeps a task list. */
-export function childThreadProgress(
-  thread: ChildThreadShell,
-): { readonly completed: number; readonly total: number } | null {
-  const progress = thread.planProgress;
-  if (!progress || progress.totalSteps === 0) return null;
-  return { completed: progress.completedSteps, total: progress.totalSteps };
 }
 
 /**

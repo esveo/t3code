@@ -1,5 +1,6 @@
 import {
   ORCHESTRATION_V2_WS_METHODS,
+  THREAD_COORDINATORS_WS_METHODS,
   THREAD_DECISIONS_WS_METHODS,
   VOICE_INPUT_WS_METHODS,
   WS_METHODS,
@@ -67,6 +68,7 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.subscribeProjectClones
   | typeof WS_METHODS.terminalAttach
   | typeof THREAD_DECISIONS_WS_METHODS.subscribe
+  | typeof THREAD_COORDINATORS_WS_METHODS.subscribe
   | typeof VOICE_INPUT_WS_METHODS.prepare;
 
 export type EnvironmentStreamCommandRpcTag =

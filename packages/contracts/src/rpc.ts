@@ -4,6 +4,10 @@ import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { WsThreadDecisionsActRpc, WsThreadDecisionsSubscribeRpc } from "./threadDecisions.ts";
+import {
+  WsThreadCoordinatorsSetRpc,
+  WsThreadCoordinatorsSubscribeRpc,
+} from "./threadCoordinators.ts";
 import { WsVoiceInputPrepareRpc, WsVoiceInputTranscribeRpc } from "./voiceInput.ts";
 import {
   WsProviderSubagentStopRpc,
@@ -1821,6 +1825,9 @@ export const WsRpcGroup = RpcGroup.make(
   // Fork: decisions a coordinator asks the user for.
   WsThreadDecisionsSubscribeRpc,
   WsThreadDecisionsActRpc,
+  // Fork: which coordinator a thread reports to.
+  WsThreadCoordinatorsSubscribeRpc,
+  WsThreadCoordinatorsSetRpc,
   // Fork: dictation in the composer.
   WsVoiceInputPrepareRpc,
   WsVoiceInputTranscribeRpc,

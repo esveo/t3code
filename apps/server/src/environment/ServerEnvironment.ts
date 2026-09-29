@@ -222,6 +222,7 @@ export const make = Effect.gen(function* () {
       pullRequests: true,
       commitGraph: true,
       threadDecisions: true,
+      threadCoordinators: true, // Fork
       pullRequestChecks: true,
       inlineMessageContext: true,
       requiredWorktreeBootstrap: true,

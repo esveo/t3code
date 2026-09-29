@@ -8,11 +8,10 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/model
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import {
   CHILD_THREAD_STATE_LABELS,
-  childThreadProgress,
   describeChildThread,
   resolveChildThreadState,
 } from "@t3tools/shared/threadOrchestration";
-import { ChevronDownIcon, LoaderCircleIcon, NetworkIcon } from "lucide-react";
+import { ChevronDownIcon, NetworkIcon } from "lucide-react";
 
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { useMemo, useState } from "react";
@@ -22,6 +21,7 @@ import { cn } from "~/lib/utils";
 import { useThreadShells } from "~/state/entities";
 import { formatElapsedDurationLabel } from "~/timestampFormat";
 import { CHILD_THREAD_DOT_CLASS } from "./childThreadStateVisuals";
+import { useCoordinatorOf } from "./coordinatorLinks";
 import { EmbeddedChildThread } from "./EmbeddedChildThread";
 import {
   buildThreadOverview,
@@ -48,8 +48,7 @@ function OverviewRow({
   onOpenInPanel: (threadRef: ScopedThreadRef) => void;
 }) {
   const openThread = useOpenThread();
-  const state = resolveChildThreadState(thread);
-  const progress = childThreadProgress(thread);
+  const state = resolveChildThreadState(thread.source);
   const age = formatElapsedDurationLabel(thread.updatedAt);
   return (
     <button
@@ -67,16 +66,10 @@ function OverviewRow({
         <span className="truncate text-sm font-medium">{thread.title}</span>
         <span className="truncate text-xs">
           <span className={STATE_TEXT_CLASS[state]}>{CHILD_THREAD_STATE_LABELS[state]}</span>
-          <span className="text-muted-foreground"> · {describeChildThread(thread)}</span>
+          <span className="text-muted-foreground"> · {describeChildThread(thread.source)}</span>
         </span>
       </span>
       <span className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
-        {progress ? (
-          <span className="inline-flex items-center gap-1 rounded-full border border-border/70 px-1.5 py-0.5">
-            <LoaderCircleIcon aria-hidden className="size-3" />
-            {progress.completed}/{progress.total}
-          </span>
-        ) : null}
         {state === "review" ? (
           <PullRequestGlyph.pullRequest aria-hidden className="size-3.5 text-success-foreground" />
         ) : null}
@@ -125,15 +118,17 @@ function OverviewSection({
 
 export function ThreadOverviewPanel({ threadRef }: { threadRef: ScopedThreadRef | null }) {
   const threads = useThreadShells();
+  const coordinatorOf = useCoordinatorOf(threads);
   const children = useMemo(
     () =>
       threadRef
-        ? childThreadsOf(threads, {
-            environmentId: threadRef.environmentId,
-            id: threadRef.threadId,
-          })
+        ? childThreadsOf(
+            threads,
+            { environmentId: threadRef.environmentId, id: threadRef.threadId },
+            coordinatorOf,
+          )
         : [],
-    [threadRef, threads],
+    [coordinatorOf, threadRef, threads],
   );
   const groups = useMemo(() => buildThreadOverview(children), [children]);
   const waiting = waitingThreadCount(children);
@@ -180,7 +175,7 @@ export function ThreadOverviewPanel({ threadRef }: { threadRef: ScopedThreadRef 
               : "Nothing is waiting on you"}
           </p>
           <p className="text-xs text-muted-foreground">
-            {children.length} thread{children.length === 1 ? "" : "s"} started from here
+            {children.length} thread{children.length === 1 ? "" : "s"} coordinated from here
           </p>
         </header>
         {groups.map((group) => (

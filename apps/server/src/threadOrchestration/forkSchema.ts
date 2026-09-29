@@ -10,15 +10,43 @@
 import * as Effect from "effect/Effect";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
-export const ensureForkSchema = Effect.gen(function* () {
+/**
+ * Carries the V1 coordinator links into V2. V1 kept a child's coordinator in
+ * `projection_threads.parent_thread_id` (started by the coordinator or
+ * assigned to it later); V2 imports those threads without lineage, and its
+ * lineage cannot change afterwards, so each link becomes a coordinator link
+ * row. The V2 database starts as a copy of the V1 one, so the legacy table is
+ * right here. `INSERT OR IGNORE` keeps it idempotent and never undoes a move
+ * or release made in V2 since. Links to or from deleted threads are left out.
+ * Returns how many links it added.
+ */
+export const importLegacyCoordinatorLinks = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const threadColumns = yield* sql<{ readonly name: string }>`
+  const legacyColumns = yield* sql<{ readonly name: string }>`
     PRAGMA table_info(projection_threads)
   `;
-  // Thread orchestration: the coordinator a child thread belongs to.
-  if (!threadColumns.some((column) => column.name === "parent_thread_id")) {
-    yield* sql`ALTER TABLE projection_threads ADD COLUMN parent_thread_id TEXT`;
-  }
+  if (!legacyColumns.some((column) => column.name === "parent_thread_id")) return 0;
+  const before = yield* sql<{ readonly count: number }>`
+    SELECT COUNT(*) AS count FROM fork_thread_coordinators
+  `;
+  yield* sql`
+    INSERT OR IGNORE INTO fork_thread_coordinators (thread_id, coordinator_thread_id, updated_at)
+    SELECT child.thread_id, child.parent_thread_id, child.updated_at
+    FROM projection_threads AS child
+    JOIN projection_threads AS coordinator ON coordinator.thread_id = child.parent_thread_id
+    WHERE child.parent_thread_id IS NOT NULL
+      AND child.parent_thread_id <> child.thread_id
+      AND child.deleted_at IS NULL
+      AND coordinator.deleted_at IS NULL
+  `;
+  const after = yield* sql<{ readonly count: number }>`
+    SELECT COUNT(*) AS count FROM fork_thread_coordinators
+  `;
+  return (after[0]?.count ?? 0) - (before[0]?.count ?? 0);
+}).pipe(Effect.withSpan("importLegacyCoordinatorLinks"));
+
+export const ensureForkSchema = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
   // Coordinator decisions: one row per decision, the decision itself as JSON.
   yield* sql`
     CREATE TABLE IF NOT EXISTS fork_thread_decisions (
@@ -29,4 +57,26 @@ export const ensureForkSchema = Effect.gen(function* () {
       PRIMARY KEY (coordinator_thread_id, decision_id)
     )
   `;
+  // Thread orchestration: the coordinator a thread reports to where that
+  // differs from its lineage; a null coordinator releases it (ThreadCoordinators.ts).
+  yield* sql`
+    CREATE TABLE IF NOT EXISTS fork_thread_coordinators (
+      thread_id TEXT PRIMARY KEY,
+      coordinator_thread_id TEXT,
+      updated_at TEXT NOT NULL
+    )
+  `;
+  // Thread orchestration: the last run of each child its coordinator heard
+  // about, so a result is reported once (CoordinatorUpdates.ts).
+  yield* sql`
+    CREATE TABLE IF NOT EXISTS fork_thread_reports (
+      thread_id TEXT PRIMARY KEY,
+      run_id TEXT NOT NULL,
+      reported_at TEXT NOT NULL
+    )
+  `;
+  const imported = yield* importLegacyCoordinatorLinks;
+  if (imported > 0) {
+    yield* Effect.logInfo("Imported V1 coordinator links", { links: imported });
+  }
 }).pipe(Effect.withSpan("ensureForkSchema"));

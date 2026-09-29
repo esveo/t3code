@@ -206,8 +206,6 @@ export function createThreadEnvironmentAtoms<R, E>(
       scheduler,
       concurrency,
     }),
-    // Fork: thread orchestration's `setParent` (thread.parent.set) was dropped
-    // with the V1 contracts. TODO(orchestrator-v2): rebuild on V2 child threads.
     reorderPin: createEnvironmentCommand(runtime, {
       label: "environment-data:commands:thread:reorder-pin",
       execute: (input: ReorderPinnedThreadInput) => reorderPinnedThread(input),

@@ -1,28 +1,34 @@
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
-import type { ContextMenuItem } from "@t3tools/contracts";
+import {
+  type ContextMenuItem,
+  isProviderNativeSubagentThread,
+  type ThreadId,
+} from "@t3tools/contracts";
 
 /**
  * Fork: thread orchestration. An existing thread can be put under a
  * coordinator after the fact, so the coordinator reads, messages and follows
  * it like a thread it started. The server enforces the same rules
- * (apps/server/src/threadOrchestration/threadParent.ts); these only keep the
- * menu and the picker from offering what it would reject.
+ * (apps/server/src/threadOrchestration/ThreadCoordinators.ts); these only keep
+ * the menu and the picker from offering what it would reject.
  */
 export type ThreadParentMenuId = "assign-parent" | "detach-parent";
 
 type ParentShell = Pick<
   EnvironmentThreadShell,
-  "environmentId" | "id" | "parentThreadId" | "archivedAt" | "updatedAt"
+  "environmentId" | "id" | "archivedAt" | "updatedAt" | "source"
 >;
+type CoordinatorOf = (thread: ParentShell) => ThreadId | null;
 
 /** Whether the thread coordinates threads of its own, which keeps it from becoming a child. */
 export function hasChildThreads(
   threads: ReadonlyArray<ParentShell>,
   thread: Pick<ParentShell, "environmentId" | "id">,
+  coordinatorOf: CoordinatorOf,
 ): boolean {
   return threads.some(
     (candidate) =>
-      candidate.environmentId === thread.environmentId && candidate.parentThreadId === thread.id,
+      candidate.environmentId === thread.environmentId && coordinatorOf(candidate) === thread.id,
   );
 }
 
@@ -30,25 +36,32 @@ export function hasChildThreads(
  * Threads the given one can move under: open threads of its environment that
  * are not children themselves, current coordinators first, then the most
  * recently updated. Any project, as a coordinator starts threads anywhere.
+ * Provider subagents are left out: their provider steers them.
  */
 export function parentThreadCandidates<T extends ParentShell>(
   threads: ReadonlyArray<T>,
-  thread: Pick<ParentShell, "environmentId" | "id" | "parentThreadId">,
+  thread: ParentShell,
+  coordinatorOf: CoordinatorOf,
 ): ReadonlyArray<T> {
-  if (hasChildThreads(threads, thread)) return [];
+  if (hasChildThreads(threads, thread, coordinatorOf)) return [];
+  const current = coordinatorOf(thread);
   const coordinatorIds = new Set(
     threads
       .filter((candidate) => candidate.environmentId === thread.environmentId)
-      .flatMap((candidate) => (candidate.parentThreadId ? [candidate.parentThreadId] : [])),
+      .flatMap((candidate) => {
+        const coordinatorId = coordinatorOf(candidate);
+        return coordinatorId ? [coordinatorId] : [];
+      }),
   );
   return threads
     .filter(
       (candidate) =>
         candidate.environmentId === thread.environmentId &&
         candidate.id !== thread.id &&
-        candidate.id !== thread.parentThreadId &&
+        candidate.id !== current &&
         candidate.archivedAt === null &&
-        !candidate.parentThreadId,
+        !isProviderNativeSubagentThread(candidate.source) &&
+        coordinatorOf(candidate) === null,
     )
     .toSorted(
       (left, right) =>

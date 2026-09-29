@@ -44,8 +44,7 @@ import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/unstable/sql/SqlClient";
 
-import * as OrchestrationEngine from "../orchestration/Services/OrchestrationEngine.ts";
-import * as ProjectionSnapshotQuery from "../orchestration/Services/ProjectionSnapshotQuery.ts";
+import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
 
 export class ThreadDecisions extends Context.Service<
   ThreadDecisions,
@@ -77,8 +76,7 @@ const failure = (message: string) => new ThreadDecisionsError({ message });
 
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const engine = yield* OrchestrationEngine.OrchestrationEngineService;
-  const snapshots = yield* ProjectionSnapshotQuery.ProjectionSnapshotQuery;
+  const threads = yield* ThreadManagementService;
   const crypto = yield* Crypto.Crypto;
   const writes = yield* Semaphore.make(1);
   const changes = yield* Effect.acquireRelease(PubSub.unbounded<ThreadId>(), (pubsub) =>
@@ -166,41 +164,35 @@ export const make = Effect.gen(function* () {
       }),
     );
 
-  /** Starts a turn on the coordinator with the replies, as if the user had typed them. */
+  /** Sends the replies to the coordinator, as if the user had typed them. */
   const sendReplies = (coordinatorId: ThreadId, text: string) =>
     Effect.gen(function* () {
-      const coordinator = yield* snapshots.getThreadShellById(coordinatorId).pipe(
+      const coordinator = yield* threads.getThreadShell(coordinatorId).pipe(
         Effect.mapError(storeFailed("find the coordinator for")),
         Effect.flatMap((thread) =>
-          Option.isSome(thread)
-            ? Effect.succeed(thread.value)
+          thread !== null && thread.deletedAt === null
+            ? Effect.succeed(thread)
             : Effect.fail(failure("The coordinator thread was not found.")),
         ),
       );
-      yield* engine
-        .dispatch({
-          type: "thread.turn.start",
+      yield* threads
+        .sendToThread({
+          projectId: coordinator.projectId,
           commandId: CommandId.make(`server:thread-decisions-submit:${yield* uuid}`),
           threadId: coordinator.id,
-          message: {
-            messageId: MessageId.make(yield* uuid),
-            role: "user",
-            text,
-            attachments: [],
-          },
-          modelSelection: coordinator.modelSelection,
-          runtimeMode: coordinator.runtimeMode,
-          interactionMode: coordinator.interactionMode,
-          createdAt: yield* nowIso,
+          messageId: MessageId.make(yield* uuid),
+          text,
+          attachments: [],
+          mode: "auto",
+          createdBy: "user",
+          creationSource: "server",
         })
         .pipe(Effect.mapError(() => failure("Could not send the replies to the coordinator.")));
     });
 
   const routeLink = Effect.fn("ThreadDecisions.routeLink")(function* (threadId: ThreadId) {
-    const thread = yield* snapshots
-      .getThreadShellById(threadId)
-      .pipe(Effect.orElseSucceed(() => Option.none()));
-    const title = Option.isSome(thread) ? thread.value.title.replaceAll("]", ")") : threadId;
+    const thread = yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null));
+    const title = thread !== null ? thread.title.replaceAll("]", ")") : threadId;
     return `[${title}](${threadLinkHref(threadId)})`;
   });
 
