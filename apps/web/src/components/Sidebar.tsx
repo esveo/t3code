@@ -3482,7 +3482,8 @@ export default function Sidebar() {
   const dropThreadContextDrag = useCallback(
     (point: { x: number; y: number }) => {
       if (!pointerOutsideThreadList(point)) return false;
-      dropThreadContext(point, contextDragThreads());
+      // Fork: a composer takes the thread as context; the rest of a chat pane splits.
+      if (!dropThreadContext(point, contextDragThreads())) consumeSidebarThreadDrop();
       // Releasing outside the list never reorders, whether or not a composer took the drop.
       return true;
     },

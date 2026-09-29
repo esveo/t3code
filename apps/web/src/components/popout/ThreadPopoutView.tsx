@@ -4,16 +4,10 @@ import { useEffect } from "react";
 import ChatView from "../ChatView";
 import { SidebarInset, SidebarProvider } from "../ui/sidebar";
 import { APP_DISPLAY_NAME } from "../../branding";
-import {
-  setActiveEnvironmentId,
-  useThreadDetail,
-  useThreadShell,
-  useThreadStatus,
-} from "../../state/entities";
+import { setActiveEnvironmentId, useThreadShell } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
 import { environmentShell } from "../../state/shell";
 import { resolveThreadRouteRenderState } from "../../threadRoutes";
-import { resolveThreadSyncPhase } from "../../threadSync";
 
 /**
  * One thread, one window. The popout window renders this instead of the app
@@ -32,19 +26,11 @@ export function ThreadPopoutView({ threadRef }: { threadRef: ScopedThreadRef }) 
 
   const shell = useEnvironmentQuery(environmentShell.stateAtom(threadRef.environmentId));
   const threadShell = useThreadShell(threadRef);
-  const threadDetail = useThreadDetail(threadRef);
-  const threadStatus = useThreadStatus(threadRef);
   const renderState = resolveThreadRouteRenderState({
     bootstrapComplete: shell.data?.snapshot._tag === "Some",
-    serverThreadShellExists: threadShell !== null,
-    serverThreadDetailExists: threadDetail !== null,
-    serverThreadDetailDeleted: threadStatus === "deleted",
+    serverThreadExists: threadShell !== null,
+    serverThreadDeleted: threadShell?.deletedAt != null,
     draftThreadExists: false,
-  });
-  const threadSyncPhase = resolveThreadSyncPhase({
-    detailExists: threadDetail !== null,
-    shellExists: threadShell !== null,
-    status: threadStatus,
   });
 
   const title = threadShell?.title ?? null;
@@ -65,7 +51,6 @@ export function ThreadPopoutView({ threadRef }: { threadRef: ScopedThreadRef }) 
             environmentId={threadRef.environmentId}
             threadId={threadRef.threadId}
             routeKind="server"
-            threadSyncPhase={threadSyncPhase}
           />
         ) : null}
       </SidebarInset>
