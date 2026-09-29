@@ -5,7 +5,7 @@ import * as DateTime from "effect/DateTime";
 import { Atom } from "effect/unstable/reactivity";
 import { useMemo } from "react";
 
-import { useThreadShells } from "~/state/entities";
+import { useThreadShell, useThreadShells } from "~/state/entities";
 import { environmentThreadDetails } from "~/state/threads";
 import { useCoordinatorOf } from "./coordinatorLinks";
 import {
@@ -32,8 +32,11 @@ export function useThreadOverviewEntries(
 ): ReadonlyArray<ThreadOverviewEntry> {
   const threads = useThreadShells();
   const coordinatorOf = useCoordinatorOf(threads);
+  // Only a thread the server knows: subscribing to a draft's details fetches
+  // before the thread exists, and the chat view then reads that failed load.
+  const serverThread = useThreadShell(threadRef) !== null;
   const subagents = useAtomValue(
-    threadRef ? environmentThreadDetails.threadAtom(threadRef) : NO_THREAD_ATOM,
+    threadRef && serverThread ? environmentThreadDetails.threadAtom(threadRef) : NO_THREAD_ATOM,
     (thread) => thread?.projection.subagents ?? NO_SUBAGENTS,
   );
   const snapshots = useMemo(() => {
