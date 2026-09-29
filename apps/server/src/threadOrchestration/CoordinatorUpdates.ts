@@ -15,7 +15,8 @@
  * A child's result is its latest run once V2 reports it `result_available`
  * (no run, subagent or background task of it still going). Which result each
  * child last reported is kept in `fork_thread_reports`, so nothing reaches a
- * coordinator twice, also across restarts.
+ * coordinator twice, also across restarts; on start, `catchUp` reports what
+ * ended while the server was down.
  */
 import {
   CommandId,
@@ -26,6 +27,7 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import {
+  coordinatorThreadIdOf,
   describeChildThread,
   parseThreadUpdates,
   resolveChildThreadState,
@@ -44,6 +46,7 @@ import {
   subagentResultForRun,
 } from "../orchestration-v2/SubagentProjection.ts";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
+import { forkParked } from "../serverActivation.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { ThreadCoordinators } from "./ThreadCoordinators.ts";
 
@@ -121,6 +124,8 @@ export class CoordinatorUpdates extends Context.Service<
     readonly start: () => Effect.Effect<void, never, Scope.Scope>;
     /** Reports the child's latest result to its coordinator when it has not heard of it. */
     readonly report: (childThreadId: ThreadId) => Effect.Effect<void>;
+    /** Reports every result that ended while no one listened, one message per coordinator. */
+    readonly catchUp: Effect.Effect<void>;
   }
 >()("t3/threadOrchestration/CoordinatorUpdates") {}
 
@@ -180,19 +185,25 @@ export const make = Effect.gen(function* () {
     });
   });
 
-  const reportOnce = Effect.fn("CoordinatorUpdates.report")(function* (childThreadId: ThreadId) {
-    if (!(yield* enabled)) return;
+  /**
+   * The update the child's coordinator still has to get, or null. Results
+   * that need no update (V2 delivered them, the child is settled) are
+   * recorded as reported here.
+   */
+  const pendingUpdate = Effect.fn("CoordinatorUpdates.pendingUpdate")(function* (
+    childThreadId: ThreadId,
+  ) {
     const child = yield* threads.getThreadShell(childThreadId);
-    if (child === null || child.deletedAt !== null) return;
+    if (child === null || child.deletedAt !== null) return null;
     const coordinatorId = yield* coordinators.coordinatorOf(child);
-    if (coordinatorId === null) return;
+    if (coordinatorId === null) return null;
     const controls = yield* threads.getThreadRecords(
       childThreadId,
       ["runs", "messages", "subagents", "providerThreads"],
       { messageRoles: ["user"] },
     );
     const progress = delegatedTaskProgress(controls);
-    if (progress.state !== "result_available" || progress.resultRun === undefined) return;
+    if (progress.state !== "result_available" || progress.resultRun === undefined) return null;
     const resultRun = progress.resultRun;
     const coordinator = yield* threads.getThreadShell(coordinatorId);
     const lineageParent =
@@ -217,12 +228,12 @@ export const make = Effect.gen(function* () {
           : [],
       ),
     });
-    if (decision.kind === "wait") return;
+    if (decision.kind === "wait") return null;
     if (decision.kind === "skip") {
       if (decision.accounted !== null) {
         yield* coordinators.markReported(childThreadId, decision.accounted);
       }
-      return;
+      return null;
     }
     const result = yield* threads.getThreadRecords(childThreadId, ["messages", "turnItems"], {
       messageRoles: ["assistant"],
@@ -231,47 +242,111 @@ export const make = Effect.gen(function* () {
       turnItemTypes: ["assistant_message", "error"],
     });
     const answer = subagentResultForRun(result, resultRun).text;
-    yield* deliver(coordinatorId, childUpdateBlock({ child, answer }));
-    yield* coordinators.markReported(childThreadId, decision.runId);
+    return {
+      childThreadId,
+      coordinatorId,
+      runId: decision.runId,
+      block: childUpdateBlock({ child, answer }),
+    };
   });
 
   const report = (childThreadId: ThreadId) =>
     serial
-      .withPermits(1)(reportOnce(childThreadId))
+      .withPermits(1)(
+        Effect.gen(function* () {
+          if (!(yield* enabled)) return;
+          const update = yield* pendingUpdate(childThreadId);
+          if (update === null) return;
+          yield* deliver(update.coordinatorId, update.block);
+          yield* coordinators.markReported(childThreadId, update.runId);
+        }),
+      )
       .pipe(
         Effect.catchCause((cause) =>
           Effect.logWarning("coordinator-updates.report-failed", { childThreadId, cause }),
         ),
       );
 
-  const start = () =>
-    threads.streamDomainEvents.pipe(
-      Stream.map((event): ReadonlyArray<ThreadId> => {
-        if (event.type === "run.updated" && TERMINAL_RUN_STATUSES.has(event.payload.status)) {
-          return [event.threadId];
+  /**
+   * Results that finished while no one listened (the server was down or
+   * still starting): every thread with a coordinator is checked once, and
+   * each coordinator gets what it missed as one message. Threads carried
+   * over from V1 have no V2 run yet, so they stay quiet.
+   */
+  const catchUp = serial
+    .withPermits(1)(
+      Effect.gen(function* () {
+        if (!(yield* enabled)) return;
+        const links = yield* coordinators.overrides;
+        const snapshot = yield* threads.getShellSnapshot();
+        const candidates = snapshot.threads.filter(
+          (thread) => thread.deletedAt === null && coordinatorThreadIdOf(thread, links) !== null,
+        );
+        const byCoordinator = new Map<
+          ThreadId,
+          Array<{ childThreadId: ThreadId; runId: RunId; block: string }>
+        >();
+        for (const candidate of candidates) {
+          const update = yield* pendingUpdate(candidate.id).pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("coordinator-updates.catch-up-failed", {
+                childThreadId: candidate.id,
+                cause,
+              }).pipe(Effect.as(null)),
+            ),
+          );
+          if (update === null) continue;
+          const bundle = byCoordinator.get(update.coordinatorId) ?? [];
+          bundle.push(update);
+          byCoordinator.set(update.coordinatorId, bundle);
         }
-        // V2 publishes a delegated child's result to its parent after the
-        // run ended; that decides whether V2 or this reactor reports it.
-        if (
-          event.type === "subagent.updated" &&
-          event.payload.origin === "app_owned" &&
-          event.payload.childThreadId !== null &&
-          TERMINAL_TASK_STATUSES.has(event.payload.status)
-        ) {
-          return [event.payload.childThreadId];
+        for (const [coordinatorId, updates] of byCoordinator) {
+          yield* deliver(coordinatorId, updates.map((update) => update.block).join("\n"));
+          for (const update of updates) {
+            yield* coordinators.markReported(update.childThreadId, update.runId);
+          }
         }
-        return [];
       }),
-      Stream.flattenIterable,
-      Stream.runForEach(report),
+    )
+    .pipe(
       Effect.catchCause((cause) =>
-        Effect.logWarning("coordinator-updates.stream-failed", { cause }),
+        Effect.logWarning("coordinator-updates.catch-up-failed", { cause }),
       ),
-      Effect.forkScoped,
-      Effect.asVoid,
     );
 
-  return CoordinatorUpdates.of({ start, report });
+  const liveUpdates = threads.streamDomainEvents.pipe(
+    Stream.map((event): ReadonlyArray<ThreadId> => {
+      if (event.type === "run.updated" && TERMINAL_RUN_STATUSES.has(event.payload.status)) {
+        return [event.threadId];
+      }
+      // V2 publishes a delegated child's result to its parent after the
+      // run ended; that decides whether V2 or this reactor reports it.
+      if (
+        event.type === "subagent.updated" &&
+        event.payload.origin === "app_owned" &&
+        event.payload.childThreadId !== null &&
+        TERMINAL_TASK_STATUSES.has(event.payload.status)
+      ) {
+        return [event.payload.childThreadId];
+      }
+      return [];
+    }),
+    Stream.flattenIterable,
+    Stream.runForEach(report),
+    Effect.catchCause((cause) => Effect.logWarning("coordinator-updates.stream-failed", { cause })),
+  );
+
+  // Once the server accepts commands (after the V1 import and V2 recovery):
+  // follow live results, then catch up on those that ended before.
+  const start = () =>
+    forkParked(
+      Effect.gen(function* () {
+        yield* Effect.forkScoped(liveUpdates);
+        yield* catchUp;
+      }),
+    );
+
+  return CoordinatorUpdates.of({ start, report, catchUp });
 });
 
 export const layer = Layer.effect(CoordinatorUpdates, make);
