@@ -15,7 +15,12 @@ import {
   type InitiativesInboxSnapshot,
   type ThreadId,
 } from "@t3tools/contracts";
-import { ENTRY_STATUSES, entryStatusBlocker, isEntryOpen } from "@t3tools/initiatives/model";
+import {
+  closesDependencyLoop,
+  ENTRY_STATUSES,
+  entryStatusBlocker,
+  isEntryOpen,
+} from "@t3tools/initiatives/model";
 import type { InitiativeStore } from "@t3tools/initiatives/store";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
@@ -151,7 +156,14 @@ export const makeInitiativeEntries = (options: {
         .transaction(
           Effect.gen(function* () {
             const next = yield* create(
-              { ...input, initiativeId: old.initiativeId, type: old.type, supersedes: old.id },
+              {
+                ...input,
+                initiativeId: old.initiativeId,
+                type: old.type,
+                supersedes: old.id,
+                // A replaced rule keeps applying through its new version.
+                status: input.status ?? (old.type === "rule" ? old.status : undefined),
+              },
               author,
             );
             yield* store.update("entry", old.id, { status: "superseded" }, { author });
@@ -171,6 +183,14 @@ export const makeInitiativeEntries = (options: {
       if (fromId === toId) return yield* failure("An entry cannot link to itself.");
       const from = yield* requireEntry(fromId);
       yield* requireEntry(toId);
+      if (kind === "dependsOn") {
+        const links = yield* store
+          .list("link", { initiativeId: from.initiativeId })
+          .pipe(Effect.mapError(fromStore));
+        if (closesDependencyLoop(links, fromId, toId)) {
+          return yield* failure("This dependency would close a loop; no task of it could start.");
+        }
+      }
       const created = yield* store
         .insert("link", { initiativeId: from.initiativeId, fromId, toId, kind }, author)
         .pipe(
@@ -204,7 +224,7 @@ export const makeInitiativeEntries = (options: {
     for (const entry of entries) {
       const waiting = entry.inbox
         ? isEntryOpen(entry)
-        : entry.type === "decision" && entry.status === "proposed";
+        : (entry.type === "decision" || entry.type === "rule") && entry.status === "proposed";
       if (!waiting) continue;
       let initiativeId = entry.initiativeId;
       if (entry.inbox) {

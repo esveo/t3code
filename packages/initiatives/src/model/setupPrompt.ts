@@ -11,11 +11,11 @@ Führe ein kurzes Gespräch, eine Frage nach der anderen, auf Deutsch:
 3. Ziele: Woran erkennen wir, dass das Vorhaben fertig ist? Formuliere zwei bis vier prüfbare Ziele.
 4. Anweisungen und Vorlieben, die jeder Thread des Vorhabens bekommen soll (Stil, Werkzeuge, Grenzen, wen fragen).
 5. Beteiligte Projekte und Repos. Nenne die Projekte aus list_projects, die passen könnten; ich füge sie auf der Vorhaben-Seite im Reiter „Einstellungen“ hinzu.
-6. Erste Ideen für einen Arbeitsplan: tauscht euch aus, halte Schritte fest, ohne schon etwas zu starten.
+6. Erste Ideen für einen Arbeitsplan: tauscht euch aus, halte Schritte fest, ohne schon etwas zu starten. Plane als Graph, nicht als Liste: Ein Schritt hängt nur dann von einem anderen ab, wenn er dessen Ergebnis wirklich liest, und dann benennst du, was übergeben wird. Was unabhängig ist, kann später parallel in eigenen Threads laufen. Deterministische Schritte (Zusammenführen, Sortieren, Deduplizieren, Vergleichen) werden Code, keine KI.
 
 Halte fest, was wir klären, jeweils nachdem du mir kurz gezeigt hast, was du speicherst, und ich zugestimmt habe:
 - Name, Ziel und Anweisungen mit initiative_update (Ziel als Liste, Anweisungen als Markdown). Mit dem ersten Ziel wird aus dem Entwurf ein aktives Vorhaben.
-- Plan-Schritte und Ideen mit entry_create (Typ plan bzw. idea), Annahmen als assumption.
+- Arbeitsschritte mit entry_create als task, mit dependsOn samt dem, was übergeben wird; Meilensteine als plan, Ideen als idea, Annahmen als assumption.
 - Hintergrund, der nicht in den Steckbrief gehört, mit brain_write; die Übergabe mit handoff_update.
 
 Zum Schluss:

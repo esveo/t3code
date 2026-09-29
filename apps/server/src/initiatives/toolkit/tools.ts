@@ -62,6 +62,9 @@ export const InitiativeBrief = Schema.Struct({
   ),
   providerExclusions: Schema.Array(Schema.String),
   halted: Schema.Boolean,
+  rules: Schema.Array(Schema.String).annotate({
+    description: "The initiative's active rules, numbered as in the start prompt; follow them.",
+  }),
 });
 
 export const InitiativeSessionEntry = Schema.Struct({
@@ -392,6 +395,29 @@ export const EntrySummary = Schema.Struct({
   inbox: Schema.Boolean.annotate({
     description: "An Inbox item for the user; answer it through the Inbox, not entry_status.",
   }),
+  dependsOn: Schema.Array(
+    Schema.Struct({
+      entryId: Schema.String,
+      title: Schema.String,
+      done: Schema.Boolean,
+      passes: Schema.NullOr(Schema.String),
+    }),
+  ).annotate({ description: "For a task: the entries whose output it reads." }),
+  ready: Schema.NullOr(Schema.Boolean).annotate({
+    description: "For a task: open and every dependency done, so it can start now. Null otherwise.",
+  }),
+});
+
+const DependsOnParameter = Schema.Array(
+  Schema.Struct({
+    entryId: TrimmedNonEmptyString,
+    passes: TrimmedNonEmptyString.annotate({
+      description: "What this entry hands over to the task, e.g. the list of affected files.",
+    }),
+  }),
+).annotate({
+  description:
+    "For a task: the tasks whose output it actually reads, each with what is passed. Leave out steps that merely come earlier; tasks without an edge run in parallel.",
 });
 
 const QuestionAskTool = writing(
@@ -433,6 +459,7 @@ const EntryCreateTool = writing(
             "Type-specific fields, e.g. assumption: confidence, howToVerify; issue: githubUrl; task: acceptance, deadline.",
         }),
       ),
+      dependsOn: Schema.optional(DependsOnParameter),
     }),
     success: Schema.Struct({ entryId: Schema.String, status: Schema.String }),
     failure: InitiativeToolError,
@@ -446,7 +473,7 @@ const EntryListTool = readOnly(
     description:
       "List the initiative's entries, newest first: open ones by default. Read decisions and assumptions before you decide something the initiative may have settled.",
     parameters: Schema.Struct({
-      type: Schema.optional(Schema.Literals(["question", ...EntryTypeParameter.literals])),
+      type: Schema.optional(Schema.Literals(["question", "rule", ...EntryTypeParameter.literals])),
       status: Schema.optional(TrimmedNonEmptyString),
       includeClosed: Schema.optional(Schema.Boolean),
     }),
@@ -519,11 +546,16 @@ const EntrySupersedeTool = writing(
 const EntryLinkTool = writing(
   Tool.make("entry_link", {
     description:
-      "Link two entries of your initiative: dependsOn (a decision on an assumption), implements (a task for a decision), answers, blocks or relatesTo.",
+      "Link two entries of your initiative: dependsOn (a decision on an assumption, a task on a task whose output it reads), implements (a task for a decision), answers, blocks or relatesTo.",
     parameters: Schema.Struct({
       fromId: TrimmedNonEmptyString,
       toId: TrimmedNonEmptyString,
       kind: Schema.Literals(["dependsOn", "relatesTo", "implements", "answers", "blocks"]),
+      passes: Schema.optional(
+        TrimmedNonEmptyString.annotate({
+          description: "For dependsOn between tasks: what toId hands over to fromId.",
+        }),
+      ),
     }),
     success: Schema.Struct({ linked: Schema.Boolean }),
     failure: InitiativeToolError,
@@ -546,6 +578,36 @@ const EntryStatusTool = writing(
     dependencies,
   }).annotate(Tool.Title, "Change an entry's status"),
   true,
+);
+
+const RuleRecordTool = writing(
+  Tool.make("rule_record", {
+    description:
+      "Record a rule of the initiative: a lesson from a confirmed cause that every new thread of the initiative gets in its start prompt, and that shapes how work is cut. Keep it short and imperative. The coordinator's rule applies at once; any other thread's is a proposal the user decides in the Inbox. The coordinator replaces a rule with supersedes and lifts one with entry_status revoked.",
+    parameters: Schema.Struct({
+      rule: TrimmedNonEmptyString.annotate({
+        description:
+          "The rule itself, one sentence, e.g. Run the migrations test before any schema change.",
+      }),
+      why: Schema.optional(
+        Schema.String.annotate({ description: "The cause it came from, in Markdown." }),
+      ),
+      sourceEntryId: Schema.optional(
+        TrimmedNonEmptyString.annotate({
+          description: "The entry it came from, e.g. the issue or insight of the cause.",
+        }),
+      ),
+      supersedes: Schema.optional(
+        TrimmedNonEmptyString.annotate({
+          description: "Coordinator only: the rule this one replaces; that one stops applying.",
+        }),
+      ),
+    }),
+    success: Schema.Struct({ entryId: Schema.String, status: Schema.String }),
+    failure: InitiativeToolError,
+    dependencies,
+  }).annotate(Tool.Title, "Record a rule"),
+  false,
 );
 
 const StatsEstimateTool = readOnly(
@@ -574,6 +636,7 @@ export const InitiativesToolkit = Toolkit.make(
   EntrySupersedeTool,
   EntryLinkTool,
   EntryStatusTool,
+  RuleRecordTool,
   BrainReadTool,
   BrainSearchTool,
   BrainWriteTool,

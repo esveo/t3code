@@ -259,4 +259,105 @@ describe("initiatives toolkit", () => {
       );
     }),
   );
+  it.effect(
+    "puts active rules into every new thread's start prompt and lets threads only propose",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness;
+        const issue = yield* harness.call("member", "entry_create", {
+          type: "issue",
+          title: "Migration kaputt",
+        });
+        const active = yield* harness.call("coordinator", "rule_record", {
+          rule: "Vor jeder Schemaänderung den Migrationstest laufen lassen.",
+          sourceEntryId: issue.entryId,
+        });
+        assert.equal(active.status, "active");
+        const proposed = yield* harness.call("member", "rule_record", {
+          rule: "Nie ohne Review mergen.",
+        });
+        assert.equal(proposed.status, "proposed");
+        const inbox = yield* harness.initiatives.entries.inboxSnapshot;
+        assert.isTrue(inbox.items.some((item) => item.entry.id === proposed.entryId));
+        const refused = yield* Effect.flip(
+          harness.call("member", "rule_record", { rule: "Anders", supersedes: active.entryId }),
+        );
+        assert.include(refused.message, "coordinator");
+
+        yield* harness.initiatives.act(
+          {
+            type: "startThread",
+            initiativeId: harness.initiativeId,
+            key: "rules-1",
+            projectId: TEST_PROJECT,
+            title: "Worker",
+            prompt: "Do it.",
+          },
+          ROBERT,
+        );
+        const prompt = harness.fake.starts.at(-1)!.prompt;
+        assert.include(prompt, "1. Vor jeder Schemaänderung den Migrationstest laufen lassen.");
+        assert.notInclude(prompt, "Nie ohne Review mergen.");
+
+        // Replaced, the new version applies; lifted, it leaves the prompt.
+        const replaced = yield* harness.call("coordinator", "rule_record", {
+          rule: "Vor jeder Schemaänderung Migrations- und Rollback-Test laufen lassen.",
+          supersedes: active.entryId,
+        });
+        assert.equal(replaced.status, "active");
+        const brief = yield* harness.call("member", "initiative_brief", {});
+        assert.deepStrictEqual(brief.rules, [
+          "Vor jeder Schemaänderung Migrations- und Rollback-Test laufen lassen.",
+        ]);
+        yield* harness.initiatives.act(
+          { type: "entryStatus", entryId: replaced.entryId, status: "revoked" },
+          ROBERT,
+        );
+        const after = yield* harness.call("member", "initiative_brief", {});
+        assert.deepStrictEqual(after.rules, []);
+      }),
+  );
+
+  it.effect("records task dependencies with what they pass and tells which task is ready", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      const collect = yield* harness.call("coordinator", "entry_create", {
+        type: "task",
+        title: "Seiten sammeln",
+      });
+      const rate = yield* harness.call("coordinator", "entry_create", {
+        type: "task",
+        title: "Seiten bewerten",
+        dependsOn: [{ entryId: collect.entryId, passes: "Liste der URLs" }],
+      });
+      const listed = yield* harness.call("coordinator", "entry_list", { type: "task" });
+      const byId = new Map(listed.entries.map((entry) => [entry.entryId, entry]));
+      assert.isTrue(byId.get(collect.entryId)?.ready);
+      assert.isFalse(byId.get(rate.entryId)?.ready);
+      assert.deepStrictEqual(byId.get(rate.entryId)?.dependsOn, [
+        {
+          entryId: collect.entryId,
+          title: "Seiten sammeln",
+          done: false,
+          passes: "Liste der URLs",
+        },
+      ]);
+
+      const loop = yield* Effect.flip(
+        harness.call("coordinator", "entry_link", {
+          fromId: collect.entryId,
+          toId: rate.entryId,
+          kind: "dependsOn",
+        }),
+      );
+      assert.include(loop.message, "loop");
+
+      yield* harness.call("coordinator", "entry_status", {
+        entryId: collect.entryId,
+        status: "done",
+      });
+      const after = yield* harness.call("coordinator", "entry_list", { type: "task" });
+      assert.isTrue(after.entries.find((entry) => entry.entryId === rate.entryId)?.ready);
+    }),
+  );
 });
