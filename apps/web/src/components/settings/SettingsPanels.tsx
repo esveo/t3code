@@ -161,8 +161,17 @@ import {
   useSettingsSearchTargetId,
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
+import { ThreadDecisionsSettingRow } from "../threadInbox/ThreadDecisionsSettingRow";
+import { CrossProjectThreadsSettingRow } from "../threadOrchestration/CrossProjectThreadsSettingRow"; // Fork
+import { SidebarChildThreadsSettingRow } from "../threadOrchestration/SidebarChildThreadsSetting";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
+import { AgentStageSettingRow } from "../agentStage/AgentStageSetting";
+import { VoiceInputSettingRow } from "../voiceInput/VoiceInputSettingRow";
+import {
+  EsveoComposerReadoutSettingRows,
+  EsveoSidebarCardSettingRows,
+} from "../esveoSettings/EsveoSettingRows"; // Fork
 
 const ENVIRONMENT_IDENTIFICATION_LABELS: Record<EnvironmentIdentificationMode, string> = {
   artwork: "Artwork",
@@ -1293,6 +1302,7 @@ export function AppearanceSettingsPanel() {
             }
           />
         ) : null}
+        <EsveoSidebarCardSettingRows />
 
         <SettingsRow
           {...searchableSetting("diff-color-scheme")}
@@ -2371,6 +2381,8 @@ export function GeneralSettingsPanel() {
             />
           }
         />
+        <AgentStageSettingRow />
+        <VoiceInputSettingRow />
         <SettingsRow
           {...searchableSetting("time-format")}
           description="System default follows your browser or OS clock preference."
@@ -2757,6 +2769,8 @@ export function GeneralSettingsPanel() {
           }
         />
 
+        <EsveoComposerReadoutSettingRows />
+
         <SettingsRow
           serverScoped
           settingKeys={["enableProviderUpdateChecks"]}
@@ -2824,6 +2838,11 @@ export function GeneralSettingsPanel() {
             />
           }
         />
+
+        {/* Fork: coordinator decisions, cross-project threads, child threads in the sidebar. */}
+        <ThreadDecisionsSettingRow />
+        <CrossProjectThreadsSettingRow />
+        <SidebarChildThreadsSettingRow />
 
         <SettingsRow
           serverScoped

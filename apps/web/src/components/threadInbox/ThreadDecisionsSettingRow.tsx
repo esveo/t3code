@@ -2,19 +2,19 @@ import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts";
 
 import { ScopedSwitch } from "~/components/settings/ScopedSwitch";
 import { SettingResetButton, SettingsRow } from "~/components/settings/settingsLayout";
-import { searchableSetting } from "~/components/settings/settingsSearch";
+import { esveoSearchableSetting } from "~/components/esveoSettings/EsveoSettingBadge";
 import {
   useScopedSettings,
   useUpdateScopedSettings,
 } from "~/components/settings/useScopedSettings";
 
-/** Fork: the opt-in for the coordinator's Inbox of decisions, in Settings → esveo. */
+/** Fork: the opt-in for the coordinator's Inbox of decisions, in Settings → General. */
 export function ThreadDecisionsSettingRow() {
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   return (
     <SettingsRow
-      {...searchableSetting("thread-decisions")}
+      {...esveoSearchableSetting("thread-decisions")}
       serverScoped
       settingKeys={["enableThreadDecisions"]}
       description="Coordinators put the questions they need you to decide into an Inbox tab beside the chat, instead of numbering them in their messages. Running sessions pick up a change."

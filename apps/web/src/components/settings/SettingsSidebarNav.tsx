@@ -21,7 +21,6 @@ import {
   KeyboardIcon,
   Link2Icon,
   PaletteIcon,
-  RocketIcon,
   SearchIcon,
   Settings2Icon,
   XIcon,
@@ -51,6 +50,7 @@ import {
 } from "./settingsSearch";
 import { useAvailableSettingsSearchItems } from "./useAvailableSettingsSearchItems";
 import { validateSettingsScopeSearch } from "./settingsScope";
+import { useEsveoSettingsSearchRequest } from "../esveoSettings/esveoSettingsSearch"; // Fork
 
 const SnapShotIcon = createLucideIcon("snap-shot", [
   [
@@ -90,7 +90,6 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/storage": HardDriveIcon,
   "/settings/connections": Link2Icon,
   "/settings/archived": ArchiveIcon,
-  "/settings/esveo": RocketIcon, // Fork
 };
 
 const SETTINGS_NAV_ITEMS: ReadonlyArray<{
@@ -120,6 +119,13 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
   const searchInputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [activeResultIndex, setActiveResultIndex] = useState(0);
+  // Fork: an esveo badge on a setting fills the search to list the fork's settings.
+  useEsveoSettingsSearchRequest((esveoQuery) => {
+    setQuery(esveoQuery);
+    setActiveResultIndex(0);
+    if (isMobile) setOpenMobile(true);
+    else if (!open) setOpen(true);
+  });
   const searchableItems = useAvailableSettingsSearchItems(scopeSearch);
   const results = useMemo(() => searchSettings(query, searchableItems), [query, searchableItems]);
   const isSearching = query.trim().length > 0;

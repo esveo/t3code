@@ -15,7 +15,7 @@ const EMPTY: ReadonlyArray<ThreadDecision> = [];
 /**
  * Fork: a coordinator's decisions for the Inbox tab, whether the tab can open
  * for this thread, and how many decisions wait on the user. Any coordinator
- * can open it while decisions are on (Settings → esveo)
+ * can open it while decisions are on (Settings → General)
  * and its server keeps decisions.
  */
 export function useThreadInboxSurface(threadRef: ScopedThreadRef | null) {

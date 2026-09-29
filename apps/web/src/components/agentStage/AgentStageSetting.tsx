@@ -1,5 +1,5 @@
 import { SettingsRow } from "../settings/settingsLayout";
-import { searchableSetting } from "../settings/settingsSearch";
+import { esveoSearchableSetting } from "~/components/esveoSettings/EsveoSettingBadge";
 import { Switch } from "../ui/switch";
 import { useAgentStageStore } from "./agentStageStore";
 
@@ -9,7 +9,7 @@ export function AgentStageSettingRow() {
   const setEnabled = useAgentStageStore((state) => state.setEnabled);
   return (
     <SettingsRow
-      {...searchableSetting("agent-stage")}
+      {...esveoSearchableSetting("agent-stage")}
       description="Adds a button to the chat header that shows the agents as figures moving between the kinds of work they do: thinking, reading, editing, running commands and more."
       control={<Switch checked={enabled} onCheckedChange={setEnabled} aria-label="Agent stage" />}
     />
