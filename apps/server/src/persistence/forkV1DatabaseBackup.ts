@@ -1,5 +1,6 @@
 import * as NodeSqlite from "node:sqlite";
 
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -11,12 +12,12 @@ import * as Path from "effect/Path";
  * open (or uncheckpointed WAL data) still yields a complete copy.
  */
 export const backupV1DatabaseBeforeV2Import = Effect.fn("backupV1DatabaseBeforeV2Import")(
-  function* (sourcePath: string, now: Date = new Date()) {
+  function* (sourcePath: string) {
     const fs = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     const backupDirectory = path.join(path.dirname(sourcePath), "backups");
     yield* fs.makeDirectory(backupDirectory, { recursive: true });
-    const timestamp = now.toISOString().replaceAll(":", "-");
+    const timestamp = DateTime.formatIso(yield* DateTime.now).replaceAll(":", "-");
     const backupPath = path.join(backupDirectory, `state-v1-${timestamp}.sqlite`);
     yield* Effect.tryPromise(async () => {
       const database = new NodeSqlite.DatabaseSync(sourcePath, { readOnly: true });
