@@ -7,8 +7,15 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
 import type { ScopedThreadRef } from "@t3tools/contracts";
+import { formatModelSlugName } from "@t3tools/shared/model";
 import { CHILD_THREAD_STATE_LABELS } from "@t3tools/shared/threadOrchestration";
-import { BotIcon, ChevronDownIcon, MessageSquareIcon, NetworkIcon } from "lucide-react";
+import {
+  BotIcon,
+  ChevronDownIcon,
+  GitBranchIcon,
+  MessageSquareIcon,
+  NetworkIcon,
+} from "lucide-react";
 
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { useMemo, useState } from "react";
@@ -16,6 +23,7 @@ import { useMemo, useState } from "react";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
+import { useThreadShell } from "~/state/entities";
 import { formatElapsedDurationLabel } from "~/timestampFormat";
 import { CHILD_THREAD_DOT_CLASS } from "./childThreadStateVisuals";
 import { EmbeddedChildThread } from "./EmbeddedChildThread";
@@ -30,15 +38,6 @@ import {
 import { useOpenThread } from "./useOpenThread";
 import { useThreadOverviewEntries } from "./useThreadOverviewEntries";
 
-const STATE_TEXT_CLASS = {
-  waiting: "text-amber-600 dark:text-amber-400",
-  failed: "text-destructive-foreground",
-  working: "text-muted-foreground",
-  review: "text-success-foreground",
-  stopped: "text-muted-foreground",
-  done: "text-muted-foreground",
-} as const;
-
 const KIND_VISUALS = {
   thread: { icon: MessageSquareIcon, label: "Thread" },
   subagent: { icon: BotIcon, label: "Subagent" },
@@ -46,15 +45,21 @@ const KIND_VISUALS = {
 
 function OverviewRow({
   entry,
+  fallbackBranch,
   onOpenInPanel,
 }: {
   entry: ThreadOverviewEntry;
+  /** The coordinator's branch, where a subagent without a branch of its own works. */
+  fallbackBranch: string | null;
   onOpenInPanel: (threadRef: ScopedThreadRef) => void;
 }) {
   const openThread = useOpenThread();
   const { thread, state } = entry;
   const kind = KIND_VISUALS[entry.kind];
   const age = formatElapsedDurationLabel(entry.updatedAt);
+  // State shows in the dot and the section; the line below says where and with what it works.
+  const branch = thread.branch ?? fallbackBranch;
+  const model = formatModelSlugName(thread.modelSelection.model);
   return (
     <button
       type="button"
@@ -67,6 +72,7 @@ function OverviewRow({
       className="group/overview-row grid w-full cursor-pointer grid-cols-[0.375rem_minmax(0,1fr)_auto] items-center gap-x-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span aria-hidden className={cn("size-1.5 rounded-full", CHILD_THREAD_DOT_CLASS[state])} />
+      <span className="sr-only">{CHILD_THREAD_STATE_LABELS[state]}: </span>
       <span className="flex min-w-0 flex-col">
         <span className="flex min-w-0 items-center gap-1.5">
           <Tooltip>
@@ -80,9 +86,15 @@ function OverviewRow({
             {entry.kind === "subagent" ? formatSubagentDisplayTitle(thread.title) : thread.title}
           </span>
         </span>
-        <span className="truncate text-xs">
-          <span className={STATE_TEXT_CLASS[state]}>{CHILD_THREAD_STATE_LABELS[state]}</span>
-          <span className="text-muted-foreground"> · {entry.detail}</span>
+        <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+          {branch ? (
+            <>
+              <GitBranchIcon aria-hidden className="size-3 shrink-0" />
+              <span className="min-w-0 truncate">{branch}</span>
+              {model ? <span aria-hidden>·</span> : null}
+            </>
+          ) : null}
+          {model ? <span className="shrink-0">{model}</span> : null}
         </span>
       </span>
       <span className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
@@ -97,9 +109,11 @@ function OverviewRow({
 
 function OverviewSection({
   group,
+  fallbackBranch,
   onOpenInPanel,
 }: {
   group: ThreadOverviewGroup;
+  fallbackBranch: string | null;
   onOpenInPanel: (threadRef: ScopedThreadRef) => void;
 }) {
   // Finished work folds away by default; everything else stays open.
@@ -124,7 +138,12 @@ function OverviewSection({
       {open ? (
         <div className="flex flex-col gap-0.5 py-1">
           {group.entries.map((entry) => (
-            <OverviewRow key={entry.thread.id} entry={entry} onOpenInPanel={onOpenInPanel} />
+            <OverviewRow
+              key={entry.thread.id}
+              entry={entry}
+              fallbackBranch={fallbackBranch}
+              onOpenInPanel={onOpenInPanel}
+            />
           ))}
         </div>
       ) : null}
@@ -134,6 +153,7 @@ function OverviewSection({
 
 export function ThreadOverviewPanel({ threadRef }: { threadRef: ScopedThreadRef | null }) {
   const children = useThreadOverviewEntries(threadRef);
+  const coordinatorBranch = useThreadShell(threadRef)?.branch ?? null;
   const groups = useMemo(() => buildThreadOverview(children), [children]);
   const waiting = useMemo(() => waitingEntries(children), [children]);
   // The child open in the panel, cleared when the panel moves to another coordinator.
@@ -181,7 +201,12 @@ export function ThreadOverviewPanel({ threadRef }: { threadRef: ScopedThreadRef 
           <p className="text-xs text-muted-foreground">{describeOverviewOrigin(children)}</p>
         </header>
         {groups.map((group) => (
-          <OverviewSection key={group.id} group={group} onOpenInPanel={openInPanel} />
+          <OverviewSection
+            key={group.id}
+            group={group}
+            fallbackBranch={coordinatorBranch}
+            onOpenInPanel={openInPanel}
+          />
         ))}
       </div>
     </ScrollArea>
