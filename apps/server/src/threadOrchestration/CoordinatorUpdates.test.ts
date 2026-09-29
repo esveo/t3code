@@ -34,6 +34,8 @@ interface World {
   tasks: ReadonlyArray<{ childThreadId: ThreadId; completionDelivery?: { state: string } }>;
   transfers: ReadonlyArray<{ sourceThreadId: ThreadId; runId: string }>;
   queued: ReadonlyArray<{ runId: string; messageId: string; text: string }>;
+  /** The last reported result of each child, as it was before a restart. */
+  readonly reported: Map<ThreadId, RunId>;
 }
 
 function childShell(
@@ -76,6 +78,7 @@ const makeWorld = (): World => ({
   tasks: [],
   transfers: [],
   queued: [],
+  reported: new Map(),
 });
 
 const withUpdates = <A, E>(
@@ -88,7 +91,7 @@ const withUpdates = <A, E>(
 ) =>
   Effect.gen(function* () {
     const dispatched = yield* Ref.make<ReadonlyArray<OrchestrationV2Command>>([]);
-    const reported = new Map<ThreadId, RunId>();
+    const reported = world.reported;
     const coordinatorShell = childShell("coordinator", null);
     const management = Layer.mock(ThreadManagementService)({
       getThreadShell: (threadId) =>
@@ -97,6 +100,13 @@ const withUpdates = <A, E>(
             ? coordinatorShell
             : (world.children.get(threadId)?.shell ?? null),
         ),
+      getShellSnapshot: () =>
+        Effect.succeed({
+          schemaVersion: 1,
+          snapshotSequence: 0,
+          threads: [coordinatorShell, ...[...world.children.values()].map((child) => child.shell)],
+          archivedThreads: [],
+        }),
       getThreadRecords: ((threadId: ThreadId, fields: ReadonlyArray<string>) => {
         if (threadId === COORDINATOR) {
           return Effect.succeed({
@@ -155,6 +165,7 @@ const withUpdates = <A, E>(
         ),
     });
     const coordinators = Layer.mock(ThreadCoordinators)({
+      overrides: Effect.sync(() => world.links),
       coordinatorOf: (thread) => {
         const link = world.links.get(thread.id);
         return Effect.succeed(
@@ -360,6 +371,84 @@ describe("CoordinatorUpdates", () => {
             assert.strictEqual((yield* Ref.get(dispatched)).length, 0);
           }),
         { enabled: false },
+      );
+    }),
+  );
+});
+
+describe("CoordinatorUpdates.catchUp", () => {
+  it.effect("reports what ended while the server was down, once, one message per coordinator", () =>
+    Effect.gen(function* () {
+      const world = makeWorld();
+      // Finished between the last report and the restart.
+      const adopted = ThreadId.make("adopted");
+      world.links.set(adopted, COORDINATOR);
+      world.children.set(adopted, {
+        shell: childShell("adopted", null),
+        runs: [{ id: "run-1", status: "completed" }],
+        answers: { "run-1": "Adopted result." },
+      });
+      // A follow-up of a delegated child; V2 delivered only its first result.
+      const followUp = ThreadId.make("follow-up");
+      world.children.set(followUp, {
+        shell: childShell("follow-up", COORDINATOR),
+        runs: [
+          { id: "run-1", status: "completed" },
+          { id: "run-2", status: "failed" },
+        ],
+        answers: { "run-1": "First.", "run-2": "Follow-up failed." },
+      });
+      // Already reported before the restart.
+      const reported = ThreadId.make("reported");
+      world.links.set(reported, COORDINATOR);
+      world.reported.set(reported, RunId.make("run-1"));
+      world.children.set(reported, {
+        shell: childShell("reported", null),
+        runs: [{ id: "run-1", status: "completed" }],
+        answers: { "run-1": "Old news." },
+      });
+      // Delivered by V2's mailbox.
+      const delivered = ThreadId.make("delivered");
+      world.children.set(delivered, {
+        shell: childShell("delivered", COORDINATOR),
+        runs: [{ id: "run-1", status: "completed" }],
+        answers: { "run-1": "V2 carried this." },
+      });
+      // Finished in V1, before the migration: no V2 run.
+      const imported = ThreadId.make("imported");
+      world.links.set(imported, COORDINATOR);
+      world.children.set(imported, {
+        shell: childShell("imported", null, { status: "idle", latestRunId: null }),
+        runs: [],
+        answers: {},
+      });
+      world.tasks = [{ childThreadId: followUp }, { childThreadId: delivered }];
+      world.transfers = [
+        { sourceThreadId: followUp, runId: "run-1" },
+        { sourceThreadId: delivered, runId: "run-1" },
+      ];
+      yield* withUpdates(world, ({ updates, dispatched }) =>
+        Effect.gen(function* () {
+          yield* updates.catchUp;
+          const commands = yield* Ref.get(dispatched);
+          assert.strictEqual(commands.length, 1);
+          const command = commands[0]!;
+          if (command.type !== "message.dispatch") return assert.fail(command.type);
+          assert.strictEqual(command.threadId, COORDINATOR);
+          assert.deepEqual(
+            parseThreadUpdates(command.text)?.map((update) => [update.threadId, update.body]),
+            [
+              ["adopted", "Adopted result."],
+              ["follow-up", "Follow-up failed."],
+            ],
+          );
+          assert.strictEqual(world.reported.get(delivered), "run-1");
+          assert.isFalse(world.reported.has(imported));
+
+          // The next start has nothing left to say.
+          yield* updates.catchUp;
+          assert.strictEqual((yield* Ref.get(dispatched)).length, 1);
+        }),
       );
     }),
   );
