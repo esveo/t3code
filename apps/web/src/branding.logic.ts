@@ -4,7 +4,9 @@ export function formatAppDisplayName(input: {
   readonly baseName: string;
   readonly stageLabel: string;
 }): string {
-  if (input.stageLabel.trim().toLowerCase() === "latest") {
+  // Fork: Alpha is the normal esveo code build, so it carries no stage either.
+  const stageLabel = input.stageLabel.trim().toLowerCase();
+  if (stageLabel === "latest" || stageLabel === "alpha") {
     return input.baseName;
   }
 
