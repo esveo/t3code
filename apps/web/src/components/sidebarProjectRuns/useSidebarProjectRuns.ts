@@ -82,7 +82,7 @@ export function useSidebarProjectRuns(input: {
           null,
         isCollapsed: (projectKey) => collapsed.has(`${section}:${projectKey}`),
         isRunning: (thread) =>
-          thread.session?.status === "running" && thread.session.activeTurnId != null,
+          thread.runtime?.status === "running" && thread.runtime.activeRunId != null,
         // The states that wait on a person rather than on the agent.
         needsAttention: (thread) => {
           const status = resolveSidebarThreadStatus(thread);
