@@ -42,6 +42,9 @@ $CurrentLink = Join-Path $Root "current"
 $WatchBranch = if ($env:T3CODE_FORK_WATCH_BRANCH) { $env:T3CODE_FORK_WATCH_BRANCH } else { "fork" }
 $WatchSource = Join-Path $Root "source"
 $NodeMajor = 26
+# The app window and the Start menu shortcut share it, so the taskbar shows the
+# shortcut's "esveo code" instead of electron.exe's "Electron".
+$AppUserModelId = "com.esveo.code"
 $Pnpm = "pnpm@11.10.0"
 
 New-Item -ItemType Directory -Force (Join-Path $HomeDir "userdata"), $LogDir, $BuildsDir | Out-Null
@@ -172,6 +175,7 @@ function Set-AppEnv {
   $env:T3CODE_DISABLE_AUTO_UPDATE = "1"
   $env:T3CODE_FORK_APP_ROOT = $Root
   $env:T3CODE_FORK_APP_SCRIPT = $PSCommandPath
+  $env:T3CODE_DESKTOP_APP_USER_MODEL_ID = $AppUserModelId
 }
 
 # Clerk registers t3code:// as a bare `electron.exe "%1"` on every start, which
@@ -204,9 +208,17 @@ function Start-App {
   $settings = Join-Path $HomeDir "userdata\desktop-settings.json"
   if (-not (Test-Path $settings)) { Set-Content $settings '{"localEnvironmentEnabled":false}' }
   $log = Join-Path $LogDir "app.log"
-  Write-Host "Starting $($info.label) (log: $log) ..."
   Set-AppEnv
-  Remove-Item $log -ErrorAction SilentlyContinue
+  # The stopped app's launcher (cmd, node) holds the log a few seconds longer; a
+  # log that stays would fail the redirect below and pass the check with old lines.
+  # Agent processes the old app spawned (claude, MCP servers) inherit the handle
+  # and can outlive it indefinitely, so fall back to a fresh file.
+  for ($i = 0; (Test-Path $log) -and $i -lt 5; $i++) {
+    Remove-Item $log -ErrorAction SilentlyContinue
+    if (Test-Path $log) { Start-Sleep 1 }
+  }
+  if (Test-Path $log) { $log = Join-Path $LogDir "app-$(Get-Date -Format yyyyMMdd-HHmmss).log" }
+  Write-Host "Starting $($info.label) (log: $log) ..."
   # From the real slot path, so every resolved path matches pnpm's junctions.
   # The desktop's start script, without the second or so npx and vp add.
   $proc = Start-Process cmd.exe -ArgumentList "/c node scripts\start-electron.mjs > `"$log`" 2>&1" `
@@ -408,6 +420,41 @@ function Invoke-Watch {
   Remove-Item $failed -ErrorAction SilentlyContinue
 }
 
+# WScript.Shell cannot set a shortcut's AppUserModelID; IPropertyStore can.
+function Set-ShortcutAppId([string]$Path, [string]$Id) {
+  Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class ShortcutAppId {
+  [ComImport, Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+  interface IPropertyStore {
+    void GetCount(out uint count);
+    void GetAt(uint index, out PropertyKey key);
+    void GetValue(ref PropertyKey key, out PropVariant value);
+    void SetValue(ref PropertyKey key, ref PropVariant value);
+    void Commit();
+  }
+  [StructLayout(LayoutKind.Sequential)] struct PropertyKey { public Guid fmtid; public uint pid; }
+  [StructLayout(LayoutKind.Explicit, Size = 24)] struct PropVariant {
+    [FieldOffset(0)] public ushort vt;
+    [FieldOffset(8)] public IntPtr value;
+  }
+  [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
+  static extern void SHGetPropertyStoreFromParsingName(string path, IntPtr bindCtx, int flags, ref Guid iid, out IPropertyStore store);
+  public static void Set(string path, string id) {
+    var iid = typeof(IPropertyStore).GUID;
+    IPropertyStore store;
+    SHGetPropertyStoreFromParsingName(path, IntPtr.Zero, 2 /* GPS_READWRITE */, ref iid, out store);
+    var key = new PropertyKey { fmtid = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), pid = 5 };
+    var value = new PropVariant { vt = 31 /* VT_LPWSTR */, value = Marshal.StringToCoTaskMemUni(id) };
+    try { store.SetValue(ref key, ref value); store.Commit(); }
+    finally { Marshal.FreeCoTaskMem(value.value); Marshal.ReleaseComObject(store); }
+  }
+}
+"@
+  [ShortcutAppId]::Set($Path, $Id)
+}
+
 function New-Shortcuts {
   $shell = New-Object -ComObject WScript.Shell
   foreach ($dir in [Environment]::GetFolderPath("Programs"), [Environment]::GetFolderPath("Desktop")) {
@@ -420,6 +467,7 @@ function New-Shortcuts {
     $lnk.WorkingDirectory = $ScriptRepo
     $lnk.IconLocation = Join-Path $ScriptRepo "assets\prod\t3-black-windows.ico"
     $lnk.Save()
+    Set-ShortcutAppId $path $AppUserModelId
     Write-Host "Created $path"
   }
 }

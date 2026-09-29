@@ -225,7 +225,10 @@ function readForkState(root: string, now: number) {
   return { service, builds: sortForkBuilds(builds) };
 }
 
-/** fork-app.sh runs directly; on Windows, fork-app.ps1 runs through PowerShell 7. */
+/**
+ * fork-app.sh runs directly; on Windows, fork-app.ps1 runs through PowerShell 7,
+ * started by cmd.exe because a detached pwsh (no console) exits without running.
+ */
 function spawnScript(
   platform: NodeJS.Platform,
   script: string,
@@ -234,8 +237,8 @@ function spawnScript(
 ) {
   if (platform === "win32") {
     return NodeChildProcess.spawn(
-      "pwsh.exe",
-      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, ...args],
+      "cmd.exe",
+      ["/c", "pwsh.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script, ...args],
       { ...options, windowsHide: true },
     );
   }
