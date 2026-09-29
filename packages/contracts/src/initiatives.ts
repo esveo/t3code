@@ -93,6 +93,18 @@ export type InitiativeControl = typeof InitiativeControl.Type;
 export const PreflightWouldHave = Schema.Literals(["accept", "decline", "ask"]);
 export type PreflightWouldHave = typeof PreflightWouldHave.Type;
 
+/**
+ * One piece of evidence behind a verdict. A verdict lists them in a fixed
+ * order: hard results (checks, tests), then this run's history, then how
+ * often this thread's work was rolled back, and the model's own assessment
+ * last.
+ */
+export const PreflightEvidence = Schema.Struct({
+  kind: Schema.Literals(["hard", "run", "rollbacks", "model"]),
+  text: Schema.String,
+});
+export type PreflightEvidence = typeof PreflightEvidence.Type;
+
 /** What a checker would have answered; in shadow mode nothing is sent. */
 export const PreflightVerdict = Schema.Struct({
   checker: Schema.Literals(["rules"]),
@@ -103,6 +115,8 @@ export const PreflightVerdict = Schema.Struct({
   wouldHave: PreflightWouldHave,
   reason: Schema.String,
   latencyMs: NonNegativeInt,
+  /** Missing on verdicts recorded before evidence existed. */
+  evidence: Schema.optionalKey(Schema.Array(PreflightEvidence)),
 });
 export type PreflightVerdict = typeof PreflightVerdict.Type;
 
@@ -135,6 +149,8 @@ export const InitiativeApprovalObservation = Schema.Struct({
   verdicts: Schema.Array(PreflightVerdict),
   /** The user marked the verdict as wrong; it counts against the checker. */
   markedWrongBy: Schema.NullOr(InitiativeAuthor),
+  /** Who marked the approved work as rolled back since; counts against its thread. */
+  rolledBackBy: Schema.optionalKey(Schema.NullOr(InitiativeAuthor)),
 });
 export type InitiativeApprovalObservation = typeof InitiativeApprovalObservation.Type;
 
@@ -152,12 +168,29 @@ export const PreflightProviderStats = Schema.Struct({
   /** The verdict would have asked about what the user accepted. */
   needlessAsks: NonNegativeInt,
   markedWrong: NonNegativeInt,
+  /** Approved requests and finished tasks of this provider's threads marked as rolled back. */
+  rolledBack: NonNegativeInt.pipe(Schema.withDecodingDefault(Effect.succeed(0))),
+  /** Approved requests and finished tasks of its threads: what the rollback rate is out of. */
+  rollbackBase: NonNegativeInt.pipe(Schema.withDecodingDefault(Effect.succeed(0))),
 });
 export type PreflightProviderStats = typeof PreflightProviderStats.Type;
+
+/** How much of one thread's work was rolled back. */
+export const PreflightThreadRollbacks = Schema.Struct({
+  threadId: ThreadId,
+  provider: Schema.NullOr(Schema.String),
+  rolledBack: NonNegativeInt,
+  base: NonNegativeInt,
+});
+export type PreflightThreadRollbacks = typeof PreflightThreadRollbacks.Type;
 
 export const PreflightReport = Schema.Struct({
   providers: Schema.Array(PreflightProviderStats),
   observations: Schema.Array(InitiativeApprovalObservation),
+  /** Threads with work marked as rolled back. */
+  threads: Schema.Array(PreflightThreadRollbacks).pipe(
+    Schema.withDecodingDefault(Effect.succeed([])),
+  ),
 });
 export type PreflightReport = typeof PreflightReport.Type;
 
@@ -404,8 +437,69 @@ export const InitiativeEntryInbox = Schema.Struct({
 });
 export type InitiativeEntryInbox = typeof InitiativeEntryInbox.Type;
 
+// ── Loops: check first, return one unit, rollbacks ──────────────────────
+
+/**
+ * What must hold before a task or plan counts as done, fixed before the work
+ * starts and able to fail. command: `ref` runs and prints `expected`;
+ * mergedPr: the pull request `ref` is merged; criterion: `description` is
+ * checkable by reading the result.
+ */
+export const InitiativeAcceptanceCheck = Schema.Struct({
+  kind: Schema.Literals(["command", "mergedPr", "criterion"]),
+  description: TrimmedNonEmptyString,
+  ref: Schema.NullOr(Schema.String),
+  expected: Schema.NullOr(Schema.String),
+});
+export type InitiativeAcceptanceCheck = typeof InitiativeAcceptanceCheck.Type;
+
+/** One run of a check as a thread reported it, with what shows it. */
+export const InitiativeCheckResult = Schema.Struct({
+  outcome: Schema.Literals(["passed", "failed"]),
+  evidence: Schema.Struct({
+    excerpt: Schema.NullOr(Schema.String),
+    url: Schema.NullOr(Schema.String),
+    commit: Schema.NullOr(Schema.String),
+  }),
+  reportedBy: InitiativeAuthor,
+  reportedAt: IsoDateTime,
+});
+export type InitiativeCheckResult = typeof InitiativeCheckResult.Type;
+
+/**
+ * A unit handed back to the thread that made it: the finding and the fixed
+ * scope of the correction. escalated: not sent, because the corrections ran
+ * out; it went to the Inbox as a question instead.
+ */
+export const InitiativeEntryReturn = Schema.Struct({
+  finding: TrimmedNonEmptyString,
+  scope: TrimmedNonEmptyString,
+  toThreadId: Schema.NullOr(ThreadId),
+  by: InitiativeAuthor,
+  at: IsoDateTime,
+  escalated: Schema.Boolean,
+});
+export type InitiativeEntryReturn = typeof InitiativeEntryReturn.Type;
+
+/** The loop fields of a task or plan; optional, so entries from before them still read. */
+const EntryLoopFields = {
+  acceptanceCheck: Schema.optionalKey(Schema.NullOr(InitiativeAcceptanceCheck)),
+  /** Oldest first; the last one counts. */
+  checkResults: Schema.optionalKey(Schema.Array(InitiativeCheckResult)),
+  /** A person took the task as done without a passed check. */
+  acceptedWithoutCheckBy: Schema.optionalKey(Schema.NullOr(InitiativeAuthor)),
+  /** How often the task went back to its thread for a correction. */
+  attempts: Schema.optionalKey(NonNegativeInt),
+  returns: Schema.optionalKey(Schema.Array(InitiativeEntryReturn)),
+  /** Who marked the finished work as rolled back; counts against its thread. */
+  rolledBackBy: Schema.optionalKey(Schema.NullOr(InitiativeAuthor)),
+  /** The thread doing the task, which a return goes back to. */
+  threadId: Schema.optionalKey(Schema.NullOr(ThreadId)),
+};
+
 export const InitiativeEntry = Schema.Struct({
   ...RecordBase,
+  ...EntryLoopFields,
   /** Null for entries of no initiative ("Ohne Zuordnung"). */
   initiativeId: Schema.NullOr(TrimmedNonEmptyString),
   type: InitiativeEntryType,
@@ -774,6 +868,32 @@ export const InitiativesAction = Schema.Union([
   }),
   /** Measures the initiative's sessions again and records the providers' quota. */
   Schema.Struct({ type: Schema.Literal("statsRefresh"), ...InitiativeRef }),
+  // Loops: check first, return one unit, rollbacks.
+  /** Sets or, with null, removes the acceptance check of a task or plan. */
+  Schema.Struct({
+    type: Schema.Literal("entryCheckSet"),
+    entryId: TrimmedNonEmptyString,
+    check: Schema.NullOr(InitiativeAcceptanceCheck),
+  }),
+  /** A person takes a task as done without a passed check; it stays marked. */
+  Schema.Struct({
+    type: Schema.Literal("entryAcceptWithoutCheck"),
+    entryId: TrimmedNonEmptyString,
+  }),
+  /** Hands a task back to its thread with the finding and the scope of the correction. */
+  Schema.Struct({
+    type: Schema.Literal("entryReturn"),
+    entryId: TrimmedNonEmptyString,
+    finding: TrimmedNonEmptyString,
+    scope: TrimmedNonEmptyString,
+  }),
+  /** Marks a task's or an approved request's work as rolled back, or takes that back. */
+  Schema.Struct({
+    type: Schema.Literal("markRolledBack"),
+    target: Schema.Literals(["entry", "observation"]),
+    id: TrimmedNonEmptyString,
+    rolledBack: Schema.Boolean,
+  }),
 ]);
 export type InitiativesAction = typeof InitiativesAction.Type;
 

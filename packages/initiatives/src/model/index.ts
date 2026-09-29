@@ -16,6 +16,7 @@ import { resolveChildThreadState } from "@t3tools/shared/threadOrchestration";
 // ── Authors ──────────────────────────────────────────────────────────────
 
 export { INITIATIVE_SETUP_PROMPT } from "./setupPrompt.ts";
+export * from "./checks.ts";
 
 export type InitiativeRole = "participant" | "coordinator";
 
@@ -76,6 +77,11 @@ export const INITIATIVE_TOOL_PROFILES = {
   entry_link: "coordinator",
   entry_status: "coordinator",
   stats_estimate: "participant",
+  // Loops: check first, return one unit, rollbacks.
+  check_define: "coordinator",
+  check_report: "participant",
+  task_return: "coordinator",
+  rollback_mark: "coordinator",
 } as const satisfies Record<string, "any" | InitiativeRole>;
 
 export type InitiativeToolName = keyof typeof INITIATIVE_TOOL_PROFILES;

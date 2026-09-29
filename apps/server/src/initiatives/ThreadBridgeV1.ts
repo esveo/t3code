@@ -6,6 +6,7 @@
 import {
   CommandId,
   isProviderAvailable,
+  MessageId,
   type ModelSelection,
   ProjectId,
   ProviderInstanceId,
@@ -209,6 +210,22 @@ export const makeThreadBridgeV1 = Effect.gen(function* () {
             ? { type: "thread.pin", commandId: yield* commandId("pin"), threadId }
             : { type: "thread.unpin", commandId: yield* commandId("unpin"), threadId },
         );
+      }),
+
+    sendMessage: (threadId, text) =>
+      Effect.gen(function* () {
+        const thread = yield* findThread(threadId);
+        if (Option.isNone(thread)) {
+          return yield* new ThreadBridgeError({ message: `Thread ${threadId} was not found.` });
+        }
+        yield* starter
+          .startTurn({
+            thread: thread.value,
+            messageId: MessageId.make(yield* uuid),
+            text,
+            attachments: [],
+          })
+          .pipe(Effect.catchCause(bridgeError("Could not send the message")));
       }),
 
     setParent: (threadId, parentThreadId) =>

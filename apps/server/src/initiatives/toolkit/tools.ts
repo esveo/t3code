@@ -230,6 +230,12 @@ const InitiativeStartThreadTool = writing(
       model: Schema.optional(TrimmedNonEmptyString),
       worktree: Schema.optional(Schema.Boolean.annotate({ description: "Defaults to true." })),
       baseBranch: Schema.optional(TrimmedNonEmptyString),
+      taskId: Schema.optional(
+        TrimmedNonEmptyString.annotate({
+          description:
+            "Entry id of the task this thread does. The thread gets the task's acceptance check ahead of the prompt, and a return of the task goes back to it.",
+        }),
+      ),
       key: Schema.optional(
         TrimmedNonEmptyString.annotate({
           description:
@@ -366,6 +372,26 @@ const BrainTidyTool = readOnly(
   }).annotate(Tool.Title, "Suggest brain tidying"),
 );
 
+const AcceptanceCheckParameter = Schema.Struct({
+  kind: Schema.Literals(["command", "mergedPr", "criterion"]).annotate({
+    description:
+      "command: a command whose output shows the result (test, build, workflow run); mergedPr: a pull request is merged; criterion: a condition anyone can check by reading the result.",
+  }),
+  description: TrimmedNonEmptyString.annotate({
+    description: "What the check shows, in one sentence. It must be able to fail.",
+  }),
+  ref: Schema.optional(
+    Schema.String.annotate({
+      description: "command: the command to run. mergedPr: the pull request's link, once known.",
+    }),
+  ),
+  expected: Schema.optional(
+    Schema.String.annotate({
+      description: "command: what its output shows when the check passes, e.g. '0 failed'.",
+    }),
+  ),
+});
+
 const EntryTypeParameter = Schema.Literals([
   "decision",
   "assumption",
@@ -430,7 +456,13 @@ const EntryCreateTool = writing(
       details: Schema.optional(
         Schema.Record(Schema.String, Schema.Unknown).annotate({
           description:
-            "Type-specific fields, e.g. assumption: confidence, howToVerify; issue: githubUrl; task: acceptance, deadline.",
+            "Type-specific fields, e.g. assumption: confidence, howToVerify; issue: githubUrl; task: deadline.",
+        }),
+      ),
+      acceptanceCheck: Schema.optional(
+        AcceptanceCheckParameter.annotate({
+          description:
+            "For a task or plan: the check that shows it is done, fixed now, before the work starts.",
         }),
       ),
     }),
@@ -564,7 +596,93 @@ const StatsEstimateTool = readOnly(
   }).annotate(Tool.Title, "Estimate a thread's cost"),
 );
 
+// ── Loops: check first, return one unit, rollbacks ──────────────────────
+
+const CheckDefineTool = writing(
+  Tool.make("check_define", {
+    description:
+      "Set the acceptance check of a task or plan of the initiative you coordinate, before its work starts: a command with its expected output, a merged pull request, or a checkable criterion. It must be able to fail. A task is done only once its check passed.",
+    parameters: Schema.Struct({
+      entryId: TrimmedNonEmptyString,
+      ...AcceptanceCheckParameter.fields,
+    }),
+    success: Schema.Struct({ entryId: Schema.String }),
+    failure: InitiativeToolError,
+    dependencies,
+  }).annotate(Tool.Title, "Define an acceptance check"),
+  true,
+);
+
+const CheckReportTool = writing(
+  Tool.make("check_report", {
+    description: `Report the result of a task's or plan's acceptance check, with evidence: the output excerpt that shows the expected result, the link to the merged pull request, or the commit that meets the criterion. "No error occurred" is not a pass: report passed only when the check itself showed it, and failed when it did not run or showed something else. A failure reported by another thread than the one doing the task sends the task back to that thread.`,
+    parameters: Schema.Struct({
+      entryId: TrimmedNonEmptyString,
+      outcome: Schema.Literals(["passed", "failed"]),
+      excerpt: Schema.optional(
+        Schema.String.annotate({ description: "The relevant lines of the output, as printed." }),
+      ),
+      url: Schema.optional(Schema.String),
+      commit: Schema.optional(Schema.String),
+    }),
+    success: Schema.Struct({
+      outcome: Schema.String,
+      returned: Schema.Boolean.annotate({ description: "The task went back to its thread." }),
+      escalated: Schema.Boolean.annotate({
+        description: "The corrections ran out; the user was asked in the Inbox instead.",
+      }),
+      attempts: Schema.Int,
+    }),
+    failure: InitiativeToolError,
+    dependencies,
+  }).annotate(Tool.Title, "Report a check's result"),
+  false,
+);
+
+const TaskReturnTool = writing(
+  Tool.make("task_return", {
+    description:
+      "Send a task that did not pass back to the thread that did it, alone: with the finding and the exact scope of the correction (only this, nothing beside it). Each return counts an attempt; after 3 corrections the task is not sent back again but raised to the user as a question, since the fault then likely lies in the plan.",
+    parameters: Schema.Struct({
+      entryId: TrimmedNonEmptyString,
+      finding: TrimmedNonEmptyString.annotate({ description: "What is wrong, with the evidence." }),
+      scope: TrimmedNonEmptyString.annotate({
+        description: "What exactly to change, and what to leave alone.",
+      }),
+      threadId: Schema.optional(
+        TrimmedNonEmptyString.annotate({
+          description: "The thread that did the task, when the task names none yet.",
+        }),
+      ),
+    }),
+    success: Schema.Struct({ status: Schema.String, attempts: Schema.Int }),
+    failure: InitiativeToolError,
+    dependencies,
+  }).annotate(Tool.Title, "Return a task for correction"),
+  false,
+);
+
+const RollbackMarkTool = writing(
+  Tool.make("rollback_mark", {
+    description:
+      "Mark finished work of your initiative as rolled back (reverted, undone), or take that back: a task by entryId, or an approved request by observationId. Rollbacks count against the thread that did the work and weigh in the preflight's evidence.",
+    parameters: Schema.Struct({
+      entryId: Schema.optional(TrimmedNonEmptyString),
+      observationId: Schema.optional(TrimmedNonEmptyString),
+      rolledBack: Schema.Boolean,
+    }),
+    success: Schema.Struct({ rolledBack: Schema.Boolean }),
+    failure: InitiativeToolError,
+    dependencies,
+  }).annotate(Tool.Title, "Mark work as rolled back"),
+  true,
+);
+
 export const InitiativesToolkit = Toolkit.make(
+  CheckDefineTool,
+  CheckReportTool,
+  TaskReturnTool,
+  RollbackMarkTool,
   StatsEstimateTool,
   QuestionAskTool,
   EntryCreateTool,
