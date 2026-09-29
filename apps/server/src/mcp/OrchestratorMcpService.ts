@@ -79,6 +79,10 @@ import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts"
 import type { McpInvocationScope } from "./McpInvocationContext.ts";
 import { DelegatedWorkspace } from "../threadOrchestration/DelegatedWorkspace.ts"; // Fork
 import { listThreadsInScope, threadProjectId } from "./forkThreadReach.ts"; // Fork
+import {
+  claimDelegatedAttachments,
+  releaseDelegatedAttachments,
+} from "./toolkits/threads/attachments.ts"; // Fork
 
 const DEFAULT_WAIT_TIMEOUT_MS = 10 * 60 * 1_000;
 const MAX_WAIT_TIMEOUT_MS = 60 * 60 * 1_000;
@@ -1415,6 +1419,8 @@ const make = Effect.gen(function* () {
           input.workspace === undefined || Option.isNone(delegatedWorkspace)
             ? undefined
             : yield* delegatedWorkspace.value.plan(parent.thread, input.workspace);
+        // Fork: files for the child's first message (toolkits/threads/attachments.ts).
+        const attachments = yield* claimDelegatedAttachments(scope.threadId, input.attachments);
         const result = yield* threadManagement
           .dispatch({
             type: "delegated_task.request",
@@ -1434,6 +1440,7 @@ const make = Effect.gen(function* () {
             // only needed if the parent settled first (timeout, disconnect).
             completionWake: input.mode === "wait" ? "settled_only" : "always",
             ...(workspacePlan === undefined ? {} : { workspace: workspacePlan.command }),
+            ...(attachments.length === 0 ? {} : { attachments }),
           })
           .pipe(
             Effect.mapError((error) =>
@@ -1442,6 +1449,7 @@ const make = Effect.gen(function* () {
                 `Unable to create delegated task: ${errorMessage(error)}`,
               ),
             ),
+            Effect.tapError(() => releaseDelegatedAttachments(attachments)), // Fork
           );
         const taskEvent = result.storedEvents.find(
           (stored) =>

@@ -166,6 +166,27 @@ export const OrchestratorMcpTerminalDelegatedTaskStatus = Schema.Literals([
 export type OrchestratorMcpTerminalDelegatedTaskStatus =
   typeof OrchestratorMcpTerminalDelegatedTaskStatus.Type;
 
+// Fork: a file for a delegated child's first message (delegate_task `attachments`).
+export const OrchestratorMcpDelegateAttachment = Schema.Struct({
+  path: Schema.optional(
+    TrimmedNonEmptyString.annotate({
+      description: "Absolute path of a local file on the machine T3 Code runs on.",
+    }),
+  ),
+  attachmentId: Schema.optional(
+    TrimmedNonEmptyString.annotate({
+      description:
+        "An attachment already in a thread: its id, or the ref of a t3-context link (file_…) in this thread or one of your threads.",
+    }),
+  ),
+  name: Schema.optional(
+    TrimmedNonEmptyString.annotate({
+      description: "File name the thread sees. Defaults to the original name.",
+    }),
+  ),
+});
+export type OrchestratorMcpDelegateAttachment = typeof OrchestratorMcpDelegateAttachment.Type;
+
 export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
   task: OrchestratorMcpPrompt.annotate({
     description: "Self-contained task for one delegated child agent/subagent.",
@@ -210,6 +231,13 @@ export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
     }).annotate({
       description:
         "Where the child works. Omit to share this thread's workspace. Use worktree: true for independent implementation work that must not step on other changes.",
+    }),
+  ),
+  // Fork: files for the child's first message.
+  attachments: Schema.optional(
+    Schema.Array(OrchestratorMcpDelegateAttachment).annotate({
+      description:
+        "Files to attach to the task, each by path or attachmentId; attach files the user gave you this way instead of pasting their paths. They arrive as if the user had attached them: images up to 10 MiB as images, anything else as files up to 50 MiB.",
     }),
   ),
 });

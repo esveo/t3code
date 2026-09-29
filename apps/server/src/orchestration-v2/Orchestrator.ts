@@ -6276,8 +6276,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         senderThreadId: command.parentThreadId,
         messageId: childMessageId,
         text: command.task,
-        attachments: [],
-        // Fork: a run that waits for its worktree.
+        // Fork: files for the child and a run that waits for its worktree.
+        attachments: command.attachments ?? [],
         modelSelection: command.modelSelection,
         dispatchMode:
           command.workspace?.prepare === true

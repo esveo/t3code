@@ -82,6 +82,7 @@ import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
 // Fork: thread orchestration and the decisions a coordinator asks for.
 import * as CoordinatorUpdates from "./threadOrchestration/CoordinatorUpdates.ts";
 import * as DelegatedWorkspace from "./threadOrchestration/DelegatedWorkspace.ts";
+import * as DelegatedAttachments from "./mcp/toolkits/threads/attachments.ts";
 import * as ThreadCoordinators from "./threadOrchestration/ThreadCoordinators.ts";
 import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
@@ -530,9 +531,11 @@ const RuntimeCoreDependenciesBaseLive = Layer.mergeAll(
   AntigravityInstallationRefreshLive,
   ReplayMarkers.layer,
   // Fork: which coordinator each thread reports to, the updates it gets about
-  // them, delegate_task into another workspace, and the decisions a
+  // them, delegate_task into another workspace and with files, and the decisions a
   // coordinator asks the user for (Inbox panel, MCP tools).
-  CoordinatorUpdates.startedLayer.pipe(Layer.provideMerge(ThreadCoordinators.layer)),
+  Layer.mergeAll(CoordinatorUpdates.startedLayer, DelegatedAttachments.layer).pipe(
+    Layer.provideMerge(ThreadCoordinators.layer),
+  ),
   DelegatedWorkspace.layer,
   ThreadDecisions.layer,
 ).pipe(
