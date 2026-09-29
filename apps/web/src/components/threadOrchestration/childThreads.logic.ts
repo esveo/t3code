@@ -19,6 +19,12 @@ export interface ChildThreadGroups {
   readonly nestedThreadKeys: ReadonlySet<string>;
 }
 
+/** The groups while the sidebar setting for child threads is off: nothing nests. */
+export const NO_CHILD_THREAD_GROUPS: ChildThreadGroups = {
+  childrenByParentKey: new Map(),
+  nestedThreadKeys: new Set(),
+};
+
 export function parentKeyOf(thread: Pick<EnvironmentThreadShell, "environmentId" | "id">): string {
   return keyOf(thread.environmentId, thread.id);
 }
@@ -147,6 +153,8 @@ export function sidebarRowsWithCoordinators(
     readonly groups: ChildThreadGroups;
   },
 ): EnvironmentThreadShell[] {
+  // Setting off: the sidebar lists threads exactly as upstream does.
+  if (input.groups === NO_CHILD_THREAD_GROUPS) return [...listed];
   const listedSet = new Set(listed);
   return input.threads.filter((thread) => {
     if (input.groups.nestedThreadKeys.has(keyOf(thread.environmentId, thread.id))) return false;

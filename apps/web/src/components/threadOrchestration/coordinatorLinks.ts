@@ -13,10 +13,12 @@ import { useCallback, useMemo } from "react";
 
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { useServerConfigs, useThreadShell } from "~/state/entities";
+import { useSidebarChildThreadsEnabled } from "./SidebarChildThreadsSetting";
 import {
   type ChildThreadGroups,
   type CoordinatorOf,
   groupChildThreads,
+  NO_CHILD_THREAD_GROUPS,
 } from "./childThreads.logic";
 
 /**
@@ -90,10 +92,14 @@ export function useThreadCoordinatorId(threadRef: ScopedThreadRef | null): Threa
   return thread ? coordinatorOf(thread) : null;
 }
 
-/** The sidebar's coordinator groups, following the coordinator links. */
+/** The sidebar's coordinator groups, following the coordinator links; none while the setting is off. */
 export function useChildThreadGroups(
   threads: ReadonlyArray<EnvironmentThreadShell>,
 ): ChildThreadGroups {
   const coordinatorOf = useCoordinatorOf(threads);
-  return useMemo(() => groupChildThreads(threads, coordinatorOf), [coordinatorOf, threads]);
+  const enabled = useSidebarChildThreadsEnabled();
+  return useMemo(
+    () => (enabled ? groupChildThreads(threads, coordinatorOf) : NO_CHILD_THREAD_GROUPS),
+    [coordinatorOf, enabled, threads],
+  );
 }
