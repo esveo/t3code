@@ -15,7 +15,7 @@ const EMPTY: ReadonlyArray<ThreadDecision> = [];
 /**
  * Fork: a coordinator's decisions for the Inbox tab, whether the tab can open
  * for this thread, and how many decisions wait on the user. Any coordinator
- * can open it while orchestration and decisions are on (Settings → General)
+ * can open it while decisions are on (Settings → General)
  * and its server keeps decisions.
  */
 export function useThreadInboxSurface(threadRef: ScopedThreadRef | null) {
@@ -24,7 +24,7 @@ export function useThreadInboxSurface(threadRef: ScopedThreadRef | null) {
   const environmentId = threadRef?.environmentId ?? ("" as ScopedThreadRef["environmentId"]);
   const enabled = useEnvironmentSettings(
     environmentId,
-    (settings) => settings.enableThreadOrchestration && settings.enableThreadDecisions,
+    (settings) => settings.enableThreadDecisions,
   );
   const supported =
     useServerConfigs().get(environmentId)?.environment.capabilities.threadDecisions === true;

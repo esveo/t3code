@@ -161,7 +161,6 @@ import {
   useSettingsSearchTargetId,
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
-import { ThreadOrchestrationSettingRow } from "../threadOrchestration/ThreadOrchestrationSettingRow";
 import { ThreadDecisionsSettingRow } from "../threadInbox/ThreadDecisionsSettingRow";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
@@ -2963,8 +2962,7 @@ export function GeneralSettingsPanel() {
           }
         />
 
-        {/* Fork: thread orchestration. */}
-        <ThreadOrchestrationSettingRow />
+        {/* Fork: coordinator decisions. */}
         <ThreadDecisionsSettingRow />
 
         <SettingsRow

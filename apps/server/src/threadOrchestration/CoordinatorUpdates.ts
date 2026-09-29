@@ -47,7 +47,6 @@ import {
 } from "../orchestration-v2/SubagentProjection.ts";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
 import { forkParked } from "../serverActivation.ts";
-import * as ServerSettings from "../serverSettings.ts";
 import { ThreadCoordinators } from "./ThreadCoordinators.ts";
 
 export type CoordinatorUpdateDecision =
@@ -135,15 +134,9 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "failed", "interrupted", "c
 export const make = Effect.gen(function* () {
   const threads = yield* ThreadManagementService;
   const coordinators = yield* ThreadCoordinators;
-  const serverSettings = yield* ServerSettings.ServerSettingsService;
   const crypto = yield* Crypto.Crypto;
   const serial = yield* Semaphore.make(1);
   const uuid = crypto.randomUUIDv4.pipe(Effect.orDie);
-
-  const enabled = serverSettings.getSettings.pipe(
-    Effect.map((settings) => settings.enableThreadOrchestration),
-    Effect.orElseSucceed(() => false),
-  );
 
   /** Appends to the coordinator's waiting update message, or queues a new one. */
   const deliver = Effect.fn("CoordinatorUpdates.deliver")(function* (
@@ -254,7 +247,6 @@ export const make = Effect.gen(function* () {
     serial
       .withPermits(1)(
         Effect.gen(function* () {
-          if (!(yield* enabled)) return;
           const update = yield* pendingUpdate(childThreadId);
           if (update === null) return;
           yield* deliver(update.coordinatorId, update.block);
@@ -276,7 +268,6 @@ export const make = Effect.gen(function* () {
   const catchUp = serial
     .withPermits(1)(
       Effect.gen(function* () {
-        if (!(yield* enabled)) return;
         const links = yield* coordinators.overrides;
         const snapshot = yield* threads.getShellSnapshot();
         const candidates = snapshot.threads.filter(

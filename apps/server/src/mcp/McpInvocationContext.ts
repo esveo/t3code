@@ -14,10 +14,9 @@ const ALL_MCP_CAPABILITIES = [
   "worktree",
   "device",
   "pull-requests",
-  // Fork: "threads" is thread orchestration, "decisions" its Inbox of decisions.
-  // They only pick the instructions a session starts with; the tools follow the
-  // Settings switches live (McpOrchestrationTools.ts).
-  "threads",
+  // Fork: "decisions" is the coordinator's Inbox of decisions. It only picks the
+  // instructions a session starts with; the tools follow the Settings switch
+  // live (McpOrchestrationTools.ts).
   "decisions",
 ] as const;
 export type McpCapability = (typeof ALL_MCP_CAPABILITIES)[number];

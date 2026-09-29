@@ -190,8 +190,8 @@ const SURFACE_DISABLED_REASONS = {
   pullRequest: "This thread's branch has no pull request yet.",
   pullRequests: "No linked pull requests are available for this thread.",
   agentStage: "Enable the agent stage in Settings > General.",
-  threadOverview: "Turn on thread orchestration in Settings > General.",
-  threadInbox: "Turn on thread orchestration and coordinator decisions in Settings > General.",
+  threadOverview: "Threads a coordinator runs have no thread overview.",
+  threadInbox: "Turn on coordinator decisions in Settings > General.",
   device: "Devices are only available from a thread.",
 } as const;
 
@@ -217,7 +217,7 @@ const SURFACE_UNAVAILABLE_HINTS = {
   pullRequest: "No pull request on this branch yet.",
   pullRequests: "No linked pull requests available.",
   agentStage: "Enable it in Settings > General.",
-  threadOverview: "Turn on thread orchestration in Settings.",
+  threadOverview: "Not for threads a coordinator runs.",
   threadInbox: "Turn on coordinator decisions in Settings.",
   device: "Available from a thread.",
 } as const;

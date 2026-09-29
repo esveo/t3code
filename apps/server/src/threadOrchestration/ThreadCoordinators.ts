@@ -1,7 +1,7 @@
 /**
  * Fork: thread orchestration. Which coordinator thread a thread reports to.
  *
- * A thread a coordinator started (delegate_task, start_thread) belongs to it
+ * A thread a coordinator started (delegate_task) belongs to it
  * by V2 lineage. Lineage is immutable, and V2's delegated-task records hang
  * off one run of the parent whose delivery V2 stops for good when that run
  * is interrupted, so neither can carry "put this thread under that

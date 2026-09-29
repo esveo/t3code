@@ -13,7 +13,6 @@ import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
-import * as ServerSettings from "../serverSettings.ts";
 import * as CoordinatorUpdates from "./CoordinatorUpdates.ts";
 import { ThreadCoordinators } from "./ThreadCoordinators.ts";
 
@@ -87,7 +86,6 @@ const withUpdates = <A, E>(
     readonly updates: CoordinatorUpdates.CoordinatorUpdates["Service"];
     readonly dispatched: Ref.Ref<ReadonlyArray<OrchestrationV2Command>>;
   }) => Effect.Effect<A, E>,
-  settings: { readonly enabled: boolean } = { enabled: true },
 ) =>
   Effect.gen(function* () {
     const dispatched = yield* Ref.make<ReadonlyArray<OrchestrationV2Command>>([]);
@@ -185,16 +183,7 @@ const withUpdates = <A, E>(
     }).pipe(
       Effect.provide(
         CoordinatorUpdates.layer.pipe(
-          Layer.provide(
-            Layer.mergeAll(
-              management,
-              coordinators,
-              ServerSettings.ServerSettingsService.layerTest({
-                enableThreadOrchestration: settings.enabled,
-              }),
-              NodeServices.layer,
-            ),
-          ),
+          Layer.provide(Layer.mergeAll(management, coordinators, NodeServices.layer)),
         ),
       ),
     );
@@ -349,28 +338,6 @@ describe("CoordinatorUpdates", () => {
           yield* updates.report(imported);
           assert.strictEqual((yield* Ref.get(dispatched)).length, 1);
         }),
-      );
-    }),
-  );
-
-  it.effect("does nothing while thread orchestration is off", () =>
-    Effect.gen(function* () {
-      const world = makeWorld();
-      const adopted = ThreadId.make("adopted");
-      world.links.set(adopted, COORDINATOR);
-      world.children.set(adopted, {
-        shell: childShell("adopted", null),
-        runs: [{ id: "run-1", status: "completed" }],
-        answers: { "run-1": "Result." },
-      });
-      yield* withUpdates(
-        world,
-        ({ updates, dispatched }) =>
-          Effect.gen(function* () {
-            yield* updates.report(adopted);
-            assert.strictEqual((yield* Ref.get(dispatched)).length, 0);
-          }),
-        { enabled: false },
       );
     }),
   );

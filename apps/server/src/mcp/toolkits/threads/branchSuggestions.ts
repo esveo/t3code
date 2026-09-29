@@ -1,6 +1,6 @@
 /**
- * Fork: thread orchestration. When start_thread's baseBranch does not resolve,
- * the error names the branches the coordinator most likely meant, so it can
+ * Fork: thread orchestration. When delegate_task's workspace.baseRef does not
+ * resolve, the error names the branches the coordinator most likely meant, so it can
  * call again with the right one. It never picks one on the coordinator's behalf.
  */
 

@@ -1,5 +1,4 @@
 import {
-  type ChatAttachment,
   CommandId,
   type RunId,
   isProviderAvailable,
@@ -104,8 +103,6 @@ export interface OrchestratorMcpServiceShape {
   readonly delegateTask: (
     scope: McpInvocationScope,
     input: OrchestratorMcpDelegateTaskInput,
-    // Fork: files for the child's first message (start_thread).
-    fork?: { readonly attachments?: ReadonlyArray<ChatAttachment> },
   ) => Effect.Effect<OrchestratorMcpDelegateTaskResult, OrchestratorMcpFailure>;
   readonly taskStatus: (
     scope: McpInvocationScope,
@@ -1364,7 +1361,7 @@ const make = Effect.gen(function* () {
           },
         };
       }),
-    delegateTask: (scope, input, fork) =>
+    delegateTask: (scope, input) =>
       Effect.gen(function* () {
         yield* requireCapability(scope);
         const parent = yield* loadProjection(scope.threadId);
@@ -1429,7 +1426,6 @@ const make = Effect.gen(function* () {
             // only needed if the parent settled first (timeout, disconnect).
             completionWake: input.mode === "wait" ? "settled_only" : "always",
             ...(workspacePlan === undefined ? {} : { workspace: workspacePlan.command }),
-            ...(fork?.attachments === undefined ? {} : { attachments: fork.attachments }),
           })
           .pipe(
             Effect.mapError((error) =>

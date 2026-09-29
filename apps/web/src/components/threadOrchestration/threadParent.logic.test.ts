@@ -58,25 +58,19 @@ describe("withThreadParentMenuItems", () => {
   const ids = (state: Parameters<typeof withThreadParentMenuItems>[1]) =>
     withThreadParentMenuItems(items, state).map((item) => item.id);
 
-  it("adds assign before Copy while orchestration is on", () => {
-    expect(ids({ orchestrationEnabled: true, hasParent: false, hasChildren: false })).toEqual([
+  it("adds assign before Copy, except for a coordinator", () => {
+    expect(ids({ hasParent: false, hasChildren: false })).toEqual([
       "rename",
       "assign-parent",
       "copy",
     ]);
-    expect(ids({ orchestrationEnabled: false, hasParent: false, hasChildren: false })).toEqual([
-      "rename",
-      "copy",
-    ]);
-    expect(ids({ orchestrationEnabled: true, hasParent: false, hasChildren: true })).toEqual([
-      "rename",
-      "copy",
-    ]);
+    expect(ids({ hasParent: false, hasChildren: true })).toEqual(["rename", "copy"]);
   });
 
-  it("always lets a child be detached", () => {
-    expect(ids({ orchestrationEnabled: false, hasParent: true, hasChildren: false })).toEqual([
+  it("lets a child move or be detached", () => {
+    expect(ids({ hasParent: true, hasChildren: false })).toEqual([
       "rename",
+      "assign-parent",
       "detach-parent",
       "copy",
     ]);

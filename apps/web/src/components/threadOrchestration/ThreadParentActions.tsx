@@ -8,9 +8,7 @@ import { MessageSquareIcon, NetworkIcon } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { create } from "zustand";
 
-import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { useProjects, useThreadShells } from "~/state/entities";
-import { serverEnvironment } from "~/state/server";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { Command, CommandInput, CommandItem, CommandList } from "../ui/command";
 import { Dialog, DialogPopup, DialogTitle } from "../ui/dialog";
@@ -143,9 +141,6 @@ export function useThreadParentActions() {
       ) =>
         api.contextMenu.show<Id | ThreadParentMenuId>(
           withThreadParentMenuItems(items, {
-            orchestrationEnabled:
-              appAtomRegistry.get(serverEnvironment.settingsValueAtom(thread.environmentId))
-                ?.enableThreadOrchestration === true,
             hasParent: threadsRef.current.coordinatorOf(thread) !== null,
             hasChildren: hasChildThreads(
               threadsRef.current.threads,

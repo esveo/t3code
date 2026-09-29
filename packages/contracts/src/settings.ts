@@ -1268,13 +1268,8 @@ export const ServerSettings = Schema.Struct({
    */
   enableAgentDeviceAccess: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /**
-   * Fork: coordinator threads may start, message and stop child threads
-   * through the t3-code MCP server. Opt-in while the feature is new.
-   */
-  enableThreadOrchestration: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
-  /**
    * Fork: coordinators ask for decisions in the Inbox panel instead of
-   * numbering questions in chat. Needs thread orchestration; opt-in while new.
+   * numbering questions in chat. Opt-in while new.
    */
   enableThreadDecisions: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /**
@@ -1639,7 +1634,6 @@ export const ServerSettingsPatch = Schema.Struct({
     Schema.Record(ProjectId, Schema.NullOr(ProjectSettingsOverrides)),
   ),
   enableAgentDeviceAccess: Schema.optionalKey(Schema.Boolean),
-  enableThreadOrchestration: Schema.optionalKey(Schema.Boolean),
   enableThreadDecisions: Schema.optionalKey(Schema.Boolean),
   enableDeviceSupport: Schema.optionalKey(Schema.Boolean),
   deviceOnboardingCompleted: Schema.optionalKey(Schema.Boolean),

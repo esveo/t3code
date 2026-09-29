@@ -27,7 +27,7 @@ const SettingsLive = Layer.effect(
   ServerSettings.ServerSettingsService,
   Effect.gen(function* () {
     const base = yield* ServerSettings.ServerSettingsService.pipe(
-      Effect.provide(ServerSettings.layerTest({ enableThreadOrchestration: true })),
+      Effect.provide(ServerSettings.layerTest()),
     );
     const changes = yield* PubSub.unbounded<ServerSettingsValue>();
     return {
@@ -71,14 +71,14 @@ const toolNames = (body: unknown) =>
     (tool) => tool.name,
   );
 
-it.effect("offers orchestration and decision tools only while their switches are on, live", () =>
+it.effect("offers the decision tools only while their switch is on, live", () =>
   Effect.scoped(
     Effect.gen(function* () {
       yield* HttpRouter.serve(TestLayer, { disableListenLog: true, disableLogger: true }).pipe(
         Layer.build,
       );
       const httpClient = yield* HttpClient.HttpClient;
-      // The session's credential grants neither "threads" nor "decisions".
+      // The session's credential does not grant "decisions".
       const { config } = yield* McpSessionRegistry.issueActiveMcpCredential({
         threadId: ThreadId.make("coordinator"),
         providerInstanceId: ProviderInstanceId.make("claudeAgent"),
@@ -136,9 +136,9 @@ it.effect("offers orchestration and decision tools only while their switches are
       );
       const listChanged = McpOrchestrationTools.LIST_CHANGED_MESSAGE;
 
-      // Orchestration on, decisions off (the defaults of this test).
+      // Decisions off (the default); adopt_thread is always there.
       const before = yield* listTools;
-      expect(before).toContain("start_thread");
+      expect(before).toContain("adopt_thread");
       expect(before).not.toContain("upsert_decision");
       expect(yield* callListDecisions).toMatchObject({
         error: { message: expect.stringMatching(/not found/) },
@@ -149,7 +149,7 @@ it.effect("offers orchestration and decision tools only while their switches are
       expect(yield* nextEvent).toBe(listChanged);
       expect(yield* listTools).toEqual(
         expect.arrayContaining([
-          "start_thread",
+          "adopt_thread",
           "upsert_decision",
           "resolve_decision",
           "list_decisions",
@@ -159,14 +159,14 @@ it.effect("offers orchestration and decision tools only while their switches are
         result: { isError: false, structuredContent: { decisions: [] } },
       });
 
-      // A change that leaves both switches as they are stays quiet.
+      // A change that leaves the switch as it is stays quiet.
       yield* settings.updateSettings({ enableAgentDeviceAccess: true });
 
-      // Orchestration off: neither thread nor decision tools, and calls fail.
-      yield* settings.updateSettings({ enableThreadOrchestration: false });
+      // Decisions off again: the decision tools go, and calls fail.
+      yield* settings.updateSettings({ enableThreadDecisions: false });
       expect(yield* nextEvent).toBe(listChanged);
       const after = yield* listTools;
-      expect(after.filter((name) => name in ThreadsToolkit.tools)).toEqual([]);
+      expect(after.filter((name) => name in ThreadsToolkit.tools)).toEqual(["adopt_thread"]);
       expect(yield* callListDecisions).toMatchObject({
         error: { message: expect.stringMatching(/not found/) },
       });

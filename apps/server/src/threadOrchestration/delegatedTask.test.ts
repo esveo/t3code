@@ -327,13 +327,6 @@ it.layer(TestLayer)("fork: delegate_task patches", (it) => {
         title: "Other repository",
         workspaceRoot: "/workspace/other",
       });
-      const attachment = {
-        type: "file" as const,
-        id: "thread-fork-delegate-workspace-00000000-0000-4000-8000-000000000001",
-        name: "brief.md",
-        mimeType: "text/markdown",
-        sizeBytes: 12,
-      };
       const result = yield* orchestrator.dispatch({
         type: "delegated_task.request",
         createdBy: "agent",
@@ -349,7 +342,6 @@ it.layer(TestLayer)("fork: delegate_task patches", (it) => {
         interactionMode: "default",
         completionWake: "always",
         workspace: { projectId: otherProjectId, branch: null, worktreePath: null, prepare: true },
-        attachments: [attachment as never],
       });
       const created = result.storedEvents.find((stored) => stored.event.type === "thread.created");
       const childThreadId = created?.event.threadId;
@@ -362,12 +354,6 @@ it.layer(TestLayer)("fork: delegate_task patches", (it) => {
       assert.deepEqual(
         child.runs.map((run) => run.status),
         ["preparing"],
-      );
-      assert.deepEqual(
-        child.messages
-          .find((message) => message.role === "user")
-          ?.attachments.map((file) => file.name),
-        ["brief.md"],
       );
     }),
   );

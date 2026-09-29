@@ -2794,7 +2794,7 @@ export const OrchestrationV2Command = Schema.Union([
     // run); producers that want fire-and-forget wakes must set "always".
     completionWake: Schema.optional(Schema.Literals(["always", "settled_only"])),
     // Fork: the child's own workspace (another project and/or its own
-    // worktree) instead of the parent's, and files for its first message.
+    // worktree) instead of the parent's.
     // With `prepare` its first run waits in "preparing" until the caller
     // provisions the worktree and releases it (ThreadLaunchService.prepareWorkspace).
     workspace: Schema.optional(
@@ -2805,7 +2805,6 @@ export const OrchestrationV2Command = Schema.Union([
         prepare: Schema.optional(Schema.Boolean),
       }),
     ),
-    attachments: Schema.optional(Schema.Array(ChatAttachment)),
     createdAt: Schema.optional(Schema.DateTimeUtc),
   }),
   Schema.Struct({

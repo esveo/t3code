@@ -70,20 +70,16 @@ export function parentThreadCandidates<T extends ParentShell>(
     );
 }
 
-/**
- * The thread menu's coordinator items, before the Copy group. Assigning needs
- * orchestration on; taking a thread out always works, so no child is stuck.
- */
+/** The thread menu's coordinator items, before the Copy group. */
 export function withThreadParentMenuItems<Id extends string>(
   items: ReadonlyArray<ContextMenuItem<Id>>,
   state: {
-    readonly orchestrationEnabled: boolean;
     readonly hasParent: boolean;
     readonly hasChildren: boolean;
   },
 ): ReadonlyArray<ContextMenuItem<Id | ThreadParentMenuId>> {
   const added: ContextMenuItem<ThreadParentMenuId>[] = [];
-  if (state.orchestrationEnabled && !state.hasChildren) {
+  if (!state.hasChildren) {
     added.push({
       id: "assign-parent",
       label: state.hasParent ? "Move to another coordinator…" : "Assign to coordinator…",

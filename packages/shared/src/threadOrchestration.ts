@@ -23,7 +23,7 @@ export type ChildThreadShell = Pick<
  * The coordinator a thread reports to. The user or a coordinator can put a
  * thread under another one, or release it (`overrides`, the server's
  * fork_thread_coordinators rows; null releases it). Without such a row, a
- * T3-owned delegated child (delegate_task / start_thread) belongs to the thread
+ * T3-owned delegated child (delegate_task) belongs to the thread
  * that started it; provider-native subagents never do: their provider owns them.
  */
 export function coordinatorThreadIdOf(
