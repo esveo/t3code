@@ -416,7 +416,7 @@ import { ExpandedImageDialog } from "./chat/ExpandedImageDialog";
 import { PullRequestThreadDialog } from "./PullRequestThreadDialog";
 import type { AssistantCitationRequest } from "./chat/AssistantCitationSource";
 import { MessagesTimeline, type MessagesTimelineHistoryControls } from "./chat/MessagesTimeline";
-import { ProviderSubagentBar } from "./chat/ProviderSubagentBar";
+import { SubagentRelayBar } from "./subagentRelay/SubagentRelayBar"; // Fork: relay + stop
 import { getTriggerDisplayModelName } from "./chat/providerIconUtils";
 import { resolveTimelineIsAtEnd, worktreeSetupAgentStarted } from "./chat/MessagesTimeline.logic";
 import {
@@ -10936,7 +10936,9 @@ export default function ChatView(props: ChatViewProps) {
                       >
                         <div className="relative z-10">
                           {showProviderSubagentBar ? (
-                            <ProviderSubagentBar
+                            <SubagentRelayBar
+                              environmentId={environmentId}
+                              threadId={threadId}
                               provider={selectedProviderEntry ?? null}
                               modelLabel={providerSubagentModelLabel}
                               effortLabel={providerSubagentEffortLabel}

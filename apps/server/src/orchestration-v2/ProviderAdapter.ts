@@ -541,6 +541,12 @@ export interface ProviderAdapterV2SessionRuntime {
   readonly interruptTurn: (
     input: ProviderAdapterV2InterruptInput,
   ) => Effect.Effect<void, ProviderAdapterV2Error>;
+  /** Fork: stops one running provider-native subagent; absent where the provider cannot. */
+  readonly stopSubagent?: (input: {
+    readonly providerThread: OrchestrationV2ProviderThread;
+    /** The subagent's native task id (`nativeTaskRef.nativeId`). */
+    readonly nativeTaskId: string;
+  }) => Effect.Effect<void, ProviderAdapterV2Error>;
   /**
    * Lets a runtime shared by several app threads unload one provider thread's
    * native state (and its MCP servers) when that app thread detaches, while

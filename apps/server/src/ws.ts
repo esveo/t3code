@@ -61,6 +61,7 @@ import {
   THREAD_DECISIONS_WS_METHODS,
   ThreadDecisionsError, // Fork: TODO(orchestrator-v2) decisions stub
   VOICE_INPUT_WS_METHODS,
+  PROVIDER_SUBAGENT_CONTROL_WS_METHODS,
   type ProjectEntriesFailure,
   type ProjectFileFailure,
   type ProjectFileOperation,
@@ -195,6 +196,7 @@ import { readWorkflowScript } from "./orchestration-v2/workflowScriptQuery.ts";
 // TODO(orchestrator-v2): fork decisions still import V1 modules; stubbed below until ported.
 // import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
 import * as VoiceInput from "./voiceInput/VoiceInput.ts";
+import * as ProviderSubagentControl from "./providerSubagentControl/ProviderSubagentControl.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
@@ -1116,6 +1118,11 @@ const makeWsRpcLayer = (
       const deviceHostContext =
         yield* Effect.context<Effect.Services<ReturnType<typeof remoteSshDeviceHosts>>>();
       const orchestrationEngine = yield* OrchestratorV2;
+      // Fork: provider subagent controls.
+      const providerSubagentControlDeps: ProviderSubagentControl.ProviderSubagentControlDeps = {
+        getThreadRecords: orchestrationEngine.getThreadRecords,
+        getSession: providerSessionManager.get,
+      };
       const crypto = yield* Crypto.Crypto;
       const serverCommandId = (tag: string) =>
         crypto.randomUUIDv4.pipe(
@@ -3690,6 +3697,19 @@ const makeWsRpcLayer = (
           observeRpcEffect(VOICE_INPUT_WS_METHODS.transcribe, VoiceInput.transcribeRpc(input), {
             "rpc.aggregate": "server",
           }),
+        // Fork: stop and message a provider subagent from its thread.
+        [PROVIDER_SUBAGENT_CONTROL_WS_METHODS.target]: (input) =>
+          observeRpcEffect(
+            PROVIDER_SUBAGENT_CONTROL_WS_METHODS.target,
+            ProviderSubagentControl.target(providerSubagentControlDeps, input),
+            { "rpc.aggregate": "orchestration" },
+          ),
+        [PROVIDER_SUBAGENT_CONTROL_WS_METHODS.stop]: (input) =>
+          observeRpcEffect(
+            PROVIDER_SUBAGENT_CONTROL_WS_METHODS.stop,
+            ProviderSubagentControl.stop(providerSubagentControlDeps, input),
+            { "rpc.aggregate": "orchestration" },
+          ),
       });
       return handlers;
     }),

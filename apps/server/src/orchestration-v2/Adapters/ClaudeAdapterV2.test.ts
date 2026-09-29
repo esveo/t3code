@@ -92,6 +92,7 @@ import {
   type ClaudeAgentSdkQueryOptions,
   type ClaudeAgentSdkQueryOpenInput,
 } from "./ClaudeAdapterV2.ts";
+import { UNDELIVERED_PROMPT_PREAMBLE } from "./ClaudeUndeliveredPrompts.ts";
 import { layer as idAllocatorLayer, IdAllocatorV2 } from "../IdAllocator.ts";
 
 const DEFAULT_CLAUDE_SETTINGS = Schema.decodeSync(ClaudeSettings)({});
@@ -3443,6 +3444,50 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
+  // Fork: Claude Code's artifact/WebSocket watches start as monitor_ws tasks.
+  it.effect("puts a monitor_ws watch on the roster as a monitor, not a subagent", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        const now = yield* DateTime.now;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now,
+            attemptId: RunAttemptId.make("attempt-claude-monitor-ws"),
+            text: "Publish the page and watch it.",
+            attachments: [],
+          }),
+        );
+        yield* Queue.offer(
+          harness.sdkMessages,
+          claudeSdkFrame({
+            type: "system",
+            subtype: "task_started",
+            task_id: "watch-task",
+            description: "Watch artifact comments",
+            task_type: "monitor_ws",
+            uuid: "00000000-0000-4000-8000-000000000301",
+            session_id: WAKE_NATIVE_SESSION,
+          }),
+        );
+        yield* Queue.offer(
+          harness.sdkMessages,
+          makeResultFrame({ uuid: "00000000-0000-4000-8000-000000000302", result: "Watching." }),
+        );
+        yield* awaitUntil(() => harness.terminalEvents().length === 1, "turn terminal");
+
+        assert.deepEqual(
+          providerThreadRosterEvents(harness.events).at(-1)?.providerThread.pendingBackgroundTasks,
+          [{ taskId: "watch-task", kind: "monitor", description: "Watch artifact comments" }],
+        );
+        assert.isFalse(harness.events.some((event) => event.type === "subagent.updated"));
+        assert.isTrue(yield* harness.hasPendingBackgroundWork);
+      }).pipe(Effect.provide(Layer.merge(idAllocatorLayer, NodeServices.layer))),
+    ),
+  );
+
   it.effect("stops background work after the turn settled", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -5068,6 +5113,81 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           assert.lengthOf(harness.terminalEvents(), 1);
         }).pipe(Effect.provide(Layer.merge(idAllocatorLayer, NodeServices.layer))),
       ),
+  );
+
+  // Fork: a Stop before Claude read the prompt must not lose the message.
+  it.effect.each([
+    { replied: false, name: "carries a prompt interrupted before Claude read it" },
+    { replied: true, name: "does not repeat a prompt Claude answered before the interrupt" },
+  ])("$name", ({ replied }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarnessWithOptions({
+          close: (sdkMessages) => Queue.shutdown(sdkMessages),
+        });
+        const idAllocator = yield* IdAllocatorV2;
+        const now = yield* DateTime.now;
+        const firstAttempt = RunAttemptId.make(`attempt-claude-undelivered-${replied}`);
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now,
+            attemptId: firstAttempt,
+            text: "1. to 9.",
+            attachments: [],
+          }),
+        );
+        if (replied) {
+          yield* harness.offerAndWait(
+            claudeSdkFrame({
+              type: "stream_event",
+              event: { type: "message_start", message: { id: "reply" } },
+              parent_tool_use_id: null,
+              session_id: WAKE_NATIVE_SESSION,
+              uuid: "00000000-0000-4000-8000-000000000401",
+              user_message_uuid: claudePromptUuid(firstAttempt),
+            }),
+          );
+        }
+        yield* harness.runtime.interruptTurn({
+          providerThread: harness.providerThread,
+          providerTurnId: idAllocator.derive.providerTurn({
+            driver: CLAUDE_PROVIDER,
+            nativeTurnId: `turn:${firstAttempt}`,
+          }),
+        });
+        yield* awaitUntil(() => harness.terminalEvents().length === 1, "interrupted terminal");
+        assert.equal(harness.terminalEvents()[0]?.status, "interrupted");
+
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now,
+            attemptId: RunAttemptId.make(`attempt-claude-undelivered-next-${replied}`),
+            text: "10. no deployment",
+            attachments: [],
+          }),
+        );
+        yield* awaitUntil(() => harness.offeredMessages.length === 2, "second prompt offered");
+        const content = harness.offeredMessages[1]?.message.content ?? [];
+        // The test model's effort prefix leads each prompt.
+        const texts = (typeof content === "string" ? [content] : content).map((block) =>
+          typeof block === "string" ? block : block.type === "text" ? block.text : block.type,
+        );
+        if (replied) {
+          assert.deepEqual(texts, ["Ultrathink:\n10. no deployment"]);
+          return;
+        }
+        assert.deepEqual(texts, [
+          UNDELIVERED_PROMPT_PREAMBLE,
+          "Ultrathink:\n1. to 9.",
+          "[Current message:]",
+          "Ultrathink:\n10. no deployment",
+        ]);
+      }).pipe(Effect.provide(Layer.merge(idAllocatorLayer, NodeServices.layer))),
+    ),
   );
 
   it.effect("drops zero-turn task-notification debris racing interrupt", () =>

@@ -1,6 +1,7 @@
 import * as NodeCrypto from "node:crypto";
 
 import { makeProviderTextDeltaCoalescer } from "./ProviderTextDeltaCoalescer.ts";
+import { makeClaudeUndeliveredPrompts } from "./ClaudeUndeliveredPrompts.ts"; // Fork
 import { formatReadToolLabel, formatSearchToolLabel } from "@t3tools/shared/toolActivity";
 import { isWorkspaceImagePreviewPath } from "@t3tools/shared/filePreview";
 import { normalizeClaudeTurnTokenUsage } from "../../provider/ClaudeTurnTokenUsage.ts";
@@ -352,6 +353,8 @@ export interface ClaudeAgentSdkQuerySession {
   readonly setModel: (model: string) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
   readonly interrupt: Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
   readonly close: Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
+  /** Fork: stops one running task (a subagent) of this query. */
+  readonly stopTask?: (taskId: string) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
 }
 
 type ClaudeQueryStreamExit = Exit.Exit<void, ClaudeAgentSdkQueryRunnerError>;
@@ -696,6 +699,12 @@ export const claudeAgentSdkQueryRunnerLiveLayer: Layer.Layer<
               }),
             ),
           ),
+          // Fork: stops a subagent from its thread.
+          stopTask: (taskId) =>
+            Effect.tryPromise({
+              try: () => queryRuntime.stopTask(taskId),
+              catch: (cause) => queryRunnerError(cause, "stopTask"),
+            }),
           close: Queue.shutdown(promptQueue).pipe(
             Effect.andThen(closeClaudeQuery(queryRuntime)),
             Effect.tap(() =>
@@ -1694,7 +1703,15 @@ function commandInputFromClaudeTool(toolName: string, input: ClaudeNativeToolInp
 const CLAUDE_OPAQUE_BACKGROUND_TASK_KINDS: ReadonlyMap<
   string,
   Exclude<OrchestrationV2PendingBackgroundTask["kind"], "subagent">
-> = new Map([["local_bash", "command"]]);
+> = new Map<string, Exclude<OrchestrationV2PendingBackgroundTask["kind"], "subagent">>([
+  ["local_bash", "command"],
+  // Fork: watch loops (Claude Code's artifact/WebSocket watches among them)
+  // are monitors, not subagents. Same set as the fork's V1 MONITOR_TASK_TYPES.
+  ["monitor", "monitor"],
+  ["monitor_mcp", "monitor"],
+  ["monitor_ws", "monitor"],
+  ["shell", "command"],
+]);
 
 function isClaudeOpaqueBackgroundTaskType(taskType: string | null | undefined): boolean {
   return typeof taskType === "string" && CLAUDE_OPAQUE_BACKGROUND_TASK_KINDS.has(taskType);
@@ -3044,7 +3061,6 @@ export function makeClaudeAdapterV2(
               return { kind: task.kind, label, outcome };
             case "command":
             case undefined:
-              // Only local_bash is opaque background work today.
               return { kind: "command", label, outcome };
           }
         });
@@ -3054,6 +3070,8 @@ export function makeClaudeAdapterV2(
         // tool_use frame is handled, in whichever run that frame is routed
         // to (the prompt's turn, or the continuation that drains a wake).
         const heldProposedPlansByToolUseId = new Map<string, string>();
+        // Fork: prompts an early interrupt dropped, carried into the next turn.
+        const forkUndeliveredPrompts = makeClaudeUndeliveredPrompts();
         const runtimeContext = yield* Effect.context<never>();
         const runPromise = Effect.runPromiseWith(runtimeContext);
 
@@ -4546,6 +4564,7 @@ export function makeClaudeAdapterV2(
           readonly threadDisposition?: "reusable" | "broken";
           readonly result?: SDKResultMessage;
         }) {
+          forkUndeliveredPrompts.settle(input.context.providerTurnId, input.status); // Fork
           yield* reasoningDeltas.flushTurn(input.context.nativeTurnId);
           for (const toolCall of input.context.toolCalls.values()) {
             const artifacts = buildToolCallArtifacts({
@@ -6153,6 +6172,9 @@ export function makeClaudeAdapterV2(
           const message = input.message;
           const context = yield* Ref.get(activeTurn);
           const liveQuery = yield* Ref.get(queryContext);
+          if (context !== null && liveQuery?.query === input.query) {
+            forkUndeliveredPrompts.observe(context.providerTurnId, message); // Fork
+          }
           if (
             context === null ||
             context.promptUuid === null ||
@@ -6783,7 +6805,15 @@ export function makeClaudeAdapterV2(
               // afterwards with correct attribution.
               // Counted only here, so a turn that failed to start does not age reports.
               yield* startUserTurnForWakeReports(nativeThreadId);
-              yield* querySession.query.offer(userMessage);
+              yield* querySession.query.offer(
+                // Fork: carries prompts an early interrupt dropped.
+                forkUndeliveredPrompts.begin({
+                  nativeThreadId,
+                  providerTurnId,
+                  promptUuid: claudePromptUuid(turnInput.attemptId),
+                  message: userMessage,
+                }),
+              );
               return;
             }
             const drained = yield* Ref.modify(wakeBuffers, (current) => {
@@ -7131,6 +7161,33 @@ export function makeClaudeAdapterV2(
             }),
           steerTurn,
           interruptTurn,
+          // Fork: stops a subagent from its thread.
+          stopSubagent: Effect.fn("ClaudeAdapterV2.stopSubagent")(function* (stopInput) {
+            const live = yield* Ref.get(queryContext);
+            const nativeThreadId = stopInput.providerThread.nativeThreadRef?.nativeId ?? null;
+            if (live === null || live.nativeThreadId !== nativeThreadId) {
+              return yield* new ProviderAdapterProtocolError({
+                driver: CLAUDE_PROVIDER,
+                detail: "The subagent's Claude session is not running.",
+              });
+            }
+            if (live.query.stopTask === undefined) {
+              return yield* new ProviderAdapterProtocolError({
+                driver: CLAUDE_PROVIDER,
+                detail: "This Claude session cannot stop subagents.",
+              });
+            }
+            yield* live.query.stopTask(stopInput.nativeTaskId).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProviderAdapterProtocolError({
+                    driver: CLAUDE_PROVIDER,
+                    detail: "Claude could not stop the subagent.",
+                    cause,
+                  }),
+              ),
+            );
+          }),
           respondToRuntimeRequest: Effect.fn("ClaudeAdapterV2.respondToRuntimeRequest")(
             function* (requestInput) {
               const pending = (yield* Ref.get(pendingRuntimeRequests)).get(
@@ -7194,6 +7251,7 @@ export function makeClaudeAdapterV2(
               }
 
               const nativeThreadId = yield* getNativeThreadId(rollbackInput.providerThread);
+              forkUndeliveredPrompts.discard(nativeThreadId); // Fork
               yield* closeLiveQueryForNativeThread(nativeThreadId);
               const now = yield* DateTime.now;
 
