@@ -32,7 +32,9 @@ scripts/fork-app.sh restart fork     # launch the app
 ## Prerequisites
 
 - **macOS.** `scripts/fork-app.sh` is zsh, and the server half edits a
-  LaunchAgent. Linux would need the equivalent systemd work.
+  LaunchAgent. Linux would need the equivalent systemd work. On Windows only
+  the app runs, as a client of another machine's service; see
+  [Windows](#windows).
 - **Node 26**, through nvm. The pre-commit hook fails under older Node, and the
   script switches to 26 on its own via `nvm use`.
 - **pnpm 11.10.0**, invoked as `npx pnpm@11.10.0`. Do not use a different one:
@@ -339,3 +341,43 @@ has to be repeated, because the plist would still name a launcher speaking the
 old protocol. `prepare-server` notices that bump, builds nothing, and records
 why in `servers/<branch>.json`; the update menu then marks the branch's server
 as blocked and installs only the app, and `logs/fork-watch.log` points here.
+
+## Windows
+
+On Windows only the desktop app runs. It has no service of its own and
+connects to a machine that runs one (set up as above, usually a Mac), so steps
+3 and 4 do not apply, and `prepare-server` and `restart-service` do not exist
+here. `scripts\fork-app.ps1` stands in for `scripts/fork-app.sh`.
+
+Prerequisites: PowerShell 7 (`pwsh`), git, and
+[nvm-windows](https://github.com/coreybutler/nvm-windows) with Node 26
+installed (`nvm install 26`). The script puts Node 26 first on its own `PATH`,
+because nvm-windows' `nvm use` needs admin rights.
+
+```powershell
+git clone https://github.com/esveo/t3code.git; cd t3code
+npx pnpm@11.10.0 install
+pwsh scripts\fork-app.ps1 prepare         # build the desktop app
+pwsh scripts\fork-app.ps1 restart <slug>  # launch it; <slug> as `status` prints it
+pwsh scripts\fork-app.ps1 shortcut        # Start menu and desktop shortcuts
+```
+
+`status`, `delete <slug>`, `start`, `stop` and `watch` work as on macOS, and
+the running app's update menu runs the script through `pwsh`, so updates and
+the `origin/fork` watch work the same way. The shortcuts run `restart`, which
+relaunches the current build.
+
+The root's layout differs in one respect: builds never move. pnpm's
+`node_modules` on Windows is made of junctions with absolute targets, so a
+moved build breaks. Each build lives in its own `slot-*` directory, and
+`current` and `builds\<branch>` are junctions pointing at them. A slot no
+junction points at is spare: the next `prepare` builds into it and keeps its
+`node_modules`. One spare stays, the others are deleted.
+
+The app registers the `t3code://` URL handler (needed for signing in) to
+point at `fork-app.ps1 open-url` on every start. Clerk's own registration
+points at a bare `electron.exe`, which cannot open the app.
+
+To connect, mint a pairing URL on the service's machine as in
+[step 5](#5-connect-the-client) and paste it under Settings → Connections →
+Add environment.

@@ -129,6 +129,11 @@ function installElectronRuntime(electronDir, version) {
     ]);
     if (hostPlatform === "darwin") {
       runChecked("ditto", ["-x", "-k", zipPath, NodePath.join(electronDir, "dist")]);
+    } else if (hostPlatform === "win32") {
+      // Windows ships bsdtar, which reads zip archives; python3 is usually absent.
+      const distDir = NodePath.join(electronDir, "dist");
+      NodeFS.mkdirSync(distDir, { recursive: true });
+      runChecked("tar", ["-xf", zipPath, "-C", distDir]);
     } else {
       runChecked("python3", [
         "-c",

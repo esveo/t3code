@@ -1,4 +1,4 @@
-<!-- Fork: source of assets/prod/black-macos-1024.png, the esveo e in curly braces on the Kachel Sky gradient. Export at 1024x1024 with a transparent canvas; the tile is 824x824, inset 100px, like the macOS pre-Tahoe grid. -->
+<!-- Fork: source of assets/prod/black-macos-1024.png, the esveo e in curly braces on the Kachel Sky gradient. Export at 1024x1024 with a transparent canvas; the tile is 824x824, inset 100px, like the macOS pre-Tahoe grid. Also the source of assets/prod/t3-black-windows.ico (16-256 px), cropped to the tile (viewBox 100 100 824 824) without the shadow. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
   <defs>
     <linearGradient id="kachelSky" x1="0.25" y1="0" x2="0.75" y2="1">
