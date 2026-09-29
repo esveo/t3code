@@ -75,6 +75,15 @@ export const ensureForkSchema = Effect.gen(function* () {
       reported_at TEXT NOT NULL
     )
   `;
+  // Thread orchestration: one row once the first start recorded every result
+  // that already existed as reported, so switching the fork on does not wake
+  // old coordinators with them (CoordinatorUpdates.ts).
+  yield* sql`
+    CREATE TABLE IF NOT EXISTS fork_thread_reports_baseline (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      baselined_at TEXT NOT NULL
+    )
+  `;
   const imported = yield* importLegacyCoordinatorLinks;
   if (imported > 0) {
     yield* Effect.logInfo("Imported V1 coordinator links", { links: imported });

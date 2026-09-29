@@ -114,6 +114,9 @@ export class ThreadCoordinators extends Context.Service<
       threadId: ThreadId,
       runId: RunId,
     ) => Effect.Effect<void, ThreadCoordinatorsError>;
+    /** Whether the results that existed at the first start were recorded as reported. */
+    readonly reportsBaselined: Effect.Effect<boolean, ThreadCoordinatorsError>;
+    readonly markReportsBaselined: Effect.Effect<void, ThreadCoordinatorsError>;
   }
 >()("t3/threadOrchestration/ThreadCoordinators") {}
 
@@ -193,6 +196,24 @@ export const make = Effect.gen(function* () {
       Effect.map((rows) => (rows[0]?.run_id as RunId | undefined) ?? null),
       Effect.mapError(storeFailed("read the reported result")),
     );
+
+  const reportsBaselined: ThreadCoordinators["Service"]["reportsBaselined"] = sql<{
+    readonly id: number;
+  }>`
+    SELECT id FROM fork_thread_reports_baseline WHERE id = 1
+  `.pipe(
+    Effect.map((rows) => rows.length > 0),
+    Effect.mapError(storeFailed("read the report baseline")),
+  );
+
+  const markReportsBaselined: ThreadCoordinators["Service"]["markReportsBaselined"] = Effect.gen(
+    function* () {
+      const now = yield* nowIso;
+      yield* sql`
+        INSERT OR IGNORE INTO fork_thread_reports_baseline (id, baselined_at) VALUES (1, ${now})
+      `;
+    },
+  ).pipe(Effect.mapError(storeFailed("record the report baseline")));
 
   /**
    * V2 keeps delivering a delegated child's result to the thread that started
@@ -301,6 +322,8 @@ export const make = Effect.gen(function* () {
     subscribe,
     lastReportedRun,
     markReported,
+    reportsBaselined,
+    markReportsBaselined,
   });
 });
 

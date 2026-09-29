@@ -16,7 +16,10 @@
  * (no run, subagent or background task of it still going). Which result each
  * child last reported is kept in `fork_thread_reports`, so nothing reaches a
  * coordinator twice, also across restarts; on start, `catchUp` reports what
- * ended while the server was down.
+ * ended while the server was down. The very first start only records every
+ * result that exists by then, without a word to anyone: thread orchestration
+ * used to be opt-in, and switching it on must not wake old coordinators with
+ * results they never waited for.
  */
 import {
   CommandId,
@@ -183,7 +186,8 @@ export const make = Effect.gen(function* () {
    * that need no update (V2 delivered them, the child is settled) are
    * recorded as reported here.
    */
-  const pendingUpdate = Effect.fn("CoordinatorUpdates.pendingUpdate")(function* (
+  /** The child's latest result while it has a coordinator, or null. */
+  const latestResult = Effect.fn("CoordinatorUpdates.latestResult")(function* (
     childThreadId: ThreadId,
   ) {
     const child = yield* threads.getThreadShell(childThreadId);
@@ -197,7 +201,15 @@ export const make = Effect.gen(function* () {
     );
     const progress = delegatedTaskProgress(controls);
     if (progress.state !== "result_available" || progress.resultRun === undefined) return null;
-    const resultRun = progress.resultRun;
+    return { child, coordinatorId, resultRun: progress.resultRun };
+  });
+
+  const pendingUpdate = Effect.fn("CoordinatorUpdates.pendingUpdate")(function* (
+    childThreadId: ThreadId,
+  ) {
+    const latest = yield* latestResult(childThreadId);
+    if (latest === null) return null;
+    const { child, coordinatorId, resultRun } = latest;
     const coordinator = yield* threads.getThreadShell(coordinatorId);
     const lineageParent =
       child.lineage.relationshipToParent === "subagent" &&
@@ -273,6 +285,17 @@ export const make = Effect.gen(function* () {
         const candidates = snapshot.threads.filter(
           (thread) => thread.deletedAt === null && coordinatorThreadIdOf(thread, links) !== null,
         );
+        // The first start: what exists now counts as reported, and nothing is
+        // sent. A failed start leaves the baseline to the next one.
+        if (!(yield* coordinators.reportsBaselined)) {
+          for (const candidate of candidates) {
+            const latest = yield* latestResult(candidate.id);
+            if (latest !== null)
+              yield* coordinators.markReported(candidate.id, latest.resultRun.id);
+          }
+          yield* coordinators.markReportsBaselined;
+          return;
+        }
         const byCoordinator = new Map<
           ThreadId,
           Array<{ childThreadId: ThreadId; runId: RunId; block: string }>

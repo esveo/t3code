@@ -112,6 +112,8 @@ const unavailableCoordinators: ThreadCoordinators["Service"] = {
   subscribe: Stream.fail(noCoordinators()),
   lastReportedRun: () => Effect.fail(noCoordinators()),
   markReported: () => Effect.fail(noCoordinators()),
+  reportsBaselined: Effect.fail(noCoordinators()),
+  markReportsBaselined: Effect.fail(noCoordinators()),
 };
 
 const make = Effect.gen(function* () {

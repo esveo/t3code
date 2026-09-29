@@ -35,6 +35,8 @@ interface World {
   queued: ReadonlyArray<{ runId: string; messageId: string; text: string }>;
   /** The last reported result of each child, as it was before a restart. */
   readonly reported: Map<ThreadId, RunId>;
+  /** Whether a start already recorded the results that existed then. */
+  baselined: boolean;
 }
 
 function childShell(
@@ -78,6 +80,7 @@ const makeWorld = (): World => ({
   transfers: [],
   queued: [],
   reported: new Map(),
+  baselined: true,
 });
 
 const withUpdates = <A, E>(
@@ -176,6 +179,10 @@ const withUpdates = <A, E>(
       },
       lastReportedRun: (threadId) => Effect.succeed(reported.get(threadId) ?? null),
       markReported: (threadId, runId) => Effect.sync(() => void reported.set(threadId, runId)),
+      reportsBaselined: Effect.sync(() => world.baselined),
+      markReportsBaselined: Effect.sync(() => {
+        world.baselined = true;
+      }),
     });
     return yield* Effect.gen(function* () {
       const updates = yield* CoordinatorUpdates.CoordinatorUpdates;
@@ -415,6 +422,61 @@ describe("CoordinatorUpdates.catchUp", () => {
           // The next start has nothing left to say.
           yield* updates.catchUp;
           assert.strictEqual((yield* Ref.get(dispatched)).length, 1);
+        }),
+      );
+    }),
+  );
+});
+
+describe("CoordinatorUpdates.catchUp on the first start", () => {
+  it.effect("records existing results without a word, then reports what ends later", () =>
+    Effect.gen(function* () {
+      const world = makeWorld();
+      world.baselined = false;
+      const adopted = ThreadId.make("adopted");
+      world.links.set(adopted, COORDINATOR);
+      world.children.set(adopted, {
+        shell: childShell("adopted", null),
+        runs: [{ id: "run-1", status: "completed" }],
+        answers: { "run-1": "Old result.", "run-2": "New result." },
+      });
+      const followUp = ThreadId.make("follow-up");
+      world.children.set(followUp, {
+        shell: childShell("follow-up", COORDINATOR),
+        runs: [
+          { id: "run-1", status: "completed" },
+          { id: "run-2", status: "failed" },
+        ],
+        answers: { "run-1": "First.", "run-2": "Old follow-up." },
+      });
+      world.tasks = [{ childThreadId: followUp }];
+      world.transfers = [{ sourceThreadId: followUp, runId: "run-1" }];
+      yield* withUpdates(world, ({ updates, dispatched }) =>
+        Effect.gen(function* () {
+          yield* updates.catchUp;
+          assert.strictEqual((yield* Ref.get(dispatched)).length, 0);
+          assert.isTrue(world.baselined);
+          assert.strictEqual(world.reported.get(adopted), "run-1");
+          assert.strictEqual(world.reported.get(followUp), "run-2");
+
+          // Ends after the baseline, while the server is down: the next start
+          // reports it and does not baseline it away.
+          world.children.set(adopted, {
+            ...world.children.get(adopted)!,
+            runs: [
+              { id: "run-1", status: "completed" },
+              { id: "run-2", status: "completed" },
+            ],
+          });
+          yield* updates.catchUp;
+          const commands = yield* Ref.get(dispatched);
+          assert.strictEqual(commands.length, 1);
+          const command = commands[0]!;
+          if (command.type !== "message.dispatch") return assert.fail(command.type);
+          assert.deepEqual(
+            parseThreadUpdates(command.text)?.map((update) => [update.threadId, update.body]),
+            [["adopted", "New result."]],
+          );
         }),
       );
     }),

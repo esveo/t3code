@@ -122,6 +122,11 @@ describe("ThreadCoordinators", () => {
           );
           // Its last result is old news for the new coordinator.
           assert.strictEqual(yield* service.lastReportedRun(loose.id), "run-9");
+          // The report baseline is recorded once and stays.
+          assert.isFalse(yield* service.reportsBaselined);
+          yield* service.markReportsBaselined;
+          yield* service.markReportsBaselined;
+          assert.isTrue(yield* service.reportsBaselined);
 
           const moved = yield* service.set({
             threadId: loose.id,
