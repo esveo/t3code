@@ -68,8 +68,9 @@ it("bounds the note so it cannot crowd out the turn's context", () => {
     label: `sleep ${index}`,
   }));
   const note = restartCancelledBackgroundWorkNote(work);
-  assert.lengthOf(note.split("\n"), 12);
-  assert.isTrue(note.endsWith("- and 15 more"));
+  // Fork: the note ends with four lines of resume guidance.
+  assert.lengthOf(note.split("\n"), 16);
+  assert.include(note, "- and 15 more\n");
   const command = cancelledTurnItemWork({
     type: "command_execution",
     input: "x".repeat(10_000),
@@ -130,4 +131,23 @@ it("does not repeat the note when a steer restarts the run on a new attempt", ()
   assert.deepEqual(pending([firstAttempt, RunAttemptId.make("attempt:2b")], true), []);
   // A first attempt that never reached the provider did not deliver it.
   assert.deepEqual(pending([firstAttempt, RunAttemptId.make("attempt:2b")], false), lost);
+});
+
+// Fork: the note tells the agent how to resume interrupted work.
+it("names a subagent's native id and how to resume it", () => {
+  const subagent = cancelledTurnItemWork({
+    type: "subagent",
+    id: "turn-item:1",
+    title: "r".repeat(400),
+    prompt: "",
+    nativeItemRef: { driver: "claudeAgent", nativeId: "a1b2c3", strength: "strong" },
+  } as never);
+  assert.equal(subagent?.id, "turn-item:1");
+  assert.lengthOf(subagent?.label ?? "", 160);
+  assert.isTrue(subagent?.label.endsWith("(id a1b2c3)"));
+  const note = restartCancelledBackgroundWorkNote(subagent === undefined ? [] : [subagent]);
+  assert.include(note, "interrupted this background work");
+  assert.include(note, "SendMessage");
+  assert.include(note, "resumeFromRunId");
+  assert.notInclude(note, "cancelled");
 });
