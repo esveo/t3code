@@ -21,14 +21,14 @@ const listeners = new Set<() => void>();
  * upstream edits constantly, which is a conflict at every rebase for nothing.
  *
  * Only membership changes notify: entries are replaced on every streaming
- * frame, and the footers care only about which turns have thinking at all.
+ * frame, and the footers care only about which runs have thinking at all.
  */
 export function publishTimelineThoughts(
   timelineKey: string,
   entries: ReadonlyArray<ThoughtEntry>,
-  liveTurnId: string | null,
+  liveRunId: string | null,
 ) {
-  const turns = deriveTurnsWithThoughts(entries, liveTurnId);
+  const turns = deriveTurnsWithThoughts(entries, liveRunId);
   const previous = byTimeline.get(timelineKey);
   byTimeline.set(timelineKey, { entries, turns });
   if (previous === undefined || !sameMembers(previous.turns, turns)) {
@@ -43,9 +43,9 @@ export function forgetTimelineThoughts(timelineKey: string) {
 }
 
 /** Read at click time, so a megabyte of trace never sits in React state. */
-export function readTimelineThoughts(timelineKey: string, turnId: string): string {
+export function readTimelineThoughts(timelineKey: string, runId: string): string {
   const source = byTimeline.get(timelineKey);
-  return source === undefined ? "" : readTurnThoughts(source.entries, turnId);
+  return source === undefined ? "" : readTurnThoughts(source.entries, runId);
 }
 
 export function useTimelineThoughtTurns(timelineKey: string | null): ReadonlySet<string> {
@@ -60,11 +60,11 @@ export function useTimelineThoughtTurns(timelineKey: string | null): ReadonlySet
 export function usePublishTimelineThoughts(
   timelineKey: string,
   entries: ReadonlyArray<ThoughtEntry>,
-  liveTurnId: string | null,
+  liveRunId: string | null,
 ) {
   useEffect(() => {
-    publishTimelineThoughts(timelineKey, entries, liveTurnId);
-  }, [entries, liveTurnId, timelineKey]);
+    publishTimelineThoughts(timelineKey, entries, liveRunId);
+  }, [entries, liveRunId, timelineKey]);
   useEffect(() => () => forgetTimelineThoughts(timelineKey), [timelineKey]);
 }
 

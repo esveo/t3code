@@ -15,55 +15,56 @@ export interface ThoughtTrail {
 }
 
 /**
- * A timeline entry, narrowed to the part a trail is built from.
- * TODO(orchestrator-v2): V2 timelines carry reasoning outside `message`
- * entries, so no trail is found until this reads V2's reasoning items.
+ * A timeline entry, narrowed to the part a trail is built from: V2 records
+ * thinking as `reasoning` work items, each carrying its run and its text.
  */
 export interface ThoughtEntry {
   readonly kind: string;
-  readonly message?:
+  readonly entry?:
     | {
-        readonly role: string;
-        readonly text: string;
-        readonly runId: string | null;
+        readonly itemType?: string | undefined;
+        readonly runId?: string | null | undefined;
+        readonly detail?: string | undefined;
       }
     | undefined;
 }
 
+/** The run and trace of a reasoning entry, or null for anything else. */
+function reasoningOf(entry: ThoughtEntry): { runId: string; text: string } | null {
+  const work = entry.kind === "work" ? entry.entry : undefined;
+  if (work?.itemType !== "reasoning" || work.runId == null) return null;
+  return { runId: work.runId, text: work.detail ?? "" };
+}
+
 /**
- * Turns whose thinking is finished and worth reading back.
+ * Runs whose thinking is finished and worth reading back.
  *
  * Deliberately no text: this runs on every streaming frame, so it counts what
- * is there and leaves the reading to the click. The live turn is left out,
+ * is there and leaves the reading to the click. The live run is left out,
  * because a trail of a trace that is still growing is stale the moment it is
  * read.
  */
 export function deriveTurnsWithThoughts(
   entries: ReadonlyArray<ThoughtEntry>,
-  skipTurnId: string | null,
+  skipRunId: string | null,
 ): ReadonlySet<string> {
-  const turns = new Set<string>();
+  const runs = new Set<string>();
   for (const entry of entries) {
-    const message = entry.message;
-    if (
-      message?.role === "reasoning" &&
-      message.runId !== null &&
-      message.runId !== skipTurnId &&
-      message.text.trim().length > 0
-    ) {
-      turns.add(message.runId);
+    const reasoning = reasoningOf(entry);
+    if (reasoning !== null && reasoning.runId !== skipRunId && reasoning.text.trim().length > 0) {
+      runs.add(reasoning.runId);
     }
   }
-  return turns;
+  return runs;
 }
 
-/** Every reasoning message of one turn, in order, as one blob. */
-export function readTurnThoughts(entries: ReadonlyArray<ThoughtEntry>, turnId: string): string {
+/** Every reasoning item of one run, in order, as one blob. */
+export function readTurnThoughts(entries: ReadonlyArray<ThoughtEntry>, runId: string): string {
   const traces: string[] = [];
   for (const entry of entries) {
-    const message = entry.message;
-    if (message?.role === "reasoning" && message.runId === turnId) {
-      const trace = message.text.trim();
+    const reasoning = reasoningOf(entry);
+    if (reasoning?.runId === runId) {
+      const trace = reasoning.text.trim();
       if (trace.length > 0) {
         traces.push(trace);
       }

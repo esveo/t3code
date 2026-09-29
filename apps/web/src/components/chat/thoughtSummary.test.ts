@@ -1,20 +1,19 @@
 import { describe, expect, it } from "vite-plus/test";
 import { deriveThoughtTrail, deriveTurnsWithThoughts, readTurnThoughts } from "./thoughtSummary";
 
+const reasoning = (text: string, runId: string) => ({
+  kind: "work",
+  entry: { itemType: "reasoning", runId, detail: text },
+});
+
 const entries = [
-  { kind: "message", message: { role: "user", text: "fix the bug", runId: "turn-1" } },
-  {
-    kind: "message",
-    message: { role: "reasoning", text: "First I read the file.", runId: "turn-1" },
-  },
-  { kind: "work" },
-  { kind: "message", message: { role: "assistant", text: "Fixed it.", runId: "turn-1" } },
-  {
-    kind: "message",
-    message: { role: "reasoning", text: "Then I checked the test.", runId: "turn-1" },
-  },
-  { kind: "message", message: { role: "reasoning", text: "   ", runId: "turn-2" } },
-  { kind: "message", message: { role: "reasoning", text: "Still going.", runId: "turn-3" } },
+  { kind: "message" },
+  reasoning("First I read the file.", "turn-1"),
+  { kind: "work", entry: { itemType: "command_execution", runId: "turn-1", detail: "ls" } },
+  { kind: "message" },
+  reasoning("Then I checked the test.", "turn-1"),
+  reasoning("   ", "turn-2"),
+  reasoning("Still going.", "turn-3"),
 ];
 
 describe("deriveTurnsWithThoughts", () => {
