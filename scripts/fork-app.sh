@@ -108,6 +108,8 @@ app_pids() {
   # ancestor, which pgrep would otherwise leave out.
   pgrep -af "apps/desktop/.electron-runtime/.*/MacOS/Electron dist-electron/main.cjs" || true
   pgrep -af "vp run start:desktop" || true
+  # `start` launches through this node script, which spawns Electron a moment later.
+  pgrep -af "node scripts/start-electron.mjs" || true
 }
 
 stop() {
