@@ -1,4 +1,4 @@
-import type { ApprovalRequestId, ProviderApprovalDecision } from "@t3tools/contracts";
+import type { ProviderApprovalDecision, RuntimeRequestId } from "@t3tools/contracts";
 import { formatDuration } from "@t3tools/shared/orchestrationTiming";
 import {
   BookOpen,
@@ -60,9 +60,9 @@ export interface StageOpenAction {
 }
 
 export interface StageApprovalHandlers {
-  readonly respondingRequestIds: ReadonlyArray<ApprovalRequestId>;
+  readonly respondingRequestIds: ReadonlyArray<RuntimeRequestId>;
   readonly onRespondToApproval: (
-    requestId: ApprovalRequestId,
+    requestId: RuntimeRequestId,
     decision: ProviderApprovalDecision,
   ) => Promise<unknown>;
 }
@@ -346,8 +346,7 @@ export const AgentStage = memo(function AgentStage({
     crowd.set(station, (crowd.get(station) ?? 0) + 1);
   }
   const placed = new Map<StageStation, number>();
-  const motion =
-    "transition-transform duration-700 ease-[cubic-bezier(0.2,0.8,0.2,1)] motion-reduce:transition-none";
+  const motion = "transition-transform duration-700 ease-out motion-reduce:transition-none";
   // A point, not a box: rotations must pivot exactly on the station.
   const pivot = "absolute top-0 left-0 size-0 [transform-origin:0_0]";
 
@@ -447,7 +446,7 @@ export const AgentStage = memo(function AgentStage({
                           {agent.initials ? (
                             <span
                               aria-hidden
-                              className="absolute -right-1.5 -bottom-1 rounded-full border border-background px-1 text-[8px] leading-[12px] font-semibold text-white"
+                              className="absolute -right-1.5 -bottom-1 rounded-full border border-background px-1 text-4xs leading-3 font-semibold text-white"
                               style={{ backgroundColor: spriteColor(agent, index - 1) }}
                             >
                               {agent.initials}
@@ -456,7 +455,7 @@ export const AgentStage = memo(function AgentStage({
                           {flagged.has(agent.id) ? (
                             <span
                               aria-hidden
-                              className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full border border-background bg-warning text-[10px] leading-none font-bold text-background"
+                              className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full border border-background bg-warning text-3xs leading-none font-bold text-background"
                             >
                               !
                             </span>
@@ -486,7 +485,7 @@ export const AgentStage = memo(function AgentStage({
           <div
             key={agent.id}
             className={cn(
-              "flex max-w-52 shrink-0 items-center rounded-full border text-[11px] transition-colors",
+              "flex max-w-52 shrink-0 items-center rounded-full border text-2xs transition-colors",
               agent.id === selected.id
                 ? "border-foreground/40 bg-accent text-foreground"
                 : "border-border text-muted-foreground",
@@ -534,7 +533,7 @@ export const AgentStage = memo(function AgentStage({
             type="button"
             aria-label={`Show ${agent.label} on the stage`}
             onClick={() => onShow?.(agent.id)}
-            className="flex max-w-40 shrink-0 items-center gap-1.5 rounded-full border border-dashed border-border px-2 py-0.5 text-[11px] text-muted-foreground/60 hover:text-foreground"
+            className="flex max-w-40 shrink-0 items-center gap-1.5 rounded-full border border-dashed border-border px-2 py-0.5 text-2xs text-muted-foreground/60 hover:text-foreground"
           >
             <Eye className="size-3 shrink-0" />
             <span className="truncate">{agent.label}</span>
@@ -544,7 +543,7 @@ export const AgentStage = memo(function AgentStage({
           <button
             type="button"
             onClick={onShowAll}
-            className="shrink-0 rounded-full px-2 py-0.5 text-[11px] text-primary hover:underline"
+            className="shrink-0 rounded-full px-2 py-0.5 text-2xs text-primary hover:underline"
           >
             Show all
           </button>
@@ -610,7 +609,7 @@ function StageModeToggle({
       aria-pressed={mode === value}
       onClick={() => onChange(value)}
       className={cn(
-        "rounded-full px-2 py-0.5 text-[11px] transition-colors",
+        "rounded-full px-2 py-0.5 text-2xs transition-colors",
         mode === value
           ? "bg-accent text-foreground"
           : "text-muted-foreground hover:text-foreground",
@@ -726,14 +725,14 @@ function StationRing({
             >
               <Icon className="size-3.5" />
               {calling ? (
-                <span className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full border border-warning/40 bg-warning/20 text-[9px] font-semibold text-warning-foreground">
+                <span className="absolute -top-1.5 -right-1.5 flex size-4 items-center justify-center rounded-full border border-warning/40 bg-warning/20 text-4xs font-semibold text-warning-foreground">
                   {waiting}
                 </span>
               ) : null}
             </div>
             <span
               className={cn(
-                "absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-0.5 text-center text-[10px] leading-none",
+                "absolute flex -translate-x-1/2 -translate-y-1/2 flex-col items-center gap-0.5 text-center text-3xs leading-none",
                 calling
                   ? "text-warning-foreground"
                   : active
@@ -782,16 +781,16 @@ function StageAttentionBar({
           {lead.title}
         </button>
         {Number.isFinite(waited) && waited >= 1_000 ? (
-          <span className="shrink-0 text-[10px] text-muted-foreground tabular-nums">
+          <span className="shrink-0 text-3xs text-muted-foreground tabular-nums">
             {formatDuration(waited)}
           </span>
         ) : null}
         {items.length > 1 ? (
-          <span className="shrink-0 text-[10px] text-muted-foreground">+{items.length - 1}</span>
+          <span className="shrink-0 text-3xs text-muted-foreground">+{items.length - 1}</span>
         ) : null}
       </div>
       {lead.detail ? (
-        <p className="line-clamp-3 font-mono text-[11px] break-words text-muted-foreground">
+        <p className="line-clamp-3 font-mono text-2xs break-words text-muted-foreground">
           {lead.detail}
         </p>
       ) : null}
@@ -800,12 +799,13 @@ function StageAttentionBar({
           <ComposerPendingApprovalActions
             requestId={lead.approval.requestId}
             isResponding={approvals.respondingRequestIds.includes(lead.approval.requestId)}
+            canRespond={lead.approval.responseCapability === "live"}
             options={lead.approval.options}
             onRespondToApproval={approvals.onRespondToApproval}
           />
         </div>
       ) : (
-        <span className="text-[11px] text-muted-foreground">
+        <span className="text-2xs text-muted-foreground">
           Answer it in the chat to let the work continue.
         </span>
       )}
@@ -854,14 +854,14 @@ function StageFindings({
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="flex min-w-0 items-baseline gap-1.5 text-xs">
                   <span className="truncate font-medium">{finding.title}</span>
-                  <span className="shrink-0 truncate text-[10px] text-muted-foreground">
+                  <span className="shrink-0 truncate text-3xs text-muted-foreground">
                     {labels.get(finding.agentId) ?? ""}
                   </span>
                 </span>
                 {finding.detail ? (
                   <span
                     className={cn(
-                      "truncate text-[11px] text-muted-foreground",
+                      "truncate text-2xs text-muted-foreground",
                       finding.kind === "risky" && "font-mono",
                     )}
                   >
@@ -890,7 +890,7 @@ function StationElapsed({ agent }: { agent: StageAgent }) {
   return (
     <div
       className={cn(
-        "flex items-center gap-1.5 text-[11px]",
+        "flex items-center gap-1.5 text-2xs",
         stuck ? "text-warning-foreground" : "text-muted-foreground",
       )}
     >
@@ -920,7 +920,7 @@ function StageRecapLine({ agent }: { agent: StageAgent }) {
     .map((entry) => `${stationLabel(entry.station)} ${formatDuration(entry.ms)}`)
     .join(" · ");
   return (
-    <div className="flex flex-col gap-0.5 text-[11px] text-muted-foreground">
+    <div className="flex flex-col gap-0.5 text-2xs text-muted-foreground">
       <div className="flex items-center gap-1.5">
         <Clock className="size-3 shrink-0" />
         <span className="truncate tabular-nums">
@@ -965,7 +965,7 @@ function SelectedAgentCard({
         )}
         <span className="truncate text-xs font-medium">{agent.label}</span>
         {agent.role && agent.role !== agent.label ? (
-          <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+          <span className="shrink-0 rounded-full bg-muted px-1.5 py-0.5 text-3xs text-muted-foreground">
             {agent.role}
           </span>
         ) : null}
@@ -979,7 +979,7 @@ function SelectedAgentCard({
       {agent.detail ? (
         <p
           className={cn(
-            "line-clamp-4 text-[11px] break-words text-muted-foreground",
+            "line-clamp-4 text-2xs break-words text-muted-foreground",
             monospace && "font-mono",
           )}
         >
@@ -991,7 +991,7 @@ function SelectedAgentCard({
       {agent.alerts.map((alert) => (
         <div
           key={alert.kind}
-          className="flex items-center gap-1.5 text-[11px] text-warning-foreground"
+          className="flex items-center gap-1.5 text-2xs text-warning-foreground"
         >
           <TriangleAlert className="size-3 shrink-0 text-warning" />
           <span className="truncate">{alert.text}</span>

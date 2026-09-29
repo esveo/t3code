@@ -1,4 +1,3 @@
-import { EventId, TurnId, type OrchestrationThreadActivity } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { contextFinding, riskyCommandTitle, trailingQuestion } from "./agentStageFindings.logic";
@@ -39,34 +38,28 @@ describe("trailingQuestion", () => {
 });
 
 describe("contextFinding", () => {
-  const usage = (payload: Record<string, unknown>): OrchestrationThreadActivity => ({
-    id: EventId.make("context-1"),
-    createdAt: "2026-09-21T10:00:00.000Z",
-    kind: "context-window.updated",
-    summary: "Context window updated",
-    tone: "info",
-    payload,
-    turnId: TurnId.make("turn-1"),
-    sequence: 1,
+  const usage = (
+    overrides: Partial<Parameters<typeof contextFinding>[0] & object> = {},
+  ): Parameters<typeof contextFinding>[0] => ({
+    usedTokens: 0,
+    maxTokens: 1000,
+    compactsAutomatically: null,
+    autoCompactThreshold: null,
+    updatedAt: "2026-09-21T10:00:00.000Z",
+    ...overrides,
   });
 
   it("speaks up once the context is nearly full", () => {
-    expect(contextFinding([usage({ usedTokens: 900, maxTokens: 1000 })], "main")).toEqual(
+    expect(contextFinding(usage({ usedTokens: 900 }), "main")).toEqual(
       expect.objectContaining({ kind: "context", title: "Context 90% full" }),
     );
-    expect(contextFinding([usage({ usedTokens: 500, maxTokens: 1000 })], "main")).toBeNull();
+    expect(contextFinding(usage({ usedTokens: 500 }), "main")).toBeNull();
+    expect(contextFinding(null, "main")).toBeNull();
   });
 
   it("measures against the compaction point when the provider compacts", () => {
     const finding = contextFinding(
-      [
-        usage({
-          usedTokens: 180,
-          maxTokens: 1000,
-          compactsAutomatically: true,
-          autoCompactThreshold: 200,
-        }),
-      ],
+      usage({ usedTokens: 180, compactsAutomatically: true, autoCompactThreshold: 200 }),
       "main",
     );
     expect(finding?.title).toBe("Context is about to be compacted");

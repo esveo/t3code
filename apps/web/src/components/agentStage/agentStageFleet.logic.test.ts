@@ -1,10 +1,5 @@
-import {
-  EnvironmentId,
-  ProjectId,
-  ThreadId,
-  TurnId,
-  type OrchestrationLatestTurn,
-} from "@t3tools/contracts";
+import type { ThreadRunSummary } from "@t3tools/client-runtime/state/shell";
+import { EnvironmentId, ProjectId, ProviderInstanceId, RunId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import type { StageModel, StageProject } from "./agentStage.logic";
@@ -15,12 +10,12 @@ import {
   type FleetThreadShell,
 } from "./agentStageFleet.logic";
 
-const turn = (state: OrchestrationLatestTurn["state"]): OrchestrationLatestTurn => ({
-  turnId: TurnId.make("turn-1"),
-  state,
+const latestRun = (status: ThreadRunSummary["status"]): ThreadRunSummary => ({
+  runId: RunId.make("run-1"),
+  status,
   requestedAt: "2026-09-21T09:59:59.000Z",
   startedAt: "2026-09-21T10:00:00.000Z",
-  completedAt: state === "running" ? null : "2026-09-21T10:01:00.000Z",
+  completedAt: status === "running" ? null : "2026-09-21T10:01:00.000Z",
   assistantMessageId: null,
 });
 
@@ -40,12 +35,12 @@ function thread(
     id: ThreadId.make(key),
     projectId: ProjectId.make("project-1"),
     title: `Thread ${key}`,
-    session: null,
-    latestTurn: null,
+    runtime: null,
+    latestRun: null,
     hasPendingApprovals: false,
     hasPendingUserInput: false,
-    backgroundLiveness: null,
-    planProgress: null,
+    pendingBackgroundTasks: [],
+    lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: ThreadId.make(key) },
     archivedAt: null,
     createdAt: `2026-09-21T09:0${key.length}:00.000Z`,
     ...overrides,
@@ -55,16 +50,16 @@ function thread(
 
 const running = (key: string, extra: Partial<FleetThreadShell> = {}) =>
   thread(key, {
-    session: {
-      threadId: ThreadId.make(key),
+    runtime: {
       status: "running",
-      providerName: "claude",
-      runtimeMode: "full-access",
-      activeTurnId: TurnId.make("turn-1"),
+      activeRunId: RunId.make("run-1"),
+      activityStartedAt: "2026-09-21T10:00:00.000Z",
+      providerInstanceId: ProviderInstanceId.make("claude"),
+      providerName: null,
       lastError: null,
       updatedAt: "2026-09-21T10:00:00.000Z",
     },
-    latestTurn: turn("running"),
+    latestRun: latestRun("running"),
     ...extra,
   });
 
@@ -118,10 +113,17 @@ describe("deriveFleetStageModel", () => {
     const model = deriveFleetStageModel({
       threads: [
         thread("a", {}),
-        running("b", { planProgress: { step: "Write tests", completedSteps: 1, totalSteps: 3 } }),
+        running("b"),
         running("c", { archivedAt: "2026-09-21T10:00:00.000Z" }),
-        thread("d", { hasPendingApprovals: true, latestTurn: turn("running") }),
-        thread("e", { backgroundLiveness: "working" }),
+        thread("d", { hasPendingApprovals: true, latestRun: latestRun("running") }),
+        thread("e", { pendingBackgroundTasks: [{ taskId: "t-1", kind: "subagent" }] }),
+        running("f", {
+          lineage: {
+            parentThreadId: ThreadId.make("e"),
+            relationshipToParent: "subagent",
+            rootThreadId: ThreadId.make("e"),
+          },
+        }),
       ],
       loaded: { key: "a", model: loadedModel },
     });
@@ -143,12 +145,7 @@ describe("deriveFleetStageModel", () => {
         stationTimes: [{ station: "read", ms: 4_000 }],
       }),
     );
-    expect(model.agents[1]).toEqual(
-      expect.objectContaining({
-        detail: "Step 2 of 3: Write tests",
-        since: "2026-09-21T10:00:00.000Z",
-      }),
-    );
+    expect(model.agents[1]).toEqual(expect.objectContaining({ since: "2026-09-21T10:00:00.000Z" }));
     expect(model.running).toBe(true);
   });
 
@@ -166,14 +163,18 @@ describe("deriveFleetStageModel", () => {
   it("sends watch loops to monitoring and other background work to subagents", () => {
     const model = deriveFleetStageModel({
       threads: [
-        thread("a", { backgroundLiveness: "monitoring" }),
-        thread("bb", { backgroundLiveness: "working" }),
+        thread("a", {
+          pendingBackgroundTasks: [{ taskId: "w-1", kind: "monitor", description: "CI on #41" }],
+        }),
+        thread("bb", { pendingBackgroundTasks: [{ taskId: "t-1", kind: "background_task" }] }),
       ],
       loaded: null,
     });
-    expect(model.agents.map((agent) => [agent.id, agent.station, agent.headline])).toEqual([
-      ["a", "monitoring", "Monitoring"],
-      ["bb", "delegate", "Background work"],
+    expect(
+      model.agents.map((agent) => [agent.id, agent.station, agent.headline, agent.detail]),
+    ).toEqual([
+      ["a", "monitoring", "Monitoring", "CI on #41"],
+      ["bb", "delegate", "Background work", null],
     ]);
   });
 
@@ -189,7 +190,7 @@ describe("deriveFleetStageModel", () => {
 
   it("shows no sprite for a thread at rest", () => {
     const model = deriveFleetStageModel({
-      threads: [thread("a", { latestTurn: turn("error") })],
+      threads: [thread("a", { latestRun: latestRun("failed") })],
       loaded: null,
     });
     expect(model.agents).toEqual([]);
@@ -202,6 +203,10 @@ describe("shellHasLiveWork", () => {
     expect(shellHasLiveWork(thread("a", {}).shell)).toBe(false);
     expect(shellHasLiveWork(running("a").shell)).toBe(true);
     expect(shellHasLiveWork(thread("a", { hasPendingUserInput: true }).shell)).toBe(true);
-    expect(shellHasLiveWork(thread("a", { backgroundLiveness: "monitoring" }).shell)).toBe(true);
+    expect(
+      shellHasLiveWork(
+        thread("a", { pendingBackgroundTasks: [{ taskId: "w-1", kind: "monitor" }] }).shell,
+      ),
+    ).toBe(true);
   });
 });

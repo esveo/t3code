@@ -1,6 +1,7 @@
-import type { OrchestrationThreadShell } from "@t3tools/contracts";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 
 import {
+  backgroundWork,
   stageInitials,
   type StageAgent,
   type StageAttention,
@@ -13,21 +14,22 @@ import {
  * The stage for every thread at once. It reads nothing but the thread shells
  * every client already holds for the sidebar, so it costs no wire traffic,
  * and it says only what a shell can say: working, waiting for the user,
- * background work, or at rest, plus the plan step. The open thread is the
- * exception: its activities are loaded anyway, so its sprite carries the
- * full model of its main agent, arcs, steps and all.
+ * background work or watching, or at rest. The open thread is the exception:
+ * its projection is loaded anyway, so its sprite carries the full model of
+ * its main agent, arcs, steps and all. Subagents' own threads are left out;
+ * they are agents of their parent, which the stage hides in this view.
  */
 export type FleetThreadShell = Pick<
-  OrchestrationThreadShell,
+  EnvironmentThreadShell,
   | "id"
   | "projectId"
   | "title"
-  | "session"
-  | "latestTurn"
+  | "runtime"
+  | "latestRun"
   | "hasPendingApprovals"
   | "hasPendingUserInput"
-  | "backgroundLiveness"
-  | "planProgress"
+  | "pendingBackgroundTasks"
+  | "lineage"
   | "archivedAt"
   | "createdAt"
 >;
@@ -45,12 +47,18 @@ export interface FleetInput {
   readonly loaded: { readonly key: string; readonly model: StageModel } | null;
 }
 
+/** The shell's run is at work: starting up, running, or wrapping up the turn. */
+function shellRunning(shell: FleetThreadShell): boolean {
+  const status = shell.runtime?.status;
+  return (
+    status === "preparing" || status === "starting" || status === "running" || status === "waiting"
+  );
+}
+
 /** A shell that says something is going on in its thread. */
 export function shellHasLiveWork(shell: FleetThreadShell): boolean {
   if (shell.hasPendingApprovals || shell.hasPendingUserInput) return true;
-  const status = shell.session?.status;
-  if (status === "running" || status === "starting") return true;
-  return shell.backgroundLiveness === "working" || shell.backgroundLiveness === "monitoring";
+  return shellRunning(shell) || shell.pendingBackgroundTasks.length > 0;
 }
 
 export function deriveFleetStageModel(input: FleetInput): StageModel {
@@ -86,6 +94,7 @@ export function deriveFleetStageModel(input: FleetInput): StageModel {
       (thread) =>
         thread.key !== loaded?.key &&
         thread.shell.archivedAt === null &&
+        thread.shell.lineage.relationshipToParent !== "subagent" &&
         shellHasLiveWork(thread.shell),
     )
     .sort(
@@ -121,20 +130,13 @@ function deriveShellAgent(thread: FleetThread): StageAgent {
     failedSteps: 0,
     alerts: [],
   };
-  const plan = shell.planProgress ?? null;
-  const planDetail =
-    plan === null
-      ? null
-      : plan.totalSteps > 0
-        ? `Step ${Math.min(plan.completedSteps + 1, plan.totalSteps)} of ${plan.totalSteps}: ${plan.step}`
-        : plan.step;
   if (shell.hasPendingApprovals) {
     return {
       ...base,
       station: "waiting",
       live: true,
       headline: "Waiting for your approval",
-      detail: planDetail,
+      detail: null,
       // The shell does not say when the request was made, so no clock runs.
       since: null,
     };
@@ -145,43 +147,44 @@ function deriveShellAgent(thread: FleetThread): StageAgent {
       station: "waiting",
       live: true,
       headline: "Waiting for your answer",
-      detail: planDetail,
-      since: null,
-    };
-  }
-  const status = shell.session?.status;
-  if (status === "running" || status === "starting") {
-    return {
-      ...base,
-      station: "thinking",
-      live: true,
-      headline: status === "starting" ? "Starting" : "Working",
-      detail: planDetail,
-      since: shell.latestTurn?.startedAt ?? null,
-    };
-  }
-  if (shell.backgroundLiveness === "working" || shell.backgroundLiveness === "monitoring") {
-    const working = shell.backgroundLiveness === "working";
-    return {
-      ...base,
-      station: working ? "delegate" : "monitoring",
-      live: true,
-      headline: working ? "Background work" : "Monitoring",
       detail: null,
       since: null,
     };
   }
-  const turnState = shell.latestTurn?.state;
+  if (shellRunning(shell)) {
+    const status = shell.runtime?.status;
+    return {
+      ...base,
+      station: "thinking",
+      live: true,
+      headline: status === "preparing" || status === "starting" ? "Starting" : "Working",
+      detail: null,
+      since: shell.runtime?.activityStartedAt ?? shell.latestRun?.startedAt ?? null,
+    };
+  }
+  const background = backgroundWork(shell.pendingBackgroundTasks);
+  if (background !== null) {
+    const working = background.station === "delegate";
+    return {
+      ...base,
+      station: background.station,
+      live: true,
+      headline: working ? "Background work" : "Monitoring",
+      detail: background.detail,
+      since: null,
+    };
+  }
+  const runStatus = shell.latestRun?.status;
   return {
     ...base,
     station: "idle",
     live: false,
     headline:
-      turnState === "error"
+      runStatus === "failed"
         ? "The turn failed"
-        : turnState === "interrupted"
+        : runStatus === "interrupted" || runStatus === "cancelled"
           ? "Interrupted"
-          : shell.latestTurn === null
+          : shell.latestRun === null
             ? "Waiting for a prompt"
             : "Done",
     detail: null,
@@ -207,6 +210,6 @@ function deriveShellAttention(thread: FleetThread): StageAttention | null {
         : `${shell.title} has a question for you`,
     detail: null,
     approval: null,
-    since: shell.latestTurn?.startedAt ?? shell.createdAt,
+    since: shell.runtime?.activityStartedAt ?? shell.latestRun?.startedAt ?? shell.createdAt,
   };
 }
