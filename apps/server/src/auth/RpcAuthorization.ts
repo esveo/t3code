@@ -8,6 +8,7 @@ import {
   AuthReviewWriteScope,
   AuthTerminalOperateScope,
   ORCHESTRATION_V2_WS_METHODS,
+  PROVIDER_SUBAGENT_CONTROL_WS_METHODS,
   THREAD_DECISIONS_WS_METHODS,
   VOICE_INPUT_WS_METHODS,
   type AuthEnvironmentScope,
@@ -203,6 +204,9 @@ export const RPC_REQUIRED_SCOPES = {
   // Fork: dictation in the composer.
   [VOICE_INPUT_WS_METHODS.prepare]: AuthOrchestrationOperateScope,
   [VOICE_INPUT_WS_METHODS.transcribe]: AuthOrchestrationOperateScope,
+  // Fork: provider subagent controls.
+  [PROVIDER_SUBAGENT_CONTROL_WS_METHODS.target]: AuthOrchestrationReadScope,
+  [PROVIDER_SUBAGENT_CONTROL_WS_METHODS.stop]: AuthOrchestrationOperateScope,
 } as const satisfies Readonly<Record<WsRpcMethod, AuthEnvironmentScope>>;
 
 export function requiredScopeForRpcMethod(method: string): AuthEnvironmentScope {

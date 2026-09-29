@@ -6,6 +6,10 @@ import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { WsThreadDecisionsActRpc, WsThreadDecisionsSubscribeRpc } from "./threadDecisions.ts";
 import { WsVoiceInputPrepareRpc, WsVoiceInputTranscribeRpc } from "./voiceInput.ts";
 import {
+  WsProviderSubagentStopRpc,
+  WsProviderSubagentTargetRpc,
+} from "./providerSubagentControl.ts";
+import {
   ProviderAuthCancelInput,
   ProviderAuthCompleteInput,
   ProviderAuthState,
@@ -1820,4 +1824,7 @@ export const WsRpcGroup = RpcGroup.make(
   // Fork: dictation in the composer.
   WsVoiceInputPrepareRpc,
   WsVoiceInputTranscribeRpc,
+  // Fork: stop and message a provider subagent from its thread.
+  WsProviderSubagentTargetRpc,
+  WsProviderSubagentStopRpc,
 );

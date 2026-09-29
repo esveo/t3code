@@ -351,6 +351,8 @@ export interface ClaudeAgentSdkQuerySession {
   readonly setModel: (model: string) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
   readonly interrupt: Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
   readonly close: Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
+  /** Fork: stops one running task (a subagent) of this query. */
+  readonly stopTask?: (taskId: string) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
 }
 
 type ClaudeQueryStreamExit = Exit.Exit<void, ClaudeAgentSdkQueryRunnerError>;
@@ -695,6 +697,12 @@ export const claudeAgentSdkQueryRunnerLiveLayer: Layer.Layer<
               }),
             ),
           ),
+          // Fork: stops a subagent from its thread.
+          stopTask: (taskId) =>
+            Effect.tryPromise({
+              try: () => queryRuntime.stopTask(taskId),
+              catch: (cause) => queryRunnerError(cause, "stopTask"),
+            }),
           close: Queue.shutdown(promptQueue).pipe(
             Effect.andThen(closeClaudeQuery(queryRuntime)),
             Effect.tap(() =>
@@ -7141,6 +7149,33 @@ export function makeClaudeAdapterV2(
             }),
           steerTurn,
           interruptTurn,
+          // Fork: stops a subagent from its thread.
+          stopSubagent: Effect.fn("ClaudeAdapterV2.stopSubagent")(function* (stopInput) {
+            const live = yield* Ref.get(queryContext);
+            const nativeThreadId = stopInput.providerThread.nativeThreadRef?.nativeId ?? null;
+            if (live === null || live.nativeThreadId !== nativeThreadId) {
+              return yield* new ProviderAdapterProtocolError({
+                driver: CLAUDE_PROVIDER,
+                detail: "The subagent's Claude session is not running.",
+              });
+            }
+            if (live.query.stopTask === undefined) {
+              return yield* new ProviderAdapterProtocolError({
+                driver: CLAUDE_PROVIDER,
+                detail: "This Claude session cannot stop subagents.",
+              });
+            }
+            yield* live.query.stopTask(stopInput.nativeTaskId).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProviderAdapterProtocolError({
+                    driver: CLAUDE_PROVIDER,
+                    detail: "Claude could not stop the subagent.",
+                    cause,
+                  }),
+              ),
+            );
+          }),
           respondToRuntimeRequest: Effect.fn("ClaudeAdapterV2.respondToRuntimeRequest")(
             function* (requestInput) {
               const pending = (yield* Ref.get(pendingRuntimeRequests)).get(
