@@ -2,6 +2,7 @@
 
 Every feature and fix this fork adds on top of [T3 Code](https://github.com/pingdotgg/t3code), each with the commits that made it.
 
+- Images pasted into Azure DevOps pull request descriptions and comments show in the PR preview, fetched through your `az` sign-in ([876586a](https://github.com/esveo/t3code/commit/876586a9e74604b0a3a9c9581b36396f0e6ef8e3)).
 - The app is called esveo code in its window title, app menu and web UI, without the "(Alpha)" suffix ([b1d401a](https://github.com/esveo/t3code/commit/b1d401af1f51a9e4f72233400f485f693203d4db)).
 - Fix: clicking a file in a turn's changed-files card opens the diff panel with that file expanded ([5726e1a](https://github.com/esveo/t3code/commit/5726e1a571828640f802e70d8a05ec28ce329223)).
 - Fix: `fork-app.sh prepare` builds the branch's server too, and a server with uncommitted changes gets a version of its own instead of replacing the one the service runs ([e5caeb5](https://github.com/esveo/t3code/commit/e5caeb57aaf962fdfe5766b6ae139ca2b17adbbc)).

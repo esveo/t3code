@@ -57,6 +57,12 @@ export const AssetResource = Schema.Union([
     cwd: TrimmedNonEmptyString.check(Schema.isMaxLength(ASSET_PATH_MAX_LENGTH)),
     url: TrimmedNonEmptyString.check(Schema.isMaxLength(2048)),
   }),
+  // esveo fork: an attachment an Azure DevOps pull request embeds. Azure serves these only to a
+  // signed-in request, so the server fetches them with the `az` credential.
+  Schema.TaggedStruct("azure-devops-media", {
+    cwd: TrimmedNonEmptyString.check(Schema.isMaxLength(ASSET_PATH_MAX_LENGTH)),
+    url: TrimmedNonEmptyString.check(Schema.isMaxLength(2048)),
+  }),
 ]);
 export type AssetResource = typeof AssetResource.Type;
 
@@ -301,6 +307,16 @@ export class AssetGitHubMediaUrlValidationError extends Schema.TaggedError<Asset
   }
 }
 
+// esveo fork
+export class AssetAzureDevOpsMediaUrlValidationError extends Schema.TaggedError<AssetAzureDevOpsMediaUrlValidationError>()(
+  "AssetAzureDevOpsMediaUrlValidationError",
+  {},
+) {
+  override get message(): string {
+    return "Only Azure DevOps pull request attachments can be fetched with an Azure credential.";
+  }
+}
+
 export const AssetAccessError = Schema.Union([
   AssetWorkspaceContextNotFoundError,
   AssetWorkspaceContextResolutionError,
@@ -315,6 +331,7 @@ export const AssetAccessError = Schema.Union([
   AssetProjectFaviconInspectionError,
   AssetProjectFaviconNotFoundError,
   AssetGitHubMediaUrlValidationError,
+  AssetAzureDevOpsMediaUrlValidationError,
   AssetSigningKeyLoadError,
 ]);
 export type AssetAccessError = typeof AssetAccessError.Type;
