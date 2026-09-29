@@ -1,4 +1,6 @@
-# Fork-only: merges upstream's main into `fork` (see FORK.md).
+# Fork-only: merges upstream into `fork` (see FORK.md). Until upstream's
+# Orchestrator V2 lands in its main, the fork follows the V2 branch
+# (DEFAULT_UPSTREAM_REF), which merges upstream's main in regularly.
 #
 # `merge` runs upstream's code and the Copilot CLI, so it holds no token that
 # can write: it merges, lets Copilot resolve conflicts and fix what broke, and
@@ -22,7 +24,7 @@ on:
     inputs:
       upstream_ref:
         description: Upstream branch or commit to merge (an older commit merges a backlog in stages)
-        default: main
+        default: t3code/codex-turn-mapping
       dry_run:
         description: Leave the PR as a draft even when everything is green
         type: boolean
@@ -42,6 +44,8 @@ permissions: {}
 
 env:
   MAINTAINER: Pawl-Patrol
+  # Switch back to main once pingdotgg/t3code#2829 (Orchestrator V2) is merged.
+  DEFAULT_UPSTREAM_REF: t3code/codex-turn-mapping
   SCRIPT: .github/scripts/fork-upstream-sync.sh
 
 jobs:
@@ -69,7 +73,7 @@ jobs:
       - name: Find the upstream commit
         id: upstream
         env:
-          UPSTREAM_REF: ${{ inputs.upstream_ref || 'main' }}
+          UPSTREAM_REF: ${{ inputs.upstream_ref || env.DEFAULT_UPSTREAM_REF }}
         run: |
           git remote add upstream https://github.com/pingdotgg/t3code.git
           git fetch --no-tags upstream "$UPSTREAM_REF"
@@ -148,7 +152,7 @@ jobs:
           npm install -g @github/copilot
           cat > "$RUNNER_TEMP/prompt.md" <<EOF
           You maintain esveo/t3code, a fork of T3 Code (pingdotgg/t3code). Upstream's
-          main is being merged into the fork's branch \`fork\`, and your job is to
+          ${{ inputs.upstream_ref || env.DEFAULT_UPSTREAM_REF }} is being merged into the fork's branch \`fork\`, and your job is to
           finish that merge so that every fork feature keeps working on top of
           upstream. Read FORK.md (rules of this fork) and README.md (its features) first.
 
@@ -322,7 +326,7 @@ jobs:
           ready=false
           [ "$GREEN" = true ] && [ "$CHECK_OK" = true ] && ready=true
           {
-            echo "Merges upstream's main up to [\`$short\`](https://github.com/pingdotgg/t3code/commit/$TARGET) into \`fork\` ($(git rev-list --count "$FORK_SHA..$TARGET") new commits). [Sync run]($RUN_URL)"
+            echo "Merges upstream's ${{ inputs.upstream_ref || env.DEFAULT_UPSTREAM_REF }} up to [\`$short\`](https://github.com/pingdotgg/t3code/commit/$TARGET) into \`fork\` ($(git rev-list --count "$FORK_SHA..$TARGET") new commits). [Sync run]($RUN_URL)"
             echo
             if [ "$ready" = true ]; then
               echo "Everything is green; the sync merges this itself."
@@ -355,7 +359,7 @@ jobs:
           draft=()
           [ "$ready" = true ] && [ "$DRY_RUN" != true ] || draft=(--draft)
           url=$(gh pr create --base fork --head "$branch" "${draft[@]}" \
-            --title "chore: merge upstream/main ($short)" --body-file "$RUNNER_TEMP/body.md")
+            --title "chore: merge upstream/${{ inputs.upstream_ref || env.DEFAULT_UPSTREAM_REF }} ($short)" --body-file "$RUNNER_TEMP/body.md")
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "ready=$ready" >> "$GITHUB_OUTPUT"
           # A green sync supersedes older ones; a red one leaves them for comparison.
