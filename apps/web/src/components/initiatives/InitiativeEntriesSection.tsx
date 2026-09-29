@@ -195,7 +195,7 @@ function EntryRow({
           {entry.title}
         </button>
         {needsReview ? <Badge variant="warning">prüfen</Badge> : null}
-        {task && entry.status === "open" && task.dependsOn.length > 0 ? (
+        {task && entry.status === "open" ? (
           task.ready ? (
             <Badge variant="success">startbereit</Badge>
           ) : (
