@@ -1692,7 +1692,15 @@ function commandInputFromClaudeTool(toolName: string, input: ClaudeNativeToolInp
 const CLAUDE_OPAQUE_BACKGROUND_TASK_KINDS: ReadonlyMap<
   string,
   Exclude<OrchestrationV2PendingBackgroundTask["kind"], "subagent">
-> = new Map([["local_bash", "command"]]);
+> = new Map<string, Exclude<OrchestrationV2PendingBackgroundTask["kind"], "subagent">>([
+  ["local_bash", "command"],
+  // Fork: watch loops (Claude Code's artifact/WebSocket watches among them)
+  // are monitors, not subagents. Same set as the fork's V1 MONITOR_TASK_TYPES.
+  ["monitor", "monitor"],
+  ["monitor_mcp", "monitor"],
+  ["monitor_ws", "monitor"],
+  ["shell", "command"],
+]);
 
 function isClaudeOpaqueBackgroundTaskType(taskType: string | null | undefined): boolean {
   return typeof taskType === "string" && CLAUDE_OPAQUE_BACKGROUND_TASK_KINDS.has(taskType);
@@ -3041,7 +3049,6 @@ export function makeClaudeAdapterV2(
               return { kind: task.kind, label, outcome };
             case "command":
             case undefined:
-              // Only local_bash is opaque background work today.
               return { kind: "command", label, outcome };
           }
         });

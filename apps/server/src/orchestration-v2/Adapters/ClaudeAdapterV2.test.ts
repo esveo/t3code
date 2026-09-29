@@ -3443,6 +3443,50 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
+  // Fork: Claude Code's artifact/WebSocket watches start as monitor_ws tasks.
+  it.effect("puts a monitor_ws watch on the roster as a monitor, not a subagent", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        const now = yield* DateTime.now;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now,
+            attemptId: RunAttemptId.make("attempt-claude-monitor-ws"),
+            text: "Publish the page and watch it.",
+            attachments: [],
+          }),
+        );
+        yield* Queue.offer(
+          harness.sdkMessages,
+          claudeSdkFrame({
+            type: "system",
+            subtype: "task_started",
+            task_id: "watch-task",
+            description: "Watch artifact comments",
+            task_type: "monitor_ws",
+            uuid: "00000000-0000-4000-8000-000000000301",
+            session_id: WAKE_NATIVE_SESSION,
+          }),
+        );
+        yield* Queue.offer(
+          harness.sdkMessages,
+          makeResultFrame({ uuid: "00000000-0000-4000-8000-000000000302", result: "Watching." }),
+        );
+        yield* awaitUntil(() => harness.terminalEvents().length === 1, "turn terminal");
+
+        assert.deepEqual(
+          providerThreadRosterEvents(harness.events).at(-1)?.providerThread.pendingBackgroundTasks,
+          [{ taskId: "watch-task", kind: "monitor", description: "Watch artifact comments" }],
+        );
+        assert.isFalse(harness.events.some((event) => event.type === "subagent.updated"));
+        assert.isTrue(yield* harness.hasPendingBackgroundWork);
+      }).pipe(Effect.provide(Layer.merge(idAllocatorLayer, NodeServices.layer))),
+    ),
+  );
+
   it.effect("stops background work after the turn settled", () =>
     Effect.scoped(
       Effect.gen(function* () {
