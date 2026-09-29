@@ -296,6 +296,22 @@ dictate through the environment in the phone's language. They show the
 microphone only once the environment has the model, so turn voice input on in a
 web or desktop client first. Newer iPhones keep Apple's on-device transcription.
 
+## Orchestrator V2 data
+
+The fork runs upstream's Orchestrator V2, which keeps its state in
+`~/.t3/userdata/statev2.sqlite`. The first V2 start backs up
+`state.sqlite` to `~/.t3/userdata/backups/state-v1-<time>.sqlite` and then
+copies it into `statev2.sqlite` once. From then on V2 never writes
+`state.sqlite` again.
+
+- Running agents lose their provider session at that first start; switch when
+  nothing important is running.
+- A pre-V2 build, including the official release below, still reads
+  `state.sqlite`: it does not see anything done under V2, and V2 does not see
+  what it does. Going back and forth splits the history instead of restoring
+  it. To import again from scratch, stop the service and move
+  `statev2.sqlite` and its `-wal`/`-shm` files aside (never delete the backup).
+
 ## Going back to the release
 
 Both halves have to move together again:
