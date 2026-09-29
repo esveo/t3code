@@ -4993,8 +4993,13 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
     workEntry.projectedItem?.item.type === "thread_created"
       ? workEntry.projectedItem.item
       : undefined;
+  // Fork: a delegated task's wake shows update cards below, which carry the
+  // child's link and answer, so the row itself neither expands nor links.
+  const isDelegatedWake =
+    workEntry.projectedItem?.item.type === "notification" &&
+    workEntry.projectedItem.item.source.kind === "delegated_task";
   const notifiedSubagentThreadId =
-    workEntry.projectedItem?.item.type === "notification"
+    workEntry.projectedItem?.item.type === "notification" && !isDelegatedWake
       ? notificationChildThreadId(workEntry.projectedItem.item.source)
       : undefined;
   const groupView = use(WorkGroupViewCtx);
@@ -5108,9 +5113,11 @@ const SimpleWorkEntryRow = memo(function SimpleWorkEntryRow(props: {
             viewedImage ? viewedImagePath : null,
           )
       : null;
-  const canExpandProjectedItem = isRead
-    ? Boolean(readOutput || viewedImage || workEntry.questionAnswer)
-    : canExpand || workEntry.projectedItem !== undefined;
+  const canExpandProjectedItem = isDelegatedWake
+    ? false
+    : isRead
+      ? Boolean(readOutput || viewedImage || workEntry.questionAnswer)
+      : canExpand || workEntry.projectedItem !== undefined;
   // Reserve destructive row styling for severe failures, not routine tool errors.
   const iconWrapperClass = cn(
     "flex size-4 items-center justify-center",
