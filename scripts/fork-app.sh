@@ -298,9 +298,11 @@ prepare_electron() {
 
 # Electron answers a start without an app path, which is how the Dock and
 # Finder open a bundle, with its default app. The bundle's executable becomes a
-# launcher that starts Electron the way `start` does. macOS denies the
-# launcher's shell reading files in ~/Documents before Electron runs, so
-# everything it needs is written into the launcher itself. `start` installs it while the app is stopped, so
+# launcher that starts Electron the way `start` does. Until the user allows
+# the app into ~/Documents, which macOS asks for once Electron opens its first
+# file there, macOS denies the launcher's shell any file there without asking.
+# So everything it needs is written into the launcher, and it logs to
+# ~/Library/Logs. `start` installs it while the app is stopped, so
 # every build gets it, older ones too.
 install_dock_launcher() {
   local bundle="${1:-}" name="esveo code Launcher"
@@ -315,7 +317,7 @@ install_dock_launcher() {
       print -r "export $var=${(qq)${(P)var}}"
     done
     print -r "cd ${(qq)bundle:h:h} || exit 1"
-    print -r "exec ${(qq)bundle}/Contents/MacOS/Electron dist-electron/main.cjs >>${(qq)LOG_DIR}/app.log 2>&1"
+    print -r "exec ${(qq)bundle}/Contents/MacOS/Electron dist-electron/main.cjs >>${(qq)HOME}/Library/Logs/esveo-code.log 2>&1"
   )"
   [[ -f "$launcher" && "$(<"$launcher")" == "$script" ]] &&
     [[ "$(plutil -extract CFBundleExecutable raw "$bundle/Contents/Info.plist")" == "$name" ]] && return
