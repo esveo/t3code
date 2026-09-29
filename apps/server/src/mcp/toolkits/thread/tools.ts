@@ -29,7 +29,7 @@ import { McpInvocationContext } from "../../McpInvocationContext.ts";
 
 const ThreadOrganizeTool = Tool.make("t3_thread_organize", {
   description:
-    "Pin, snooze, settle, archive, or mark a thread unread in any project. Omit threadId for this thread. snooze requires snoozedUntil. Existing thread lifecycle rules apply; this does not schedule a future action.",
+    "Pin, snooze, settle, archive, or mark a thread unread in the calling project. Other projects' threads only when the user turned on Cross-project threads. Omit threadId for this thread. snooze requires snoozedUntil. Existing thread lifecycle rules apply; this does not schedule a future action.",
   parameters: Schema.Struct({
     threadId: Schema.optional(ThreadId),
     action: Schema.Literals([
@@ -83,7 +83,8 @@ const QueueListTool = Tool.make("t3_queue_list", {
   .annotate(Tool.Destructive, false);
 const QueueReadTool = Tool.make("t3_queue_read", {
   ...commandTool,
-  description: "Read up to 16,000 characters of a queued message in any project.",
+  description:
+    "Read up to 16,000 characters of a queued message in the calling project. Other projects' threads only when the user turned on Cross-project threads.",
   parameters: Schema.Struct(queueTarget),
   success: queueEntry,
 })
@@ -138,7 +139,7 @@ const pendingRequest = Schema.Struct({
 const PendingRequestListTool = Tool.make("t3_pending_request_list", {
   ...commandTool,
   description:
-    "List pending user questions in a thread in any project. Approval requests are not included.",
+    "List pending user questions in a thread in the calling project. Other projects' threads only when the user turned on Cross-project threads. Approval requests are not included.",
   parameters: Schema.Struct({ threadId: Schema.optional(ThreadId) }),
   success: Schema.Struct({ requestIds: Schema.Array(RuntimeRequestId) }),
 })
@@ -165,7 +166,7 @@ const PendingRequestRespondTool = Tool.make("t3_pending_request_respond", {
 const ThreadConfigurationTool = Tool.make("t3_thread_configuration", {
   ...commandTool,
   description:
-    "Read a thread's provider/model selection and modes in any project. orchestrator_capabilities lists available providers and models.",
+    "Read a thread's provider/model selection and modes in the calling project. Other projects' threads only when the user turned on Cross-project threads. orchestrator_capabilities lists available providers and models.",
   parameters: Schema.Struct({ threadId: Schema.optional(ThreadId) }),
   success: Schema.Struct({
     threadId: ThreadId,
@@ -206,7 +207,8 @@ const ThreadMergeBackTool = Tool.make("t3_thread_merge_back", {
 }).annotate(Tool.Destructive, true);
 const ThreadTransfersTool = Tool.make("t3_thread_transfers", {
   ...commandTool,
-  description: "Read context transfer status for a thread in any project.",
+  description:
+    "Read context transfer status for a thread in the calling project. Other projects' threads only when the user turned on Cross-project threads.",
   parameters: Schema.Struct({ threadId: Schema.optional(ThreadId) }),
   success: Schema.Struct({
     transfers: Schema.Array(
@@ -225,13 +227,14 @@ const ThreadTransfersTool = Tool.make("t3_thread_transfers", {
 const ThreadSearchTool = Tool.make("t3_thread_search", {
   ...commandTool,
   description:
-    "Search active thread titles and content with the app's existing bounded search. Returns matches in the calling project from the global top matches, so this may return fewer than limit; scope='all' keeps every project's matches (each has its projectId). No pagination or exhaustive-result guarantee.",
+    "Search active thread titles and content with the app's existing bounded search. Returns matches in the calling project from the global top matches; other-project matches are omitted, so this may return fewer than limit. With Cross-project threads turned on by the user, scope='all' keeps every project's matches (each has its projectId). No pagination or exhaustive-result guarantee.",
   // Fork: `scope` widens the search to every project.
   parameters: Schema.Struct({
     ...OrchestrationSearchThreadsInput.fields,
     scope: Schema.optional(
       Schema.Literals(["project", "all"]).annotate({
-        description: "project (default): the calling project. all: every project.",
+        description:
+          "project (default): the calling project. all: every project; needs Cross-project threads turned on.",
       }),
     ),
   }),

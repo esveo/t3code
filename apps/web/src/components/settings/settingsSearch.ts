@@ -448,6 +448,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/general",
     searchTerms: ["inbox questions answers decide approve coordinator open items"],
   },
+  // Fork: cross-project threads.
+  {
+    id: "cross-project-threads",
+    title: "Cross-project threads",
+    to: "/settings/general",
+    searchTerms: ["agents coordinator other projects read message start threads repositories"],
+  },
   {
     id: "continue-threads-after-server-update",
     title: "Continue threads after restarts",

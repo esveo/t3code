@@ -45,7 +45,7 @@ export class ThreadNotFoundError extends Schema.TaggedError<ThreadNotFoundError>
   { threadId: Schema.String },
 ) {
   override get message(): string {
-    return `Thread ${this.threadId} was not found. Find a thread's id with t3_thread_list or t3_thread_search, with scope 'all' for other projects.`;
+    return `Thread ${this.threadId} was not found. Find a thread's id with t3_thread_list or t3_thread_search (scope 'all' reaches other projects when the user turned on Cross-project threads).`;
   }
 }
 
@@ -122,7 +122,7 @@ export const AdoptThreadResult = Schema.Struct({
 export type AdoptThreadResult = typeof AdoptThreadResult.Type;
 
 const AdoptThreadTool = Tool.make("adopt_thread", {
-  description: `Make an existing thread one of yours, as the user can with Assign to coordinator in the sidebar: it shows under this thread, and its results reach you as updates, like those of the threads you started with delegate_task. Works across projects. Only do this when the user explicitly asks you to take a thread over; otherwise just read it with t3_thread_read. With detach: true it releases one of your threads again. ${LINKING}`,
+  description: `Make an existing thread one of yours, as the user can with Assign to coordinator in the sidebar: it shows under this thread, and its results reach you as updates, like those of the threads you started with delegate_task. Threads of other projects only when the user turned on Cross-project threads. Only do this when the user explicitly asks you to take a thread over; otherwise just read it with t3_thread_read. With detach: true it releases one of your threads again. ${LINKING}`,
   parameters: AdoptThreadInput,
   success: AdoptThreadResult,
   failure: ThreadsToolError,

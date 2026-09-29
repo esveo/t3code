@@ -31,6 +31,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
+import { requireCrossProjectThreads } from "../mcp/forkThreadReach.ts";
 import { suggestBranches } from "../mcp/toolkits/threads/branchSuggestions.ts";
 import { matchProject } from "../mcp/toolkits/threads/projectMatch.ts";
 import * as ThreadLaunch from "../orchestration-v2/ThreadLaunchService.ts";
@@ -110,6 +111,9 @@ export const make = Effect.gen(function* () {
       if ("error" in matched) return yield* invalid(matched.error);
       const project = matched.project;
       const sameProject = project.id === parent.projectId;
+      if (!sameProject) {
+        yield* requireCrossProjectThreads(`${project.title} is not this thread's project.`);
+      }
       if (input.worktree !== true) {
         return {
           command: {

@@ -67,7 +67,7 @@ export const readThread = Effect.fn("mcp.readThread")(function* <
   K extends ProjectionRecordField = never,
 >(threadId?: ThreadId, fields: ReadonlyArray<K> = []) {
   const { scope, threads, caller } = yield* readCaller();
-  // Fork: a thread in any project of the environment (forkThreadReach.ts).
+  // Fork: another project's thread with cross-project threads on (forkThreadReach.ts).
   const targetId = threadId ?? caller.id;
   const projectId = yield* threadProjectId(threads, targetId, caller.projectId);
   const projection = yield* threads
@@ -79,7 +79,7 @@ export const readThread = Effect.fn("mcp.readThread")(function* <
         error._tag === "ThreadManagementThreadNotFoundError"
           ? new OrchestratorMcpFailure({
               code: "thread_not_found",
-              message: "The thread was not found.",
+              message: "The thread was not found in the calling project.",
             })
           : unavailable(),
       ),

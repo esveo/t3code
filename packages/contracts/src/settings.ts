@@ -1273,6 +1273,11 @@ export const ServerSettings = Schema.Struct({
    */
   enableThreadDecisions: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   /**
+   * Fork: agents' thread tools reach threads in every project of this
+   * environment, not only the calling thread's. Off keeps upstream's limit.
+   */
+  enableCrossProjectThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /**
    * Whether this server may install and run T3's device helper processes.
    * Kept separate from agent access so enabling the user's Device panel does
    * not also grant providers control of simulators and emulators.
@@ -1635,6 +1640,7 @@ export const ServerSettingsPatch = Schema.Struct({
   ),
   enableAgentDeviceAccess: Schema.optionalKey(Schema.Boolean),
   enableThreadDecisions: Schema.optionalKey(Schema.Boolean),
+  enableCrossProjectThreads: Schema.optionalKey(Schema.Boolean), // Fork
   enableDeviceSupport: Schema.optionalKey(Schema.Boolean),
   deviceOnboardingCompleted: Schema.optionalKey(Schema.Boolean),
   deviceHosts: Schema.optionalKey(SshDeviceHostConfigs),

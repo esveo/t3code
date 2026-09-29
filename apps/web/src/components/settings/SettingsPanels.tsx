@@ -162,6 +162,7 @@ import {
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
 import { ThreadDecisionsSettingRow } from "../threadInbox/ThreadDecisionsSettingRow";
+import { CrossProjectThreadsSettingRow } from "../threadOrchestration/CrossProjectThreadsSettingRow"; // Fork
 import { ProjectFavicon } from "../ProjectFavicon";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
 import { AgentStageSettingRow } from "../agentStage/AgentStageSetting";
@@ -2962,8 +2963,9 @@ export function GeneralSettingsPanel() {
           }
         />
 
-        {/* Fork: coordinator decisions. */}
+        {/* Fork: coordinator decisions and cross-project threads. */}
         <ThreadDecisionsSettingRow />
+        <CrossProjectThreadsSettingRow />
 
         <SettingsRow
           serverScoped

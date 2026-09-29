@@ -25,8 +25,10 @@ import { ThreadManagementService } from "../orchestration-v2/ThreadManagementSer
 import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
 import { buildUnavailableProviderSnapshot } from "../provider/unavailableProviderSnapshot.ts";
 import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
-import type { McpInvocationScope } from "./McpInvocationContext.ts";
+import { McpInvocationContext, type McpInvocationScope } from "./McpInvocationContext.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
+import * as ServerSettings from "../serverSettings.ts";
+import { readThread } from "./threadAccess.ts";
 
 describe("OrchestratorMcpService", () => {
   it.effect("retries terminal acknowledgement with a fresh command id", () =>
@@ -1074,10 +1076,11 @@ describe("fork: OrchestratorMcpService across projects", () => {
   };
 
   const withService = <A, E>(
+    crossProjectThreads: boolean,
     body: (
       service: OrchestratorMcpService.OrchestratorMcpService["Service"],
       sent: Array<{ projectId: ProjectId; threadId: ThreadId }>,
-    ) => Effect.Effect<A, E>,
+    ) => Effect.Effect<A, E, McpInvocationContext | ThreadManagementService>,
   ) => {
     const sent: Array<{ projectId: ProjectId; threadId: ThreadId }> = [];
     const byId = (threadId: ThreadId) => shells.find((candidate) => candidate.id === threadId);
@@ -1118,21 +1121,58 @@ describe("fork: OrchestratorMcpService across projects", () => {
     );
     return Effect.gen(function* () {
       return yield* body(yield* OrchestratorMcpService.OrchestratorMcpService, sent);
-    }).pipe(Effect.provide(OrchestratorMcpService.layer.pipe(Layer.provide(dependencies))));
+    }).pipe(
+      Effect.provide(
+        Layer.mergeAll(
+          OrchestratorMcpService.layer.pipe(Layer.provideMerge(dependencies)),
+          ServerSettings.layerTest({ enableCrossProjectThreads: crossProjectThreads }),
+          Layer.succeed(McpInvocationContext, scope),
+        ),
+      ),
+    );
   };
 
-  it.effect("sends to a thread in another project, in that project", () =>
-    withService((service, sent) =>
+  it.effect("keeps to the calling project while cross-project threads are off", () =>
+    withService(false, (service, sent) =>
       Effect.gen(function* () {
-        const result = yield* service.sendToThread(scope, { threadId: otherId, message: "Go on." });
-        assert.equal(result.delivery, "started");
-        assert.deepEqual(sent, [{ projectId: otherProject, threadId: otherId }]);
+        const refused = yield* service
+          .sendToThread(scope, { threadId: otherId, message: "Go on." })
+          .pipe(Effect.flip);
+        assert.equal(refused.code, "thread_not_found");
+        assert.include(refused.message, "Cross-project threads");
+        assert.deepEqual(sent, []);
+        const read = yield* readThread(otherId).pipe(Effect.flip);
+        assert.include(read.message, "Cross-project threads");
+
+        const own = yield* service.listThreads(scope, {});
+        assert.deepEqual(
+          own.threads.map((thread) => thread.threadId),
+          [callerId],
+        );
+        const wider = yield* service.listThreads(scope, { scope: "all" }).pipe(Effect.flip);
+        assert.include(wider.message, "Cross-project threads");
+        const other = yield* service
+          .listThreads(scope, { projectId: otherProject })
+          .pipe(Effect.flip);
+        assert.include(other.message, "Cross-project threads");
       }),
     ),
   );
 
-  it.effect("lists the calling project by default and widens with projectId or scope", () =>
-    withService((service) =>
+  it.effect("reads and sends to a thread in another project, in that project, when on", () =>
+    withService(true, (service, sent) =>
+      Effect.gen(function* () {
+        const result = yield* service.sendToThread(scope, { threadId: otherId, message: "Go on." });
+        assert.equal(result.delivery, "started");
+        assert.deepEqual(sent, [{ projectId: otherProject, threadId: otherId }]);
+        const { projection } = yield* readThread(otherId);
+        assert.equal(projection.thread.projectId, otherProject);
+      }),
+    ),
+  );
+
+  it.effect("lists the calling project by default and widens with projectId or scope when on", () =>
+    withService(true, (service) =>
       Effect.gen(function* () {
         const ids = (result: { threads: ReadonlyArray<{ threadId: ThreadId }> }) =>
           result.threads.map((thread) => thread.threadId);

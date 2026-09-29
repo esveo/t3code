@@ -177,7 +177,7 @@ const make = Effect.gen(function* () {
         ? parent
         : yield* threadManagement
             .getProjectThreadRecords(
-              // Fork: a thread in any project (forkThreadReach.ts).
+              // Fork: another project's thread with cross-project threads on (forkThreadReach.ts).
               {
                 projectId: yield* threadProjectId(
                   threadManagement,

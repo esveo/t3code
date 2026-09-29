@@ -83,6 +83,7 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (options: {
   readonly threads: ReadonlyArray<OrchestrationV2ThreadShell>;
   readonly caller?: ThreadId;
   readonly decisions?: boolean;
+  readonly crossProject?: boolean;
 }) {
   const threads = [thread("coordinator"), ...options.threads];
   const management = Layer.mock(ThreadManagementService)({
@@ -92,7 +93,10 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (options: {
       Effect.succeed({ schemaVersion: 1, snapshotSequence: 0, threads, archivedThreads: [] }),
   });
   const settingsContext = yield* Layer.build(
-    ServerSettings.layerTest({ enableThreadDecisions: options.decisions ?? true }),
+    ServerSettings.layerTest({
+      enableThreadDecisions: options.decisions ?? true,
+      enableCrossProjectThreads: options.crossProject ?? true,
+    }),
   );
   const base = Layer.mergeAll(configLayer, management, Layer.succeedContext(settingsContext));
   // Built once, so the links' in-memory database lives as long as the harness.
@@ -143,6 +147,18 @@ describe("threads toolkit on V2", () => {
       const released = yield* call("adopt_thread", { threadId: "docs-thread", detach: true });
       assert.isFalse(released.thread.child);
       assert.strictEqual(yield* coordinators.coordinatorOf(other), null);
+    }),
+  );
+
+  it.effect("adopts a thread of another project only with cross-project threads on", () =>
+    Effect.gen(function* () {
+      const other = thread("docs-thread", { projectId: DOCS, title: "Docs audit" });
+      const own = thread("web-thread", { title: "Web audit" });
+      const { call } = yield* makeHarness({ threads: [other, own], crossProject: false });
+      const error = yield* call("adopt_thread", { threadId: "docs-thread" }).pipe(Effect.flip);
+      assert.include(error.message, "Cross-project threads");
+      const adopted = yield* call("adopt_thread", { threadId: "web-thread" });
+      assert.isTrue(adopted.thread.child);
     }),
   );
 

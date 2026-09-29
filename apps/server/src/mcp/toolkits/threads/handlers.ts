@@ -25,6 +25,7 @@ import { ThreadManagementService } from "../../../orchestration-v2/ThreadManagem
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as ThreadDecisions from "../../../threadDecisions/ThreadDecisions.ts";
 import { ThreadCoordinators } from "../../../threadOrchestration/ThreadCoordinators.ts";
+import { CROSS_PROJECT_THREADS_HINT } from "../../forkThreadReach.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import {
   ChildThreadNotFoundError,
@@ -128,6 +129,10 @@ const make = Effect.gen(function* () {
     Effect.map((settings) => settings.enableThreadDecisions),
     Effect.orElseSucceed(() => false),
   );
+  const crossProjectOn = serverSettings.getSettings.pipe(
+    Effect.map((settings) => settings.enableCrossProjectThreads),
+    Effect.orElseSucceed(() => false),
+  );
 
   const readShell = (threadId: ThreadId) =>
     threads.getThreadShell(threadId).pipe(
@@ -208,6 +213,15 @@ const make = Effect.gen(function* () {
                   : Effect.fail(new ThreadNotFoundError({ threadId: input.threadId })),
               ),
             );
+        if (
+          !input.detach &&
+          thread.projectId !== coordinator.projectId &&
+          !(yield* crossProjectOn)
+        ) {
+          return yield* failure(
+            `'${thread.title}' is in another project. ${CROSS_PROJECT_THREADS_HINT}`,
+          );
+        }
         const { previousCoordinatorThreadId } = yield* coordinators
           .set({ threadId: thread.id, coordinatorThreadId: input.detach ? null : coordinator.id })
           .pipe(Effect.mapError((error) => failure(error.message)));

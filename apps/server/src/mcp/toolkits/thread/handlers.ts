@@ -22,6 +22,7 @@ import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
 import * as ScheduledTasks from "../../../scheduledTasks/ScheduledTaskService.ts";
 import { queuedRunsInDeliveryOrder } from "../../../orchestration-v2/QueuedRunOrder.ts";
 import { ThreadToolkit } from "./tools.ts";
+import { requireCrossProjectThreads } from "../../forkThreadReach.ts"; // Fork
 
 function queueEntry(
   projection: Pick<OrchestrationV2ThreadProjection, "runs" | "messages">,
@@ -110,8 +111,11 @@ export const ThreadToolkitHandlersLive = ThreadToolkit.toLayer({
     Effect.gen(function* () {
       const { caller } = yield* readCaller();
       const threadSearch = yield* ThreadSearch.ThreadSearch;
-      // Fork: scope "all" keeps the matches of every project.
+      // Fork: scope "all" keeps every project's matches, with cross-project threads on.
       const { scope, ...search } = input;
+      if (scope === "all") {
+        yield* requireCrossProjectThreads("Only the calling project can be searched.");
+      }
       const result = yield* threadSearch.search(search).pipe(Effect.mapError(unavailable));
       if (scope === "all") return { matches: result.matches };
       return { matches: result.matches.filter((match) => match.projectId === caller.projectId) };
@@ -138,7 +142,7 @@ export const ThreadToolkitHandlersLive = ThreadToolkit.toLayer({
   t3_thread_merge_back: (input) =>
     Effect.gen(function* () {
       const { threads, caller, projection } = yield* readWritableThread(input.targetThreadId);
-      // Fork: thread lookups reach other projects; merging back stays within one.
+      // Fork: lookups may reach other projects (forkThreadReach.ts); merging back stays within one.
       if (projection.thread.projectId !== caller.projectId)
         return yield* new OrchestratorMcpFailure({
           code: "thread_not_found",

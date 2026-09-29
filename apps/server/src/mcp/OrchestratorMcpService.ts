@@ -835,7 +835,7 @@ const make = Effect.gen(function* () {
         threadId === scope.threadId
           ? parent
           : yield* loadProjectThread(
-              // Fork: a thread in any project (forkThreadReach.ts).
+              // Fork: another project's thread with cross-project threads on (forkThreadReach.ts).
               yield* threadProjectId(threadManagement, threadId, parent.thread.projectId),
               threadId,
             );
@@ -869,16 +869,17 @@ const make = Effect.gen(function* () {
           .getThreadRecords(threadId, ["runs", "runtimeRequests", "contextTransfers"])
           .pipe(Effect.mapError(threadManagementFailure));
       if (threadId === scope.threadId) return { parent, target: yield* loadTarget() } as const;
-      // Fork: a thread in any project (forkThreadReach.ts).
-      const projectId = yield* threadProjectId(threadManagement, threadId, parent.thread.projectId);
-      const target = yield* threadManagement
-        .getProjectThreadRecords({ projectId, threadId }, [
-          "runs",
-          "runtimeRequests",
-          "contextTransfers",
-        ])
+      const target = yield* threadProjectId(threadManagement, threadId, parent.thread.projectId) // Fork: forkThreadReach.ts
         .pipe(
-          Effect.mapError(threadManagementFailure),
+          Effect.flatMap((projectId) =>
+            threadManagement
+              .getProjectThreadRecords({ projectId, threadId }, [
+                "runs",
+                "runtimeRequests",
+                "contextTransfers",
+              ])
+              .pipe(Effect.mapError(threadManagementFailure)),
+          ),
           Effect.catchIf(
             (error) =>
               error.code === "thread_not_found" && userAttachedThreadIds(parent).has(threadId),
@@ -1771,10 +1772,13 @@ const make = Effect.gen(function* () {
         const projectThreads = yield* listThreadsInScope(threadManagement, {
           scope: input.scope,
           projectId: input.projectId ?? parent.thread.projectId,
+          callerProjectId: parent.thread.projectId,
           includeSubagents: input.includeSubagents !== false,
         }).pipe(
           Effect.mapError((error) =>
-            failure("orchestration_error", `Unable to list threads: ${errorMessage(error)}`),
+            error._tag === "OrchestratorMcpFailure"
+              ? error
+              : failure("orchestration_error", `Unable to list threads: ${errorMessage(error)}`),
           ),
         );
         const statuses = input.statuses === undefined ? null : new Set(input.statuses);

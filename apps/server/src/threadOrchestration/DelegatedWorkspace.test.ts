@@ -14,6 +14,7 @@ import * as Option from "effect/Option";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as ThreadLaunch from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as DelegatedWorkspace from "./DelegatedWorkspace.ts";
 
 const project = (id: string, title: string, workspaceRoot: string) =>
@@ -40,6 +41,7 @@ const withWorkspace = <A, E>(
       readonly runId: RunId;
     }>;
   }) => Effect.Effect<A, E>,
+  crossProjectThreads = true,
 ) => {
   const prepared: Array<{
     readonly input: ThreadLaunch.ThreadLaunchInput;
@@ -80,7 +82,14 @@ const withWorkspace = <A, E>(
   return Effect.gen(function* () {
     const workspace = yield* DelegatedWorkspace.DelegatedWorkspace;
     return yield* body({ workspace, prepared });
-  }).pipe(Effect.provide(layer));
+  }).pipe(
+    Effect.provide(
+      Layer.merge(
+        layer,
+        ServerSettings.layerTest({ enableCrossProjectThreads: crossProjectThreads }),
+      ),
+    ),
+  );
 };
 
 describe("DelegatedWorkspace", () => {
@@ -152,6 +161,19 @@ describe("DelegatedWorkspace", () => {
         const unknown = yield* workspace.plan(parent, { project: "Mobile" }).pipe(Effect.flip);
         assert.include(unknown.message, "No project matches Mobile");
       }),
+    ),
+  );
+
+  it.effect("keeps the child in this thread's project while cross-project threads are off", () =>
+    withWorkspace(
+      ({ workspace }) =>
+        Effect.gen(function* () {
+          const refused = yield* workspace.plan(parent, { project: "Api" }).pipe(Effect.flip);
+          assert.include(refused.message, "Cross-project threads");
+          const own = yield* workspace.plan(parent, { worktree: true });
+          assert.equal(own.command.projectId, parent.projectId);
+        }),
+      false,
     ),
   );
 

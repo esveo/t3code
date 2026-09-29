@@ -55,7 +55,7 @@ Every subagent opens as its own thread, live while it runs. From there you can s
 
 ### Thread orchestration
 
-A coordinator thread starts child threads in any project, waits for them and collects their results. Existing threads can be moved under a coordinator, to another one, or released again.
+A coordinator thread starts child threads, waits for them and collects their results. Existing threads can be moved under a coordinator, to another one, or released again. To let it start and reach threads in other projects too, turn on Cross-project threads in Settings → General.
 
 <p align="center">
   <img src="docs/fork/media/orchestration.gif" alt="A coordinator starts three child threads across three projects" width="100%">

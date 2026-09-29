@@ -213,7 +213,7 @@ export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
       project: Schema.optional(
         TrimmedNonEmptyString.annotate({
           description:
-            "Project to run the child in, by id, workspace path or title (t3_project_list). Defaults to this thread's project.",
+            "Project to run the child in, by id, workspace path or title (t3_project_list). Defaults to this thread's project; another one only when the user turned on Cross-project threads.",
         }),
       ),
       worktree: Schema.optional(
@@ -346,12 +346,14 @@ export const OrchestratorMcpThreadListInput = Schema.Struct({
   // Fork: list another project's threads, or every project's.
   projectId: Schema.optional(
     ProjectId.annotate({
-      description: "List this project's threads (t3_project_list) instead of the calling one's.",
+      description:
+        "List this project's threads (t3_project_list) instead of the calling one's. Needs Cross-project threads turned on.",
     }),
   ),
   scope: Schema.optional(
     Schema.Literals(["project", "all"]).annotate({
-      description: "project (default): one project. all: every project of this environment.",
+      description:
+        "project (default): one project. all: every project of this environment; needs Cross-project threads turned on.",
     }),
   ),
 });
