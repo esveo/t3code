@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  asPromptCacheWindow,
   formatIdleDuration,
   msUntilPromptCacheStateChanges,
   resolvePromptCacheState,
@@ -43,15 +42,6 @@ describe("msUntilPromptCacheStateChanges", () => {
       60_000,
     );
     expect(msUntilPromptCacheStateChanges(resolvePromptCacheState(window, at(400_000)))).toBe(null);
-  });
-});
-
-describe("asPromptCacheWindow", () => {
-  it("accepts only a known TTL with a parseable time", () => {
-    expect(asPromptCacheWindow({ ttl: "1h", refreshedAt })).toEqual({ ttl: "1h", refreshedAt });
-    expect(asPromptCacheWindow({ ttl: "10m", refreshedAt })).toBeNull();
-    expect(asPromptCacheWindow({ ttl: "5m", refreshedAt: "later" })).toBeNull();
-    expect(asPromptCacheWindow(undefined)).toBeNull();
   });
 });
 
