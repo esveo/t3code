@@ -47,6 +47,7 @@ import { InitiativeCoordinatorSection } from "./InitiativeCoordinatorSection";
 import { InitiativeEntriesSection } from "./InitiativeEntriesSection";
 import { InitiativeImportSection, SOURCE_LABELS } from "./InitiativeImportSection";
 import { InitiativePreflightSection } from "./InitiativePreflightSection";
+import { InitiativeRulesOverview } from "./InitiativeRulesOverview";
 import { EstimateLine, InitiativeStatsSection, QuotaList } from "./InitiativeStatsSection";
 import { initiativesEnvironment } from "./initiativesState";
 import { INITIATIVE_STATUS_LABELS } from "./InitiativesPage";
@@ -242,6 +243,11 @@ function LoadedInitiative({
               </ul>
             )}
           </section>
+          <InitiativeRulesOverview
+            environmentId={environmentId}
+            entries={detail.entries}
+            links={detail.links}
+          />
           <InitiativeStatsSection environmentId={environmentId} initiative={initiative} />
         </div>
       ) : null}

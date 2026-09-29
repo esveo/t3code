@@ -5,8 +5,12 @@ import {
   type InitiativeToolName,
   mayUseTool,
   PARTICIPANT_ENTRY_TYPES,
+  passesOf,
   roleOfThread,
+  rulesForPrompt,
   sessionStateOf,
+  TASK_PASSES_KEY,
+  taskGraph,
 } from "@t3tools/initiatives/model";
 import { BRAIN_FILES } from "@t3tools/initiatives/brain";
 import { threadLinkHref } from "@t3tools/shared/threadOrchestration";
@@ -150,6 +154,7 @@ const make = Effect.gen(function* () {
           })),
           providerExclusions: initiative.providerExclusions,
           halted: initiative.halted,
+          rules: rulesForPrompt(detail.entries),
         };
       }),
 
@@ -419,19 +424,43 @@ const make = Effect.gen(function* () {
             `Threads of the initiative record issues and assumptions; a ${input.type} is for the coordinator.`,
           );
         }
+        const own = caller.membership!.initiative.id;
+        const dependsOn = input.dependsOn ?? [];
+        if (dependsOn.length > 0 && input.type !== "task") {
+          return yield* fail(
+            "dependsOn with what is passed is for tasks; link others with entry_link.",
+          );
+        }
+        for (const dependency of dependsOn) {
+          yield* requireOwnEntry(initiatives, own, dependency.entryId);
+        }
+        const author = authorOf(caller);
         const entry = yield* initiatives.entries
           .create(
             {
-              initiativeId: caller.membership!.initiative.id,
+              initiativeId: own,
               type: input.type,
               title: input.title,
               bodyMd: input.body,
-              details: input.details,
+              details:
+                dependsOn.length > 0
+                  ? {
+                      ...input.details,
+                      [TASK_PASSES_KEY]: Object.fromEntries(
+                        dependsOn.map((dependency) => [dependency.entryId, dependency.passes]),
+                      ),
+                    }
+                  : input.details,
               originThreadId: ThreadId.make(caller.threadId),
             },
-            authorOf(caller),
+            author,
           )
           .pipe(Effect.mapError(fromService));
+        for (const dependency of dependsOn) {
+          yield* initiatives.entries
+            .link(entry.id, dependency.entryId, "dependsOn", author)
+            .pipe(Effect.mapError(fromService));
+        }
         return { entryId: entry.id, status: entry.status };
       }),
 
@@ -451,6 +480,10 @@ const make = Effect.gen(function* () {
         const all = yield* initiatives.store
           .list("entry", { initiativeId: own.id })
           .pipe(Effect.mapError(fromService));
+        const links = yield* initiatives.store
+          .list("link", { initiativeId: own.id })
+          .pipe(Effect.mapError(fromService));
+        const graph = taskGraph(all, links);
         return {
           entries: selectEntries(all, input)
             .slice(0, 100)
@@ -465,6 +498,13 @@ const make = Effect.gen(function* () {
               supersedes: entry.supersedes,
               needsReview: entry.details["needsReview"] === true,
               inbox: entry.inbox !== null,
+              dependsOn: (graph.get(entry.id)?.dependsOn ?? []).map((dependency) => ({
+                entryId: dependency.entryId,
+                title: dependency.entry?.title ?? "(nicht gefunden)",
+                done: dependency.done,
+                passes: dependency.passes,
+              })),
+              ready: graph.get(entry.id)?.ready ?? null,
             })),
         };
       }),
@@ -535,11 +575,27 @@ const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const { initiatives, caller } = yield* callerFor("entry_link");
         const own = caller.membership!.initiative.id;
-        yield* requireOwnEntry(initiatives, own, input.fromId);
+        const from = yield* requireOwnEntry(initiatives, own, input.fromId);
         yield* requireOwnEntry(initiatives, own, input.toId);
+        const author = authorOf(caller);
         yield* initiatives.entries
-          .link(input.fromId, input.toId, input.kind, authorOf(caller))
+          .link(input.fromId, input.toId, input.kind, author)
           .pipe(Effect.mapError(fromService));
+        if (input.passes !== undefined && input.kind === "dependsOn") {
+          yield* initiatives.store
+            .update(
+              "entry",
+              from.id,
+              {
+                details: {
+                  ...from.details,
+                  [TASK_PASSES_KEY]: { ...passesOf(from), [input.toId]: input.passes },
+                },
+              },
+              { author },
+            )
+            .pipe(Effect.mapError(fromService));
+        }
         return { linked: true };
       }),
 
@@ -551,6 +607,41 @@ const make = Effect.gen(function* () {
           .setStatus(input.entryId, input.status, authorOf(caller), input.note)
           .pipe(Effect.mapError(fromService));
         return { status: updated.status };
+      }),
+
+    rule_record: (input) =>
+      Effect.gen(function* () {
+        const { initiatives, caller } = yield* callerFor("rule_record");
+        const own = caller.membership!.initiative.id;
+        const coordinator = caller.role === "coordinator";
+        if (input.sourceEntryId !== undefined) {
+          yield* requireOwnEntry(initiatives, own, input.sourceEntryId);
+        }
+        const fields = {
+          title: input.rule,
+          bodyMd: input.why,
+          details: input.sourceEntryId !== undefined ? { sourceEntryId: input.sourceEntryId } : {},
+          originThreadId: ThreadId.make(caller.threadId),
+          // The coordinator's rule applies at once; a thread's waits for the user.
+          status: coordinator ? "active" : "proposed",
+        };
+        if (input.supersedes !== undefined) {
+          if (!coordinator) {
+            return yield* fail(
+              "Only the coordinator replaces a rule; propose the new one and say which it replaces.",
+            );
+          }
+          const old = yield* requireOwnEntry(initiatives, own, input.supersedes);
+          if (old.type !== "rule") return yield* fail(`${input.supersedes} is not a rule.`);
+          const next = yield* initiatives.entries
+            .supersede(old.id, fields, authorOf(caller))
+            .pipe(Effect.mapError(fromService));
+          return { entryId: next.id, status: next.status };
+        }
+        const entry = yield* initiatives.entries
+          .create({ ...fields, initiativeId: own, type: "rule" }, authorOf(caller))
+          .pipe(Effect.mapError(fromService));
+        return { entryId: entry.id, status: entry.status };
       }),
 
     session_assign: (input) =>

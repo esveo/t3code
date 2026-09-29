@@ -379,7 +379,8 @@ export type InitiativeBrainPageContent = typeof InitiativeBrainPageContent.Type;
 /**
  * What an entry records. question: something the user answers (the Inbox's
  * decisions and tasks for the user are questions and tasks here); decision:
- * a recorded choice; the rest is the initiative's log.
+ * a recorded choice; rule: a lesson every new thread of the initiative gets
+ * in its start prompt; the rest is the initiative's log.
  */
 export const InitiativeEntryType = Schema.Literals([
   "question",
@@ -391,6 +392,7 @@ export const InitiativeEntryType = Schema.Literals([
   "idea",
   "insight",
   "risk",
+  "rule",
 ]);
 export type InitiativeEntryType = typeof InitiativeEntryType.Type;
 

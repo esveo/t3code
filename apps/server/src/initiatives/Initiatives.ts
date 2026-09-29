@@ -34,6 +34,7 @@ import {
   INITIATIVE_SETUP_PROMPT,
   initiativeRuntimeMode,
   initiativeStartPrompt,
+  rulesForPrompt,
   type InitiativeRole,
   systemAuthor,
 } from "@t3tools/initiatives/model";
@@ -537,6 +538,11 @@ export const makeInitiatives = (options: {
         yield* changed(initiative.id);
         // The steckbrief and handoff are read at every start, so a start never uses a stale one.
         const startBrain = yield* brain.startBrain(initiative);
+        const rules = rulesForPrompt(
+          yield* store
+            .list("entry", { initiativeId: initiative.id })
+            .pipe(Effect.mapError(fromStore)),
+        );
         const started = yield* bridge
           .startThread(
             job,
@@ -549,6 +555,7 @@ export const makeInitiatives = (options: {
                   ? clampForPrompt(startBrain.steckbrief, STECKBRIEF_PROMPT_LIMIT)
                   : null,
                 handoff: role === "coordinator" ? startBrain.handoff : null,
+                rules,
               },
             }),
           )
@@ -951,8 +958,9 @@ export const makeInitiatives = (options: {
                 title: action.title,
                 bodyMd: action.bodyMd,
                 details: action.details,
-                // A person's decision holds from the start; an agent's is proposed.
+                // A person's decision and rule hold from the start; an agent's are proposed.
                 ...(action.entryType === "decision" ? { status: "valid" } : {}),
+                ...(action.entryType === "rule" ? { status: "active" } : {}),
               },
               author,
             );
