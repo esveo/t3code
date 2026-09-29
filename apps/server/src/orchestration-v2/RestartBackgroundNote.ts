@@ -17,13 +17,27 @@ function compactLabel(value: unknown): string | undefined {
   return text.length > MAX_LABEL_LENGTH ? `${text.slice(0, MAX_LABEL_LENGTH - 1)}…` : text;
 }
 
+// Fork: appends a native id after compacting the name, so a long name cannot cut it off.
+function withNativeId(label: string, nativeId: string | null | undefined): string {
+  if (nativeId == null) return label;
+  const suffix = ` (id ${nativeId})`;
+  return (
+    compactLabel(`${label.slice(0, Math.max(0, MAX_LABEL_LENGTH - suffix.length))}${suffix}`) ??
+    label
+  );
+}
+
 /** Describes a background-capable turn item that restart recovery cancels. */
 export function cancelledTurnItemWork(item: OrchestrationV2TurnItem): Work | undefined {
   switch (item.type) {
     case "subagent":
       return {
         kind: "subagent",
-        label: compactLabel(item.title) ?? compactLabel(item.prompt) ?? "subagent",
+        // Fork: name the native task id, which the agent needs to resume the subagent.
+        label: withNativeId(
+          compactLabel(item.title) ?? compactLabel(item.prompt) ?? "subagent",
+          item.nativeItemRef?.nativeId,
+        ),
         id: item.id,
       };
     case "command_execution":
@@ -78,6 +92,14 @@ export function cancelledRosterTaskWork(task: OrchestrationV2PendingBackgroundTa
   };
 }
 
+// Fork: resume guidance appended to the restart note (from the fork's V1 BackgroundWorkLedger).
+const FORK_RESUME_INSTRUCTIONS = [
+  "Resume each of these unless it is no longer needed, and do not redo work that already finished:",
+  "- A subagent keeps its context: continue it by sending it a message (SendMessage) to its id, telling it that a restart interrupted it and it should continue where it left off. If your tools cannot reach it, launch it again.",
+  "- A workflow resumes with the Workflow tool and resumeFromRunId set to its run id; finished agents return their cached results and only unfinished ones run again.",
+  "- Shell commands, monitors and other tasks stopped with the server: start them again if they are still needed.",
+];
+
 const MAX_NOTE_ENTRIES = 10;
 
 /**
@@ -86,10 +108,12 @@ const MAX_NOTE_ENTRIES = 10;
  */
 export function restartCancelledBackgroundWorkNote(work: ReadonlyArray<Work>): string {
   const omitted = work.length - MAX_NOTE_ENTRIES;
+  // Fork: the work was interrupted, not abandoned; tell the agent how to resume it.
   return [
-    "Note: the T3 server restarted, and this background work was cancelled before it finished. It will not report back:",
+    "Note: the T3 server restarted and interrupted this background work before it finished. It will not report back on its own:",
     ...work.slice(0, MAX_NOTE_ENTRIES).map((entry) => `- ${entry.kind}: ${entry.label}`),
     ...(omitted > 0 ? [`- and ${omitted} more`] : []),
+    ...FORK_RESUME_INSTRUCTIONS,
   ].join("\n");
 }
 
