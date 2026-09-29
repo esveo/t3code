@@ -108,6 +108,8 @@ app_pids() {
   # ancestor, which pgrep would otherwise leave out.
   pgrep -af "apps/desktop/.electron-runtime/.*/MacOS/Electron dist-electron/main.cjs" || true
   pgrep -af "vp run start:desktop" || true
+  # `start` launches through this node script, which spawns Electron a moment later.
+  pgrep -af "node scripts/start-electron.mjs" || true
 }
 
 stop() {
@@ -157,6 +159,28 @@ build_slug() {
   slug_of "${${branch:-unknown}#origin/}"
 }
 
+app_env() {
+  # Agents running inside T3 Code inherit the service launcher's context;
+  # a child server that sees it refuses to start.
+  unset VITE_DEV_SERVER_URL T3_SERVICE_LAUNCHER_CONTEXT T3_BOOT_SERVICE_UNIT
+  export T3CODE_HOME="$HOME_DIR"
+  export T3CODE_DESKTOP_USER_DATA_DIR_NAME=t3code-fork
+  export T3CODE_DISABLE_AUTO_UPDATE=1
+  export T3CODE_FORK_APP_ROOT="$ROOT"
+  export T3CODE_FORK_APP_SCRIPT="$SCRIPT_REPO/scripts/fork-app.sh"
+}
+
+# What the app bundle's launcher runs when the Dock or Finder starts the app:
+# the app with the environment `start` gives it, in the launched process
+# itself, so macOS keeps it as the app it opened.
+launch() {
+  local desktop="$ROOT/current/apps/desktop"
+  local electron=("$desktop"/.electron-runtime/*.app(N[1]))
+  app_env
+  cd "$desktop"
+  exec "$electron/Contents/MacOS/Electron" dist-electron/main.cjs >>"$LOG_DIR/app.log" 2>&1
+}
+
 start() {
   if [[ ! -f "$ROOT/current/.fork-build.json" ]]; then
     echo "No build in $ROOT/current yet; run 'scripts/fork-app.sh prepare' first." >&2
@@ -167,16 +191,12 @@ start() {
   [[ -f "$settings" ]] || echo '{"localEnvironmentEnabled":false}' > "$settings"
   local log="$LOG_DIR/app.log"
   echo "Starting $(label_of "$ROOT/current") (log: $log) …"
+  # The launcher in the app bundle runs this script for Dock and Finder starts.
+  echo "$SCRIPT_REPO/scripts/fork-app.sh" > "$ROOT/app-script"
+  install_dock_launcher "$ROOT"/current/apps/desktop/.electron-runtime/*.app(N[1])
   (
     cd "$ROOT/current"
-    # Agents running inside T3 Code inherit the service launcher's context;
-    # a child server that sees it refuses to start.
-    unset VITE_DEV_SERVER_URL T3_SERVICE_LAUNCHER_CONTEXT T3_BOOT_SERVICE_UNIT
-    export T3CODE_HOME="$HOME_DIR"
-    export T3CODE_DESKTOP_USER_DATA_DIR_NAME=t3code-fork
-    export T3CODE_DISABLE_AUTO_UPDATE=1
-    export T3CODE_FORK_APP_ROOT="$ROOT"
-    export T3CODE_FORK_APP_SCRIPT="$SCRIPT_REPO/scripts/fork-app.sh"
+    app_env
     # &! detaches the job from this shell so it outlives the script. The
     # desktop's start script, without the second or so npx and vp add.
     cd apps/desktop
@@ -287,6 +307,22 @@ prepare_electron() {
   (cd "$desktop" && env -u VITE_DEV_SERVER_URL node -e \
     'import("./scripts/electron-launcher.mjs").then((m) => m.resolveElectronLaunchCommand())')
   sed -i '' "s|\"$1/|\"$ROOT/current/|" "$desktop/.electron-runtime/metadata.json"
+}
+
+# Electron answers a start without an app path, which is how the Dock and
+# Finder open a bundle, with its default app. The bundle's executable becomes a
+# launcher that hands over to `launch`; `start` runs Electron directly. `start`
+# installs it while the app is stopped, so every build gets it, older ones too.
+install_dock_launcher() {
+  local bundle="${1:-}" name="esveo code Launcher"
+  [[ -d "$bundle" ]] || return 0
+  [[ "$(plutil -extract CFBundleExecutable raw "$bundle/Contents/Info.plist")" == "$name" ]] && return
+  printf '#!/bin/sh\nexec /bin/zsh "$(cat %q)" launch\n' "$ROOT/app-script" \
+    > "$bundle/Contents/MacOS/$name"
+  chmod 755 "$bundle/Contents/MacOS/$name"
+  plutil -replace CFBundleExecutable -string "$name" "$bundle/Contents/Info.plist"
+  codesign --force --deep --sign - --timestamp=none "$bundle"
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$bundle"
 }
 
 prepare() {
@@ -711,6 +747,7 @@ case "${1:-}" in
   restart) restart "${2:-}" ;;
   delete) delete_build "${2:-}" ;;
   start) stop && start ;;
+  launch) launch ;;
   stop) stop ;;
   status) status ;;
   *)
