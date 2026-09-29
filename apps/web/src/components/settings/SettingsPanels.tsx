@@ -161,13 +161,8 @@ import {
   useSettingsSearchTargetId,
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
-import { ThreadDecisionsSettingRow } from "../threadInbox/ThreadDecisionsSettingRow";
-import { CrossProjectThreadsSettingRow } from "../threadOrchestration/CrossProjectThreadsSettingRow"; // Fork
-import { SidebarChildThreadsSettingRow } from "../threadOrchestration/SidebarChildThreadsSetting";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
-import { AgentStageSettingRow } from "../agentStage/AgentStageSetting";
-import { VoiceInputSettingRow } from "../voiceInput/VoiceInputSettingRow";
 
 const ENVIRONMENT_IDENTIFICATION_LABELS: Record<EnvironmentIdentificationMode, string> = {
   artwork: "Artwork",
@@ -565,13 +560,6 @@ export function useSettingsRestore(onRestored?: () => void) {
       ...(settings.proactivePanelsEnabled !== DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled
         ? ["Proactive panels"]
         : []),
-      ...(settings.twoLineThreadCards !== DEFAULT_UNIFIED_SETTINGS.twoLineThreadCards
-        ? ["Two-line thread cards"]
-        : []),
-      ...(settings.groupSidebarThreadsByProject !==
-      DEFAULT_UNIFIED_SETTINGS.groupSidebarThreadsByProject
-        ? ["Group threads by project"]
-        : []),
       ...(settings.showSkillsInSlashMenu !== DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu
         ? ["Show skills in slash menu"]
         : []),
@@ -587,13 +575,6 @@ export function useSettingsRestore(onRestored?: () => void) {
         : []),
       ...(settings.contextWindowMeterEnabled !== DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled
         ? ["Context window indicator"]
-        : []),
-      ...(settings.contextWindowControlEnabled !==
-      DEFAULT_UNIFIED_SETTINGS.contextWindowControlEnabled
-        ? ["Context window usage"]
-        : []),
-      ...(settings.promptCacheTimerEnabled !== DEFAULT_UNIFIED_SETTINGS.promptCacheTimerEnabled
-        ? ["Prompt cache timer"]
         : []),
       ...(settings.responseStreamingMode !== DEFAULT_UNIFIED_SETTINGS.responseStreamingMode
         ? ["Response streaming"]
@@ -663,12 +644,8 @@ export function useSettingsRestore(onRestored?: () => void) {
       settings.diffIgnoreWhitespace,
       settings.diffLayout,
       settings.proactivePanelsEnabled,
-      settings.twoLineThreadCards,
-      settings.groupSidebarThreadsByProject,
       settings.environmentIdentificationMode,
       settings.contextWindowMeterEnabled,
-      settings.contextWindowControlEnabled,
-      settings.promptCacheTimerEnabled,
       settings.fontFamilyCode,
       settings.fontFamilyComposer,
       settings.fontFamilySans,
@@ -775,16 +752,12 @@ export function useSettingsRestore(onRestored?: () => void) {
       diffIgnoreWhitespace: DEFAULT_UNIFIED_SETTINGS.diffIgnoreWhitespace,
       diffLayout: DEFAULT_UNIFIED_SETTINGS.diffLayout,
       proactivePanelsEnabled: DEFAULT_UNIFIED_SETTINGS.proactivePanelsEnabled,
-      twoLineThreadCards: DEFAULT_UNIFIED_SETTINGS.twoLineThreadCards,
-      groupSidebarThreadsByProject: DEFAULT_UNIFIED_SETTINGS.groupSidebarThreadsByProject,
       showSkillsInSlashMenu: DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu,
       composerCollapseOnScroll: DEFAULT_UNIFIED_SETTINGS.composerCollapseOnScroll,
       composerRichTextEnabled: DEFAULT_UNIFIED_SETTINGS.composerRichTextEnabled,
       sendShortcut: DEFAULT_UNIFIED_SETTINGS.sendShortcut,
       followUpBehavior: DEFAULT_UNIFIED_SETTINGS.followUpBehavior,
       contextWindowMeterEnabled: DEFAULT_UNIFIED_SETTINGS.contextWindowMeterEnabled,
-      contextWindowControlEnabled: DEFAULT_UNIFIED_SETTINGS.contextWindowControlEnabled,
-      promptCacheTimerEnabled: DEFAULT_UNIFIED_SETTINGS.promptCacheTimerEnabled,
       environmentIdentificationMode: DEFAULT_UNIFIED_SETTINGS.environmentIdentificationMode,
       glassOpacity: DEFAULT_UNIFIED_SETTINGS.glassOpacity,
       panelAnimationDurationMs: DEFAULT_UNIFIED_SETTINGS.panelAnimationDurationMs,
@@ -1320,61 +1293,6 @@ export function AppearanceSettingsPanel() {
             }
           />
         ) : null}
-        {/* Fork: two-line thread cards. */}
-        <SettingsRow
-          {...searchableSetting("two-line-thread-cards")}
-          description="Trail the provider icon behind the thread title instead of giving it a line of its own. The line it saves also carried the branch, pull request badge and diff counts."
-          resetAction={
-            settings.twoLineThreadCards !== DEFAULT_UNIFIED_SETTINGS.twoLineThreadCards ? (
-              <SettingResetButton
-                label="two-line thread cards"
-                onClick={() =>
-                  updateSettings({
-                    twoLineThreadCards: DEFAULT_UNIFIED_SETTINGS.twoLineThreadCards,
-                  })
-                }
-              />
-            ) : null
-          }
-          control={
-            <Switch
-              checked={settings.twoLineThreadCards}
-              onCheckedChange={(checked) =>
-                updateSettings({ twoLineThreadCards: Boolean(checked) })
-              }
-              aria-label="Two-line thread cards"
-            />
-          }
-        />
-
-        {/* Fork: per-project runs in the sidebar. */}
-        <SettingsRow
-          {...searchableSetting("group-sidebar-threads-by-project")}
-          description="Keep each project's threads together in the sidebar, under a header that folds the project away. Ordering stays by recency: the project with the newest thread leads."
-          resetAction={
-            settings.groupSidebarThreadsByProject !==
-            DEFAULT_UNIFIED_SETTINGS.groupSidebarThreadsByProject ? (
-              <SettingResetButton
-                label="project grouping"
-                onClick={() =>
-                  updateSettings({
-                    groupSidebarThreadsByProject:
-                      DEFAULT_UNIFIED_SETTINGS.groupSidebarThreadsByProject,
-                  })
-                }
-              />
-            ) : null
-          }
-          control={
-            <Switch
-              checked={settings.groupSidebarThreadsByProject}
-              onCheckedChange={(checked) =>
-                updateSettings({ groupSidebarThreadsByProject: Boolean(checked) })
-              }
-              aria-label="Group sidebar threads by project"
-            />
-          }
-        />
 
         <SettingsRow
           {...searchableSetting("diff-color-scheme")}
@@ -2453,8 +2371,6 @@ export function GeneralSettingsPanel() {
             />
           }
         />
-        <AgentStageSettingRow />
-        <VoiceInputSettingRow />
         <SettingsRow
           {...searchableSetting("time-format")}
           description="System default follows your browser or OS clock preference."
@@ -2842,61 +2758,6 @@ export function GeneralSettingsPanel() {
         />
 
         <SettingsRow
-          {...searchableSetting("context-window-control")}
-          description="Show how full the thread's context window is next to the composer controls."
-          resetAction={
-            settings.contextWindowControlEnabled !==
-            DEFAULT_UNIFIED_SETTINGS.contextWindowControlEnabled ? (
-              <SettingResetButton
-                label="context window usage"
-                onClick={() =>
-                  updateSettings({
-                    contextWindowControlEnabled:
-                      DEFAULT_UNIFIED_SETTINGS.contextWindowControlEnabled,
-                  })
-                }
-              />
-            ) : null
-          }
-          control={
-            <Switch
-              checked={settings.contextWindowControlEnabled}
-              onCheckedChange={(checked) =>
-                updateSettings({ contextWindowControlEnabled: Boolean(checked) })
-              }
-              aria-label="Context window usage"
-            />
-          }
-        />
-
-        <SettingsRow
-          {...searchableSetting("prompt-cache-timer")}
-          description="Show how many minutes are left before the prompt cache expires. Claude only."
-          resetAction={
-            settings.promptCacheTimerEnabled !==
-            DEFAULT_UNIFIED_SETTINGS.promptCacheTimerEnabled ? (
-              <SettingResetButton
-                label="prompt cache timer"
-                onClick={() =>
-                  updateSettings({
-                    promptCacheTimerEnabled: DEFAULT_UNIFIED_SETTINGS.promptCacheTimerEnabled,
-                  })
-                }
-              />
-            ) : null
-          }
-          control={
-            <Switch
-              checked={settings.promptCacheTimerEnabled}
-              onCheckedChange={(checked) =>
-                updateSettings({ promptCacheTimerEnabled: Boolean(checked) })
-              }
-              aria-label="Prompt cache timer"
-            />
-          }
-        />
-
-        <SettingsRow
           serverScoped
           settingKeys={["enableProviderUpdateChecks"]}
           {...searchableSetting("provider-update-checks")}
@@ -2963,11 +2824,6 @@ export function GeneralSettingsPanel() {
             />
           }
         />
-
-        {/* Fork: coordinator decisions, cross-project threads, child threads in the sidebar. */}
-        <ThreadDecisionsSettingRow />
-        <CrossProjectThreadsSettingRow />
-        <SidebarChildThreadsSettingRow />
 
         <SettingsRow
           serverScoped

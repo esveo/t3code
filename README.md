@@ -55,7 +55,7 @@ Every subagent opens as its own thread, live while it runs. From there you can s
 
 ### Thread orchestration
 
-A coordinator thread starts child threads, waits for them and collects their results. Existing threads can be moved under a coordinator, to another one, or released again. To let it start and reach threads in other projects too, turn on Cross-project threads in Settings → General.
+A coordinator thread starts child threads, waits for them and collects their results. Existing threads can be moved under a coordinator, to another one, or released again. To let it start and reach threads in other projects too, turn on Cross-project threads in Settings → esveo.
 
 <p align="center">
   <img src="docs/fork/media/orchestration.gif" alt="A coordinator starts three child threads across three projects" width="100%">
@@ -79,7 +79,7 @@ Read back the thinking behind any answer.
 
 ### Dictation
 
-Speak into the composer with the microphone button or <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Space</kbd>. Whisper transcribes on the machine that runs the server, in German and English, and no audio leaves it. Turn it on under Settings → General → Voice input; Android phones and older iPhones then dictate through the same model.
+Speak into the composer with the microphone button or <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Space</kbd>. Whisper transcribes on the machine that runs the server, in German and English, and no audio leaves it. Turn it on under Settings → esveo → Voice input; Android phones and older iPhones then dictate through the same model.
 
 <p align="center">
   <img src="docs/fork/media/dictation.webp" alt="The composer recording a dictation, with cancel, timer and finish beside the send button" width="100%">

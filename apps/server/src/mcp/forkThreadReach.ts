@@ -29,7 +29,7 @@ import type {
 import { ServerSettingsService } from "../serverSettings.ts";
 
 export const CROSS_PROJECT_THREADS_HINT =
-  "The user can let agents reach other projects by turning on Cross-project threads in Settings.";
+  "The user can let agents reach other projects by turning on Cross-project threads in Settings → esveo.";
 
 /** Whether the user turned on cross-project threads, right now. */
 export const crossProjectThreadsOn: Effect.Effect<boolean> = Effect.serviceOption(

@@ -279,7 +279,7 @@ of it. A new key means every phone has to uninstall and reinstall.
 
 ## Dictation
 
-Settings → General → Voice input is stored per browser, but the speech model
+Settings → esveo → Voice input is stored per browser, but the speech model
 belongs to the environment: turning the switch on downloads Whisper
 large-v3-turbo (about 550 MB) to `~/.t3/models/whisper/` on the machine that
 runs the server, and every client of that environment uses it. Deleting the

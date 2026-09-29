@@ -8,7 +8,7 @@ import {
   useUpdateScopedSettings,
 } from "~/components/settings/useScopedSettings";
 
-/** Fork: the opt-in for the coordinator's Inbox of decisions, in Settings → General. */
+/** Fork: the opt-in for the coordinator's Inbox of decisions, in Settings → esveo. */
 export function ThreadDecisionsSettingRow() {
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();

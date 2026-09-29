@@ -381,7 +381,7 @@ export function useLegacySidebarEnabled(): boolean {
 }
 
 /**
- * Fork: whether sidebar thread cards are two lines (Settings → General).
+ * Fork: whether sidebar thread cards are two lines (Settings → esveo).
  *
  * Read without the hydration gate `useLegacySidebarEnabled` needs: this only
  * picks a card layout, never a different sidebar, so the worst a pre-hydration
@@ -394,7 +394,7 @@ export function useTwoLineThreadCards(): boolean {
 
 /**
  * Fork: whether the sidebar gathers threads into per-project runs
- * (Settings → Appearance). Read like the card layout above, without the
+ * (Settings → esveo). Read like the card layout above, without the
  * hydration gate: the worst a pre-hydration read costs is one repaint.
  */
 export function useGroupSidebarThreadsByProject(): boolean {

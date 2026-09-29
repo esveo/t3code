@@ -167,7 +167,7 @@ const make = Effect.gen(function* () {
     const scope = yield* McpInvocationContext.McpInvocationContext;
     if (!(yield* decisionsOn)) {
       return yield* failure(
-        "Decisions are turned off, so ask the user in chat instead. The user can turn them on in Settings.",
+        "Decisions are turned off, so ask the user in chat instead. The user can turn them on in Settings → esveo.",
       );
     }
     const thread = yield* readShell(scope.threadId);

@@ -8,7 +8,7 @@ import {
   useUpdateScopedSettings,
 } from "~/components/settings/useScopedSettings";
 
-/** Fork: lets agents' thread tools reach other projects, in Settings → General. */
+/** Fork: lets agents' thread tools reach other projects, in Settings → esveo. */
 export function CrossProjectThreadsSettingRow() {
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();

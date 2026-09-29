@@ -189,9 +189,9 @@ const SURFACE_DISABLED_REASONS = {
   gitGraph: "The Git graph needs a Git repository on an up-to-date server.",
   pullRequest: "This thread's branch has no pull request yet.",
   pullRequests: "No linked pull requests are available for this thread.",
-  agentStage: "Enable the agent stage in Settings > General.",
+  agentStage: "Enable the agent stage in Settings > esveo.",
   threadOverview: "Threads a coordinator runs have no thread overview.",
-  threadInbox: "Turn on coordinator decisions in Settings > General.",
+  threadInbox: "Turn on coordinator decisions in Settings > esveo.",
   device: "Devices are only available from a thread.",
 } as const;
 
@@ -216,7 +216,7 @@ const SURFACE_UNAVAILABLE_HINTS = {
   gitGraph: "Available for Git repositories.",
   pullRequest: "No pull request on this branch yet.",
   pullRequests: "No linked pull requests available.",
-  agentStage: "Enable it in Settings > General.",
+  agentStage: "Enable it in Settings > esveo.",
   threadOverview: "Not for threads a coordinator runs.",
   threadInbox: "Turn on coordinator decisions in Settings.",
   device: "Available from a thread.",
