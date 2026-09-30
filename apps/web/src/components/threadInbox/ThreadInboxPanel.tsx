@@ -115,6 +115,15 @@ function ThreadInbox({ threadRef, cwd }: { threadRef: ScopedThreadRef; cwd: stri
       setDraftInStore(key, decisionId, patch),
     [key, setDraftInStore],
   );
+  // Answering pins the decision as current: otherwise a current one that only
+  // fell back as "first unanswered" moves on at the first typed letter.
+  const answer = useCallback(
+    (decisionId: string, patch: Partial<DecisionDraft> | null) => {
+      if (view.currentId !== decisionId) setView({ currentId: decisionId });
+      setDraft(decisionId, patch);
+    },
+    [setDraft, setView, view.currentId],
+  );
   const select = useCallback(
     (decision: ThreadDecision | null) => {
       if (!decision) return;
@@ -216,10 +225,10 @@ function ThreadInbox({ threadRef, cwd }: { threadRef: ScopedThreadRef; cwd: stri
       setView({ mode: view.mode === "list" ? "focus" : "list", expanded: true });
     } else if (current && /^[1-9]$/.test(pressed)) {
       const option = current.options[Number(pressed) - 1];
-      if (option) setDraft(current.id, { optionId: option.id });
+      if (option) answer(current.id, { optionId: option.id });
     } else if (current && (pressed === "y" || pressed === "Y")) {
       if (current.recommendedOptionId) {
-        setDraft(current.id, { optionId: current.recommendedOptionId });
+        answer(current.id, { optionId: current.recommendedOptionId });
         goNext();
       }
     } else if (current && pressed === "e") {
@@ -250,7 +259,7 @@ function ThreadInbox({ threadRef, cwd }: { threadRef: ScopedThreadRef; cwd: stri
       })}
       noteOpen={notesOpen[decision.id] ?? false}
       onNoteOpenChange={(open) => setNotesOpen((notes) => ({ ...notes, [decision.id]: open }))}
-      onDraft={(patch) => setDraft(decision.id, patch)}
+      onDraft={(patch) => answer(decision.id, patch)}
       onSendNow={() => {
         const draft = drafts[decision.id];
         if (draft) void send([{ decision, draft }]);
