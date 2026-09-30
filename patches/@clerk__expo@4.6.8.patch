@@ -1,3 +1,47 @@
+diff --git a/android/src/main/java/expo/modules/clerk/ClerkExpoModule.kt b/android/src/main/java/expo/modules/clerk/ClerkExpoModule.kt
+index b0f0255db044e3cb36135f17035114587dd3be4d..ada85e4d63767eaf21a0f7f1d017f1bef319fd0e 100644
+--- a/android/src/main/java/expo/modules/clerk/ClerkExpoModule.kt
++++ b/android/src/main/java/expo/modules/clerk/ClerkExpoModule.kt
+@@ -405,6 +405,23 @@ class ClerkExpoModule : Module() {
+ 
+     // MARK: - configure
+ 
++    // Fork (esveo code): the app's manifest can name the application id Clerk builds its OAuth
++    // callback from (clerk://<id>.callback), so a build under its own package keeps signing in
++    // through the callback the Clerk instance allows. initialize() and switchConfiguration() reset
++    // the id to the package name, so this runs after each. Without the meta-data nothing changes.
++    private fun applyApplicationIdOverride(context: Context) {
++        val applicationId = runCatching {
++            context.packageManager
++                .getApplicationInfo(context.packageName, android.content.pm.PackageManager.GET_META_DATA)
++                .metaData
++                ?.getString("esveo.clerkApplicationId")
++        }.getOrNull() ?: return
++        runCatching {
++            Clerk::class.java.getMethod("setApplicationId\$api", String::class.java)
++                .invoke(Clerk, applicationId)
++        }.onFailure { Log.w(TAG, "Could not override the Clerk application id: ${it.message}") }
++    }
++
+     private fun configure(pubKey: String, bearerToken: String?, promise: Promise) {
+         val context = reactContext ?: run {
+             promise.reject("E_INIT_FAILED", "React context is not available", null)
+@@ -426,6 +443,7 @@ class ClerkExpoModule : Module() {
+                     }
+ 
+                     Clerk.initialize(context, pubKey, clerkConfigurationOptions())
++                    applyApplicationIdOverride(context)
+                     startClientStateObserver()
+                     // clerk-android registers ActivityLifecycleCallbacks during
+                     // initialize(), but in React Native MainActivity has already passed
+@@ -479,6 +497,7 @@ class ClerkExpoModule : Module() {
+                 val activePublishableKey = configuredPublishableKey ?: Clerk.publishableKey
+                 if (activePublishableKey != null && activePublishableKey != pubKey) {
+                     Clerk.switchConfiguration(context, pubKey, clerkConfigurationOptions())
++                    applyApplicationIdOverride(context)
+                     startClientStateObserver()
+                     appContext.currentActivity?.let { Clerk.attachActivity(it) }
+                     loadThemeFromAssets(context)
 diff --git a/ios/ClerkAuthNativeView.swift b/ios/ClerkAuthNativeView.swift
 index 5f8d2ba66d5b232890af75c22b173c86d2ef546b..b170304cbf2fbaae8032db8dd6f89b6a59c6e3fe 100644
 --- a/ios/ClerkAuthNativeView.swift

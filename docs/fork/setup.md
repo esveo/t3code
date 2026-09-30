@@ -269,11 +269,12 @@ version. To install it and keep it current, install
 app `https://github.com/esveo/t3code`; Obtainium checks the releases and offers
 each new build.
 
-The APK keeps the official app's package name, because Clerk sends the GitHub,
-Google and Apple sign-in back only to that package. It therefore replaces the
-official T3 Code app, and Android refuses to install it over one signed by
-someone else: uninstall the official app (and an older `com.esveo.code` build)
-first.
+The APK installs as `com.esveo.code`, next to the official T3 Code app. Clerk
+sends the GitHub, Google and Apple sign-in back only to the official package's
+callback, so esveo code builds its sign-in on that callback and claims it too:
+with both apps installed, Android asks which one opens it after sign-in; pick
+esveo code. A phone still on an older build under `com.t3tools.t3code` has to
+uninstall it once and install the new one.
 
 The workflow signs with the keystore in the repo secrets
 `ESVEO_ANDROID_KEYSTORE` and `ESVEO_ANDROID_KEYSTORE_PASSWORD`; Paul keeps a copy
