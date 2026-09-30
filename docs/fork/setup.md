@@ -279,6 +279,11 @@ The workflow signs with the keystore in the repo secrets
 `ESVEO_ANDROID_KEYSTORE` and `ESVEO_ANDROID_KEYSTORE_PASSWORD`; Paul keeps a copy
 of it. A new key means every phone has to uninstall and reinstall.
 
+To try a branch on a phone before it lands, run **Fork Android APK** by hand
+from the Actions tab on that branch. It builds the same signed APK but attaches
+it to the run as an artifact (a zip) instead of publishing a release, so
+Obtainium does not offer it.
+
 ## Dictation
 
 Settings → General → Voice input is stored per browser, but the speech model
