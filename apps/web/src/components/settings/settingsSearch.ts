@@ -434,6 +434,14 @@ export const SETTINGS_SEARCH_ITEMS = [
     fork: true,
     searchTerms: ["sprites stations subagents thinking editing terminal right panel everything"],
   },
+  // Fork: easter eggs.
+  {
+    id: "easter-eggs",
+    title: "Easter eggs",
+    to: "/settings/general",
+    fork: true,
+    searchTerms: ["surprise fun rocket animation message send hidden"],
+  },
   {
     id: "voice-input",
     title: "Voice input",
