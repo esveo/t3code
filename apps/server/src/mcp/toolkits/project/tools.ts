@@ -26,6 +26,7 @@ import { Tool, Toolkit } from "effect/unstable/ai";
 import { ProjectService } from "../../../project/ProjectService.ts";
 import { ThreadManagementService } from "../../../orchestration-v2/ThreadManagementService.ts";
 import { SourceControlRepositoryService } from "../../../sourceControl/SourceControlRepositoryService.ts";
+import { COORDINATE_DESCRIPTION } from "../../forkLaunchUnderCoordinator.ts";
 import { McpInvocationContext } from "../../McpInvocationContext.ts";
 
 const shared = {
@@ -108,6 +109,8 @@ const ThreadLaunchTool = Tool.make("t3_thread_launch", {
       }),
     ),
     attachments: Schema.optional(Schema.Array(McpAttachmentInput).check(Schema.isMaxLength(8))),
+    // Fork: launch as one of the caller's threads (forkLaunchUnderCoordinator.ts).
+    coordinate: Schema.optional(Schema.Boolean.annotate({ description: COORDINATE_DESCRIPTION })),
   }),
   success: Schema.Struct({
     threadId: ThreadId,
