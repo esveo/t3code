@@ -27,7 +27,8 @@ export function buildRuntimeInstructions(runtime: {
     modelName && modelName !== model ? `${modelName} (model slug: ${model})` : model;
   const modelInfo = model && model !== "auto" && model !== "default" ? `, as ${modelLabel}` : "";
   const effortInfo = effort ? ` with ${effort} reasoning effort` : "";
-  return `<runtime_info>In case you're asked: you are running in T3 Code through the ${harness} harness${modelInfo}${effortInfo}. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths.</runtime_info>\n\n${PULL_REQUEST_LINKING_INSTRUCTIONS}${runtime.threadDecisions ? `\n\n${THREAD_DECISIONS_INSTRUCTIONS}` : ""}`;
+  // Fork: agents name the app esveo code, e.g. in PR attributions.
+  return `<runtime_info>In case you're asked: you are running in esveo code through the ${harness} harness${modelInfo}${effortInfo}. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths.</runtime_info>\n\n${PULL_REQUEST_LINKING_INSTRUCTIONS}${runtime.threadDecisions ? `\n\n${THREAD_DECISIONS_INSTRUCTIONS}` : ""}`;
 }
 
 function toSingleLine(value: string): string {
