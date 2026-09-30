@@ -1,6 +1,7 @@
 # Fork-only: builds the esveo code Android APK (apps/mobile/esveo.config.ts) from `fork` and
 # publishes it as a GitHub release tagged with its versionName, which Obtainium on the phones
-# watches for updates. The APK is signed with the keystore in the repo secrets
+# watches for updates. Run by hand on any other branch, it uploads the APK as an artifact of the
+# run instead of a release, so Obtainium never offers it. The APK is signed with the keystore in the repo secrets
 # ESVEO_ANDROID_KEYSTORE (base64) and ESVEO_ANDROID_KEYSTORE_PASSWORD; Android only installs an
 # update signed with the same key, so never replace them.
 name: Fork Android APK
@@ -20,7 +21,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: fork-android-apk
+  group: fork-android-apk-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -81,7 +82,16 @@ jobs:
           echo "apk=$apk" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      - name: Upload APK
+        if: github.ref != 'refs/heads/fork'
+        uses: actions/upload-artifact@v7
+        with:
+          name: esveo-code-${{ steps.build.outputs.version }}
+          path: ${{ steps.build.outputs.apk }}
+          retention-days: 14
+
       - name: Publish release
+        if: github.ref == 'refs/heads/fork'
         env:
           GH_TOKEN: ${{ github.token }}
           APK: ${{ steps.build.outputs.apk }}
