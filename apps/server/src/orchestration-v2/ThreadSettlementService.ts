@@ -16,7 +16,9 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Schedule from "effect/Schedule";
 import type * as Scope from "effect/Scope";
+import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
+import * as SqlClient from "effect/unstable/sql/SqlClient";
 
 import * as GitManager from "../git/GitManager.ts";
 import * as PullRequestService from "../pullRequest/PullRequestService.ts";
@@ -25,6 +27,7 @@ import { forkParked } from "../serverActivation.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
 import * as ProjectStore from "./ProjectStore.ts";
 import { OrchestratorV2 } from "./Orchestrator.ts";
+import { readCoordinatorsWithOpenThreads } from "../threadOrchestration/forkSettlementGuard.ts";
 import { ProjectionStoreV2, type ProjectionSettlementCandidate } from "./ProjectionStore.ts";
 
 export interface SettlementPullRequest {
@@ -259,6 +262,8 @@ export const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
   const fileSystem = yield* FileSystem.FileSystem;
   const terminals = yield* TerminalManager.TerminalManager;
+  // Fork: read optionally, so upstream's tests build the service without a database.
+  const forkSql = Option.getOrNull(yield* Effect.serviceOption(SqlClient.SqlClient));
 
   const sweep = Effect.fn("ThreadSettlementServiceV2.sweep")(function* (
     mergedPullRequest: PullRequestService.PullRequestMergeEvent | null,
@@ -278,7 +283,11 @@ export const make = Effect.gen(function* () {
     // the merged pull request: most threads carry no link and settle from
     // their branch lookup, which would otherwise wait for the next minute's
     // sweep on a possibly stale cached answer.
-    const candidates = threads.filter((thread) => isAutoSettlementCandidate(thread, nowMs));
+    // Fork: coordinators with open threads stay active (forkSettlementGuard.ts).
+    const openCoordinators = yield* readCoordinatorsWithOpenThreads(forkSql);
+    const candidates = threads.filter(
+      (thread) => isAutoSettlementCandidate(thread, nowMs) && !openCoordinators.has(thread.id),
+    );
 
     const settleThread = Effect.fn("ThreadSettlementServiceV2.settleThread")(
       function* (thread: (typeof candidates)[number], pullRequest: SettlementPullRequest | null) {
