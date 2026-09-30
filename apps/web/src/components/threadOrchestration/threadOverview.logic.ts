@@ -50,8 +50,8 @@ function groupOf(entry: ThreadOverviewEntry): ThreadOverviewGroupId {
 
 const GROUPS: ReadonlyArray<{ readonly id: ThreadOverviewGroupId; readonly label: string }> = [
   { id: "waiting", label: "Waiting on you" },
-  { id: "working", label: "Working" },
   { id: "review", label: "Ready for review" },
+  { id: "working", label: "Working" },
   { id: "active", label: "Active" },
   { id: "settled", label: "Settled" },
 ];
