@@ -17,6 +17,7 @@ import {
   NetworkIcon,
 } from "lucide-react";
 
+import { ProviderInstanceIcon } from "~/components/chat/ProviderInstanceIcon";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { useMemo, useState } from "react";
 
@@ -36,6 +37,7 @@ import {
   waitingEntries,
 } from "./threadOverview.logic";
 import { useOpenThread } from "./useOpenThread";
+import { useProviderEntryLookup } from "./useProviderEntryLookup";
 import { useThreadOverviewEntries } from "./useThreadOverviewEntries";
 
 const KIND_VISUALS = {
@@ -60,6 +62,7 @@ function OverviewRow({
   // State shows in the dot and the section; the line below says where and with what it works.
   const branch = thread.branch ?? fallbackBranch;
   const model = formatModelSlugName(thread.modelSelection.model);
+  const provider = useProviderEntryLookup()(thread.environmentId, thread.modelSelection.instanceId);
   return (
     <button
       type="button"
@@ -87,6 +90,15 @@ function OverviewRow({
           </span>
         </span>
         <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+          {provider ? (
+            <ProviderInstanceIcon
+              driverKind={provider.driverKind}
+              displayName={provider.displayName}
+              acpRegistryAgentId={provider.acpRegistryAgentId}
+              acpRegistryIconUrl={provider.acpRegistryIconUrl}
+              iconClassName="size-3 shrink-0"
+            />
+          ) : null}
           {model ? <span className="shrink-0">{model}</span> : null}
           {branch ? (
             <>
