@@ -18,7 +18,13 @@ import type { getThreadListV2RowAppearance } from "../threads/thread-list-v2-row
 import type { ThreadRowProviderInstance } from "../threads/thread-provider-instance";
 import type { ThreadListV2Status } from "../threads/threadListV2";
 
-type RowAppearance = ReturnType<typeof getThreadListV2RowAppearance>;
+type RowAppearance = Pick<
+  ReturnType<typeof getThreadListV2RowAppearance>,
+  | "foregroundClassName"
+  | "mutedForegroundClassName"
+  | "mutedIconTintClassName"
+  | "providerIconSurfaceColor"
+>;
 type ThreadPr = NonNullable<ReturnType<typeof useThreadPr>>;
 
 // The same hues as the status labels: amber approval, indigo input, sky working.

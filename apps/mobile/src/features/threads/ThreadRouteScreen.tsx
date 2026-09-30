@@ -1,5 +1,6 @@
 import { makeTurnCommandMetadata } from "../../lib/commandMetadata";
 import { buildProjectThreadStartTurnInput } from "../../lib/projectThreadStartTurn";
+import { CoordinatorTabs } from "../esveoCoordinator/CoordinatorTabs";
 import { useWorktreeSetup } from "./use-worktree-setup";
 import { worktreeSetupAgentStarted } from "@t3tools/client-runtime/worktree-setup";
 import { ScreenHeader } from "../../components/ScreenHeader";
@@ -988,6 +989,10 @@ function ThreadRouteContent(
       <GitActionProgressOverlay progress={gitActionProgress} onDismiss={dismissGitActionResult} />
 
       <View className="flex-1 bg-screen android:overflow-hidden android:rounded-t-[28px] android:bg-thread-canvas">
+        {/* Fork: Chat | Threads | Inbox for coordinators (esveoCoordinator/CoordinatorTabs.tsx). */}
+        <CoordinatorTabs
+          threadRef={{ environmentId: selectedThread.environmentId, threadId: selectedThread.id }}
+        />
         <ThreadDetailScreen
           selectedThread={selectedThreadWithDraftSettings ?? selectedThread}
           contentPresentation={contentPresentation}
