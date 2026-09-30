@@ -21,7 +21,7 @@ import type { EnvironmentMachineKind } from "@t3tools/contracts";
 import { canSnooze, resolveSnoozePresets } from "@t3tools/client-runtime/state/thread-settled";
 import type { MenuAction } from "@react-native-menu/menu";
 import { memo, useCallback, useEffect, useMemo, useState, type ComponentProps } from "react";
-import { Alert, Pressable, useWindowDimensions, View } from "react-native";
+import { Alert, Platform, Pressable, useWindowDimensions, View } from "react-native";
 import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 
 import type { ThreadListProvider } from "../../state/thread-list-environments";
@@ -49,6 +49,7 @@ import {
   resolveThreadListV2SwipeActions,
   type ThreadListV2Status,
 } from "./threadListV2";
+import { EsveoThreadRowContent } from "../esveoThreadRow/EsveoThreadRowContent";
 import { QueuedMessageIcon } from "./queued-message-icon";
 import { ThreadSearchMatchExcerpt } from "./thread-search-match";
 
@@ -912,6 +913,48 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
       ? `Opens the thread. Swipe left to ${primaryAction.label.toLowerCase()}.`
       : `Opens the thread. Swipe left for ${primaryAction.label.toLowerCase()} and snooze actions.`;
 
+  // Fork: Android phones get the esveo row (EsveoThreadRowContent.tsx).
+  const esveoCardContent =
+    Platform.OS === "android" && !sidebarPane ? (
+      <EsveoThreadRowContent
+        thread={thread}
+        status={status}
+        isUnread={isUnread}
+        trailingLabel={statusLabel?.label ?? timeLabel}
+        trailingClassName={statusLabel?.className ?? rowAppearance.tertiaryForegroundClassName}
+        pr={pr}
+        providerInstance={providerInstance}
+        providerIconUrl={providerIconUrl}
+        environmentLabel={props.environmentLabel}
+        rowAppearance={rowAppearance}
+        markers={
+          <>
+            {props.hasQueuedMessages ? <QueuedMessageIcon selected={selected} /> : null}
+            {pinnedRow ? (
+              <SymbolView
+                name="pin"
+                size={11}
+                tintColorClassName={rowAppearance.mutedIconTintClassName}
+                type="monochrome"
+              />
+            ) : null}
+          </>
+        }
+        searchMatch={
+          props.searchMatch ? (
+            <View className="mt-1">
+              <ThreadSearchMatchExcerpt
+                sidebar={sidebarPane}
+                match={props.searchMatch}
+                query={props.searchQuery ?? ""}
+                selected={selected}
+              />
+            </View>
+          ) : null
+        }
+      />
+    ) : null;
+
   // Sidebar rows use navigation foregrounds on their active and idle surfaces.
   const cardContent = (
     <>
@@ -1129,7 +1172,9 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
              separates rows. The opaque screen background stays so swipe
              actions reveal behind the row. */
           <View>
-            <View className={THREAD_LIST_V2_ROW_CONTENT_CLASS_NAME}>{cardContent}</View>
+            <View className={THREAD_LIST_V2_ROW_CONTENT_CLASS_NAME}>
+              {esveoCardContent ?? cardContent}
+            </View>
             {THREAD_LIST_V2_ROW_DIVIDERS && props.showTrailingDivider !== false ? (
               <View className="ml-5 h-px bg-border-subtle" />
             ) : null}
