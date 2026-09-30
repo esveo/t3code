@@ -7,7 +7,7 @@ import { useServerConfigs, useThreadShell } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
 import { useThreadCoordinatorId } from "../threadOrchestration/coordinatorLinks";
 import { useChildrenWaitingOnUser } from "./ChildRequestsSection";
-import { waitingDecisionCount } from "./threadInbox.logic";
+import { waitingDecisionCount } from "@t3tools/shared/threadInbox";
 import { threadInboxEnvironment } from "./threadInboxState";
 
 const EMPTY: ReadonlyArray<ThreadDecision> = [];

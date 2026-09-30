@@ -10,7 +10,7 @@ import type { ScopedThreadRef, ThreadDecision } from "@t3tools/contracts";
 import ChatMarkdown from "~/components/ChatMarkdown";
 import { Checkbox } from "~/components/ui/checkbox";
 import { cn } from "~/lib/utils";
-import type { DecisionDraft } from "./threadInbox.logic";
+import type { DecisionDraft } from "@t3tools/shared/threadInbox";
 
 export interface DecisionCardProps {
   readonly decision: ThreadDecision;

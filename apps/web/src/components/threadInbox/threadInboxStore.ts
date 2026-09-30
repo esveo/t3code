@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { resolveStorage } from "~/lib/storage";
-import type { DecisionDraft, InboxGroupBy } from "./threadInbox.logic";
+import type { DecisionDraft, InboxGroupBy } from "@t3tools/shared/threadInbox";
 
 /**
  * Fork: the Inbox tab's drafts and view, per coordinator (its scoped thread

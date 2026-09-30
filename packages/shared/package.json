@@ -43,6 +43,10 @@
       "types": "./src/threadOrchestration.ts",
       "import": "./src/threadOrchestration.ts"
     },
+    "./threadInbox": {
+      "types": "./src/threadInbox.ts",
+      "import": "./src/threadInbox.ts"
+    },
     "./threadDecisions": {
       "types": "./src/threadDecisions.ts",
       "import": "./src/threadDecisions.ts"

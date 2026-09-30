@@ -52,7 +52,7 @@ export function orderDecisions(
 ): ReadonlyArray<ThreadDecision> {
   const waiting = decisions
     .filter(isWaiting)
-    .toSorted((a, b) => URGENCY_RANK[a.urgency] - URGENCY_RANK[b.urgency]);
+    .sort((a, b) => URGENCY_RANK[a.urgency] - URGENCY_RANK[b.urgency]);
   const byId = new Map(waiting.map((decision) => [decision.id, decision]));
   const ordered: ThreadDecision[] = [];
   const visiting = new Set<string>();
