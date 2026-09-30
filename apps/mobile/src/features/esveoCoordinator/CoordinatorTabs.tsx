@@ -135,13 +135,13 @@ const GROUP_OF_STATE: Record<ChildThreadState, GroupId | "done"> = {
 
 const GROUPS: ReadonlyArray<{ readonly id: GroupId; readonly label: string }> = [
   { id: "waiting", label: "Waiting on you" },
-  { id: "working", label: "Working" },
   { id: "review", label: "Ready for review" },
+  { id: "working", label: "Working" },
   { id: "active", label: "Active" },
   { id: "settled", label: "Settled" },
 ];
 
-/** The coordinated threads grouped like the desktop's Threads tab, newest first. */
+/** The coordinated threads grouped like the desktop's Threads tab, newest first: what waits on the user on top. */
 function CoordinatedThreadsList(props: {
   readonly threads: ReadonlyArray<EnvironmentThreadShell>;
 }) {
