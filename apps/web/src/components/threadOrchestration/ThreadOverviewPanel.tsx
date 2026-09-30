@@ -6,7 +6,7 @@
  */
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
-import type { ScopedThreadRef } from "@t3tools/contracts";
+import type { ScopedThreadRef, ThreadPullRequestLink } from "@t3tools/contracts";
 import { formatModelSlugName } from "@t3tools/shared/model";
 import { CHILD_THREAD_STATE_LABELS } from "@t3tools/shared/threadOrchestration";
 import {
@@ -21,7 +21,9 @@ import { ProviderInstanceIcon } from "~/components/chat/ProviderInstanceIcon";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
 import { useMemo, useState } from "react";
 
+import { Button } from "~/components/ui/button";
 import { ScrollArea } from "~/components/ui/scroll-area";
+import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
 import { useThreadShell } from "~/state/entities";
@@ -45,6 +47,11 @@ const KIND_VISUALS = {
   subagent: { icon: BotIcon, label: "Subagent" },
 } as const;
 
+/** The pull request a row links to: the thread's newest open one. */
+function newestOpenPullRequest(links: ReadonlyArray<ThreadPullRequestLink>) {
+  return links.findLast((link) => link.snapshot === null || link.snapshot.state === "open") ?? null;
+}
+
 function OverviewRow({
   entry,
   fallbackBranch,
@@ -62,60 +69,75 @@ function OverviewRow({
   // State shows in the dot and the section; the line below says where and with what it works.
   const branch = thread.branch ?? fallbackBranch;
   const model = formatModelSlugName(thread.modelSelection.model);
+  const openPrLink = useOpenPrLink();
+  const pullRequest = newestOpenPullRequest(thread.pullRequests ?? []);
   const provider = useProviderEntryLookup()(thread.environmentId, thread.modelSelection.instanceId);
   return (
-    <button
-      type="button"
-      // Opens here, beside the coordinator; with Cmd/Ctrl as the thread itself.
-      onClick={(event) => {
-        const threadRef = scopeThreadRef(thread.environmentId, thread.id);
-        if (event.metaKey || event.ctrlKey) openThread(threadRef);
-        else onOpenInPanel(threadRef);
-      }}
-      className="group/overview-row grid w-full cursor-pointer grid-cols-[0.375rem_minmax(0,1fr)_auto] items-center gap-x-2.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-accent/60 focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <span aria-hidden className={cn("size-1.5 rounded-full", CHILD_THREAD_DOT_CLASS[state])} />
-      <span className="sr-only">{CHILD_THREAD_STATE_LABELS[state]}: </span>
-      <span className="flex min-w-0 flex-col">
-        <span className="flex min-w-0 items-center gap-1.5">
-          <Tooltip>
-            <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
-              <kind.icon aria-hidden className="size-3.5 text-muted-foreground/70" />
-              <span className="sr-only">{kind.label}: </span>
-            </TooltipTrigger>
-            <TooltipPopup side="top">{kind.label}</TooltipPopup>
-          </Tooltip>
-          <span className="truncate text-sm font-medium">
-            {entry.kind === "subagent" ? formatSubagentDisplayTitle(thread.title) : thread.title}
+    <div className="group/overview-row grid grid-cols-[minmax(0,1fr)_auto] items-center rounded-md transition-colors hover:bg-accent/60">
+      <button
+        type="button"
+        // Opens here, beside the coordinator; with Cmd/Ctrl as the thread itself.
+        onClick={(event) => {
+          const threadRef = scopeThreadRef(thread.environmentId, thread.id);
+          if (event.metaKey || event.ctrlKey) openThread(threadRef);
+          else onOpenInPanel(threadRef);
+        }}
+        className="grid w-full cursor-pointer grid-cols-[0.375rem_minmax(0,1fr)] items-center gap-x-2.5 rounded-md py-1.5 pl-2 text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span aria-hidden className={cn("size-1.5 rounded-full", CHILD_THREAD_DOT_CLASS[state])} />
+        <span className="sr-only">{CHILD_THREAD_STATE_LABELS[state]}: </span>
+        <span className="flex min-w-0 flex-col">
+          <span className="flex min-w-0 items-center gap-1.5">
+            <Tooltip>
+              <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
+                <kind.icon aria-hidden className="size-3.5 text-muted-foreground/70" />
+                <span className="sr-only">{kind.label}: </span>
+              </TooltipTrigger>
+              <TooltipPopup side="top">{kind.label}</TooltipPopup>
+            </Tooltip>
+            <span className="truncate text-sm font-medium">
+              {entry.kind === "subagent" ? formatSubagentDisplayTitle(thread.title) : thread.title}
+            </span>
+          </span>
+          <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+            {provider ? (
+              <ProviderInstanceIcon
+                driverKind={provider.driverKind}
+                displayName={provider.displayName}
+                acpRegistryAgentId={provider.acpRegistryAgentId}
+                acpRegistryIconUrl={provider.acpRegistryIconUrl}
+                iconClassName="size-3 shrink-0"
+              />
+            ) : null}
+            {model ? <span className="shrink-0">{model}</span> : null}
+            {branch ? (
+              <>
+                {model ? <span aria-hidden>·</span> : null}
+                <GitBranchIcon aria-hidden className="size-3 shrink-0" />
+                <span className="min-w-0 truncate">{branch}</span>
+              </>
+            ) : null}
           </span>
         </span>
-        <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
-          {provider ? (
-            <ProviderInstanceIcon
-              driverKind={provider.driverKind}
-              displayName={provider.displayName}
-              acpRegistryAgentId={provider.acpRegistryAgentId}
-              acpRegistryIconUrl={provider.acpRegistryIconUrl}
-              iconClassName="size-3 shrink-0"
-            />
-          ) : null}
-          {model ? <span className="shrink-0">{model}</span> : null}
-          {branch ? (
-            <>
-              {model ? <span aria-hidden>·</span> : null}
-              <GitBranchIcon aria-hidden className="size-3 shrink-0" />
-              <span className="min-w-0 truncate">{branch}</span>
-            </>
-          ) : null}
-        </span>
-      </span>
-      <span className="flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
-        {state === "review" ? (
-          <PullRequestGlyph.pullRequest aria-hidden className="size-3.5 text-success-foreground" />
+      </button>
+      <span className="flex items-center gap-2 pr-2 pl-2.5 text-xs text-muted-foreground tabular-nums">
+        {pullRequest ? (
+          <Button
+            size="xs"
+            variant="ghost"
+            aria-label={`Open pull request #${pullRequest.number}`}
+            title="Open the pull request (Cmd/Ctrl-click: in the browser)"
+            onClick={(event) =>
+              openPrLink(event, pullRequest.url, scopeThreadRef(thread.environmentId, thread.id))
+            }
+          >
+            <PullRequestGlyph.pullRequest aria-hidden className="text-success-foreground" />#
+            {pullRequest.number}
+          </Button>
         ) : null}
         {age ? <span className="min-w-8 text-right">{age}</span> : null}
       </span>
-    </button>
+    </div>
   );
 }
 
