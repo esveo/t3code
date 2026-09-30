@@ -1,8 +1,11 @@
-const FLIGHT_MS = 2400;
+const FLIGHT_MS = 2600;
+const ROCKET_WIDTH = 104;
+const ROCKET_HEIGHT = 244;
+const FLIGHT_STEPS = 40;
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 const ROCKET_SVG = `
-<svg xmlns="${SVG_NS}" viewBox="0 0 64 150" width="64" height="150" aria-hidden="true">
+<svg xmlns="${SVG_NS}" viewBox="0 0 64 150" width="${ROCKET_WIDTH}" height="${ROCKET_HEIGHT}" aria-hidden="true">
   <defs>
     <linearGradient id="esveo-rocket-body" x1="0" x2="1">
       <stop offset="0" stop-color="#cbd5e1" />
@@ -38,24 +41,26 @@ export function launchRocket() {
   stage.style.cssText =
     "position:fixed;inset:0;pointer-events:none;overflow:hidden;z-index:2147483647";
 
-  const x = window.innerWidth * (0.3 + Math.random() * 0.4);
+  // The rocket rises vertically, then bends off to one side and crosses the window.
+  const side = Math.random() < 0.5 ? -1 : 1;
+  const sweep = Math.min(window.innerWidth * 0.5, 640);
+  const x = window.innerWidth / 2 - side * sweep * 0.7;
   const rocket = document.createElement("div");
-  rocket.style.cssText = `position:absolute;left:${x - 32}px;top:100%;will-change:transform`;
+  rocket.style.cssText = `position:absolute;left:${x - ROCKET_WIDTH / 2}px;top:100%;will-change:transform`;
   rocket.innerHTML = ROCKET_SVG;
   stage.append(rocket);
 
-  for (let index = 0; index < 10; index++) stage.append(smokePuff(x, index));
+  for (let index = 0; index < 12; index++) stage.append(smokePuff(x, index));
   document.body.append(stage);
 
-  const drift = (Math.random() - 0.5) * 120;
-  const travel = window.innerHeight + 200;
+  const rise = window.innerHeight + ROCKET_HEIGHT * 2;
   const flight = rocket.animate(
-    [
-      { transform: "translate(0, 0) rotate(0deg)", easing: "ease-out" },
-      { transform: "translate(0, -170px) rotate(-2deg)", offset: 0.18, easing: "ease-in-out" },
-      { transform: "translate(2px, -190px) rotate(2deg)", offset: 0.28, easing: "ease-in" },
-      { transform: `translate(${drift}px, -${travel + 170}px) rotate(${drift / 20}deg)` },
-    ],
+    curvedFlight(
+      { x: 0, y: 0 },
+      { x: 0, y: -0.5 * rise },
+      { x: side * sweep * 0.4, y: -0.8 * rise },
+      { x: side * sweep * 1.6, y: -rise },
+    ),
     { duration: FLIGHT_MS, fill: "forwards" },
   );
   rocket
@@ -70,9 +75,31 @@ export function launchRocket() {
   flight.finished.then(land, land);
 }
 
+interface Point {
+  readonly x: number;
+  readonly y: number;
+}
+
+/** Keyframes along a cubic Bézier curve, the rocket accelerating and nosing along its tangent. */
+function curvedFlight(p0: Point, p1: Point, p2: Point, p3: Point): Keyframe[] {
+  const keyframes: Keyframe[] = [];
+  for (let step = 0; step <= FLIGHT_STEPS; step++) {
+    const time = step / FLIGHT_STEPS;
+    const u = 0.35 * time + 0.65 * time * time;
+    const v = 1 - u;
+    const x = v * v * v * p0.x + 3 * v * v * u * p1.x + 3 * v * u * u * p2.x + u * u * u * p3.x;
+    const y = v * v * v * p0.y + 3 * v * v * u * p1.y + 3 * v * u * u * p2.y + u * u * u * p3.y;
+    const dx = 3 * v * v * (p1.x - p0.x) + 6 * v * u * (p2.x - p1.x) + 3 * u * u * (p3.x - p2.x);
+    const dy = 3 * v * v * (p1.y - p0.y) + 6 * v * u * (p2.y - p1.y) + 3 * u * u * (p3.y - p2.y);
+    const angle = (Math.atan2(dx, -dy) * 180) / Math.PI;
+    keyframes.push({ offset: time, transform: `translate(${x}px, ${y}px) rotate(${angle}deg)` });
+  }
+  return keyframes;
+}
+
 function smokePuff(x: number, index: number) {
   const puff = document.createElement("div");
-  const size = 40 + Math.random() * 40;
+  const size = 60 + Math.random() * 60;
   puff.style.cssText = `position:absolute;left:${x - size / 2}px;top:calc(100% - ${size / 2}px);width:${size}px;height:${size}px;border-radius:50%;background:radial-gradient(circle, rgba(226,232,240,0.9), rgba(148,163,184,0) 70%);will-change:transform,opacity`;
   const side = index % 2 === 0 ? 1 : -1;
   const spread = side * (20 + Math.random() * 120);
