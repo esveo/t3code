@@ -105,6 +105,16 @@ export class ThreadCoordinators extends Context.Service<
       { readonly previousCoordinatorThreadId: ThreadId | null },
       ThreadCoordinatorsError
     >;
+    /**
+     * Puts a thread that is about to be launched under the coordinator, so it
+     * never lists on its own in between. `unclaim` takes the link back when the
+     * launch fails.
+     */
+    readonly claim: (link: {
+      readonly threadId: ThreadId;
+      readonly coordinatorThreadId: ThreadId;
+    }) => Effect.Effect<void, ThreadCoordinatorsError>;
+    readonly unclaim: (threadId: ThreadId) => Effect.Effect<void, ThreadCoordinatorsError>;
     readonly subscribe: Stream.Stream<ThreadCoordinatorsSnapshot, ThreadCoordinatorsError>;
     /** The last run of the thread its coordinator heard about. */
     readonly lastReportedRun: (
@@ -302,6 +312,44 @@ export const make = Effect.gen(function* () {
       }),
     );
 
+  const claim: ThreadCoordinators["Service"]["claim"] = (link) =>
+    writes.withPermits(1)(
+      Effect.gen(function* () {
+        const coordinator = yield* readShell(link.coordinatorThreadId);
+        if (coordinator === null) {
+          return yield* failure(`Coordinator thread ${link.coordinatorThreadId} does not exist.`);
+        }
+        if (coordinator.archivedAt !== null) {
+          return yield* failure(`'${coordinator.title}' is archived and cannot coordinate.`);
+        }
+        // A new thread has no children, so only the coordinator's side can break the rules.
+        if (coordinatorThreadIdOf(coordinator, yield* overrides) !== null) {
+          return yield* failure(
+            `'${coordinator.title}' belongs to a coordinator itself, and a child thread cannot coordinate threads.`,
+          );
+        }
+        const now = yield* nowIso;
+        yield* sql`
+          INSERT INTO fork_thread_coordinators (thread_id, coordinator_thread_id, updated_at)
+          VALUES (${link.threadId}, ${link.coordinatorThreadId}, ${now})
+          ON CONFLICT (thread_id) DO UPDATE SET
+            coordinator_thread_id = excluded.coordinator_thread_id,
+            updated_at = excluded.updated_at
+        `.pipe(Effect.mapError(storeFailed("save the coordinator link")));
+        yield* PubSub.publish(changes, undefined);
+      }),
+    );
+
+  const unclaim: ThreadCoordinators["Service"]["unclaim"] = (threadId) =>
+    writes.withPermits(1)(
+      Effect.gen(function* () {
+        yield* sql`DELETE FROM fork_thread_coordinators WHERE thread_id = ${threadId}`.pipe(
+          Effect.mapError(storeFailed("remove the coordinator link")),
+        );
+        yield* PubSub.publish(changes, undefined);
+      }),
+    );
+
   const subscribe: ThreadCoordinators["Service"]["subscribe"] = Stream.unwrap(
     Effect.gen(function* () {
       const subscription = yield* PubSub.subscribe(changes);
@@ -319,6 +367,8 @@ export const make = Effect.gen(function* () {
       Effect.map(overrides, (links) => coordinatorThreadIdOf(thread, links)),
     childrenOf,
     set,
+    claim,
+    unclaim,
     subscribe,
     lastReportedRun,
     markReported,

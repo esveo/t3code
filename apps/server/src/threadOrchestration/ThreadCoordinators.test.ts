@@ -170,6 +170,27 @@ describe("ThreadCoordinators", () => {
     }),
   );
 
+  it.effect("claims a thread before its launch and takes the claim back", () =>
+    Effect.gen(function* () {
+      const threads = [shell("coord"), delegatedChild("child", "coord", "run-1")];
+      return yield* withService(threads, ({ service }) =>
+        Effect.gen(function* () {
+          const launched = ThreadId.make("launched");
+          yield* service.claim({ threadId: launched, coordinatorThreadId: ThreadId.make("coord") });
+          // The link is there before the thread exists, so it never lists on its own.
+          assert.strictEqual((yield* service.overrides).get(launched), "coord");
+          yield* service.unclaim(launched);
+          assert.isFalse((yield* service.overrides).has(launched));
+          // A child cannot claim threads of its own.
+          const refused = yield* service
+            .claim({ threadId: launched, coordinatorThreadId: ThreadId.make("child") })
+            .pipe(Effect.flip);
+          assert.include(refused.message, "belongs to a coordinator itself");
+        }),
+      );
+    }),
+  );
+
   it.effect("keeps coordination one level deep", () =>
     Effect.gen(function* () {
       const threads = [

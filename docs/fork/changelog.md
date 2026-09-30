@@ -2,6 +2,7 @@
 
 Every feature and fix this fork adds on top of [T3 Code](https://github.com/pingdotgg/t3code), each with the commits that made it.
 
+- Fix: a thread a coordinator launches with coordinate: true belongs to it from the start and no longer flashes in the sidebar ([cfa1105](https://github.com/esveo/t3code/commit/cfa1105dc0d4e7329199b95a302a4a4a8b565526)).
 - The thread overview shows each thread's provider logo before its model, opens a thread's pull request in one click, and lists ready for review before working ([57893aa](https://github.com/esveo/t3code/commit/57893aae5c47ccf1dc5c73ba6050967ade17f121), [6ddb2fc](https://github.com/esveo/t3code/commit/6ddb2fcf7ebe14fca4816f6112f959c7a1eed767), [da3ab41](https://github.com/esveo/t3code/commit/da3ab41451c4cb8382b02ed90a939d41c46014d0)).
 - The coordinator Inbox shows one decision at a time with its options as boxes and a free-text box for everything else, and typing a note no longer jumps to the next decision ([bd58c50](https://github.com/esveo/t3code/commit/bd58c50ade2fcda1d4aed85ac097f9fa4d5cfd67), Fix: [c107e4f](https://github.com/esveo/t3code/commit/c107e4fdbefbe8d4e4630c9cac8380003f2bbe8e)).
 - Fork settings sit in their usual place with an esveo badge; searching "esveo" lists them all ([1801050](https://github.com/esveo/t3code/commit/1801050a90dafbd811dcf9417de77c72b52ce69a)).

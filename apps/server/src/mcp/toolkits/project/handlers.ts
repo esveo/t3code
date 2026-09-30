@@ -5,6 +5,7 @@ import * as ThreadMessageIntake from "../../../orchestration-v2/ThreadMessageInt
 import * as Claims from "../../../orchestration-v2/AttachmentClaims.ts";
 import * as Project from "../../../project/ProjectService.ts";
 import * as Repositories from "../../../sourceControl/SourceControlRepositoryService.ts";
+import { launchUnderCoordinator } from "../../forkLaunchUnderCoordinator.ts";
 import { newCommandId, readCaller, readMutationCaller, unavailable } from "../../threadAccess.ts";
 import { ProjectToolkit } from "./tools.ts";
 
@@ -54,32 +55,36 @@ export const ProjectHandlersLive = ProjectToolkit.toLayer({
           code: "invalid_request",
           message: "A new thread accepts only pending attachment uploads.",
         });
-      const result = yield* ThreadMessageIntake.launchThread({
-        commandId,
-        threadId,
-        projectId: input.projectId ?? caller.projectId,
-        title: input.title,
-        modelSelection: input.modelSelection ?? caller.modelSelection,
-        runtimeMode: input.runtimeMode ?? caller.runtimeMode,
-        interactionMode: input.interactionMode ?? caller.interactionMode,
-        workspaceStrategy: input.workspaceStrategy ?? { type: "root" },
-        ...(input.message === undefined && attachments.length === 0
-          ? {}
-          : {
-              initialMessage: {
-                messageId,
-                senderThreadId: scope.threadId,
-                text: input.message ?? "",
-                attachments,
-              },
-            }),
-        createdBy: "agent",
-        creationSource: "mcp",
-      }).pipe(
-        Effect.mapError((error) =>
-          error._tag === "AttachmentClaimError"
-            ? new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message })
-            : unavailable(),
+      const projectId = input.projectId ?? caller.projectId;
+      const result = yield* launchUnderCoordinator(
+        { coordinate: input.coordinate, threadId, projectId, caller },
+        ThreadMessageIntake.launchThread({
+          commandId,
+          threadId,
+          projectId,
+          title: input.title,
+          modelSelection: input.modelSelection ?? caller.modelSelection,
+          runtimeMode: input.runtimeMode ?? caller.runtimeMode,
+          interactionMode: input.interactionMode ?? caller.interactionMode,
+          workspaceStrategy: input.workspaceStrategy ?? { type: "root" },
+          ...(input.message === undefined && attachments.length === 0
+            ? {}
+            : {
+                initialMessage: {
+                  messageId,
+                  senderThreadId: scope.threadId,
+                  text: input.message ?? "",
+                  attachments,
+                },
+              }),
+          createdBy: "agent",
+          creationSource: "mcp",
+        }).pipe(
+          Effect.mapError((error) =>
+            error._tag === "AttachmentClaimError"
+              ? new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message })
+              : unavailable(),
+          ),
         ),
       );
       const thread = result.projection.thread;

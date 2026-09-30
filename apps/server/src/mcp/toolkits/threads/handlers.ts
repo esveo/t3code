@@ -109,6 +109,8 @@ const unavailableCoordinators: ThreadCoordinators["Service"] = {
   coordinatorOf: () => Effect.fail(noCoordinators()),
   childrenOf: () => Effect.fail(noCoordinators()),
   set: () => Effect.fail(noCoordinators()),
+  claim: () => Effect.fail(noCoordinators()),
+  unclaim: () => Effect.fail(noCoordinators()),
   subscribe: Stream.fail(noCoordinators()),
   lastReportedRun: () => Effect.fail(noCoordinators()),
   markReported: () => Effect.fail(noCoordinators()),
