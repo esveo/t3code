@@ -9,7 +9,7 @@ import {
   nextUndrafted,
   orderDecisions,
   waitingDecisionCount,
-} from "./threadInbox.logic";
+} from "./threadInbox";
 
 const CHILD = ThreadId.make("child");
 

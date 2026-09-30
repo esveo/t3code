@@ -26,7 +26,7 @@ import {
   isSnoozed,
   nextUndrafted,
   orderDecisions,
-} from "./threadInbox.logic";
+} from "@t3tools/shared/threadInbox";
 import { threadInboxEnvironment } from "./threadInboxState";
 import { useInboxDrafts, useInboxView, useThreadInboxStore } from "./threadInboxStore";
 import { ChildRequestsSection } from "./ChildRequestsSection";
