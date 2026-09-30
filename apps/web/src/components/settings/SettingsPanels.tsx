@@ -168,6 +168,7 @@ import { ProjectFavicon } from "../ProjectFavicon";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
 import { AgentStageSettingRow } from "../agentStage/AgentStageSetting";
 import { VoiceInputSettingRow } from "../voiceInput/VoiceInputSettingRow";
+import { EasterEggsSettingRow } from "../easterEggs/EasterEggsSettingRow";
 import {
   EsveoComposerReadoutSettingRows,
   EsveoSidebarCardSettingRows,
@@ -2383,6 +2384,7 @@ export function GeneralSettingsPanel() {
         />
         <AgentStageSettingRow />
         <VoiceInputSettingRow />
+        <EasterEggsSettingRow />
         <SettingsRow
           {...searchableSetting("time-format")}
           description="System default follows your browser or OS clock preference."

@@ -278,6 +278,7 @@ import { useThreadOverviewSurface } from "./threadOrchestration/useThreadOvervie
 import { ThreadInboxPanel } from "./threadInbox/ThreadInboxPanel";
 import { useThreadInboxSurface } from "./threadInbox/useThreadInboxSurface";
 import { useAgentStageEnabled } from "./agentStage/agentStageStore";
+import { playEasterEggFor } from "./easterEggs/easterEggs";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { isEditableFocused } from "../lib/editableFocus";
@@ -8486,6 +8487,7 @@ export default function ChatView(props: ChatViewProps) {
         composerReviewComments.length +
         composerThreadContexts.length,
     });
+    playEasterEggFor(trimmed);
     const feedbackCommand =
       ctxSelectedProvider === "codex" &&
       composerImages.length === 0 &&

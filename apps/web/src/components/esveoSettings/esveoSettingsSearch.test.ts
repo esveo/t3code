@@ -15,6 +15,7 @@ describe("esveo settings search", () => {
         "bitbucket-credentials",
         "context-window-control",
         "cross-project-threads",
+        "easter-eggs",
         "group-sidebar-threads-by-project",
         "prompt-cache-timer",
         "sidebar-child-threads",
