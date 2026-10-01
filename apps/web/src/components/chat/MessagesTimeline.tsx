@@ -3900,6 +3900,8 @@ function UserMessageMentionChip(props: {
   copyMarkdown: string;
 }) {
   const ctx = use(TimelineRowCtx);
+  // esveo fork: right-click offers the shared file menu (reveal in Finder, open with).
+  const onFileContextMenu = useFileContextMenuHandler(ctx.activeThreadEnvironmentId);
   return (
     <Tooltip>
       <TooltipTrigger
@@ -3912,6 +3914,17 @@ function UserMessageMentionChip(props: {
             onClick={() => {
               if (ctx.threadRef)
                 useRightPanelStore.getState().openFile(ctx.threadRef, props.record.path);
+            }}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              onFileContextMenu(
+                {
+                  environmentId: ctx.activeThreadEnvironmentId,
+                  filePath: props.record.path,
+                  workspaceRoot: ctx.workspaceRoot,
+                },
+                event,
+              );
             }}
           >
             <PierreEntryIcon

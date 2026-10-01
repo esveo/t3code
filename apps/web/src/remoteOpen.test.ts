@@ -63,6 +63,41 @@ describe("resolveRemoteOpenState", () => {
     ).toEqual({ mode: "local-exec" });
   });
 
+  it("keeps exec behavior for a saved connection to a loopback server", () => {
+    expect(
+      resolveRemoteOpenState({
+        target: new BearerConnectionTarget({
+          environmentId,
+          label: "Service",
+          connectionId: "saved-1",
+        }),
+        sshAlias: null,
+        isDesktopRenderer: true,
+        remoteOpenTargets: TAILSCALE_TARGETS,
+        bearerHttpBaseUrl: "http://127.0.0.1:3773",
+      }),
+    ).toEqual({ mode: "local-exec" });
+  });
+
+  it("uses deep links for a saved connection reached over the network", () => {
+    expect(
+      resolveRemoteOpenState({
+        target: new BearerConnectionTarget({
+          environmentId,
+          label: "sol",
+          connectionId: "saved-1",
+        }),
+        sshAlias: null,
+        isDesktopRenderer: true,
+        remoteOpenTargets: TAILSCALE_TARGETS,
+        bearerHttpBaseUrl: "https://sol.tail1234.ts.net",
+      }),
+    ).toEqual({
+      mode: "remote-links",
+      host: { kind: "tailscale", host: "sol.tail1234.ts.net" },
+    });
+  });
+
   it("keeps exec behavior for desktop-local secondary backends", () => {
     expect(
       resolveRemoteOpenState({
