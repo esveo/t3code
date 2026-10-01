@@ -1,5 +1,5 @@
 import { MessageId, PlanId, RunId } from "@t3tools/contracts";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "vite-plus/test";
 
 import type { TimelineEntry } from "../../session-logic";
 import { buildChatFindPattern, collectChatFindMatches } from "../chat/ChatFind.logic";

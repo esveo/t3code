@@ -195,6 +195,7 @@ import { useChatFind } from "./useChatFind";
 import type { ChatFindMatch } from "./ChatFind.logic";
 import { ChatPaneContext } from "../split/chatPane";
 import { ChatFindResults } from "../chatFind/ChatFindResults";
+import { chatFindSearchableEntries } from "../chatFind/chatFindScope";
 import {
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRowsWithState,
@@ -991,9 +992,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   useEffect(() => {
     if (findStoreOpen && !findOpen) hideFind();
   }, [findOpen, findStoreOpen, hideFind]);
+  // Fork: find skips the agent's commentary and searches only its answers.
+  const findEntries = useMemo(
+    () => (findOpen ? chatFindSearchableEntries(timelineEntries) : timelineEntries),
+    [findOpen, timelineEntries],
+  );
   const chatFind = useChatFind({
     enabled: findOpen,
-    entries: timelineEntries,
+    entries: findEntries,
     rows,
     listRef,
     viewport: timelineViewportElement,
@@ -1439,7 +1445,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           {findOpen ? (
             <ChatFindResults
               query={chatFind.query}
-              entries={timelineEntries}
+              entries={findEntries}
               matches={chatFind.matches}
               activeIndex={chatFind.activeIndex}
               cwd={markdownCwd}
