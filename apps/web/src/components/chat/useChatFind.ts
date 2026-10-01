@@ -102,6 +102,16 @@ export function useChatFind({
     },
     [activeIndex, matches],
   );
+  // Fork: jumps to one match, for the result list under the bar.
+  const select = useCallback(
+    (index: number) => {
+      const match = matches[index];
+      if (!match) return;
+      setSelection(match);
+      setRevealRequest((request) => request + 1);
+    },
+    [matches],
+  );
 
   useEffect(() => {
     if (!enabled) {
@@ -233,6 +243,7 @@ export function useChatFind({
     activeIndex,
     activeEntryId: activeMatch?.entryId ?? null,
     step,
+    select,
     alwaysRender,
   };
 }

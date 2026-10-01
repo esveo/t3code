@@ -194,6 +194,7 @@ import { useAssistantCitationTarget, type CitationHistoryPage } from "./useAssis
 import { useChatFind } from "./useChatFind";
 import type { ChatFindMatch } from "./ChatFind.logic";
 import { ChatPaneContext } from "../split/chatPane";
+import { ChatFindResults } from "../chatFind/ChatFindResults";
 import {
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRowsWithState,
@@ -1432,6 +1433,18 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               onClose={hideFind}
               focusRequestId={findFocusRequestId}
               loadEarlier={loadEarlier}
+            />
+          ) : null}
+          {/* Fork: the matches as a clickable list under the find bar. */}
+          {findOpen ? (
+            <ChatFindResults
+              query={chatFind.query}
+              entries={timelineEntries}
+              matches={chatFind.matches}
+              activeIndex={chatFind.activeIndex}
+              cwd={markdownCwd}
+              timestampFormat={timestampFormat}
+              onSelect={chatFind.select}
             />
           ) : null}
           <LegendList<MessagesTimelineRow>

@@ -69,6 +69,14 @@ export function ChatFindBar({
           event.preventDefault();
           event.stopPropagation();
           onStep(event.shiftKey ? -1 : 1);
+        } else if (
+          // Fork: the arrow keys walk the result list (chatFind/ChatFindResults).
+          (event.key === "ArrowDown" || event.key === "ArrowUp") &&
+          event.target === inputRef.current
+        ) {
+          event.preventDefault();
+          event.stopPropagation();
+          onStep(event.key === "ArrowUp" ? -1 : 1);
         }
       }}
     >
