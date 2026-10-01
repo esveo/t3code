@@ -9,7 +9,7 @@ import {
   nextUndrafted,
   orderDecisions,
   waitingDecisionCount,
-} from "./threadInbox";
+} from "./threadInbox.ts";
 
 const CHILD = ThreadId.make("child");
 

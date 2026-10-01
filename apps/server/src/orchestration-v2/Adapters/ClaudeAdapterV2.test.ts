@@ -5160,14 +5160,14 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               parent_tool_use_id: null,
               session_id: WAKE_NATIVE_SESSION,
               uuid: "00000000-0000-4000-8000-000000000401",
-              user_message_uuid: claudePromptUuid(firstAttempt),
+              user_message_uuid: ClaudeAdapterV2.claudePromptUuid(firstAttempt),
             }),
           );
         }
         yield* harness.runtime.interruptTurn({
           providerThread: harness.providerThread,
           providerTurnId: idAllocator.derive.providerTurn({
-            driver: CLAUDE_PROVIDER,
+            driver: ClaudeAdapterV2.CLAUDE_PROVIDER,
             nativeTurnId: `turn:${firstAttempt}`,
           }),
         });

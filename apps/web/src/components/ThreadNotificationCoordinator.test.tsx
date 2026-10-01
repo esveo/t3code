@@ -265,7 +265,7 @@ describe("thread notifications", () => {
     await render();
     expect(state.add).toHaveBeenCalledTimes(1);
     expect(state.add).toHaveBeenLastCalledWith(
-      expect.objectContaining({ title: "Thread completed" }),
+      expect.objectContaining({ description: "Thread completed · Webshop" }),
     );
   });
 
