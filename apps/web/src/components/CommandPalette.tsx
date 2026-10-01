@@ -1933,6 +1933,7 @@ function OpenCommandPaletteDialog(props: {
       icon: <SearchIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "chat.find",
       run: async () => {
+        // Fork: find opens in the active split pane; upstream calls `show()`.
         useChatFindStore.getState().show(activeChatPaneId());
       },
     });

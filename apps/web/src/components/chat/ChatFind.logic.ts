@@ -15,7 +15,11 @@ export interface ChatFindMatch {
   /** Timeline entry id; message and plan rows reuse it as their row id. */
   readonly entryId: string;
   readonly runId: RunId | null;
-  /** Retry attempt the entry belongs to; superseded attempts fold away. */
+  /**
+   * Retry attempt the entry belongs to; superseded attempts fold away.
+   * Fork: `runId` and this field adapt upstream's `turnId` to V2. Once
+   * upstream ships find on V2, take its version and keep only this field.
+   */
   readonly attemptId: RunAttemptId | null;
   /** Zero-based occurrence within the entry's text, in document order. */
   readonly occurrence: number;

@@ -610,6 +610,9 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const expandCitedRun = useCallback((runId: RunId) => {
     setExpandedRunIds((current) => (current.has(runId) ? current : new Set([...current, runId])));
   }, []);
+  // Fork: replaces upstream's `expandCitedTurn` for find (pingdotgg/t3code#12959).
+  // V2 hides matches behind a folded run or a superseded retry attempt; keep
+  // unfolding both when resolving a conflict with upstream's version.
   const expandFindMatch = useCallback((match: ChatFindMatch) => {
     const { runId, attemptId } = match;
     if (runId !== null) {
@@ -964,6 +967,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     onManualNavigation,
   });
   const chatPaneId = use(ChatPaneContext);
+  // Fork: the bar opens only in the pane it was requested for, not in every
+  // split pane. Upstream reads `store.open` alone; keep the pane check.
   const findStoreOpen = useChatFindStore((store) => store.open && store.paneId === chatPaneId);
   const findFocusRequestId = useChatFindStore((store) => store.focusRequestId);
   const hideFind = useChatFindStore((store) => store.hide);

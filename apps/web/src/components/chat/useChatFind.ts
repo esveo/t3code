@@ -50,7 +50,10 @@ export function useChatFind({
   cwd: string | undefined;
   /** Height of the composer overlay covering the bottom of the scroll node. */
   bottomInset: number;
-  /** Unfolds the run and retry attempt that hide a match. */
+  /**
+   * Unfolds the run and retry attempt that hide a match.
+   * Fork: upstream passes `onExpandTurn(turnId)`; V2 needs the attempt too.
+   */
   onExpandMatch: (match: ChatFindMatch) => void;
   onManualNavigation: () => void;
 }) {
