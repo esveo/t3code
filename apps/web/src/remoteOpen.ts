@@ -64,6 +64,8 @@ export function resolveRemoteOpenState(input: {
   readonly remoteOpenTargets: ReadonlyArray<RemoteOpenTarget> | undefined;
   /** True when running inside the desktop app's renderer. */
   readonly isDesktopRenderer: boolean;
+  /** esveo fork: base URL of a saved bearer connection; null elsewhere. */
+  readonly bearerHttpBaseUrl?: string | null;
 }): RemoteOpenState {
   const { target } = input;
   // No catalog entry: keep today's exec behavior rather than guessing.
@@ -84,6 +86,10 @@ export function resolveRemoteOpenState(input: {
     }
   } else if (isDesktopLocalConnectionTarget(target)) {
     return LOCAL_EXEC;
+  } else if (isLoopbackBearerConnection(input.bearerHttpBaseUrl)) {
+    // esveo fork: a saved connection to a loopback server (the background
+    // service the fork's desktop app pairs with) runs on this machine.
+    return LOCAL_EXEC;
   }
 
   if (input.sshAlias !== null && input.sshAlias.length > 0) {
@@ -94,6 +100,12 @@ export function resolveRemoteOpenState(input: {
     return { mode: "remote-links", host: advertised };
   }
   return REMOTE_UNAVAILABLE;
+}
+
+function isLoopbackBearerConnection(httpBaseUrl: string | null | undefined): boolean {
+  if (httpBaseUrl == null) return false;
+  const hostname = parseHostname(httpBaseUrl);
+  return hostname !== null && isLoopbackHostname(hostname);
 }
 
 export function useRemoteOpenResolution(environmentId: EnvironmentId | null): RemoteOpenResolution {
@@ -110,6 +122,10 @@ export function useRemoteOpenResolution(environmentId: EnvironmentId | null): Re
       state: resolveRemoteOpenState({
         target: presentation.entry.target,
         sshAlias,
+        bearerHttpBaseUrl:
+          profile !== null && profile._tag === "BearerConnectionProfile"
+            ? profile.httpBaseUrl
+            : null,
         remoteOpenTargets: presentation.serverConfig?.remoteOpenTargets,
         isDesktopRenderer: window.desktopBridge !== undefined,
       }),
