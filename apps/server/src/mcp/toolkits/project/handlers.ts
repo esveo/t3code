@@ -4,6 +4,7 @@ import * as Option from "effect/Option";
 import * as ThreadMessageIntake from "../../../orchestration-v2/ThreadMessageIntake.ts";
 import * as Claims from "../../../orchestration-v2/AttachmentClaims.ts";
 import * as Project from "../../../project/ProjectService.ts";
+import * as ScratchWorkspace from "../../../project/ScratchWorkspace.ts";
 import * as Repositories from "../../../sourceControl/SourceControlRepositoryService.ts";
 import { launchUnderCoordinator } from "../../forkLaunchUnderCoordinator.ts";
 import { newCommandId, readCaller, readMutationCaller, unavailable } from "../../threadAccess.ts";
@@ -55,7 +56,28 @@ export const ProjectHandlersLive = ProjectToolkit.toLayer({
           code: "invalid_request",
           message: "A new thread accepts only pending attachment uploads.",
         });
-      const projectId = input.projectId ?? caller.projectId;
+      if (
+        input.scratch === true &&
+        (input.projectId !== undefined || input.workspaceStrategy !== undefined)
+      )
+        return yield* new OrchestratorMcpFailure({
+          code: "invalid_request",
+          message:
+            "scratch:true picks its own project and folder; omit projectId and workspaceStrategy.",
+        });
+      const projectId =
+        input.scratch === true
+          ? (yield* ScratchWorkspace.ScratchWorkspace.pipe(
+              Effect.flatMap((scratch) => scratch.ensureProject),
+              Effect.mapError(
+                (error) =>
+                  new OrchestratorMcpFailure({
+                    code: "orchestration_error",
+                    message: error.message,
+                  }),
+              ),
+            )).projectId
+          : (input.projectId ?? caller.projectId);
       const result = yield* launchUnderCoordinator(
         { coordinate: input.coordinate, threadId, projectId, caller },
         ThreadMessageIntake.launchThread({
