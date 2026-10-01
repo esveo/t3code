@@ -20,6 +20,7 @@ describe("esveo settings search", () => {
         "prompt-cache-timer",
         "sidebar-child-threads",
         "thread-decisions",
+        "thread-details-open-by-default",
         "two-line-thread-cards",
         "voice-input",
       ].toSorted(),

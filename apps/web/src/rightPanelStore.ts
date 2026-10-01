@@ -205,10 +205,25 @@ const EMPTY_THREAD_STATE: ThreadRightPanelState = {
   surfaces: [],
 };
 
-const DEFAULT_THREAD_PANEL_VISIBILITY: ThreadPanelVisibility = {
+let DEFAULT_THREAD_PANEL_VISIBILITY: ThreadPanelVisibility = {
   inlineOpen: true,
   popoverOpen: false,
 };
+
+/**
+ * Fork: whether threads without a choice of their own start with the details
+ * card open, from the `threadDetailsOpenByDefault` client setting. A thread
+ * whose choice matches the default drops its entry, so changing the default
+ * moves every thread the user has not set otherwise.
+ */
+export function setEsveoThreadPanelOpenByDefault(open: boolean): void {
+  if (DEFAULT_THREAD_PANEL_VISIBILITY.inlineOpen === open) return;
+  DEFAULT_THREAD_PANEL_VISIBILITY = { inlineOpen: open, popoverOpen: false };
+  // A fresh map makes every selector re-read the default.
+  useRightPanelStore.setState((state) => ({
+    threadPanelVisibilityByThreadKey: { ...state.threadPanelVisibilityByThreadKey },
+  }));
+}
 
 const singletonSurface = (
   kind: Exclude<RightPanelKind, "file" | "preview" | "terminal" | "pull-request">,
@@ -345,7 +360,7 @@ const updateThreadPanelVisibilityMap = (
 ): Record<string, ThreadPanelVisibility> => {
   const current = byThreadKey[threadKey] ?? DEFAULT_THREAD_PANEL_VISIBILITY;
   const next = updater(current);
-  if (next.inlineOpen && !next.popoverOpen) {
+  if (next.inlineOpen === DEFAULT_THREAD_PANEL_VISIBILITY.inlineOpen && !next.popoverOpen) {
     if (!(threadKey in byThreadKey)) return byThreadKey;
     const { [threadKey]: _removed, ...rest } = byThreadKey;
     return rest;
@@ -1021,8 +1036,10 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         ),
         threadPanelVisibilityByThreadKey: Object.fromEntries(
           Object.entries(state.threadPanelVisibilityByThreadKey).flatMap(
-            ([threadKey, visibility]) =>
-              visibility.inlineOpen ? [] : [[threadKey, { inlineOpen: false, popoverOpen: false }]],
+            // Fork: keeps open choices too, which matter once threads start closed.
+            ([threadKey, visibility]) => [
+              [threadKey, { inlineOpen: visibility.inlineOpen, popoverOpen: false }],
+            ],
           ),
         ),
       }),

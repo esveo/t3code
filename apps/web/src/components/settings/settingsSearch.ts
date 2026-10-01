@@ -237,6 +237,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["wide full width column layout messages composer monitor"],
   },
   {
+    id: "thread-details-open-by-default",
+    title: "Open thread details by default",
+    to: "/settings/appearance",
+    fork: true,
+    searchTerms: ["thread details card panel workspace version control closed collapsed hide"],
+  },
+  {
     id: "panel-animations",
     title: "Panel animations",
     to: "/settings/appearance",

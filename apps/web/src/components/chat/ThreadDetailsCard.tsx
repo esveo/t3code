@@ -10,6 +10,7 @@ import {
   resolveThreadDetailsCardDensity,
   resolveThreadDetailsCardLayout,
 } from "./threadDetailsCardLayout";
+import { useEsveoThreadDetailsDefault } from "../esveoSettings/useEsveoThreadDetailsDefault"; // Fork
 
 /** One card owns its placement and folds content only when that content cannot fit. */
 export function ThreadDetailsCard({
@@ -25,6 +26,7 @@ export function ThreadDetailsCard({
   onPresentationChange: (presentation: ThreadPanelPresentation) => void;
   children: (density: "full" | "compact" | "essential") => ReactNode;
 }) {
+  useEsveoThreadDetailsDefault(); // Fork
   const canvas = useChatCanvas();
   const preferredPlacement = canvas
     ? resolveThreadDetailsCardLayout({

@@ -476,6 +476,9 @@ export const ClientSettingsSchema = Schema.Struct({
   groupSidebarThreadsByProject: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(false)),
   ),
+  // Fork: whether a thread's details card (workspace, version control) starts
+  // open. A thread the user opened or closed keeps that choice.
+  threadDetailsOpenByDefault: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   sidebarProjectGroupingMode: SidebarProjectGroupingMode.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_SIDEBAR_PROJECT_GROUPING_MODE)),
   ),
@@ -1801,6 +1804,7 @@ export const ClientSettingsPatch = Schema.Struct({
   legacySidebarEnabled: Schema.optionalKey(Schema.Boolean),
   twoLineThreadCards: Schema.optionalKey(Schema.Boolean),
   groupSidebarThreadsByProject: Schema.optionalKey(Schema.Boolean),
+  threadDetailsOpenByDefault: Schema.optionalKey(Schema.Boolean),
   sidebarProjectGroupingMode: Schema.optionalKey(SidebarProjectGroupingMode),
   sidebarProjectGroupingOverrides: Schema.optionalKey(
     Schema.Record(TrimmedNonEmptyString, SidebarProjectGroupingMode),
