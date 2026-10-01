@@ -1053,9 +1053,7 @@ describe("EnvironmentThreads", () => {
         });
 
         const warm = yield* makeHarness(
-          cacheKind === "retained"
-            ? { resumeCache }
-            : { loadCached: Effect.succeed(Option.some(saved!)) },
+          cacheKind === "retained" ? { resumeCache } : { loadCached: Effect.succeedSome(saved!) },
         );
         // The thread may have grown past the replay budget while closed. Its
         // warm subscription must still allow the server to bound that fallback.

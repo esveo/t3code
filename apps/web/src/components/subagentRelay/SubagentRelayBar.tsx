@@ -167,6 +167,7 @@ export function SubagentRelayBar(
                   compact={false}
                   pendingAction={null}
                   isRunning={showStop}
+                  canInterrupt={showStop}
                   showPlanFollowUpPrompt={false}
                   promptHasText={hasText}
                   isSendBusy={sending}
