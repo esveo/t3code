@@ -2,6 +2,7 @@
 
 Every feature and fix this fork adds on top of [T3 Code](https://github.com/pingdotgg/t3code), each with the commits that made it.
 
+- Right-clicking a file chip in the chat offers Reveal in Finder or Explorer, also when the desktop app is paired with the background service ([c3731af](https://github.com/esveo/t3code/commit/c3731af0ff9b0e630bbeae5e6bfe28c412d607a9), [10baeeb](https://github.com/esveo/t3code/commit/10baeeb103b898ac7c668c23f4455c981cd095d2)).
 - Fix: a coordinator with open threads no longer settles automatically when the pull requests it linked are merged ([a4e62a5](https://github.com/esveo/t3code/commit/a4e62a518bba125bfd0da6064bc3cd7fdf7d0bd6)).
 - Android: thread rows in the desktop Threads-panel look, only main threads in the list, and coordinators with Chat, Threads and Inbox tabs ([a771329](https://github.com/esveo/t3code/commit/a771329077fb499fa8ed12e33045294c324199cd), [c4cda72](https://github.com/esveo/t3code/commit/c4cda72efdd1d77d361d6c7e88299022de27f531), [f8e27ca](https://github.com/esveo/t3code/commit/f8e27ca83960543975df8e684d5ec53d135aea12), [69fcb98](https://github.com/esveo/t3code/commit/69fcb98accb0fd661bfd457b273c72cc70643d7a)).
 - Fix: a thread a coordinator launches with coordinate: true belongs to it from the start and no longer flashes in the sidebar ([cfa1105](https://github.com/esveo/t3code/commit/cfa1105dc0d4e7329199b95a302a4a4a8b565526)).
