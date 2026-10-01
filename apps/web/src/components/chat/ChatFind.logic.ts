@@ -1,5 +1,5 @@
 import { renderCodexDirectivesForCopy } from "@t3tools/client-runtime/codex-markdown-directives";
-import type { TurnId } from "@t3tools/contracts";
+import type { RunAttemptId, RunId } from "@t3tools/contracts";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
 
 import { resolveUserMessageContext } from "../../lib/composerContextRecords";
@@ -14,7 +14,9 @@ import type { TimelineEntry } from "../../session-logic";
 export interface ChatFindMatch {
   /** Timeline entry id; message and plan rows reuse it as their row id. */
   readonly entryId: string;
-  readonly turnId: TurnId | null;
+  readonly runId: RunId | null;
+  /** Retry attempt the entry belongs to; superseded attempts fold away. */
+  readonly attemptId: RunAttemptId | null;
   /** Zero-based occurrence within the entry's text, in document order. */
   readonly occurrence: number;
 }
@@ -194,7 +196,7 @@ function cachedSearchText(
 export function chatFindEntrySource(
   entry: TimelineEntry,
   cwd?: string,
-): { text: string; turnId: TurnId | null } | null {
+): { text: string; runId: RunId | null } | null {
   switch (entry.kind) {
     case "message": {
       const { message } = entry;
@@ -203,7 +205,7 @@ export function chatFindEntrySource(
           text: cachedSearchText(message, message.text, cwd, () =>
             markdownSearchText(userMessageMarkdown(message), { cwd, rawHtml: false }),
           ),
-          turnId: message.turnId,
+          runId: message.runId,
         };
       }
       if (message.role === "assistant") {
@@ -211,7 +213,7 @@ export function chatFindEntrySource(
           text: cachedSearchText(message, message.text, cwd, () =>
             markdownSearchText(renderCodexDirectivesForCopy(message.text), { cwd }),
           ),
-          turnId: message.turnId,
+          runId: message.runId,
         };
       }
       return null;
@@ -222,7 +224,7 @@ export function chatFindEntrySource(
         text: cachedSearchText(plan, plan.planMarkdown, cwd, () =>
           proposedPlanSearchText(plan.planMarkdown, cwd),
         ),
-        turnId: plan.turnId,
+        runId: plan.runId,
       };
     }
     default:
@@ -242,7 +244,12 @@ export function collectChatFindMatches(
     if (source === null || source.text.length === 0) continue;
     const count = findPatternSpans(source.text, pattern).length;
     for (let occurrence = 0; occurrence < count; occurrence += 1) {
-      matches.push({ entryId: entry.id, turnId: source.turnId, occurrence });
+      matches.push({
+        entryId: entry.id,
+        runId: source.runId,
+        attemptId: entry.attempt?.id ?? null,
+        occurrence,
+      });
     }
   }
   return matches;

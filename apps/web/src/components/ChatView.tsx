@@ -241,7 +241,8 @@ import {
   type RightPanelSurface,
   useRightPanelStore,
 } from "../rightPanelStore";
-import { useIsActiveChatPane } from "./split/chatPane";
+import { activeChatPaneId, useIsActiveChatPane } from "./split/chatPane";
+import { ChatFindHeaderButton } from "./chatFind/ChatFindHeaderButton";
 import { installDesktopClipboardPasteFallback } from "../lib/desktopClipboardPaste";
 import {
   isPreviewSupportedInRuntime,
@@ -7601,7 +7602,7 @@ export default function ChatView(props: ChatViewProps) {
         }
         event.preventDefault();
         event.stopPropagation();
-        if (!event.repeat) useChatFindStore.getState().show();
+        if (!event.repeat) useChatFindStore.getState().show(activeChatPaneId());
         return;
       }
 
@@ -10609,10 +10610,16 @@ export default function ChatView(props: ChatViewProps) {
     onToggleRightPanel: toggleRightPanel,
   } satisfies PanelLayoutControlsProps;
   const panelToggleControls = (
-    <PanelLayoutControls
-      {...panelToggleControlProps}
-      showThreadPanelControl={!inlineRightPanelOwnsTitleBar}
-    />
+    // Fork: find in thread sits in front of the panel toggles.
+    <span className="flex h-full shrink-0 items-center gap-1">
+      {rightPanelMaximized ? null : (
+        <ChatFindHeaderButton shortcutLabel={shortcutLabelForCommand(keybindings, "chat.find")} />
+      )}
+      <PanelLayoutControls
+        {...panelToggleControlProps}
+        showThreadPanelControl={!inlineRightPanelOwnsTitleBar}
+      />
+    </span>
   );
   const threadPanelHeaderControl = (
     <div

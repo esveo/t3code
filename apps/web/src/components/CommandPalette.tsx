@@ -199,6 +199,7 @@ import {
 import { resolveShortcutCommand, threadJumpIndexFromCommand } from "../keybindings";
 import { CommandDialog, CommandDialogPopup, CommandFooterAction } from "./ui/command";
 import { revealThreadInSplit } from "./split/splitPanes";
+import { activeChatPaneId } from "./split/chatPane";
 import { Button } from "./ui/button";
 import { Kbd, KbdGroup } from "./ui/kbd";
 import { stackedThreadToast, toastManager } from "./ui/toast";
@@ -1932,7 +1933,7 @@ function OpenCommandPaletteDialog(props: {
       icon: <SearchIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "chat.find",
       run: async () => {
-        useChatFindStore.getState().show();
+        useChatFindStore.getState().show(activeChatPaneId());
       },
     });
   }

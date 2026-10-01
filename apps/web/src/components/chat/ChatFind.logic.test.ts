@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vite-plus/test";
-import { MessageId, TurnId } from "@t3tools/contracts";
+import { MessageId, PlanId, RunId } from "@t3tools/contracts";
 
 import type { TimelineEntry } from "../../session-logic";
 import {
@@ -18,9 +18,9 @@ const at = "2026-01-01T00:00:00.000Z";
 function message(
   id: string,
   text: string,
-  options: { turnId?: string | null; role?: "user" | "assistant" | "reasoning" | "system" } = {},
+  options: { runId?: string | null; role?: "user" | "assistant" | "system" } = {},
 ): TimelineEntry {
-  const turnId = options.turnId === undefined ? "turn-1" : options.turnId;
+  const runId = options.runId === undefined ? "turn-1" : options.runId;
   return {
     id,
     kind: "message",
@@ -29,7 +29,7 @@ function message(
       id: MessageId.make(id),
       role: options.role ?? "user",
       text,
-      turnId: turnId === null ? null : TurnId.make(turnId),
+      runId: runId === null ? null : RunId.make(runId),
       streaming: false,
       createdAt: at,
       updatedAt: at,
@@ -43,11 +43,10 @@ function plan(id: string, planMarkdown: string): TimelineEntry {
     kind: "proposed-plan",
     createdAt: at,
     proposedPlan: {
-      id,
-      turnId: TurnId.make("plan-turn"),
+      id: PlanId.make(id),
+      runId: RunId.make("plan-turn"),
       planMarkdown,
-      implementedAt: null,
-      implementationThreadId: null,
+      status: "active",
       createdAt: at,
       updatedAt: at,
     },
@@ -157,16 +156,16 @@ describe("markdownSearchText", () => {
 describe("collectChatFindMatches", () => {
   it("lists one match per occurrence in timeline order, for messages and plans", () => {
     const entries = [
-      message("m1", "Fix the login bug", { turnId: "t1" }),
-      message("m2", "No match here", { turnId: "t1", role: "assistant" }),
+      message("m1", "Fix the login bug", { runId: "t1" }),
+      message("m2", "No match here", { runId: "t1", role: "assistant" }),
       plan("p1", "# Plan\n\n1. Reproduce the login bug\n2. Fix login"),
-      message("m3", "login", { turnId: null }),
+      message("m3", "login", { runId: null }),
     ];
     expect(collectChatFindMatches(entries, buildChatFindPattern("LOGIN"))).toEqual([
-      { entryId: "m1", turnId: TurnId.make("t1"), occurrence: 0 },
-      { entryId: "p1", turnId: TurnId.make("plan-turn"), occurrence: 0 },
-      { entryId: "p1", turnId: TurnId.make("plan-turn"), occurrence: 1 },
-      { entryId: "m3", turnId: null, occurrence: 0 },
+      { entryId: "m1", runId: RunId.make("t1"), attemptId: null, occurrence: 0 },
+      { entryId: "p1", runId: RunId.make("plan-turn"), attemptId: null, occurrence: 0 },
+      { entryId: "p1", runId: RunId.make("plan-turn"), attemptId: null, occurrence: 1 },
+      { entryId: "m3", runId: null, attemptId: null, occurrence: 0 },
     ]);
   });
 
@@ -210,19 +209,19 @@ describe("collectChatFindMatches", () => {
     const entry = message("m1", "**bold** text");
     const first = chatFindEntrySource(entry)!.text;
     expect(chatFindEntrySource(entry)!.text).toBe(first);
+    if (entry.kind !== "message") throw new Error("expected a message entry");
     expect(
       chatFindEntrySource({ ...entry, message: { ...entry.message, text: "plain" } })!.text,
     ).toBe("plain");
   });
 
-  it("skips thinking and system messages, which have no row of their own", () => {
+  it("skips system messages, which have no row of their own", () => {
     const entries = [
-      message("r1", "login thoughts", { role: "reasoning" }),
       message("s1", "login system note", { role: "system" }),
       message("a1", "login answer", { role: "assistant" }),
     ];
     expect(collectChatFindMatches(entries, buildChatFindPattern("login"))).toEqual([
-      { entryId: "a1", turnId: TurnId.make("turn-1"), occurrence: 0 },
+      { entryId: "a1", runId: RunId.make("turn-1"), attemptId: null, occurrence: 0 },
     ]);
   });
 });
@@ -243,9 +242,14 @@ describe("active match selection", () => {
   });
 
   it("falls back to the first match when the active one is gone", () => {
-    expect(resolveActiveMatchIndex(matches, { entryId: "gone", turnId: null, occurrence: 0 })).toBe(
-      0,
-    );
+    expect(
+      resolveActiveMatchIndex(matches, {
+        entryId: "gone",
+        runId: null,
+        attemptId: null,
+        occurrence: 0,
+      }),
+    ).toBe(0);
     expect(resolveActiveMatchIndex(matches, null)).toBe(0);
     expect(resolveActiveMatchIndex([], matches[0]!)).toBe(-1);
   });

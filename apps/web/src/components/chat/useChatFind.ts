@@ -1,5 +1,4 @@
 import type { LegendListRef } from "@legendapp/list/react";
-import type { TurnId } from "@t3tools/contracts";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import type { TimelineEntry } from "../../session-logic";
@@ -40,7 +39,7 @@ export function useChatFind({
   viewport,
   cwd,
   bottomInset,
-  onExpandTurn,
+  onExpandMatch,
   onManualNavigation,
 }: {
   enabled: boolean;
@@ -51,7 +50,8 @@ export function useChatFind({
   cwd: string | undefined;
   /** Height of the composer overlay covering the bottom of the scroll node. */
   bottomInset: number;
-  onExpandTurn: (turnId: TurnId) => void;
+  /** Unfolds the run and retry attempt that hide a match. */
+  onExpandMatch: (match: ChatFindMatch) => void;
   onManualNavigation: () => void;
 }) {
   const [query, setQueryState] = useState("");
@@ -116,9 +116,12 @@ export function useChatFind({
     if (!list) return;
     const rowIndex = rows.findIndex((row) => row.id === activeMatch.entryId);
     if (rowIndex < 0) {
-      if (activeMatch.turnId !== null && expandedKeyRef.current !== targetKey) {
+      if (
+        (activeMatch.runId !== null || activeMatch.attemptId !== null) &&
+        expandedKeyRef.current !== targetKey
+      ) {
         expandedKeyRef.current = targetKey;
-        onExpandTurn(activeMatch.turnId);
+        onExpandMatch(activeMatch);
       }
       return;
     }
@@ -127,7 +130,7 @@ export function useChatFind({
     onManualNavigation();
     void list.scrollToIndex({ index: rowIndex, animated: false, viewPosition: 0.2 });
     scheduleRef.current();
-  }, [activeMatch, enabled, listRef, onExpandTurn, onManualNavigation, rows, targetKey]);
+  }, [activeMatch, enabled, listRef, onExpandMatch, onManualNavigation, rows, targetKey]);
 
   // Paint highlights over mounted rows; re-run as rows mount, unmount, or stream.
   useEffect(() => {

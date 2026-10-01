@@ -192,6 +192,8 @@ import {
 import { ChatFindBar } from "./ChatFindBar";
 import { useAssistantCitationTarget, type CitationHistoryPage } from "./useAssistantCitationTarget";
 import { useChatFind } from "./useChatFind";
+import type { ChatFindMatch } from "./ChatFind.logic";
+import { ChatPaneContext } from "../split/chatPane";
 import {
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRowsWithState,
@@ -608,6 +610,17 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const expandCitedRun = useCallback((runId: RunId) => {
     setExpandedRunIds((current) => (current.has(runId) ? current : new Set([...current, runId])));
   }, []);
+  const expandFindMatch = useCallback((match: ChatFindMatch) => {
+    const { runId, attemptId } = match;
+    if (runId !== null) {
+      setExpandedRunIds((current) => (current.has(runId) ? current : new Set([...current, runId])));
+    }
+    if (attemptId !== null) {
+      setExpandedAttemptIds((current) =>
+        current.has(attemptId) ? current : new Set([...current, attemptId]),
+      );
+    }
+  }, []);
   // Nested tool state shares the bounded thread-position cache.
   const workGroupViewState = useMemo<WorkGroupViewState>(
     () =>
@@ -950,7 +963,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     onExpandTurn: expandCitedRun,
     onManualNavigation,
   });
-  const findStoreOpen = useChatFindStore((store) => store.open);
+  const chatPaneId = use(ChatPaneContext);
+  const findStoreOpen = useChatFindStore((store) => store.open && store.paneId === chatPaneId);
   const findFocusRequestId = useChatFindStore((store) => store.focusRequestId);
   const hideFind = useChatFindStore((store) => store.hide);
   // Find binds to the thread that had rows on screen when it was requested.
@@ -979,7 +993,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     viewport: timelineViewportElement,
     cwd: markdownCwd,
     bottomInset: contentInsetEndAdjustment,
-    onExpandTurn: expandCitedTurn,
+    onExpandMatch: expandFindMatch,
     onManualNavigation,
   });
   const [minimapHasPersistentGutter, setMinimapHasPersistentGutter] = useState(false);
