@@ -54,10 +54,13 @@ function newestOpenPullRequest(links: ReadonlyArray<ThreadPullRequestLink>) {
 
 function OverviewRow({
   entry,
+  coordinatorRef,
   fallbackBranch,
   onOpenInPanel,
 }: {
   entry: ThreadOverviewEntry;
+  /** The coordinator whose side panel shows this overview, and so the pull request too. */
+  coordinatorRef: ScopedThreadRef | null;
   /** The coordinator's branch, where a subagent without a branch of its own works. */
   fallbackBranch: string | null;
   onOpenInPanel: (threadRef: ScopedThreadRef) => void;
@@ -128,7 +131,11 @@ function OverviewRow({
             aria-label={`Open pull request #${pullRequest.number}`}
             title="Open the pull request (Cmd/Ctrl-click: in the browser)"
             onClick={(event) =>
-              openPrLink(event, pullRequest.url, scopeThreadRef(thread.environmentId, thread.id))
+              openPrLink(
+                event,
+                pullRequest.url,
+                coordinatorRef ?? scopeThreadRef(thread.environmentId, thread.id),
+              )
             }
           >
             <PullRequestGlyph.pullRequest aria-hidden className="text-success-foreground" />#
@@ -143,10 +150,12 @@ function OverviewRow({
 
 function OverviewSection({
   group,
+  coordinatorRef,
   fallbackBranch,
   onOpenInPanel,
 }: {
   group: ThreadOverviewGroup;
+  coordinatorRef: ScopedThreadRef | null;
   fallbackBranch: string | null;
   onOpenInPanel: (threadRef: ScopedThreadRef) => void;
 }) {
@@ -175,6 +184,7 @@ function OverviewSection({
             <OverviewRow
               key={entry.thread.id}
               entry={entry}
+              coordinatorRef={coordinatorRef}
               fallbackBranch={fallbackBranch}
               onOpenInPanel={onOpenInPanel}
             />
@@ -238,6 +248,7 @@ export function ThreadOverviewPanel({ threadRef }: { threadRef: ScopedThreadRef 
           <OverviewSection
             key={group.id}
             group={group}
+            coordinatorRef={threadRef}
             fallbackBranch={coordinatorBranch}
             onOpenInPanel={openInPanel}
           />
