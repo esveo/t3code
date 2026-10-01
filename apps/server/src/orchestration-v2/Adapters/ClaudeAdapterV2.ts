@@ -7147,13 +7147,13 @@ export function makeClaudeAdapterV2(
             const live = yield* Ref.get(queryContext);
             const nativeThreadId = stopInput.providerThread.nativeThreadRef?.nativeId ?? null;
             if (live === null || live.nativeThreadId !== nativeThreadId) {
-              return yield* new ProviderAdapterProtocolError({
+              return yield* new ProviderAdapter.ProviderAdapterProtocolError({
                 driver: CLAUDE_PROVIDER,
                 detail: "The subagent's Claude session is not running.",
               });
             }
             if (live.query.stopTask === undefined) {
-              return yield* new ProviderAdapterProtocolError({
+              return yield* new ProviderAdapter.ProviderAdapterProtocolError({
                 driver: CLAUDE_PROVIDER,
                 detail: "This Claude session cannot stop subagents.",
               });
@@ -7161,7 +7161,7 @@ export function makeClaudeAdapterV2(
             yield* live.query.stopTask(stopInput.nativeTaskId).pipe(
               Effect.mapError(
                 (cause) =>
-                  new ProviderAdapterProtocolError({
+                  new ProviderAdapter.ProviderAdapterProtocolError({
                     driver: CLAUDE_PROVIDER,
                     detail: "Claude could not stop the subagent.",
                     cause,

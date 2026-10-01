@@ -183,7 +183,7 @@ describe("OrchestratorMcpService", () => {
         }),
         Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       );
-      const scope: McpInvocationScope = {
+      const scope: McpInvocationContext.McpInvocationScope = {
         environmentId: EnvironmentId.make("environment:mcp-cancel"),
         threadId: parentThreadId,
         providerSessionId: "provider-session:mcp-cancel",
@@ -251,7 +251,7 @@ describe("OrchestratorMcpService", () => {
         }),
         Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       );
-      const scope: McpInvocationScope = {
+      const scope: McpInvocationContext.McpInvocationScope = {
         environmentId: EnvironmentId.make("environment:mcp-cancel-failed"),
         threadId: parentThreadId,
         providerSessionId: "provider-session:mcp-cancel-failed",
@@ -326,7 +326,7 @@ describe("OrchestratorMcpService", () => {
         }),
         Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       );
-      const scope: McpInvocationScope = {
+      const scope: McpInvocationContext.McpInvocationScope = {
         environmentId: EnvironmentId.make("environment:mcp-cancel-dispose-failed"),
         threadId: parentThreadId,
         providerSessionId: "provider-session:mcp-cancel-dispose-failed",
@@ -361,7 +361,7 @@ describe("OrchestratorMcpService provider resolution", () => {
   const codexInstanceId = ProviderInstanceId.make("codex");
   const antigravityInstanceId = ProviderInstanceId.make("antigravity");
 
-  const scope: McpInvocationScope = {
+  const scope: McpInvocationContext.McpInvocationScope = {
     environmentId: EnvironmentId.make("environment:mcp-providers"),
     threadId: parentThreadId,
     providerSessionId: "provider-session:mcp-providers",
@@ -1075,7 +1075,7 @@ describe("fork: OrchestratorMcpService across projects", () => {
       contextTransfers: [],
       turnItems: [],
     }) as unknown as OrchestrationV2ThreadProjection;
-  const scope: McpInvocationScope = {
+  const scope: McpInvocationContext.McpInvocationScope = {
     environmentId: EnvironmentId.make("environment:fork-reach"),
     threadId: callerId,
     providerSessionId: "provider-session:fork-reach",
