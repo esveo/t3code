@@ -17,15 +17,12 @@ import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 
 import type { ProviderAdapterV2Shape } from "../orchestration-v2/ProviderAdapter.ts";
-import {
-  ProviderAdapterRegistryLookupError,
-  ProviderAdapterRegistryV2,
-} from "../orchestration-v2/ProviderAdapterRegistry.ts";
-import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
-import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
+import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
+import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
+import * as ProviderRegistry from "../provider/Services/ProviderRegistry.ts";
 import { buildUnavailableProviderSnapshot } from "../provider/unavailableProviderSnapshot.ts";
-import { ScheduledTaskService } from "../scheduledTasks/ScheduledTaskService.ts";
-import { McpInvocationContext, type McpInvocationScope } from "./McpInvocationContext.ts";
+import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
+import * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { readThread } from "./threadAccess.ts";
@@ -67,7 +64,7 @@ describe("OrchestratorMcpService", () => {
       let hasNestedWork = true;
       const dependencies = Layer.mergeAll(
         NodeServices.layer,
-        Layer.mock(ThreadManagementService)({
+        Layer.mock(ThreadManagementService.ThreadManagementService)({
           getThreadRecords: (threadId) =>
             Effect.succeed(
               threadId === parentThreadId
@@ -103,11 +100,13 @@ describe("OrchestratorMcpService", () => {
               ),
             ),
         }),
-        Layer.mock(ProviderRegistry)({ getProviders: Effect.succeed([]) }),
-        Layer.mock(ProviderAdapterRegistryV2)({ list: () => Effect.succeed([]) }),
-        Layer.mock(ScheduledTaskService)({}),
+        Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+        Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
+          list: () => Effect.succeed([]),
+        }),
+        Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       );
-      const scope: McpInvocationScope = {
+      const scope: McpInvocationContext.McpInvocationScope = {
         environmentId: EnvironmentId.make("environment:mcp-ack"),
         threadId: parentThreadId,
         providerSessionId: "provider-session:mcp-ack",
@@ -170,7 +169,7 @@ describe("OrchestratorMcpService", () => {
       } as unknown as OrchestrationV2ThreadProjection;
       const dependencies = Layer.mergeAll(
         NodeServices.layer,
-        Layer.mock(ThreadManagementService)({
+        Layer.mock(ThreadManagementService.ThreadManagementService)({
           getThreadRecords: (threadId) =>
             Effect.succeed(threadId === parentThreadId ? parentProjection : childProjection),
           dispatch: (command) =>
@@ -178,11 +177,13 @@ describe("OrchestratorMcpService", () => {
               Effect.as({} as never),
             ),
         }),
-        Layer.mock(ProviderRegistry)({ getProviders: Effect.succeed([]) }),
-        Layer.mock(ProviderAdapterRegistryV2)({ list: () => Effect.succeed([]) }),
-        Layer.mock(ScheduledTaskService)({}),
+        Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+        Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
+          list: () => Effect.succeed([]),
+        }),
+        Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       );
-      const scope: McpInvocationScope = {
+      const scope: McpInvocationContext.McpInvocationScope = {
         environmentId: EnvironmentId.make("environment:mcp-cancel"),
         threadId: parentThreadId,
         providerSessionId: "provider-session:mcp-cancel",
@@ -236,7 +237,7 @@ describe("OrchestratorMcpService", () => {
       } as unknown as OrchestrationV2ThreadProjection;
       const dependencies = Layer.mergeAll(
         NodeServices.layer,
-        Layer.mock(ThreadManagementService)({
+        Layer.mock(ThreadManagementService.ThreadManagementService)({
           getThreadRecords: (threadId) =>
             Effect.succeed(threadId === parentThreadId ? parentProjection : childProjection),
           dispatch: (command) =>
@@ -244,11 +245,13 @@ describe("OrchestratorMcpService", () => {
               Effect.andThen(Effect.fail(new Error("simulated interrupt failure") as never)),
             ),
         }),
-        Layer.mock(ProviderRegistry)({ getProviders: Effect.succeed([]) }),
-        Layer.mock(ProviderAdapterRegistryV2)({ list: () => Effect.succeed([]) }),
-        Layer.mock(ScheduledTaskService)({}),
+        Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+        Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
+          list: () => Effect.succeed([]),
+        }),
+        Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       );
-      const scope: McpInvocationScope = {
+      const scope: McpInvocationContext.McpInvocationScope = {
         environmentId: EnvironmentId.make("environment:mcp-cancel-failed"),
         threadId: parentThreadId,
         providerSessionId: "provider-session:mcp-cancel-failed",
@@ -305,7 +308,7 @@ describe("OrchestratorMcpService", () => {
       } as unknown as OrchestrationV2ThreadProjection;
       const dependencies = Layer.mergeAll(
         NodeServices.layer,
-        Layer.mock(ThreadManagementService)({
+        Layer.mock(ThreadManagementService.ThreadManagementService)({
           getThreadRecords: (threadId) =>
             Effect.succeed(threadId === parentThreadId ? parentProjection : childProjection),
           dispatch: (command) =>
@@ -317,11 +320,13 @@ describe("OrchestratorMcpService", () => {
               ),
             ),
         }),
-        Layer.mock(ProviderRegistry)({ getProviders: Effect.succeed([]) }),
-        Layer.mock(ProviderAdapterRegistryV2)({ list: () => Effect.succeed([]) }),
-        Layer.mock(ScheduledTaskService)({}),
+        Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+        Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
+          list: () => Effect.succeed([]),
+        }),
+        Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       );
-      const scope: McpInvocationScope = {
+      const scope: McpInvocationContext.McpInvocationScope = {
         environmentId: EnvironmentId.make("environment:mcp-cancel-dispose-failed"),
         threadId: parentThreadId,
         providerSessionId: "provider-session:mcp-cancel-dispose-failed",
@@ -356,7 +361,7 @@ describe("OrchestratorMcpService provider resolution", () => {
   const codexInstanceId = ProviderInstanceId.make("codex");
   const antigravityInstanceId = ProviderInstanceId.make("antigravity");
 
-  const scope: McpInvocationScope = {
+  const scope: McpInvocationContext.McpInvocationScope = {
     environmentId: EnvironmentId.make("environment:mcp-providers"),
     threadId: parentThreadId,
     providerSessionId: "provider-session:mcp-providers",
@@ -389,13 +394,15 @@ describe("OrchestratorMcpService provider resolution", () => {
 
   const adapterRegistryLayer = (instanceIds: ReadonlyArray<ProviderInstanceId>) =>
     Layer.succeed(
-      ProviderAdapterRegistryV2,
-      ProviderAdapterRegistryV2.of({
+      ProviderAdapterRegistry.ProviderAdapterRegistryV2,
+      ProviderAdapterRegistry.ProviderAdapterRegistryV2.of({
         list: () => Effect.succeed(instanceIds),
         get: (instanceId) =>
           instanceIds.includes(instanceId)
             ? Effect.succeed({ instanceId } as unknown as ProviderAdapterV2Shape)
-            : Effect.fail(new ProviderAdapterRegistryLookupError({ instanceId })),
+            : Effect.fail(
+                new ProviderAdapterRegistry.ProviderAdapterRegistryLookupError({ instanceId }),
+              ),
       }),
     );
 
@@ -495,10 +502,12 @@ describe("OrchestratorMcpService provider resolution", () => {
         ];
         const dependencies = Layer.mergeAll(
           NodeServices.layer,
-          Layer.mock(ThreadManagementService)({
+          Layer.mock(ThreadManagementService.ThreadManagementService)({
             getThreadRecords: () => Effect.succeed(parentProjection([])),
           }),
-          Layer.mock(ProviderRegistry)({ getProviders: Effect.sync(() => providers) }),
+          Layer.mock(ProviderRegistry.ProviderRegistry)({
+            getProviders: Effect.sync(() => providers),
+          }),
           adapterRegistryLayer([
             codexInstanceId,
             ProviderInstanceId.make("claudeAgent"),
@@ -507,7 +516,7 @@ describe("OrchestratorMcpService provider resolution", () => {
             antigravityInstanceId,
             disabledAntigravityInstanceId,
           ]),
-          Layer.mock(ScheduledTaskService)({}),
+          Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
         );
 
         yield* Effect.gen(function* () {
@@ -609,7 +618,7 @@ describe("OrchestratorMcpService provider resolution", () => {
         const dispatched = yield* Ref.make<ReadonlyArray<unknown>>([]);
         const dependencies = Layer.mergeAll(
           NodeServices.layer,
-          Layer.mock(ThreadManagementService)({
+          Layer.mock(ThreadManagementService.ThreadManagementService)({
             getThreadRecords: (threadId) =>
               Effect.succeed(
                 threadId === parentThreadId
@@ -635,7 +644,7 @@ describe("OrchestratorMcpService provider resolution", () => {
                 } as never),
               ),
           }),
-          Layer.mock(ProviderRegistry)({
+          Layer.mock(ProviderRegistry.ProviderRegistry)({
             getProviders: Effect.succeed([
               providerSnapshot({
                 instanceId: codexInstanceId,
@@ -650,7 +659,7 @@ describe("OrchestratorMcpService provider resolution", () => {
             ]),
           }),
           adapterRegistryLayer([codexInstanceId, antigravityInstanceId]),
-          Layer.mock(ScheduledTaskService)({}),
+          Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
         );
 
         yield* Effect.gen(function* () {
@@ -702,7 +711,7 @@ describe("OrchestratorMcpService provider resolution", () => {
       let delegated = false;
       const dependencies = Layer.mergeAll(
         NodeServices.layer,
-        Layer.mock(ThreadManagementService)({
+        Layer.mock(ThreadManagementService.ThreadManagementService)({
           getThreadRecords: (threadId) =>
             Effect.succeed(
               threadId === parentThreadId
@@ -728,7 +737,7 @@ describe("OrchestratorMcpService provider resolution", () => {
               } as never),
             ),
         }),
-        Layer.mock(ProviderRegistry)({
+        Layer.mock(ProviderRegistry.ProviderRegistry)({
           getProviders: Effect.succeed([
             providerSnapshot({
               instanceId: codexInstanceId,
@@ -743,7 +752,7 @@ describe("OrchestratorMcpService provider resolution", () => {
           ]),
         }),
         adapterRegistryLayer([codexInstanceId, antigravityInstanceId]),
-        Layer.mock(ScheduledTaskService)({}),
+        Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       );
 
       yield* Effect.gen(function* () {
@@ -777,10 +786,10 @@ describe("OrchestratorMcpService provider resolution", () => {
       });
       const dependencies = Layer.mergeAll(
         NodeServices.layer,
-        Layer.mock(ThreadManagementService)({
+        Layer.mock(ThreadManagementService.ThreadManagementService)({
           getThreadRecords: () => Effect.succeed(parentProjection([])),
         }),
-        Layer.mock(ProviderRegistry)({
+        Layer.mock(ProviderRegistry.ProviderRegistry)({
           getProviders: Effect.succeed([
             providerSnapshot({
               instanceId: codexInstanceId,
@@ -791,7 +800,7 @@ describe("OrchestratorMcpService provider resolution", () => {
           ]),
         }),
         adapterRegistryLayer([codexInstanceId]),
-        Layer.mock(ScheduledTaskService)({}),
+        Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       );
 
       yield* Effect.gen(function* () {
@@ -911,7 +920,7 @@ describe("OrchestratorMcpService provider resolution", () => {
           let delegated = false;
           const dependencies = Layer.mergeAll(
             NodeServices.layer,
-            Layer.mock(ThreadManagementService)({
+            Layer.mock(ThreadManagementService.ThreadManagementService)({
               getThreadRecords: (threadId) =>
                 Effect.succeed(
                   threadId === parentThreadId
@@ -937,7 +946,7 @@ describe("OrchestratorMcpService provider resolution", () => {
                   } as never),
                 ),
             }),
-            Layer.mock(ProviderRegistry)({
+            Layer.mock(ProviderRegistry.ProviderRegistry)({
               getProviders: Effect.succeed([
                 providerSnapshot({
                   instanceId: codexInstanceId,
@@ -954,7 +963,7 @@ describe("OrchestratorMcpService provider resolution", () => {
               ]),
             }),
             adapterRegistryLayer([codexInstanceId, codexAltInstanceId]),
-            Layer.mock(ScheduledTaskService)({}),
+            Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
           );
 
           yield* Effect.gen(function* () {
@@ -1066,7 +1075,7 @@ describe("fork: OrchestratorMcpService across projects", () => {
       contextTransfers: [],
       turnItems: [],
     }) as unknown as OrchestrationV2ThreadProjection;
-  const scope: McpInvocationScope = {
+  const scope: McpInvocationContext.McpInvocationScope = {
     environmentId: EnvironmentId.make("environment:fork-reach"),
     threadId: callerId,
     providerSessionId: "provider-session:fork-reach",
@@ -1080,13 +1089,17 @@ describe("fork: OrchestratorMcpService across projects", () => {
     body: (
       service: OrchestratorMcpService.OrchestratorMcpService["Service"],
       sent: Array<{ projectId: ProjectId; threadId: ThreadId }>,
-    ) => Effect.Effect<A, E, McpInvocationContext | ThreadManagementService>,
+    ) => Effect.Effect<
+      A,
+      E,
+      McpInvocationContext.McpInvocationContext | ThreadManagementService.ThreadManagementService
+    >,
   ) => {
     const sent: Array<{ projectId: ProjectId; threadId: ThreadId }> = [];
     const byId = (threadId: ThreadId) => shells.find((candidate) => candidate.id === threadId);
     const dependencies = Layer.mergeAll(
       NodeServices.layer,
-      Layer.mock(ThreadManagementService)({
+      Layer.mock(ThreadManagementService.ThreadManagementService)({
         getThreadShell: (threadId) => Effect.succeed((byId(threadId) ?? null) as never),
         getThreadRecords: ((threadId: ThreadId) =>
           Effect.succeed(projection(byId(threadId)!))) as never,
@@ -1115,9 +1128,11 @@ describe("fork: OrchestratorMcpService across projects", () => {
             } as never;
           }),
       }),
-      Layer.mock(ProviderRegistry)({ getProviders: Effect.succeed([]) }),
-      Layer.mock(ProviderAdapterRegistryV2)({ list: () => Effect.succeed([]) }),
-      Layer.mock(ScheduledTaskService)({}),
+      Layer.mock(ProviderRegistry.ProviderRegistry)({ getProviders: Effect.succeed([]) }),
+      Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
+        list: () => Effect.succeed([]),
+      }),
+      Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
     );
     return Effect.gen(function* () {
       return yield* body(yield* OrchestratorMcpService.OrchestratorMcpService, sent);
@@ -1126,7 +1141,7 @@ describe("fork: OrchestratorMcpService across projects", () => {
         Layer.mergeAll(
           OrchestratorMcpService.layer.pipe(Layer.provideMerge(dependencies)),
           ServerSettings.layerTest({ enableCrossProjectThreads: crossProjectThreads }),
-          Layer.succeed(McpInvocationContext, scope),
+          Layer.succeed(McpInvocationContext.McpInvocationContext, scope),
         ),
       ),
     );

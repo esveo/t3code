@@ -14,10 +14,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
-import {
-  ThreadManagementError,
-  ThreadManagementService,
-} from "../orchestration-v2/ThreadManagementService.ts";
+import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import type { McpInvocationScope } from "./McpInvocationContext.ts";
 import { threadProjectId } from "./forkThreadReach.ts"; // Fork
 
@@ -39,7 +36,9 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function threadLookupFailure(error: ThreadManagementError): OrchestratorMcpFailure {
+function threadLookupFailure(
+  error: ThreadManagementService.ThreadManagementError,
+): OrchestratorMcpFailure {
   return error._tag === "ThreadManagementThreadNotFoundError"
     ? failure("thread_not_found", error.message)
     : failure("orchestration_error", error.message);
@@ -135,7 +134,7 @@ function resultFromThread(input: {
 
 const make = Effect.gen(function* () {
   const crypto = yield* Crypto.Crypto;
-  const threadManagement = yield* ThreadManagementService;
+  const threadManagement = yield* ThreadManagementService.ThreadManagementService;
 
   const update = Effect.fn("ThreadMetadataMcpService.update")(function* (
     scope: McpInvocationScope,
@@ -239,5 +238,5 @@ const make = Effect.gen(function* () {
 export const layer: Layer.Layer<
   ThreadMetadataMcpService,
   never,
-  Crypto.Crypto | ThreadManagementService
+  Crypto.Crypto | ThreadManagementService.ThreadManagementService
 > = Layer.effect(ThreadMetadataMcpService, make);
