@@ -220,6 +220,7 @@ import {
 } from "../types";
 import { useTheme } from "../hooks/useTheme";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
+import { useChatFindStore } from "../chatFindStore";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { subscribeSnapShotComposerFocus } from "../lib/desktopSnapShot";
 import { useMediaQuery } from "../hooks/useMediaQuery";
@@ -240,7 +241,8 @@ import {
   type RightPanelSurface,
   useRightPanelStore,
 } from "../rightPanelStore";
-import { useIsActiveChatPane } from "./split/chatPane";
+import { activeChatPaneId, useIsActiveChatPane } from "./split/chatPane";
+import { ChatFindHeaderButton } from "./chatFind/ChatFindHeaderButton";
 import { installDesktopClipboardPasteFallback } from "../lib/desktopClipboardPaste";
 import {
   isPreviewSupportedInRuntime,
@@ -7588,6 +7590,22 @@ export default function ChatView(props: ChatViewProps) {
         return;
       }
 
+      if (command === "chat.find") {
+        // The file editor has its own find, a modal owns the keyboard while
+        // open, and a maximized panel hides the timeline the bar would search.
+        if (
+          rightPanelMaximized ||
+          (event.target instanceof Element &&
+            event.target.closest(".file-preview-virtualizer, [role=dialog]") !== null)
+        ) {
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        if (!event.repeat) useChatFindStore.getState().show(activeChatPaneId());
+        return;
+      }
+
       if (command === "modelPicker.toggle") {
         event.preventDefault();
         event.stopPropagation();
@@ -7696,6 +7714,7 @@ export default function ChatView(props: ChatViewProps) {
     onInterrupt,
     onToggleDiff,
     pinThread,
+    rightPanelMaximized,
     settleThread,
     supportsPinning,
     supportsSettlement,
@@ -10591,10 +10610,17 @@ export default function ChatView(props: ChatViewProps) {
     onToggleRightPanel: toggleRightPanel,
   } satisfies PanelLayoutControlsProps;
   const panelToggleControls = (
-    <PanelLayoutControls
-      {...panelToggleControlProps}
-      showThreadPanelControl={!inlineRightPanelOwnsTitleBar}
-    />
+    // Fork: find in thread sits in front of the panel toggles; an empty draft
+    // and a maximized panel have no timeline to search.
+    <span className="flex h-full shrink-0 items-center gap-1">
+      {rightPanelMaximized || isDraftHeroState ? null : (
+        <ChatFindHeaderButton shortcutLabel={shortcutLabelForCommand(keybindings, "chat.find")} />
+      )}
+      <PanelLayoutControls
+        {...panelToggleControlProps}
+        showThreadPanelControl={!inlineRightPanelOwnsTitleBar}
+      />
+    </span>
   );
   const threadPanelHeaderControl = (
     <div

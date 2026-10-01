@@ -16,3 +16,9 @@ export function useIsActiveChatPane(): boolean {
     state.layout.kind === "leaf" ? pane === ROUTE_LEAF_ID : state.activeLeafId === pane,
   );
 }
+
+/** The pane that owns window-level input right now, read outside React. */
+export function activeChatPaneId(): string {
+  const state = useSplitThreadStore.getState();
+  return state.layout.kind === "leaf" ? ROUTE_LEAF_ID : state.activeLeafId;
+}
