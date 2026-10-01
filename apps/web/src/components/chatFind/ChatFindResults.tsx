@@ -50,12 +50,22 @@ export function ChatFindResults({
         : buildChatFindResults({ entries, matches, pattern, cwd, start, end }),
     [collapsed, cwd, end, entries, matches, pattern, start],
   );
-  const activeRowRef = useRef<HTMLButtonElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const activeRowIndex = collapsed ? null : activeIndex;
 
-  // Keep the active row in sight as Enter steps through the list.
+  // Keep the active row in sight as Enter steps through the list. Scrolls the
+  // list only: scrollIntoView would also move the timeline behind it.
   useEffect(() => {
-    activeRowRef.current?.scrollIntoView({ block: "nearest" });
-  }, [activeIndex, collapsed]);
+    const list = listRef.current;
+    if (activeRowIndex === null || !list) return;
+    const row = list.querySelector<HTMLElement>(`[data-find-result="${activeRowIndex}"]`);
+    if (!row) return;
+    if (row.offsetTop < list.scrollTop) {
+      list.scrollTop = row.offsetTop;
+    } else if (row.offsetTop + row.offsetHeight > list.scrollTop + list.clientHeight) {
+      list.scrollTop = row.offsetTop + row.offsetHeight - list.clientHeight;
+    }
+  }, [activeRowIndex]);
 
   if (pattern === null || matches.length === 0) return null;
 
@@ -77,18 +87,23 @@ export function ChatFindResults({
         {matches.length === 1 ? "1 result" : `${matches.length} results`}
         {end - start < matches.length ? (
           <span className="ml-auto tabular-nums">
-            showing {start + 1}–{end}
+            showing {start + 1}-{end}
           </span>
         ) : null}
       </button>
       {collapsed ? null : (
-        <div role="listbox" aria-label="Find results" className="max-h-80 overflow-y-auto p-1 pt-0">
+        <div
+          ref={listRef}
+          role="listbox"
+          aria-label="Find results"
+          className="relative max-h-80 overflow-y-auto p-1 pt-0"
+        >
           {results.map((result) => {
             const active = result.index === activeIndex;
             return (
               <button
                 key={result.index}
-                ref={active ? activeRowRef : undefined}
+                data-find-result={result.index}
                 type="button"
                 role="option"
                 aria-selected={active}

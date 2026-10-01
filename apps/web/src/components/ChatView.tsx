@@ -10610,9 +10610,10 @@ export default function ChatView(props: ChatViewProps) {
     onToggleRightPanel: toggleRightPanel,
   } satisfies PanelLayoutControlsProps;
   const panelToggleControls = (
-    // Fork: find in thread sits in front of the panel toggles.
+    // Fork: find in thread sits in front of the panel toggles; an empty draft
+    // and a maximized panel have no timeline to search.
     <span className="flex h-full shrink-0 items-center gap-1">
-      {rightPanelMaximized ? null : (
+      {rightPanelMaximized || isDraftHeroState ? null : (
         <ChatFindHeaderButton shortcutLabel={shortcutLabelForCommand(keybindings, "chat.find")} />
       )}
       <PanelLayoutControls
