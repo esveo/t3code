@@ -78,6 +78,7 @@ import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
 // Fork: thread orchestration and the decisions a coordinator asks for.
 import * as CoordinatorUpdates from "./threadOrchestration/CoordinatorUpdates.ts";
 import * as DelegatedWorkspace from "./threadOrchestration/DelegatedWorkspace.ts";
+import * as SubagentSettlement from "./threadOrchestration/SubagentSettlement.ts";
 import * as DelegatedAttachments from "./mcp/toolkits/threads/attachments.ts";
 import * as ThreadCoordinators from "./threadOrchestration/ThreadCoordinators.ts";
 import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
@@ -534,11 +535,13 @@ const RuntimeCoreDependenciesBaseLive = Layer.mergeAll(
   ReplayMarkers.layer,
   // Fork: which coordinator each thread reports to, the updates it gets about
   // them, delegate_task into another workspace and with files, and the decisions a
-  // coordinator asks the user for (Inbox panel, MCP tools).
+  // coordinator asks the user for (Inbox panel, MCP tools). Subagents settle
+  // with their parent thread.
   Layer.mergeAll(CoordinatorUpdates.startedLayer, DelegatedAttachments.layer).pipe(
     Layer.provideMerge(ThreadCoordinators.layer),
   ),
   DelegatedWorkspace.layer,
+  SubagentSettlement.layer,
   ThreadDecisions.layer,
 ).pipe(
   // Core Services
