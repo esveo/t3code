@@ -7,6 +7,10 @@ maintains it. It adds the features esveo wants (for example the agent stage in
 every day. `AGENTS.md` is upstream's guide for its maintainers; follow it for
 code and architecture, but these rules win wherever they differ.
 
+**The app this fork builds is called "esveo code".** Use that name in replies,
+issues, board items, the changelog and docs. "T3 Code" means upstream only,
+even though `AGENTS.md`, the repo and its paths say `t3code`.
+
 "The user" below is the esveo colleague you work for. Everyone runs the fork
 the same way, so the rules about the `fork` branch, the board, the changelog,
 the prebuilt app and the background service apply to each of them alike.
