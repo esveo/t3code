@@ -1,4 +1,10 @@
 import { SshDeviceHostConfigs } from "./device.ts";
+import {
+  DEFAULT_IDLE_AUTO_COMPACT_AFTER_MINUTES,
+  DEFAULT_IDLE_AUTO_COMPACT_CONTEXT_TOKENS,
+  IdleAutoCompactAfterMinutes,
+  IdleAutoCompactMinContextTokens,
+} from "./idleAutoCompact.ts"; // Fork
 import * as Effect from "effect/Effect";
 import * as Duration from "effect/Duration";
 import * as Schema from "effect/Schema";
@@ -1283,6 +1289,14 @@ export const ServerSettings = Schema.Struct({
    * environment, not only the calling thread's. Off keeps upstream's limit.
    */
   enableCrossProjectThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /** Fork: Claude threads idle near the end of their 1h prompt cache get `/compact`. */
+  enableIdleAutoCompact: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  idleAutoCompactAfterMinutes: IdleAutoCompactAfterMinutes.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_IDLE_AUTO_COMPACT_AFTER_MINUTES)),
+  ),
+  idleAutoCompactMinContextTokens: IdleAutoCompactMinContextTokens.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_IDLE_AUTO_COMPACT_CONTEXT_TOKENS)),
+  ),
   /**
    * Whether this server may install and run T3's device helper processes.
    * Kept separate from agent access so enabling the user's Device panel does
@@ -1647,6 +1661,10 @@ export const ServerSettingsPatch = Schema.Struct({
   enableAgentDeviceAccess: Schema.optionalKey(Schema.Boolean),
   enableThreadDecisions: Schema.optionalKey(Schema.Boolean),
   enableCrossProjectThreads: Schema.optionalKey(Schema.Boolean), // Fork
+  // Fork: idle auto-compact.
+  enableIdleAutoCompact: Schema.optionalKey(Schema.Boolean),
+  idleAutoCompactAfterMinutes: Schema.optionalKey(IdleAutoCompactAfterMinutes),
+  idleAutoCompactMinContextTokens: Schema.optionalKey(IdleAutoCompactMinContextTokens),
   enableDeviceSupport: Schema.optionalKey(Schema.Boolean),
   deviceOnboardingCompleted: Schema.optionalKey(Schema.Boolean),
   deviceHosts: Schema.optionalKey(SshDeviceHostConfigs),
