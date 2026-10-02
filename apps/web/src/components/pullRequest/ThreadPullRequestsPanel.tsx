@@ -35,6 +35,7 @@ import {
   pullRequestChecksStatePresentation,
 } from "./pullRequestPresentation";
 import { PullRequestGlyph } from "./pullRequestIcons";
+import { PullRequestStatusSections } from "../pullRequestStatusGroups/PullRequestStatusSections";
 
 const SOURCE_LABELS: Record<ThreadPullRequestLink["source"], string> = {
   manual: "Linked by you",
@@ -297,16 +298,17 @@ function EnabledThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThread
   return (
     <div className="flex h-full min-h-0 flex-col">
       <ScrollArea className="min-h-0 flex-1">
-        <div className="flex flex-col p-1.5">
-          {lines.map((line) => (
+        <PullRequestStatusSections
+          lines={lines}
+          renderLine={(line) => (
             <LinkRow
               key={`${line.link.host}/${line.link.repository}#${line.link.number}`}
               line={line}
               threadRef={threadRef}
               onUnlink={handleUnlink}
             />
-          ))}
-        </div>
+          )}
+        />
       </ScrollArea>
       <footer className="flex items-center justify-between border-t border-border/60 px-2 py-1.5 text-2xs text-muted-foreground">
         <span>
