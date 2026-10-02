@@ -10,7 +10,9 @@ export function EasterEggsSettingRow() {
   return (
     <SettingsRow
       {...esveoSearchableSetting("easter-eggs")}
-      description="Some messages set off a little surprise when you send them. They still go to the agent as usual."
+      description={
+        'Some messages set off a little surprise when you send them. They still go to the agent as usual. Try "esveo".'
+      }
       control={
         <Switch
           checked={enabled}
