@@ -123,3 +123,37 @@ export function EsveoComposerReadoutSettingRows() {
     </>
   );
 }
+
+/** Fork: whether a thread's details card starts open, in Settings → Appearance. */
+export function EsveoThreadDetailsSettingRow() {
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  return (
+    <SettingsRow
+      {...esveoSearchableSetting("thread-details-open-by-default")}
+      description="Open the thread details card with workspace and version control in every thread. Off, it stays closed until you open it, and each thread remembers your choice."
+      resetAction={
+        settings.threadDetailsOpenByDefault !==
+        DEFAULT_UNIFIED_SETTINGS.threadDetailsOpenByDefault ? (
+          <SettingResetButton
+            label="thread details"
+            onClick={() =>
+              updateSettings({
+                threadDetailsOpenByDefault: DEFAULT_UNIFIED_SETTINGS.threadDetailsOpenByDefault,
+              })
+            }
+          />
+        ) : null
+      }
+      control={
+        <Switch
+          checked={settings.threadDetailsOpenByDefault}
+          onCheckedChange={(checked) =>
+            updateSettings({ threadDetailsOpenByDefault: Boolean(checked) })
+          }
+          aria-label="Open thread details by default"
+        />
+      }
+    />
+  );
+}
