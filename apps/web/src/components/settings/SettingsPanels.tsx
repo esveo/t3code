@@ -163,6 +163,7 @@ import {
 import { searchableSetting } from "./settingsSearch";
 import { ThreadDecisionsSettingRow } from "../threadInbox/ThreadDecisionsSettingRow";
 import { CrossProjectThreadsSettingRow } from "../threadOrchestration/CrossProjectThreadsSettingRow"; // Fork
+import { IdleAutoCompactSettingRows } from "../idleAutoCompact/IdleAutoCompactSettingRows"; // Fork
 import { SidebarChildThreadsSettingRow } from "../threadOrchestration/SidebarChildThreadsSetting";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { PanelAnimationsPreview } from "./PanelAnimationsPreview";
@@ -2841,10 +2842,11 @@ export function GeneralSettingsPanel() {
           }
         />
 
-        {/* Fork: coordinator decisions, cross-project threads, child threads in the sidebar. */}
+        {/* Fork: coordinator decisions, cross-project threads, child threads in the sidebar, idle auto-compact. */}
         <ThreadDecisionsSettingRow />
         <CrossProjectThreadsSettingRow />
         <SidebarChildThreadsSettingRow />
+        <IdleAutoCompactSettingRows />
 
         <SettingsRow
           serverScoped

@@ -284,6 +284,10 @@ import {
   type HandoffTimelineRun,
 } from "./V2LifecycleRow";
 import { TimelineSystemDivider } from "./TimelineSystemDivider";
+import {
+  IdleAutoCompactTimelineRow,
+  isIdleAutoCompactMessage,
+} from "../idleAutoCompact/IdleAutoCompactTimelineRow"; // Fork
 
 import { SkillChipIcon, SkillInlineText } from "./SkillInlineText";
 import * as DateTime from "effect/DateTime";
@@ -1952,7 +1956,11 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
       {row.kind === "attempt-fold" ? <AttemptFoldTimelineRow row={row} /> : null}
       {row.kind === "context-compaction" ? <ContextCompactionTimelineRow row={row} /> : null}
       {row.kind === "message" && row.message.role === "user" ? (
-        <UserTimelineRowWithThreadTags row={row} />
+        isIdleAutoCompactMessage(row.message) ? (
+          <IdleAutoCompactTimelineRow />
+        ) : (
+          <UserTimelineRowWithThreadTags row={row} />
+        )
       ) : null}
       {row.kind === "message" && row.message.role === "assistant" ? (
         <AssistantTimelineRow row={row} />

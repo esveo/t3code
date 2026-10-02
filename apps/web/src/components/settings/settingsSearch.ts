@@ -482,6 +482,28 @@ export const SETTINGS_SEARCH_ITEMS = [
     fork: true,
     searchTerms: ["agents coordinator other projects read message start threads repositories"],
   },
+  // Fork: idle auto-compact.
+  {
+    id: "idle-auto-compact",
+    title: "Auto-compact idle Claude threads",
+    to: "/settings/general",
+    fork: true,
+    searchTerms: ["compact context prompt cache idle claude tokens cost expire"],
+  },
+  {
+    id: "idle-auto-compact-after",
+    title: "Minutes idle before auto-compact",
+    to: "/settings/general",
+    fork: true,
+    searchTerms: ["compact idle minutes prompt cache ttl"],
+  },
+  {
+    id: "idle-auto-compact-threshold",
+    title: "Minimum context for auto-compact",
+    to: "/settings/general",
+    fork: true,
+    searchTerms: ["compact context tokens threshold size"],
+  },
   {
     id: "continue-threads-after-server-update",
     title: "Continue threads after restarts",

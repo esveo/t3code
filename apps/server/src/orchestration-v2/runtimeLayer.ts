@@ -1,4 +1,5 @@
 import * as UsageLimitRecoveryWorker from "./UsageLimitRecoveryWorker.ts";
+import * as IdleAutoCompactWorker from "./IdleAutoCompactWorker.ts"; // Fork
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as Layer from "effect/Layer";
 import * as OrchestrationCommandReceipts from "../persistence/Layers/OrchestrationCommandReceipts.ts";
@@ -309,6 +310,9 @@ export const OrchestrationV2ProductionLayerLive = Layer.mergeAll(
   UsageLimitRecoveryWorker.workerLive.pipe(
     Layer.provide(Layer.mergeAll(projectionStoreLayer, threadManagementProvided)),
   ),
+  IdleAutoCompactWorker.workerLive.pipe(
+    Layer.provide(Layer.mergeAll(projectionStoreLayer, threadManagementProvided)),
+  ), // Fork
   providerContinuationWorkerProvided,
   agentSessionImporterProvided,
 ).pipe(

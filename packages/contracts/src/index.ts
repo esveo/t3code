@@ -27,6 +27,7 @@ export * from "./model.ts";
 export * from "./keybindings.ts";
 export * from "./server.ts";
 export * from "./settings.ts";
+export * from "./idleAutoCompact.ts"; // Fork
 export * from "./git.ts";
 export * from "./vcs.ts";
 export * from "./sourceControl.ts";
