@@ -172,6 +172,7 @@ import { EasterEggsSettingRow } from "../easterEggs/EasterEggsSettingRow";
 import {
   EsveoComposerReadoutSettingRows,
   EsveoSidebarCardSettingRows,
+  EsveoThreadDetailsSettingRow,
 } from "../esveoSettings/EsveoSettingRows"; // Fork
 
 const ENVIRONMENT_IDENTIFICATION_LABELS: Record<EnvironmentIdentificationMode, string> = {
@@ -1412,6 +1413,7 @@ export function AppearanceSettingsPanel() {
             </div>
           }
         />
+        <EsveoThreadDetailsSettingRow />
       </SettingsSection>
 
       <SettingsSection id="motion" title="Motion">
