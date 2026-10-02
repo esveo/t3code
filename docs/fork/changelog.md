@@ -2,6 +2,7 @@
 
 Every feature and fix this fork adds on top of [T3 Code](https://github.com/pingdotgg/t3code), each with the commits that made it.
 
+- The thread's Pull requests panel groups its pull requests into Open, Draft, Merged and Closed, with the finished ones folded away ([a21655b](https://github.com/esveo/t3code/commit/a21655bc074d8052c7e9b5f40cf12c25d4c65542)).
 - Fix: settling a thread settles its subagents too, also ones still running once they finish ([c3cb4a7](https://github.com/esveo/t3code/commit/c3cb4a730e09a09d4034eb201170834f3f726fb6)).
 - Claude threads can compact themselves when idle: shortly before a large thread's 1-hour prompt cache expires, the server sends /compact, so the next message does not cache the whole conversation again (Settings → General, off by default) ([cd28424](https://github.com/esveo/t3code/commit/cd2842424433ffb9a068b3aed92c4051d3da7ec5)).
 - A setting under Appearance decides whether a thread's details card starts open, and a thread you opened or closed keeps that choice ([69d4072](https://github.com/esveo/t3code/commit/69d4072ab6b866d6fcbcd7466e8aaafed4ac8984)).
