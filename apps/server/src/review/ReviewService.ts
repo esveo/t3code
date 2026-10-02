@@ -16,6 +16,7 @@ import {
 } from "@t3tools/contracts";
 
 import * as ServerConfig from "../config.ts";
+import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 
@@ -38,6 +39,7 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const vcsRegistry = yield* VcsDriverRegistry.VcsDriverRegistry;
   const git = yield* GitVcsDriver.GitVcsDriver;
+  const projects = yield* ProjectStore.ProjectStoreV2;
 
   const canonicalizePath = (value: string) => {
     const resolvedPath = path.resolve(value);
@@ -74,6 +76,18 @@ export const make = Effect.gen(function* () {
     ]);
 
     if (isWithinRoot(candidate, workspaceRoot) || isWithinRoot(candidate, worktreesRoot)) {
+      return;
+    }
+
+    // esveo fork: projects live anywhere on disk, not only below the server's cwd
+    // (the Windows desktop app runs its backend from the app folder).
+    const projectRoots = yield* projects.listShells().pipe(
+      Effect.flatMap((shells) =>
+        Effect.forEach(shells, (shell) => canonicalizePath(shell.workspaceRoot)),
+      ),
+      Effect.orElseSucceed((): ReadonlyArray<string> => []),
+    );
+    if (projectRoots.some((root) => isWithinRoot(candidate, root))) {
       return;
     }
 
