@@ -1,6 +1,5 @@
-# Fork-only: merges upstream into `fork` (see FORK.md). Until upstream's
-# Orchestrator V2 lands in its main, the fork follows the V2 branch
-# (DEFAULT_UPSTREAM_REF), which merges upstream's main in regularly.
+# Fork-only: merges upstream's main (DEFAULT_UPSTREAM_REF) into `fork` (see
+# FORK.md).
 #
 # `merge` runs upstream's code and the Copilot CLI, so it holds no token that
 # can write: it merges, lets Copilot resolve conflicts and fix what broke, and
@@ -24,7 +23,7 @@ on:
     inputs:
       upstream_ref:
         description: Upstream branch or commit to merge (an older commit merges a backlog in stages)
-        default: t3code/codex-turn-mapping
+        default: main
       dry_run:
         description: Leave the PR as a draft even when everything is green
         type: boolean
@@ -44,8 +43,7 @@ permissions: {}
 
 env:
   MAINTAINER: Pawl-Patrol
-  # Switch back to main once pingdotgg/t3code#2829 (Orchestrator V2) is merged.
-  DEFAULT_UPSTREAM_REF: t3code/codex-turn-mapping
+  DEFAULT_UPSTREAM_REF: main
   SCRIPT: .github/scripts/fork-upstream-sync.sh
 
 jobs:
