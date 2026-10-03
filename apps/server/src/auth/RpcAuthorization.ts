@@ -11,6 +11,7 @@ import {
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS,
   THREAD_COORDINATORS_WS_METHODS,
   THREAD_DECISIONS_WS_METHODS,
+  FORK_NOTES_WS_METHODS,
   VOICE_INPUT_WS_METHODS,
   type AuthEnvironmentScope,
   WS_METHODS,
@@ -208,6 +209,9 @@ export const RPC_REQUIRED_SCOPES = {
   // Fork: coordinator decisions.
   [THREAD_DECISIONS_WS_METHODS.subscribe]: AuthOrchestrationReadScope,
   [THREAD_DECISIONS_WS_METHODS.act]: AuthOrchestrationOperateScope,
+  // Fork: notes and todos of the Notes tab.
+  [FORK_NOTES_WS_METHODS.subscribe]: AuthOrchestrationReadScope,
+  [FORK_NOTES_WS_METHODS.act]: AuthOrchestrationOperateScope,
   // Fork: which coordinator a thread reports to.
   [THREAD_COORDINATORS_WS_METHODS.subscribe]: AuthOrchestrationReadScope,
   [THREAD_COORDINATORS_WS_METHODS.set]: AuthOrchestrationOperateScope,

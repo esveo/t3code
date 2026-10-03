@@ -77,6 +77,9 @@ export const DEFAULT_KEYBINDINGS: ReadonlyArray<KeybindingRule> = [
   { key: "mod+shift+g", command: "composer.branch", when: "!terminalFocus" },
   // Fork: dictation.
   { key: "mod+shift+space", command: "composer.dictate", when: "!terminalFocus" },
+  // Fork: the Notes tab. mod+alt+n is taken by chat.newWithoutProject.
+  { key: "mod+alt+k", command: "notes.capture", when: "!terminalFocus" },
+  { key: "mod+alt+l", command: "notes.open", when: "!terminalFocus" },
   { key: "mod+shift+l", command: "composer.previousWorktree", when: "!terminalFocus" },
   { key: "mod+shift+k", command: "pullRequest.copyNumber", when: "!terminalFocus" },
   { key: "mod+shift+arrowup", command: "modelPicker.previousProvider", when: "modelPickerOpen" },

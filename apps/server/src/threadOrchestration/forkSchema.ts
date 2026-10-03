@@ -84,6 +84,24 @@ export const ensureForkSchema = Effect.gen(function* () {
       baselined_at TEXT NOT NULL
     )
   `;
+  // Notes tab: notes and todos of a thread, a project, or the whole
+  // environment (scope_id '' for global), ordered by position (ForkNotes.ts).
+  yield* sql`
+    CREATE TABLE IF NOT EXISTS fork_notes (
+      id TEXT PRIMARY KEY,
+      scope TEXT NOT NULL,
+      scope_id TEXT NOT NULL,
+      text TEXT NOT NULL,
+      todo INTEGER NOT NULL,
+      done INTEGER NOT NULL,
+      position INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `;
+  yield* sql`
+    CREATE INDEX IF NOT EXISTS fork_notes_scope ON fork_notes (scope, scope_id)
+  `;
   const imported = yield* importLegacyCoordinatorLinks;
   if (imported > 0) {
     yield* Effect.logInfo("Imported V1 coordinator links", { links: imported });

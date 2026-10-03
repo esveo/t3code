@@ -97,6 +97,9 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "composer.branch",
   // Fork: dictation.
   "composer.dictate",
+  // Fork: the Notes tab.
+  "notes.capture",
+  "notes.open",
   "chat.new",
   "chat.newLocal",
   "chat.newWithoutProject",

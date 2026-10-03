@@ -35,6 +35,8 @@ const RIGHT_PANEL_KINDS = [
   "thread-overview",
   // Fork: the decisions a coordinator asks the user for.
   "thread-inbox",
+  // Fork: notes and todos.
+  "notes",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -98,7 +100,9 @@ export type RightPanelSurface =
   /** Fork: the threads a coordinator started. */
   | { id: "thread-overview"; kind: "thread-overview" }
   /** Fork: the decisions a coordinator asks the user for. */
-  | { id: "thread-inbox"; kind: "thread-inbox" };
+  | { id: "thread-inbox"; kind: "thread-inbox" }
+  /** Fork: notes and todos of the thread, its project and the environment. */
+  | { id: "notes"; kind: "notes" };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 // v9 removed the "plan" surface kind (plans render inline in the transcript).
@@ -243,6 +247,8 @@ const singletonSurface = (
       return { id: "thread-overview", kind };
     case "thread-inbox":
       return { id: "thread-inbox", kind };
+    case "notes":
+      return { id: "notes", kind };
     case "device":
       return { id: "device", kind };
   }

@@ -286,6 +286,8 @@ import { ThreadOverviewPanel } from "./threadOrchestration/ThreadOverviewPanel";
 import { useThreadOverviewSurface } from "./threadOrchestration/useThreadOverviewSurface";
 import { ThreadInboxPanel } from "./threadInbox/ThreadInboxPanel";
 import { useThreadInboxSurface } from "./threadInbox/useThreadInboxSurface";
+import { ForkNotesPanel } from "./forkNotes/ForkNotesPanel";
+import { useForkNotesSurface } from "./forkNotes/useForkNotesSurface";
 import { useAgentStageEnabled } from "./agentStage/agentStageStore";
 import { playEasterEggFor } from "./easterEggs/easterEggs";
 import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
@@ -5097,6 +5099,7 @@ export default function ChatView(props: ChatViewProps) {
   // Fork: the threads this one started.
   const threadOverview = useThreadOverviewSurface(activeThreadRef);
   const threadInbox = useThreadInboxSurface(activeThreadRef);
+  const forkNotes = useForkNotesSurface(activeThreadRef);
   const addAgentStageSurface = useCallback(() => {
     if (!activeThreadRef || !agentStageEnabled) return;
     useRightPanelStore.getState().open(activeThreadRef, "agent-stage");
@@ -10453,6 +10456,8 @@ export default function ChatView(props: ChatViewProps) {
       <ThreadOverviewPanel threadRef={activeThreadRef} />
     ) : renderedRightPanelSurface?.kind === "thread-inbox" ? (
       <ThreadInboxPanel threadRef={activeThreadRef} cwd={activeWorkspaceRoot} />
+    ) : renderedRightPanelSurface?.kind === "notes" ? (
+      <ForkNotesPanel threadRef={activeThreadRef} composerDraftTarget={composerDraftTarget} />
     ) : renderedRightPanelSurface?.kind === "diff" ? (
       <Suspense fallback={null}>
         <DiffPanel
@@ -11420,6 +11425,7 @@ export default function ChatView(props: ChatViewProps) {
           threadOverviewAvailable={threadOverview.available}
           threadsWaitingCount={threadOverview.waitingCount}
           threadInbox={threadInbox}
+          notes={forkNotes}
           deviceAvailable={activeThreadRef !== null}
         >
           {rightPanelContent}
@@ -11483,6 +11489,7 @@ export default function ChatView(props: ChatViewProps) {
             threadOverviewAvailable={threadOverview.available}
             threadsWaitingCount={threadOverview.waitingCount}
             threadInbox={threadInbox}
+            notes={forkNotes}
             deviceAvailable={activeThreadRef !== null}
           >
             {rightPanelContent}
