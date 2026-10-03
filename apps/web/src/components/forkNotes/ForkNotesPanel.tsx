@@ -11,7 +11,6 @@ import {
   CopyIcon,
   EllipsisIcon,
   ListTodoIcon,
-  StickyNoteIcon,
   TextCursorInputIcon,
 } from "lucide-react";
 import { type DragEvent, type KeyboardEvent, useMemo, useRef, useState } from "react";
@@ -24,7 +23,6 @@ import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "~/compone
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Toggle } from "~/components/ui/toggle";
 import { Toggle as ToggleGroupItem, ToggleGroup } from "~/components/ui/toggle-group";
-import { toastManager } from "~/components/ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { shortcutLabelForCommand } from "~/keybindings";
 import { cn } from "~/lib/utils";
@@ -41,7 +39,8 @@ import {
   resolveForkNoteDrop,
 } from "./forkNotesLogic";
 import { useForkNotesStore } from "./forkNotesStore";
-import { toastWithUndo, useForkNotes } from "./useForkNotes";
+import { forkNotesToastAnchor, showForkNotesToast, toastWithUndo } from "./forkNotesToast";
+import { useForkNotes } from "./useForkNotes";
 
 export function ForkNotesPanel({
   threadRef,
@@ -52,6 +51,24 @@ export function ForkNotesPanel({
 }) {
   if (!threadRef) return null;
   return <ForkNotes threadRef={threadRef} composerDraftTarget={composerDraftTarget} />;
+}
+
+/** A note's mark: three lines, the last one shorter (lucide has no exact match). */
+function NoteIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden
+      className={className}
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+      viewBox="0 0 24 24"
+    >
+      <path d="M4 7h16M4 12h16M4 17h10" />
+    </svg>
+  );
 }
 
 /** Open entries first, then the done ones, each in their saved order. */
@@ -173,13 +190,13 @@ function ForkNotes({
     const current = store.getComposerDraft(composerDraftTarget)?.prompt ?? "";
     const trimmed = current.trimEnd();
     store.setPrompt(composerDraftTarget, trimmed ? `${trimmed}\n${note.text}` : note.text);
-    toastManager.add({ type: "success", title: "Inserted into the composer", timeout: 2000 });
+    showForkNotesToast({ type: "success", title: "Inserted into the composer", timeout: 2000 });
   };
 
   const copy = (note: ForkNote) => {
     void navigator.clipboard.writeText(note.text).then(
-      () => toastManager.add({ type: "success", title: "Copied", timeout: 2000 }),
-      () => toastManager.add({ type: "error", title: "Could not copy the note" }),
+      () => showForkNotesToast({ type: "success", title: "Copied", timeout: 2000 }),
+      () => showForkNotesToast({ type: "error", title: "Could not copy the note" }),
     );
   };
 
@@ -359,6 +376,8 @@ function ForkNotes({
           )}
         </div>
       </ScrollArea>
+      {/* Notes toasts sit just above this, over the bottom of the list. */}
+      <div ref={forkNotesToastAnchor} aria-hidden className="h-0 w-full shrink-0" />
     </div>
   );
 }
@@ -501,7 +520,7 @@ function ForkNoteRow(props: {
             aria-label={note.done ? "Reopen" : "Mark done"}
           />
         ) : (
-          <StickyNoteIcon aria-hidden className="size-4 text-muted-foreground" />
+          <NoteIcon className="size-4 text-muted-foreground" />
         )}
       </span>
       {editing ? (
@@ -589,7 +608,7 @@ function ForkNoteRow(props: {
             />
             <MenuPopup align="end">
               <MenuItem onClick={() => props.onSetTodo(!note.todo)}>
-                {note.todo ? <StickyNoteIcon /> : <ListTodoIcon />}
+                {note.todo ? <NoteIcon /> : <ListTodoIcon />}
                 {note.todo ? "Turn into note" : "Turn into todo"}
               </MenuItem>
               {props.otherScopes.map((scope) => (

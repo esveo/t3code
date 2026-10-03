@@ -12,7 +12,6 @@ import type {
 } from "@t3tools/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
 import {
@@ -22,6 +21,7 @@ import {
   forkNotesTargetKey,
 } from "./forkNotesLogic";
 import { forkNotesEnvironment } from "./forkNotesState";
+import { showForkNotesToast } from "./forkNotesToast";
 
 const EMPTY: ReadonlyArray<ForkNote> = [];
 
@@ -47,13 +47,11 @@ export function useForkNotesAct(environmentId: EnvironmentId | null) {
       const result = await act({ environmentId, input: action });
       if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Could not save the note",
-            description: error instanceof Error ? error.message : "An error occurred.",
-          }),
-        );
+        showForkNotesToast({
+          type: "error",
+          title: "Could not save the note",
+          description: error instanceof Error ? error.message : "An error occurred.",
+        });
       }
       return result._tag === "Success";
     },
@@ -129,20 +127,4 @@ export function useForkNotes(environmentId: EnvironmentId | null, targets: ForkN
   );
 
   return { lists, act };
-}
-
-/** A toast with an Undo button that runs `undo`. */
-export function toastWithUndo(title: string, undo: () => void) {
-  const id = toastManager.add({
-    type: "success",
-    title,
-    timeout: 5000,
-    actionProps: {
-      children: "Undo",
-      onClick: () => {
-        toastManager.close(id);
-        undo();
-      },
-    },
-  });
 }
