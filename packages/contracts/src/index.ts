@@ -63,6 +63,7 @@ export * from "./resourceTelemetry.ts";
 export * from "./rpc.ts";
 export * from "./worktreeSetup.ts";
 export * from "./threadDecisions.ts";
+export * from "./forkNotes.ts";
 export * from "./threadCoordinators.ts";
 export * from "./voiceInput.ts";
 export * from "./providerSubagentControl.ts";

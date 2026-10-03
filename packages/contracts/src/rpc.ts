@@ -11,6 +11,7 @@ import * as Rpc from "effect/unstable/rpc/Rpc";
 import * as RpcGroup from "effect/unstable/rpc/RpcGroup";
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { WsThreadDecisionsActRpc, WsThreadDecisionsSubscribeRpc } from "./threadDecisions.ts";
+import { WsForkNotesActRpc, WsForkNotesSubscribeRpc } from "./forkNotes.ts";
 import {
   WsThreadCoordinatorsSetRpc,
   WsThreadCoordinatorsSubscribeRpc,
@@ -1889,6 +1890,9 @@ export const WsRpcGroup = RpcGroup.make(
   // Fork: decisions a coordinator asks the user for.
   WsThreadDecisionsSubscribeRpc,
   WsThreadDecisionsActRpc,
+  // Fork: notes and todos in the Notes tab.
+  WsForkNotesSubscribeRpc,
+  WsForkNotesActRpc,
   // Fork: which coordinator a thread reports to.
   WsThreadCoordinatorsSubscribeRpc,
   WsThreadCoordinatorsSetRpc,

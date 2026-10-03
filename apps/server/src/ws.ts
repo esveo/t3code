@@ -62,6 +62,7 @@ import {
   type OrchestrationV2ShellSnapshot,
   THREAD_COORDINATORS_WS_METHODS,
   THREAD_DECISIONS_WS_METHODS,
+  FORK_NOTES_WS_METHODS,
   VOICE_INPUT_WS_METHODS,
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS,
   type ProjectEntriesFailure,
@@ -191,6 +192,7 @@ import * as WorkspaceEntries from "./workspace/WorkspaceEntries.ts";
 import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration-v2/workflowScriptQuery.ts";
 import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
+import * as ForkNotes from "./forkNotes/ForkNotes.ts";
 import * as ThreadCoordinators from "./threadOrchestration/ThreadCoordinators.ts";
 import * as VoiceInput from "./voiceInput/VoiceInput.ts";
 import * as ProviderSubagentControl from "./providerSubagentControl/ProviderSubagentControl.ts";
@@ -3751,6 +3753,15 @@ const makeWsRpcLayer = (
         [THREAD_DECISIONS_WS_METHODS.act]: (input) =>
           observeRpcEffect(THREAD_DECISIONS_WS_METHODS.act, ThreadDecisions.actRpc(input), {
             "rpc.aggregate": "orchestration",
+          }),
+        // Fork: notes and todos of the Notes tab.
+        [FORK_NOTES_WS_METHODS.subscribe]: (input) =>
+          observeRpcStream(FORK_NOTES_WS_METHODS.subscribe, ForkNotes.subscribeRpc(input), {
+            "rpc.aggregate": "server",
+          }),
+        [FORK_NOTES_WS_METHODS.act]: (input) =>
+          observeRpcEffect(FORK_NOTES_WS_METHODS.act, ForkNotes.actRpc(input), {
+            "rpc.aggregate": "server",
           }),
         // Fork: which coordinator a thread reports to.
         [THREAD_COORDINATORS_WS_METHODS.subscribe]: (_input) =>

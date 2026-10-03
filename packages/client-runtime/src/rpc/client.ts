@@ -1,5 +1,6 @@
 import {
   EnvironmentAuthorizationError,
+  FORK_NOTES_WS_METHODS,
   ORCHESTRATION_V2_WS_METHODS,
   THREAD_COORDINATORS_WS_METHODS,
   THREAD_DECISIONS_WS_METHODS,
@@ -71,6 +72,8 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof WS_METHODS.terminalAttach
   | typeof THREAD_DECISIONS_WS_METHODS.subscribe
   | typeof THREAD_COORDINATORS_WS_METHODS.subscribe
+  // Fork: the Notes tab.
+  | typeof FORK_NOTES_WS_METHODS.subscribe
   | typeof VOICE_INPUT_WS_METHODS.prepare;
 
 export type EnvironmentStreamCommandRpcTag =
