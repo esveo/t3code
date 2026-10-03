@@ -2,6 +2,7 @@
 
 Every feature and fix this fork adds on top of [T3 Code](https://github.com/pingdotgg/t3code), each with the commits that made it.
 
+- A Notes tab in the right panel keeps notes and todos per thread, per project and globally, captured with ⌥⌘K, sorted and ticked off by dragging, and inserted into the composer in one click ([1884019](https://github.com/esveo/t3code/commit/18840195e62cfe17be61e5f5d7cf88824b9a7733), [4b16f0d](https://github.com/esveo/t3code/commit/4b16f0d2e190f516505115a0f32b051e5af5ab48), [fab2b88](https://github.com/esveo/t3code/commit/fab2b8827fe46ec71df85c3da89dbbf25f815fd4)).
 - Fix: the Git graph's diff preview works for projects outside the server's folder, as on Windows ([287206f](https://github.com/esveo/t3code/commit/287206fb4710dc357020dad0bf641bd1d41897e7)).
 - The thread's Pull requests panel groups its pull requests into Open, Draft, Merged and Closed, with the finished ones folded away ([a21655b](https://github.com/esveo/t3code/commit/a21655bc074d8052c7e9b5f40cf12c25d4c65542)).
 - Fix: settling a thread settles its subagents too, also ones still running once they finish ([c3cb4a7](https://github.com/esveo/t3code/commit/c3cb4a730e09a09d4034eb201170834f3f726fb6)).
