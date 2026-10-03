@@ -473,6 +473,12 @@ export const ClientSettingsSchema = Schema.Struct({
   // old keys, so everyone, including prior beta opt-outs, resets to the new
   // default sidebar.
   legacySidebarEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  // Beta: working and monitoring threads fold into a Working shelf and return
+  // to the top of the inbox once they need the user. The inbox then orders by
+  // time, so manual placement there is ignored (and kept) while it is on.
+  sidebarWorkingShelfEnabled: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
   // Fork: two-line thread cards. The provider and environment icons trail the
   // title instead of holding a third line of their own, which also drops that
   // line's branch, worktree, terminal, PR and diff slots.
@@ -854,7 +860,7 @@ export type AntigravitySettings = typeof AntigravitySettings.Type;
 
 export const PiSettings = makeProviderSettingsSchema(
   {
-    // Disabled by default while Pi support is Early Access.
+    // Off by default like Cursor and Grok. Users opt in from Settings.
     enabled: Schema.Boolean.pipe(
       Schema.withDecodingDefault(Effect.succeed(false)),
       Schema.annotateKey({ providerSettingsForm: { hidden: true } }),
@@ -1820,6 +1826,7 @@ export const ClientSettingsPatch = Schema.Struct({
   proactivePanelsEnabled: Schema.optionalKey(Schema.Boolean),
   showSkillsInSlashMenu: Schema.optionalKey(Schema.Boolean),
   legacySidebarEnabled: Schema.optionalKey(Schema.Boolean),
+  sidebarWorkingShelfEnabled: Schema.optionalKey(Schema.Boolean),
   twoLineThreadCards: Schema.optionalKey(Schema.Boolean),
   groupSidebarThreadsByProject: Schema.optionalKey(Schema.Boolean),
   threadDetailsOpenByDefault: Schema.optionalKey(Schema.Boolean),

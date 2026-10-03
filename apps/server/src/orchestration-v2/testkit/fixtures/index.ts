@@ -32,6 +32,8 @@ import { claudeNestedBackgroundSubagentWakeInput } from "./claude_nested_backgro
 import { assertClaudeNestedBackgroundSubagentWakeOutput } from "./claude_nested_background_subagent_wake/output.ts";
 import { claudeNestedSubagentModelInput } from "./claude_nested_subagent_model/input.ts";
 import { assertClaudeNestedSubagentModelOutput } from "./claude_nested_subagent_model/output.ts";
+import { claudeMcpToolPresentationInput } from "./claude_mcp_tool_presentation/input.ts";
+import { assertClaudeMcpToolPresentationOutput } from "./claude_mcp_tool_presentation/output.ts";
 import { claudeResultIsErrorInput } from "./claude_result_is_error/input.ts";
 import { assertClaudeResultIsErrorOutput } from "./claude_result_is_error/output.ts";
 import { grokAutoBlockedCommandInput } from "./grok_auto_blocked_command/input.ts";
@@ -159,6 +161,11 @@ import {
   assertToolCallReadOnlyOnRequestOutput,
 } from "./tool_call_read_only_on_request/output.ts";
 import { toolCallReadOnlyOnRequestInput } from "./tool_call_read_only_on_request/input.ts";
+import {
+  stopBackgroundWorkAfterFailedTurnInput,
+  stopBackgroundWorkAfterReleaseInput,
+} from "./stop_background_work_after_failed_turn/input.ts";
+import { assertStopBackgroundWorkAfterFailedTurnOutput } from "./stop_background_work_after_failed_turn/output.ts";
 import { assertToolCallRestrictedGranularClaudeOutput } from "./tool_call_restricted_granular/claude_output.ts";
 import { assertToolCallRestrictedGranularOutput } from "./tool_call_restricted_granular/codex_output.ts";
 import { toolCallRestrictedGranularInput } from "./tool_call_restricted_granular/input.ts";
@@ -413,6 +420,21 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
         ),
         modelSelection: CLAUDE_MODEL_SELECTION,
         assertOutput: assertClaudeNestedSubagentModelOutput,
+      },
+    ],
+  },
+  {
+    name: "claude_mcp_tool_presentation",
+    buildInput: claudeMcpToolPresentationInput,
+    providers: [
+      {
+        driver: ProviderDriverKind.make("claudeAgent"),
+        transcriptFile: new URL(
+          "./claude_mcp_tool_presentation/claude_transcript.ndjson",
+          import.meta.url,
+        ),
+        modelSelection: CLAUDE_MODEL_SELECTION,
+        assertOutput: assertClaudeMcpToolPresentationOutput,
       },
     ],
   },
@@ -1564,6 +1586,37 @@ export const ORCHESTRATOR_REPLAY_FIXTURES: ReadonlyArray<OrchestratorReplayFixtu
         modelSelection: CODEX_MODEL_SELECTION,
         runtimePolicyOverride: WORKSPACE_NEVER_POLICY,
         assertOutput: assertThreadRollbackToStoppedTurnOutput,
+      },
+    ],
+  },
+  {
+    name: "stop_background_work_after_failed_turn",
+    buildInput: stopBackgroundWorkAfterFailedTurnInput,
+    providers: [
+      {
+        driver: ProviderDriverKind.make("acpRegistry"),
+        transcriptFile: new URL(
+          "./stop_background_work_after_failed_turn/registry_transcript.ndjson",
+          import.meta.url,
+        ),
+        modelSelection: ACP_REGISTRY_MODEL_SELECTION,
+        assertOutput: assertStopBackgroundWorkAfterFailedTurnOutput,
+      },
+    ],
+  },
+  {
+    name: "stop_background_work_after_release",
+    buildInput: stopBackgroundWorkAfterReleaseInput,
+    providers: [
+      {
+        driver: ProviderDriverKind.make("acpRegistry"),
+        transcriptFile: new URL(
+          "./stop_background_work_after_failed_turn/registry_transcript.ndjson",
+          import.meta.url,
+        ),
+        recordedScenario: "stop_background_work_after_failed_turn",
+        modelSelection: ACP_REGISTRY_MODEL_SELECTION,
+        assertOutput: assertStopBackgroundWorkAfterFailedTurnOutput,
       },
     ],
   },

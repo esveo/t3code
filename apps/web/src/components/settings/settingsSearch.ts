@@ -305,6 +305,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["combine matching repositories environments sidebar"],
   },
   {
+    id: "project-order",
+    title: "Project order",
+    to: "/settings/general",
+    searchTerms: ["sort projects sidebar manual created recent"],
+  },
+  {
     id: "snooze-limited-threads",
     title: "Snooze limited threads",
     to: "/settings/general",
@@ -315,6 +321,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Auto-resume limited threads",
     to: "/settings/general",
     searchTerms: ["usage quota rate limit reset recover continue"],
+  },
+  {
+    id: "working-shelf",
+    title: "Working section (beta)",
+    to: "/settings/general",
+    searchTerms: ["hide fold running monitoring threads inbox sidebar shelf"],
   },
   {
     id: "auto-settle-inactive-threads",

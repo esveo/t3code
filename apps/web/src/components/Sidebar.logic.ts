@@ -1,4 +1,5 @@
 import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
+import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
 import * as React from "react";
 import {
@@ -127,9 +128,10 @@ export const animateSidebarLayoutChanges: AnimateLayoutChanges = (args) =>
 // the lifecycle action; Sidebar.drag previews the resulting layout. Pinned
 // and active threads keep the dragged position; settled threads use time
 // order. Snoozed rows can leave the shelf, but dropping into it is not
-// supported because snoozing requires a wake time.
+// supported because snoozing requires a wake time. The Working shelf (beta)
+// follows live status, so it is neither a drag source nor a destination.
 
-export type SidebarSection = "pinned" | "active" | "snoozed" | "settled";
+export type SidebarSection = "pinned" | "active" | "working" | "snoozed" | "settled";
 
 /** Resolve the shelf a visible thread belongs to. Snooze is temporary and
  * wins until its wake boundary; settlement then wins over a stale pin. */
@@ -156,6 +158,7 @@ export type SidebarListMarker =
   | "settled-placeholder"
   /** The boundary between pinned and active rows. */
   | "pinned-divider"
+  | "working-header"
   | "snoozed-header"
   | "settled-header";
 
@@ -173,7 +176,7 @@ export function sidebarListItemId(item: SidebarListItem): string {
 
 /** The section a slot belongs to, read off the markers around it: from
     the top down, everything before the pinned divider is pinned, then the
-    inbox until the snoozed header, the shelf until the settled header,
+    inbox until the first shelf header, each shelf until the next header,
     then settled. */
 function sectionAtSidebarSlot(items: readonly SidebarListItem[], index: number): SidebarSection {
   let section: SidebarSection = "pinned";
@@ -181,6 +184,7 @@ function sectionAtSidebarSlot(items: readonly SidebarListItem[], index: number):
     const item = items[i]!;
     if (item.kind !== "marker") continue;
     if (item.marker === "pinned-divider") section = "active";
+    else if (item.marker === "working-header") section = "working";
     else if (item.marker === "snoozed-header") section = "snoozed";
     else if (item.marker === "settled-header") section = "settled";
   }
@@ -188,7 +192,7 @@ function sectionAtSidebarSlot(items: readonly SidebarListItem[], index: number):
 }
 
 /** Resolve the destination section and manual order from an arrayMove across
- * the separators. The snoozed shelf is never a destination. */
+ * the separators. The working and snoozed shelves are never destinations. */
 export type SidebarDropTarget = {
   readonly section: "pinned" | "active" | "settled";
   readonly pinnedOrder: readonly string[];
@@ -206,14 +210,19 @@ export function resolveSidebarDropTarget(
   const moved = items.filter((_, index) => index !== activeIndex);
   moved.splice(overIndex, 0, items[activeIndex]!);
   const section = sectionAtSidebarSlot(moved, overIndex);
-  if (section === "snoozed") return null;
+  if (section === "working" || section === "snoozed") return null;
   const pinnedOrder: string[] = [];
   const activeOrder: string[] = [];
   let currentSection: SidebarSection = "pinned";
   for (const item of moved) {
     if (item.kind === "marker") {
       if (item.marker === "pinned-divider") currentSection = "active";
-      else if (item.marker === "snoozed-header" || item.marker === "settled-header") break;
+      else if (
+        item.marker === "working-header" ||
+        item.marker === "snoozed-header" ||
+        item.marker === "settled-header"
+      )
+        break;
     } else if (currentSection === "pinned") pinnedOrder.push(item.key);
     else activeOrder.push(item.key);
   }
@@ -239,7 +248,8 @@ export type SidebarThreadDropPlan =
     }
   | {
       readonly kind: "move-active";
-      readonly order: readonly string[];
+      /** Null when the inbox is time-ordered: the drop has no placement. */
+      readonly order: readonly string[] | null;
       readonly assignments: ReadonlyArray<{ readonly id: string; readonly orderKey: string }>;
       readonly unpin: boolean;
       readonly unsettle: boolean;
@@ -249,14 +259,14 @@ export type SidebarThreadDropPlan =
 
 /** What dropping in `to` does to a thread lifted from `from`, for the badge
     on the lifted row. Null while reordering inside one section and for the
-    snoozed shelf, which cannot be a drop target. */
+    working and snoozed shelves, which cannot be drop targets. */
 export type SidebarDropVerb = "pin" | "unpin" | "settle" | "unsettle" | "wake";
 
 export function resolveSidebarDropVerb(
   from: SidebarSection,
   to: SidebarSection | null,
 ): SidebarDropVerb | null {
-  if (to === null || to === from || to === "snoozed") return null;
+  if (to === null || to === from || to === "working" || to === "snoozed") return null;
   if (to === "pinned") return "pin";
   if (to === "settled") return "settle";
   if (from === "pinned") return "unpin";
@@ -279,6 +289,8 @@ export function planSidebarThreadDrop(input: {
   readonly activeOrder: readonly string[];
   readonly activeKeysById: ReadonlyMap<string, string | null | undefined>;
   readonly activeReorderableKeys?: ReadonlySet<string>;
+  /** Working beta: the inbox sorts by time, so drops only change lifecycle. */
+  readonly activeTimeOrdered?: boolean;
 }): SidebarThreadDropPlan {
   const {
     activeKey,
@@ -298,6 +310,20 @@ export function planSidebarThreadDrop(input: {
   }
   switch (target.section) {
     case "active": {
+      // Like the settled tail: threads can enter a time-ordered inbox, but
+      // not be arranged inside it.
+      if (input.activeTimeOrdered) {
+        return activeSection === "active"
+          ? { kind: "none" }
+          : {
+              kind: "move-active",
+              order: null,
+              assignments: [],
+              unpin: activePinned,
+              unsettle: activeSettled,
+              unsnooze: activeSection === "snoozed",
+            };
+      }
       const order = target.activeOrder;
       if (
         activeSection === "active" &&
@@ -885,9 +911,10 @@ export function resolveThreadRowClassName(input: {
 // (approval), "in motion" (working), and "broken" (failed). Ready is the
 // unlabeled resting state — the agent stopped and is waiting on the user,
 // whether it finished, asked a question, or proposed a plan. Waiting
-// (runtime status "idle") is the agent stopped with background tasks still
-// open: not the user's turn yet, so it renders grey like working, not as a
-// false Done.
+// (runtime status "idle") is the agent stopped with background work that will
+// wake it (subagents, monitors): not the user's turn yet, so it renders grey
+// like working, not as a false Done. Commands it left running, such as a dev
+// server, do not hold the thread; it reads as ready.
 // Unread completion is tracked separately: it describes whether a ready
 // thread needs attention, not what the thread is currently doing.
 export type SidebarThreadStatus =
@@ -979,6 +1006,21 @@ export function resolveSidebarV2TopStatus(input: {
 
 export function shouldShowSidebarV2Duration(status: SidebarThreadStatus): boolean {
   return status === "working";
+}
+
+/** Working beta: threads busy with work that does not need the user fold into
+    the Working shelf: a running run, or one stopped with background work
+    that will wake it. Approvals, questions, plan prompts, and failures stay in the
+    inbox. */
+export function isSidebarThreadWorking(thread: ThreadStatusInput): boolean {
+  const status = resolveSidebarThreadStatus(thread);
+  if (status !== "working" && status !== "waiting") return false;
+  // A plan prompt outranks lingering background work: the user has to act on it.
+  return !(
+    thread.interactionMode === "plan" &&
+    thread.hasActionableProposedPlan &&
+    isLatestRunSettled(thread.latestRun, thread.runtime)
+  );
 }
 
 /** First VALID timestamp wins: `a ?? b` falls through on null, but a present-
@@ -1077,10 +1119,39 @@ export function reduceSidebarProjectScopeMenuState(
   }
 }
 
-/** The timestamp a working thread's elapsed label counts from: the running
-    turn's start (request time until adoption), falling back to the session's
-    last transition when the turn projection lags behind. Malformed
-    timestamps fall through to the next candidate, not just missing ones. */
+/** Working beta: the inbox lists threads newest first by when each last came
+    back to the user, so a thread that leaves the Working shelf lands on top.
+    `observedReturnAt` adds returns the server does not stamp, such as an
+    approval request mid-turn or background work ending. */
+export function sortInboxThreadsByReturn<
+  T extends Pick<
+    SidebarThreadSummary,
+    "id" | "environmentId" | "createdAt" | "unsettledAt" | "latestRun"
+  >,
+>(threads: readonly T[], observedReturnAt?: (thread: T) => number | undefined): T[] {
+  const timestamps = new Map(
+    threads.map((thread) => [
+      thread,
+      Math.max(
+        toSortableTimestamp(thread.createdAt) ?? 0,
+        toSortableTimestamp(thread.unsettledAt ?? undefined) ?? 0,
+        toSortableTimestamp(thread.latestRun?.requestedAt ?? undefined) ?? 0,
+        toSortableTimestamp(thread.latestRun?.completedAt ?? undefined) ?? 0,
+        observedReturnAt?.(thread) ?? 0,
+      ),
+    ]),
+  );
+  return [...threads].sort(
+    (left, right) =>
+      timestamps.get(right)! - timestamps.get(left)! ||
+      left.id.localeCompare(right.id) ||
+      left.environmentId.localeCompare(right.environmentId),
+  );
+}
+
+/** The timestamp a working thread's elapsed label counts from: when its
+    current work started (request time until adoption). Background wakes do
+    not reset it. Malformed timestamps fall through to the next candidate. */
 export function resolveWorkingStartedAt(
   thread: Pick<SidebarThreadSummary, "latestRun" | "runtime">,
 ): string | null {
@@ -1140,7 +1211,7 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  if ((thread.pendingBackgroundTasks?.length ?? 0) > 0) {
+  if (backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])) {
     return {
       label: "Waiting",
       colorClass: "text-sidebar-muted-foreground",
