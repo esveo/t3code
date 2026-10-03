@@ -87,6 +87,7 @@ import { isDesktopLocalConnectionTarget } from "../connection/desktopLocal";
 import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstraps";
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { forkChangelogCommandItem } from "./forkChangelog/ForkChangelogDialog";
+import { forkNotesCommandItems } from "./forkNotes/ForkNotesCaptureDialog";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
 import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { useClientSettings } from "../hooks/useSettings";
@@ -2340,6 +2341,7 @@ function OpenCommandPaletteDialog(props: {
   });
 
   actionItems.push(forkChangelogCommandItem);
+  actionItems.push(...forkNotesCommandItems(activeThread));
 
   actionItems.push({
     kind: "action",

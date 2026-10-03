@@ -14,7 +14,12 @@ import type {
 } from "@t3tools/contracts";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import {
+  type ForkNotesSurfaceProps,
+  UNAVAILABLE_FORK_NOTES,
+} from "./forkNotes/useForkNotesSurface";
+import {
   InboxIcon,
+  PencilLineIcon,
   NetworkIcon,
   OrbitIcon,
   Smartphone,
@@ -147,6 +152,8 @@ interface RightPanelTabsProps {
   threadsWaitingCount?: number;
   /** Fork: a coordinator's decisions; absent where there is no thread. */
   threadInbox?: ThreadInboxSurfaceProps;
+  /** Fork: the Notes tab; absent where there is no thread. */
+  notes?: ForkNotesSurfaceProps;
   children: ReactNode;
 }
 
@@ -192,6 +199,7 @@ const SURFACE_DISABLED_REASONS = {
   agentStage: "Enable the agent stage in Settings > General.",
   threadOverview: "Threads a coordinator runs have no thread overview.",
   threadInbox: "Turn on coordinator decisions in Settings > General.",
+  notes: "Notes are only available from a thread.",
   device: "Devices are only available from a thread.",
 } as const;
 
@@ -219,6 +227,7 @@ const SURFACE_UNAVAILABLE_HINTS = {
   agentStage: "Enable it in Settings > General.",
   threadOverview: "Not for threads a coordinator runs.",
   threadInbox: "Turn on coordinator decisions in Settings.",
+  notes: "Available from a thread.",
   device: "Available from a thread.",
 } as const;
 
@@ -375,6 +384,7 @@ function RightPanelEmptyState(props: {
   deviceAvailable: boolean;
   threadsWaitingCount: number;
   threadInbox: ThreadInboxSurfaceProps;
+  notes: ForkNotesSurfaceProps;
 }) {
   // -1 means no highlight: it only appears on hover or arrow use.
   const [highlight, setHighlight] = useState(-1);
@@ -465,6 +475,16 @@ function RightPanelEmptyState(props: {
       disabledReason: SURFACE_UNAVAILABLE_HINTS.threadInbox,
       onClick: props.threadInbox.open,
       badgeCount: props.threadInbox.waitingCount,
+    },
+    {
+      label: "Notes",
+      description: "Notes and todos for this thread, its project, or everywhere.",
+      icon: PencilLineIcon,
+      shortcut: "N",
+      available: props.notes.available,
+      disabledReason: SURFACE_UNAVAILABLE_HINTS.notes,
+      onClick: props.notes.open,
+      badgeCount: 0,
     },
     {
       label: "Device",
@@ -693,6 +713,8 @@ function surfaceTitle(
       return "Threads";
     case "thread-inbox":
       return "Inbox";
+    case "notes":
+      return "Notes";
     case "device":
       return surface.title ?? surface.target?.name ?? "Device";
     case "preview": {
@@ -784,6 +806,8 @@ function SurfaceIcon({
       return <NetworkIcon className="size-3 shrink-0" />;
     case "thread-inbox":
       return <InboxIcon className="size-3 shrink-0" />;
+    case "notes":
+      return <PencilLineIcon className="size-3 shrink-0" />;
     case "device":
       return surface.target?.platform === "ios" ? (
         <AppleIcon className="size-3 shrink-0" />
@@ -1017,6 +1041,14 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       available: props.threadInbox?.available ?? false,
       disabledReason: SURFACE_DISABLED_REASONS.threadInbox,
       onClick: (props.threadInbox ?? UNAVAILABLE_THREAD_INBOX).open,
+    },
+    {
+      label: "Notes",
+      icon: PencilLineIcon,
+      shortcut: "N",
+      available: props.notes?.available ?? false,
+      disabledReason: SURFACE_DISABLED_REASONS.notes,
+      onClick: (props.notes ?? UNAVAILABLE_FORK_NOTES).open,
     },
     {
       label: "Device",
@@ -1333,6 +1365,11 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                             onClick={() => props.onActivate(surface)}
                           >
                             <span className="truncate">{title}</span>
+                            {surface.kind === "notes" && (props.notes?.openCount ?? 0) > 0 ? (
+                              <span className="ms-1 tabular-nums text-muted-foreground">
+                                {props.notes?.openCount}
+                              </span>
+                            ) : null}
                           </button>
                         }
                       />
@@ -1524,6 +1561,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             deviceAvailable={props.deviceAvailable}
             threadsWaitingCount={props.threadsWaitingCount ?? 0}
             threadInbox={props.threadInbox ?? UNAVAILABLE_THREAD_INBOX}
+            notes={props.notes ?? UNAVAILABLE_FORK_NOTES}
           />
         ) : (
           props.children
