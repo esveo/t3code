@@ -66,12 +66,8 @@ disturbing the build people work in all day.
   the maintainer. Run it by hand from the Actions tab; an older upstream commit
   as `upstream_ref` merges a large backlog in stages. Rebase feature branches
   onto `fork` to pick upstream up.
-- The fork already runs upstream's Orchestrator V2 (`orchestration-v2/`,
-  pingdotgg/t3code#2829), which upstream has not merged into its `main` yet.
-  Until it has, the sync follows upstream's V2 branch
-  `t3code/codex-turn-mapping` (`DEFAULT_UPSTREAM_REF` in the workflow), which
-  merges upstream's `main` in itself. Switch it back to `main` once #2829 is
-  merged. Build fork features on V2; the V1 orchestration is gone.
+- The fork runs upstream's Orchestrator V2 (`orchestration-v2/`). Build fork
+  features on it; the V1 orchestration is gone.
 
 ## Staying mergeable with upstream
 

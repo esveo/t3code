@@ -626,6 +626,7 @@ export const make = Effect.gen(function* () {
     installContextMenu(window, window.webContents);
     window.webContents.on("did-attach-webview", (_event, contents) => {
       installContextMenu(window, contents);
+      void runPromise(previewManager.prepareWebview(contents));
     });
 
     const handleWindowOpen = ({
