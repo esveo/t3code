@@ -206,7 +206,7 @@ describe("OrchestratorMcpService", () => {
         }),
         Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       );
-      const scope: McpInvocationScope = {
+      const scope: McpInvocationContext.McpInvocationScope = {
         environmentId: EnvironmentId.make("environment:mcp-restart"),
         threadId: parentThreadId,
         providerSessionId: "provider-session:mcp-restart",
