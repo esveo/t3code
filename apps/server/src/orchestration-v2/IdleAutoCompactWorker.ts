@@ -57,28 +57,51 @@ export type IdleAutoCompactPreferences = Pick<
   "enableIdleAutoCompact" | "idleAutoCompactAfterMinutes" | "idleAutoCompactMinContextTokens"
 >;
 
-/** Cheap shell-only check: idle, untouched, and inside the window of a live cache. */
-export function isIdleAutoCompactCandidate(
+export type IdleAutoCompactSkipReason =
+  | "disabled"
+  | "run-active"
+  | "no-run"
+  | "no-provider-thread"
+  | "pending-request"
+  | "background-tasks"
+  | "archived"
+  | "settled"
+  | "too-early"
+  | "cache-expired"
+  | "not-claude"
+  | "no-usage"
+  | "ttl-not-1h"
+  | "below-min-context"
+  | "cache-refresh-expired";
+
+/**
+ * Cheap shell-only check: why an idle thread cannot be compacted now, or null
+ * when it sits inside the window of a live cache. A finished thread's shell
+ * status is its latest run's terminal status; "idle" only means it never ran.
+ */
+export function idleAutoCompactShellSkipReason(
   shell: IdleAutoCompactShell,
   preferences: IdleAutoCompactPreferences,
   nowMs: number,
-): boolean {
+): IdleAutoCompactSkipReason | null {
+  if (shell.latestRunId === null) return "no-run";
   if (
-    shell.status !== "idle" ||
     shell.activeRunId !== null ||
-    shell.latestRunId === null ||
-    shell.activeProviderThreadId === null ||
-    shell.pendingRuntimeRequest !== null ||
-    (shell.pendingBackgroundTasks?.length ?? 0) > 0 ||
-    shell.archivedAt !== null ||
-    shell.deletedAt !== null ||
-    shell.settledOverride === "settled" ||
+    shell.status === "idle" ||
+    !ThreadManagement.isTerminalRunStatus(shell.status) ||
     !shell.latestRunCompletedAt
   )
-    return false;
+    return "run-active";
+  if (shell.activeProviderThreadId === null) return "no-provider-thread";
+  if (shell.pendingRuntimeRequest !== null) return "pending-request";
+  if ((shell.pendingBackgroundTasks?.length ?? 0) > 0) return "background-tasks";
+  if (shell.archivedAt !== null || shell.deletedAt !== null) return "archived";
+  if (shell.settledOverride === "settled") return "settled";
   const idleMs = nowMs - lastActivityMs(shell);
+  if (idleMs < preferences.idleAutoCompactAfterMinutes * 60_000) return "too-early";
   // A run's last response refreshes the cache, so a run older than the TTL left none behind.
-  return idleMs >= preferences.idleAutoCompactAfterMinutes * 60_000 && idleMs < CACHE_TTL_MS;
+  if (idleMs >= CACHE_TTL_MS) return "cache-expired";
+  return null;
 }
 
 function lastActivityMs(shell: IdleAutoCompactShell): number {
@@ -92,7 +115,7 @@ function lastActivityMs(shell: IdleAutoCompactShell): number {
 function latestRootTokenUsage(records: IdleAutoCompactRecords, providerThreadId: string) {
   const providerThread = records.providerThreads.find((thread) => thread.id === providerThreadId);
   const nativeId = providerThread?.nativeThreadRef?.nativeId;
-  if (providerThread?.driver !== CLAUDE_DRIVER || nativeId === undefined) return undefined;
+  if (providerThread?.driver !== CLAUDE_DRIVER || nativeId === undefined) return null;
   const attempts = new Map(records.attempts.map((attempt) => [attempt.id, attempt]));
   let latest:
     | NonNullable<IdleAutoCompactRecords["providerTurns"][number]["tokenUsage"]>
@@ -109,40 +132,79 @@ function latestRootTokenUsage(records: IdleAutoCompactRecords, providerThreadId:
   return latest;
 }
 
+export type IdleAutoCompactDecision = {
+  readonly command: OrchestrationV2Command | null;
+  readonly skipReason: IdleAutoCompactSkipReason | null;
+  /** What the decision saw, for the sweep log. */
+  readonly lastActivityAt: string | null;
+  readonly idleMinutes: number | null;
+  readonly contextTokens?: number;
+  readonly contextSource?: string;
+  readonly cacheTtl?: string;
+  readonly cacheRefreshedAt?: string;
+};
+
 /**
- * The `/compact` to send to an idle Claude thread, or null. Its ids derive from
- * the cache refresh it saves, so one cache window is compacted at most once:
- * after a compact nothing new is cached until the thread is used again.
+ * Whether to send `/compact` to an idle Claude thread now, and why not. The
+ * command's ids derive from the cache refresh it saves, so one cache window is
+ * compacted at most once: after a compact nothing new is cached until the
+ * thread is used again. `records` is only read when the shell qualifies.
  */
-export function idleAutoCompactCommand(input: {
+export function idleAutoCompactDecision(input: {
   readonly shell: IdleAutoCompactShell;
-  readonly records: IdleAutoCompactRecords;
+  readonly records: () => IdleAutoCompactRecords;
   readonly preferences: IdleAutoCompactPreferences;
   readonly nowMs: number;
-}): OrchestrationV2Command | null {
+}): IdleAutoCompactDecision {
   const { shell, preferences, nowMs } = input;
-  if (!preferences.enableIdleAutoCompact || !isIdleAutoCompactCandidate(shell, preferences, nowMs))
-    return null;
-  const usage = latestRootTokenUsage(input.records, shell.activeProviderThreadId!);
+  const activityMs = lastActivityMs(shell);
+  const seen = {
+    lastActivityAt: activityMs > 0 ? DateTime.formatIso(DateTime.makeUnsafe(activityMs)) : null,
+    idleMinutes: activityMs > 0 ? Math.floor((nowMs - activityMs) / 60_000) : null,
+  };
+  const skip = (skipReason: IdleAutoCompactSkipReason, extra = {}): IdleAutoCompactDecision => ({
+    command: null,
+    skipReason,
+    ...seen,
+    ...extra,
+  });
+  if (!preferences.enableIdleAutoCompact) return skip("disabled");
+  const shellReason = idleAutoCompactShellSkipReason(shell, preferences, nowMs);
+  if (shellReason !== null) return skip(shellReason);
+  const usage = latestRootTokenUsage(input.records(), shell.activeProviderThreadId!);
+  if (usage === null) return skip("not-claude");
+  if (usage === undefined) return skip("no-usage");
+  // usedTokens counts input, cache reads and cache writes: Claude's prompt is almost all cache.
+  const context = {
+    contextTokens: usage.usedTokens,
+    contextSource: "latest root usage report (input + cache read + cache write + output)",
+    ...(usage.promptCache === undefined
+      ? {}
+      : { cacheTtl: usage.promptCache.ttl, cacheRefreshedAt: usage.promptCache.refreshedAt }),
+  };
   // A 5m cache (API keys, overage) is long gone by now; a compact report carries no cache.
-  if (
-    usage?.promptCache?.ttl !== "1h" ||
-    usage.usedTokens < preferences.idleAutoCompactMinContextTokens
-  )
-    return null;
+  if (usage.promptCache?.ttl !== "1h") return skip("ttl-not-1h", context);
+  if (usage.usedTokens < preferences.idleAutoCompactMinContextTokens)
+    return skip("below-min-context", context);
   const refreshedAtMs = Date.parse(usage.promptCache.refreshedAt);
-  if (!Number.isFinite(refreshedAtMs) || nowMs - refreshedAtMs >= CACHE_TTL_MS) return null;
+  if (!Number.isFinite(refreshedAtMs) || nowMs - refreshedAtMs >= CACHE_TTL_MS)
+    return skip("cache-refresh-expired", context);
   const identity = `${IDLE_AUTO_COMPACT_MESSAGE_ID_PREFIX}${shell.id}:${refreshedAtMs}`;
   return {
-    type: "message.dispatch",
-    commandId: CommandId.make(identity),
-    messageId: MessageId.make(identity),
-    threadId: shell.id,
-    text: "/compact",
-    attachments: [],
-    dispatchMode: { type: "start_immediately" },
-    createdBy: "system",
-    creationSource: "server",
+    command: {
+      type: "message.dispatch",
+      commandId: CommandId.make(identity),
+      messageId: MessageId.make(identity),
+      threadId: shell.id,
+      text: "/compact",
+      attachments: [],
+      dispatchMode: { type: "start_immediately" },
+      createdBy: "system",
+      creationSource: "server",
+    },
+    skipReason: null,
+    ...seen,
+    ...context,
   };
 }
 
@@ -153,6 +215,8 @@ const makeSweep = Effect.gen(function* () {
   let lastSweepMs = 0;
   // Identities already sent; a repeated dispatch would only be refused.
   const dispatched = new Set<string>();
+  // Each thread's last logged decision, so the log records changes, not every minute.
+  const loggedReasons = new Map<string, string>();
   return Effect.fn("IdleAutoCompactWorker.sweep")(function* () {
     const preferences = yield* settings.getSettings;
     if (!preferences.enableIdleAutoCompact) return;
@@ -163,19 +227,44 @@ const makeSweep = Effect.gen(function* () {
       location: "active",
       unsettledOnly: true,
     });
+    const seenThreads = new Set<string>();
     for (const shell of snapshot.threads) {
-      if (!isIdleAutoCompactCandidate(shell, preferences, nowMs)) continue;
-      const records = yield* projections.getThreadRecords(shell.id, [
-        "providerThreads",
-        "providerTurns",
-        "attempts",
-      ]);
-      const command = idleAutoCompactCommand({ shell, records, preferences, nowMs });
-      if (command === null || dispatched.has(command.commandId)) continue;
-      dispatched.add(command.commandId);
-      yield* Effect.logInfo("orchestration-v2.idle-auto-compact.dispatch", {
-        threadId: shell.id,
+      seenThreads.add(shell.id);
+      let records: IdleAutoCompactRecords | undefined;
+      if (idleAutoCompactShellSkipReason(shell, preferences, nowMs) === null) {
+        records = yield* projections.getThreadRecords(shell.id, [
+          "providerThreads",
+          "providerTurns",
+          "attempts",
+        ]);
+      }
+      const decision = idleAutoCompactDecision({
+        shell,
+        records: () => records!,
+        preferences,
+        nowMs,
       });
+      const { command } = decision;
+      const alreadyDispatched = command !== null && dispatched.has(command.commandId);
+      const result = command === null ? "skip" : alreadyDispatched ? "skip" : "compact";
+      const reason = alreadyDispatched ? "already-dispatched" : decision.skipReason;
+      const logKey = `${result}:${reason}`;
+      if (loggedReasons.get(shell.id) !== logKey) {
+        loggedReasons.set(shell.id, logKey);
+        yield* Effect.logInfo("orchestration-v2.idle-auto-compact.decision", {
+          threadId: shell.id,
+          result,
+          ...(reason === null ? {} : { reason }),
+          lastActivityAt: decision.lastActivityAt,
+          idleMinutes: decision.idleMinutes,
+          contextTokens: decision.contextTokens,
+          contextSource: decision.contextSource,
+          cacheTtl: decision.cacheTtl,
+          cacheRefreshedAt: decision.cacheRefreshedAt,
+        });
+      }
+      if (command === null || alreadyDispatched) continue;
+      dispatched.add(command.commandId);
       yield* threads.dispatch(command).pipe(
         Effect.catchCause((cause) =>
           Effect.logWarning("orchestration-v2.idle-auto-compact.dispatch-failed", {
@@ -184,6 +273,9 @@ const makeSweep = Effect.gen(function* () {
           }),
         ),
       );
+    }
+    for (const threadId of loggedReasons.keys()) {
+      if (!seenThreads.has(threadId)) loggedReasons.delete(threadId);
     }
   });
 });
