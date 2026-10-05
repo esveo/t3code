@@ -2,6 +2,7 @@
 
 Every feature and fix this fork adds on top of [T3 Code](https://github.com/pingdotgg/t3code), each with the commits that made it.
 
+- Fix: a thread started from a draft no longer stays empty when its contents were requested before the server created it ([3737274](https://github.com/esveo/t3code/commit/373727441e3b20b4de506fd98f65ea6f5ef7aba1)).
 - Fix: a coordinator's settled child threads list under Settled, and subagent threads no longer carry their parent's pull requests, built on upstream PR [#14918](https://github.com/pingdotgg/t3code/pull/14918) ([65d14a6](https://github.com/esveo/t3code/commit/65d14a62242a45a85c6cea4995d7d9589f2400a8), [f167db1](https://github.com/esveo/t3code/commit/f167db1a750225bb22cc27a8380ceda14623a4f8)).
 - A finished thread that leaves a command such as a dev server running shows as Done in the sidebar until you open it, instead of receding as Waiting ([91cd38f](https://github.com/esveo/t3code/commit/91cd38fa4e4939e54e45901746e8a8414a4e1700)).
 - A Notes tab in the right panel keeps notes and todos per thread, per project and globally, captured with ⌥⌘K, sorted and ticked off by dragging, and inserted into the composer in one click ([1884019](https://github.com/esveo/t3code/commit/18840195e62cfe17be61e5f5d7cf88824b9a7733), [4b16f0d](https://github.com/esveo/t3code/commit/4b16f0d2e190f516505115a0f32b051e5af5ab48), [fab2b88](https://github.com/esveo/t3code/commit/fab2b8827fe46ec71df85c3da89dbbf25f815fd4)).
