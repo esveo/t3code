@@ -175,7 +175,8 @@ const CAPABILITIES_PROBE_TIMEOUT_MS = 25_000;
 // `get_usage` makes the CLI fetch the account's usage from Anthropic, which
 // takes 2.7–4.3s on a Max account with Claude Code 2.1.283. The shared 4s
 // budget cut it off on most probes and showed "Could not read limits."
-const CLAUDE_USAGE_TIMEOUT_MS = 15_000;
+// Claude Code 2.1.289 takes about 18s, so 15s failed on every probe again.
+const CLAUDE_USAGE_TIMEOUT_MS = 45_000;
 
 /**
  * Keep workspace-scoped command discovery intact while isolating the periodic
