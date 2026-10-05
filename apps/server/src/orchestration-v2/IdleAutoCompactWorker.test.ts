@@ -8,7 +8,7 @@ import {
 import * as DateTime from "effect/DateTime";
 
 import {
-  idleAutoCompactCommand,
+  idleAutoCompactDecision,
   type IdleAutoCompactPreferences,
   type IdleAutoCompactRecords,
   type IdleAutoCompactShell,
@@ -28,7 +28,8 @@ const preferences: IdleAutoCompactPreferences = {
 const shell = (overrides: Partial<IdleAutoCompactShell> = {}) =>
   ({
     id: ThreadId.make("thread-1"),
-    status: "idle",
+    // A finished thread's shell carries its latest run's status, never "idle".
+    status: "completed",
     activeRunId: null,
     activeProviderThreadId: "pt-1",
     latestRunId: "run-1",
@@ -80,18 +81,20 @@ const records = (input: {
   } as unknown as IdleAutoCompactRecords;
 };
 
-const command = (input: {
+const decide = (input: {
   readonly nowMs: number;
   readonly shell?: IdleAutoCompactShell;
   readonly records?: IdleAutoCompactRecords;
   readonly preferences?: IdleAutoCompactPreferences;
 }) =>
-  idleAutoCompactCommand({
+  idleAutoCompactDecision({
     shell: input.shell ?? shell(),
-    records: input.records ?? records({}),
+    records: () => input.records ?? records({}),
     preferences: input.preferences ?? preferences,
     nowMs: input.nowMs,
   });
+
+const command = (input: Parameters<typeof decide>[0]) => decide(input).command;
 
 it("compacts a large idle Claude thread shortly before its 1h cache expires", () => {
   const result = command({ nowMs: after(56) });
@@ -105,6 +108,36 @@ it("compacts a large idle Claude thread shortly before its 1h cache expires", ()
 it("waits for the idle time and gives up once the cache expired", () => {
   assert.isNull(command({ nowMs: after(54) }));
   assert.isNull(command({ nowMs: after(60) }));
+});
+
+it("compacts a finished 173k thread on a 1h cache 56 minutes after its last response", () => {
+  const decision = decide({ nowMs: after(56), records: records({ usedTokens: 173_000 }) });
+  assert.strictEqual(decision.command?.type, "message.dispatch");
+  assert.strictEqual(decision.contextTokens, 173_000);
+  assert.strictEqual(decision.cacheTtl, "1h");
+  assert.strictEqual(decision.idleMinutes, 56);
+});
+
+it("names why it skips a 173k thread at 56 minutes", () => {
+  const at56 = (input: Omit<Parameters<typeof decide>[0], "nowMs">) =>
+    decide({ nowMs: after(56), ...input }).skipReason;
+  assert.strictEqual(at56({ records: records({ usedTokens: 173_000, ttl: "5m" }) }), "ttl-not-1h");
+  assert.strictEqual(at56({ records: records({ usedTokens: 149_999 }) }), "below-min-context");
+  assert.strictEqual(
+    at56({
+      shell: shell({ status: "running", activeRunId: "run-2" } as Partial<IdleAutoCompactShell>),
+      records: records({ usedTokens: 173_000 }),
+    }),
+    "run-active",
+  );
+  assert.strictEqual(at56({ shell: shell({ status: "idle", latestRunId: null }) }), "no-run");
+});
+
+it("compacts after any finished run, not only a completed one", () => {
+  for (const status of ["interrupted", "failed", "cancelled"] as const) {
+    assert.isNotNull(command({ nowMs: after(56), shell: shell({ status }) }));
+  }
+  assert.isNull(command({ nowMs: after(56), shell: shell({ status: "queued" }) }));
 });
 
 it("leaves the thread alone when disabled", () => {
