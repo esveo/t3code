@@ -71,6 +71,32 @@ export function resolveChildThreadState(thread: ChildThreadShell): ChildThreadSt
   return "done";
 }
 
+/** The overview section a child thread lists in. */
+export type ChildThreadGroup = "waiting" | "working" | "review" | "active" | "settled";
+
+/**
+ * What blocks on the user or still runs shows whatever the thread's settled
+ * state. Finished work, a pull request ready for review included, lists as
+ * settled once the thread is settled, and as active otherwise.
+ */
+export function childThreadGroupOf(
+  state: ChildThreadState,
+  settledOverride: OrchestrationV2ThreadShell["settledOverride"],
+): ChildThreadGroup {
+  switch (state) {
+    case "waiting":
+    case "failed":
+      return "waiting";
+    case "working":
+      return "working";
+    case "review":
+    case "stopped":
+    case "done":
+      if (settledOverride === "settled") return "settled";
+      return state === "review" ? "review" : "active";
+  }
+}
+
 export const CHILD_THREAD_STATE_LABELS: Record<ChildThreadState, string> = {
   waiting: "Waiting on you",
   failed: "Failed",
