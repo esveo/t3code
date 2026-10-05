@@ -50,6 +50,13 @@ const ScheduledTaskFixedTimeSchedule = Schema.Struct({
       description: "Optional weekdays; omit to run every day.",
     }),
   ),
+  // Fork (esveo): opt-in catch-up of a run missed while the server was off or asleep.
+  catchUpMissedRuns: Schema.optional(
+    Schema.Boolean.annotate({
+      description:
+        "When true, a run missed while the app was off or asleep runs once on the next start instead of being skipped. Defaults to false.",
+    }),
+  ),
 }).annotate({
   description: "Run at a fixed local wall-clock time on selected weekdays.",
 });
