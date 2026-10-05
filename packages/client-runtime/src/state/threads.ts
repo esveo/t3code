@@ -7,6 +7,7 @@ import {
   type ThreadId as ThreadIdType,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Scope from "effect/Scope";
@@ -14,6 +15,7 @@ import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
+import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -49,6 +51,13 @@ import {
   type EnvironmentThreadState,
   type EnvironmentThreadStatus,
 } from "./threadState.ts";
+
+// A 404 can race a thread's creation, so a miss is re-checked, never latched.
+const MISSING_THREAD_RECHECK_SCHEDULE = Schedule.exponential("250 millis").pipe(
+  Schedule.modifyDelay(({ duration }) =>
+    Effect.succeed(Duration.min(duration, Duration.seconds(30))),
+  ),
+);
 
 function statusWithoutLiveData(
   data: Option.Option<OrchestrationV2ThreadProjection>,
@@ -412,7 +421,10 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
       history: patch(current.history),
     }));
 
+  // Only a thread.deleted event (or a state retained from one) is final.
+  let confirmedDeleted = initialState.status === "deleted";
   const setDeleted = Effect.fn("EnvironmentThreadState.setDeleted")(function* () {
+    confirmedDeleted = true;
     yield* Ref.set(awaitingCompletion, false);
     yield* SubscriptionRef.set(state, {
       data: Option.none(),
@@ -830,10 +842,9 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
       ORCHESTRATION_V2_WS_METHODS.subscribeThread,
       Effect.fn("EnvironmentThreadState.makeSubscribeInput")(function* (session) {
         let current = yield* SubscriptionRef.get(state);
-        // A prior definitive miss (or delete event) already cleared this thread.
-        // Park the subscription attempt without opening the socket so we do not
-        // retry forever against a known-missing id.
-        if (current.status === "deleted") {
+        // A delete event already cleared this thread. Park the subscription
+        // attempt without opening the socket.
+        if (confirmedDeleted) {
           return yield* Effect.never;
         }
 
@@ -860,8 +871,29 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
               }),
             ),
           );
-          const httpResult: ThreadSnapshotLoader.ThreadSnapshotLoadResult =
-            yield* snapshotLoader.load(prepared, threadId);
+          // A 404 can arrive before thread.create commits (a draft's detail is
+          // requested early). Show the thread as deleted meanwhile, but keep
+          // re-checking instead of latching, and keep it out of the resume cache.
+          const httpResult = yield* snapshotLoader.load(prepared, threadId).pipe(
+            Effect.tap((result) =>
+              result._tag === "missing"
+                ? SubscriptionRef.update(state, (value) => ({
+                    ...value,
+                    status: "deleted" as const,
+                    error: Option.none(),
+                  }))
+                : Effect.void,
+            ),
+            Effect.repeat({
+              schedule: MISSING_THREAD_RECHECK_SCHEDULE,
+              until: (
+                result,
+              ): result is Exclude<
+                ThreadSnapshotLoader.ThreadSnapshotLoadResult,
+                { readonly _tag: "missing" }
+              > => result._tag !== "missing",
+            }),
+          );
           switch (httpResult._tag) {
             case "present": {
               if (canLoadHistory && httpResult.history !== undefined) {
@@ -890,12 +922,6 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
               );
               current = yield* SubscriptionRef.get(state);
               break;
-            }
-            case "missing": {
-              // Definitive HTTP 404: clear any stale cache and do not open or
-              // retry a socket subscription for this attempt.
-              yield* setDeleted();
-              return yield* Effect.never;
             }
             case "unavailable": {
               // Transient HTTP failure: fall through to the socket path.
