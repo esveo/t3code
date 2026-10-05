@@ -7,6 +7,7 @@ import type {
 import { useCallback, useMemo, useState } from "react";
 
 import {
+  resolveThreadDetailRef,
   useProject,
   useProjects,
   useThreadProjection,
@@ -55,7 +56,11 @@ function ThreadAgentStage({
 }) {
   const threadKey = scopedThreadKey(threadRef);
   const shell = useThreadShell(threadRef);
-  const projection = useThreadProjection(threadRef)?.projection ?? null;
+  // A draft has no server thread yet; its detail would 404 until thread.create commits.
+  const projection =
+    useThreadProjection(
+      resolveThreadDetailRef(threadRef, { shellExists: shell !== null, waitForShell: true }),
+    )?.projection ?? null;
   const threadTitle = shell?.title;
   const pendingBackgroundTasks = shell?.pendingBackgroundTasks ?? EMPTY;
   const project = useProject(

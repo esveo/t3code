@@ -106,6 +106,7 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
     readonly latestLocalTurnOrdinal?: number | null;
   };
   readonly httpSnapshot?: ThreadSnapshotLoadResult;
+  readonly loadHttpSnapshot?: Effect.Effect<ThreadSnapshotLoadResult>;
   readonly completionMarker?: boolean;
   readonly resumeCache?: NonNullable<Parameters<typeof makeEnvironmentThreadState>[1]>;
   readonly loadCached?: Effect.Effect<Option.Option<OrchestrationV2ThreadDetailSnapshot>>;
@@ -160,11 +161,15 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
   const snapshotLoader = ThreadSnapshotLoader.ThreadSnapshotLoader.of({
     load: (_prepared, threadId) =>
       Ref.update(loaderCalls, (count) => count + 1).pipe(
-        Effect.as(
-          threadId === THREAD_ID
-            ? (options?.httpSnapshot ??
-                ({ _tag: "unavailable" } satisfies ThreadSnapshotLoadResult))
-            : ({ _tag: "unavailable" } satisfies ThreadSnapshotLoadResult),
+        Effect.andThen(
+          threadId === THREAD_ID && options?.loadHttpSnapshot !== undefined
+            ? options.loadHttpSnapshot
+            : Effect.succeed(
+                threadId === THREAD_ID
+                  ? (options?.httpSnapshot ??
+                      ({ _tag: "unavailable" } satisfies ThreadSnapshotLoadResult))
+                  : ({ _tag: "unavailable" } satisfies ThreadSnapshotLoadResult),
+              ),
         ),
       ),
   });
@@ -1509,7 +1514,7 @@ describe("EnvironmentThreads", () => {
     }),
   );
 
-  it.effect("marks a cold definitive HTTP miss deleted without socket subscribe or retry", () =>
+  it.effect("shows an HTTP miss as deleted without opening the socket", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({
         httpSnapshot: { _tag: "missing" },
@@ -1522,24 +1527,41 @@ describe("EnvironmentThreads", () => {
 
       expect(Option.isNone(state.data)).toBe(true);
       expect(Option.isNone(state.error)).toBe(true);
-      expect(yield* Ref.get(harness.loaderCalls)).toBeGreaterThanOrEqual(1);
-      expect(yield* Ref.get(harness.removedThreads)).toEqual([THREAD_ID]);
-      expect(yield* Ref.get(harness.subscriptionCount)).toBe(0);
-
-      // A definitive miss must not schedule the expected-failure retry path.
-      yield* TestClock.adjust("1 second");
-      for (let attempt = 0; attempt < 20; attempt += 1) {
-        yield* Effect.yieldNow;
-      }
-      yield* harness.replaceSession;
-      yield* Queue.offer(harness.wakeups, "application-active");
-      for (let attempt = 0; attempt < 20; attempt += 1) {
-        yield* Effect.yieldNow;
-      }
       expect(yield* Ref.get(harness.subscriptionCount)).toBe(0);
       expect(yield* Ref.get(harness.retryCount)).toBe(0);
-      expect(yield* Ref.get(harness.loaderCalls)).toBe(1);
-      expect((yield* Ref.get(harness.latest)).status).toBe("deleted");
+    }),
+  );
+
+  it.effect("recovers when a thread that 404ed is created afterwards", () =>
+    Effect.gen(function* () {
+      // A draft's detail can be requested before thread.create commits.
+      const httpSnapshot = yield* Ref.make<ThreadSnapshotLoadResult>({ _tag: "missing" });
+      const resumeCache: NonNullable<Parameters<typeof makeEnvironmentThreadState>[1]> = {
+        snapshot: undefined,
+        owner: undefined,
+      };
+      const harness = yield* makeHarness({
+        loadHttpSnapshot: Ref.get(httpSnapshot),
+        resumeCache,
+      });
+      yield* awaitThreadState(harness.observed, (value) => value.status === "deleted");
+      expect(resumeCache.snapshot?.state.status).not.toBe("deleted");
+
+      // A session replacement while missing must not park the subscription.
+      yield* harness.replaceSession;
+      yield* Ref.set(httpSnapshot, {
+        _tag: "present",
+        snapshot: { projection: BASE_PROJECTION, snapshotSequence: CACHED_SNAPSHOT_SEQUENCE },
+      });
+      yield* TestClock.adjust("1 second");
+
+      const state = yield* awaitThreadState(
+        harness.observed,
+        (value) => value.status === "live" && Option.isSome(value.data),
+      );
+      expect(Option.getOrThrow(state.data).thread.title).toBe("Cached thread");
+      expect(yield* Ref.get(harness.subscriptionCount)).toBe(1);
+      expect(yield* Ref.get(harness.lastSubscribeAfterSequence)).toBe(CACHED_SNAPSHOT_SEQUENCE);
     }),
   );
 
