@@ -32,6 +32,7 @@ import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import { isMissedFixedTimeRun, isSameSchedule, nextScheduledRunAt } from "./Schedule.ts";
+import { catchesUpMissedRuns, catchUpMissedRun } from "./CatchUpMissedRuns.ts";
 
 const decodeTask = Schema.decodeUnknownEffect(ScheduledTask);
 const decodeTaskId = Schema.decodeUnknownOption(ScheduledTaskId);
@@ -632,7 +633,9 @@ export const layer = Layer.effect(
         due,
         ({ task, dueAt }) =>
           (isMissedFixedTimeRun(task.schedule, dueAt, now)
-            ? rescheduleMissedRun(task, now)
+            ? catchesUpMissedRuns(task.schedule)
+              ? catchUpMissedRun(task, runTask)
+              : rescheduleMissedRun(task, now)
             : runTask(task, "scheduled")
           ).pipe(
             Effect.catch((cause) =>

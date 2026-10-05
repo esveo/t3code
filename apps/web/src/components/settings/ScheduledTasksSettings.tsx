@@ -45,6 +45,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { WorktreeBaseBranchPicker } from "../WorktreeBaseBranchPicker";
 import { EnvironmentMachineIcon } from "../EnvironmentMachineIcon";
 import { useSettingsScope } from "./SettingsScopeContext";
+import { CatchUpMissedRunsField } from "../scheduledTaskCatchUp/CatchUpMissedRunsField";
 import {
   matchesScheduledTaskScope,
   scheduledTaskDefaultModel,
@@ -102,6 +103,7 @@ const EMPTY_DRAFT: DraftState = {
   intervalMinutes: "15",
   timeOfDay: "09:00",
   weekdays: new Set([1, 2, 3, 4, 5]),
+  catchUpMissedRuns: false,
   projectId: "",
   threadId: "",
   workspaceMode: "worktree",
@@ -158,6 +160,7 @@ function scheduleFromDraft(draft: DraftState): ScheduledTaskSchedule {
     type: "fixed_time",
     timeOfDay: draft.timeOfDay || "09:00",
     ...(selectedEveryDay ? {} : { weekdays: [...draft.weekdays].toSorted() }),
+    ...(draft.catchUpMissedRuns ? { catchUpMissedRuns: true } : {}),
   };
 }
 
@@ -891,6 +894,15 @@ function ScheduledTaskEditorDialog({
                 </div>
               )}
             </div>
+
+            {draft.scheduleMode === "fixed" ? (
+              <CatchUpMissedRunsField
+                checked={draft.catchUpMissedRuns}
+                onCheckedChange={(catchUpMissedRuns) =>
+                  setDraft((current) => ({ ...current, catchUpMissedRuns }))
+                }
+              />
+            ) : null}
 
             <div className="flex items-center justify-between gap-4">
               <div className="min-w-0 space-y-1">

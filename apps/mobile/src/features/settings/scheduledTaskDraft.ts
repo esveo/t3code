@@ -41,6 +41,8 @@ export type ScheduleDraft = {
   readonly timeOfDay: string;
   readonly weekdays: ReadonlyArray<number>;
   readonly intervalMinutes: string;
+  /** Fork (esveo): catch up a fixed-time run missed while the app was off or asleep. */
+  readonly catchUpMissedRuns: boolean;
 };
 
 export const DEFAULT_SCHEDULE: ScheduleDraft = {
@@ -48,6 +50,7 @@ export const DEFAULT_SCHEDULE: ScheduleDraft = {
   timeOfDay: "09:00",
   weekdays: [1, 2, 3, 4, 5],
   intervalMinutes: "15",
+  catchUpMissedRuns: false,
 };
 
 export function scheduleDraftForTask(task: Pick<ScheduledTask, "schedule">): ScheduleDraft {
@@ -58,6 +61,7 @@ export function scheduleDraftForTask(task: Pick<ScheduledTask, "schedule">): Sch
         weekdays: task.schedule.weekdays?.length
           ? [...new Set(task.schedule.weekdays)].sort((a, b) => a - b)
           : [0, 1, 2, 3, 4, 5, 6],
+        catchUpMissedRuns: task.schedule.catchUpMissedRuns === true,
       }
     : {
         ...DEFAULT_SCHEDULE,
@@ -85,6 +89,7 @@ export function scheduleFromDraft(draft: ScheduleDraft): ScheduledTaskUpsertSche
     type: "fixed_time",
     timeOfDay: draft.timeOfDay,
     ...(weekdays.length === 7 ? {} : { weekdays }),
+    ...(draft.catchUpMissedRuns ? { catchUpMissedRuns: true } : {}),
   };
 }
 
@@ -119,6 +124,7 @@ function draftSignature(draft: ScheduledTaskDraft): string {
     draft.schedule.timeOfDay,
     [...draft.schedule.weekdays].sort((a, b) => a - b),
     draft.schedule.intervalMinutes,
+    draft.schedule.catchUpMissedRuns,
     draft.workspace,
     draft.baseRef,
     draft.checkoutPath,
