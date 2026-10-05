@@ -247,6 +247,41 @@ describe("buildThreadOverview", () => {
     expect(describeOverviewOrigin(entries)).toBe("5 threads coordinated from here");
   });
 
+  it("lists a settled thread with an open pull request as settled, not ready for review", () => {
+    const openPullRequest = {
+      pullRequests: [
+        {
+          host: "github.com",
+          repository: "esveo/t3code",
+          number: 7,
+          url: "https://github.com/esveo/t3code/pull/7",
+          source: "agent",
+          linkedAt: "2026-09-23T10:00:00.000Z",
+          snapshot: null,
+          stack: null,
+        },
+      ],
+    } as Partial<OrchestrationV2ThreadShell>;
+    const children = [
+      thread("review", {}, { status: "completed", ...openPullRequest }),
+      thread(
+        "settled",
+        { settledOverride: "settled" },
+        { status: "completed", ...openPullRequest },
+      ),
+    ];
+    const entries = threadOverviewEntries({ children, subagentThreads: [], subagents: new Map() });
+    expect(
+      buildThreadOverview(entries).map((group) => [
+        group.id,
+        group.entries.map((e) => e.thread.id),
+      ]),
+    ).toEqual([
+      ["review", ["review"]],
+      ["settled", ["settled"]],
+    ]);
+  });
+
   /** A subagent Claude Code's Agent tool started, with its own thread. */
   const nativeSubagent = (
     id: string,

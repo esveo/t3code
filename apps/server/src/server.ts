@@ -80,6 +80,7 @@ import * as AgentAwarenessRelay from "./relay/AgentAwarenessRelay.ts";
 import * as CoordinatorUpdates from "./threadOrchestration/CoordinatorUpdates.ts";
 import * as DelegatedWorkspace from "./threadOrchestration/DelegatedWorkspace.ts";
 import * as SubagentSettlement from "./threadOrchestration/SubagentSettlement.ts";
+import * as InheritedPullRequestRepair from "./threadOrchestration/InheritedPullRequestRepair.ts";
 import * as DelegatedAttachments from "./mcp/toolkits/threads/attachments.ts";
 import * as ThreadCoordinators from "./threadOrchestration/ThreadCoordinators.ts";
 import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
@@ -556,6 +557,7 @@ const RuntimeCoreDependenciesBaseLive = Layer.mergeAll(
   ),
   DelegatedWorkspace.layer,
   SubagentSettlement.layer,
+  InheritedPullRequestRepair.layer,
   ThreadDecisions.layer,
   // Fork: notes and todos of the Notes tab.
   ForkNotes.layer,

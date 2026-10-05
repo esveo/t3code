@@ -7,12 +7,14 @@ import {
 
 import type { CoordinatorOf } from "./childThreads.logic";
 import {
+  type ChildThreadGroup,
   type ChildThreadState,
+  childThreadGroupOf,
   describeChildThread,
   resolveChildThreadState,
 } from "@t3tools/shared/threadOrchestration";
 
-export type ThreadOverviewGroupId = "waiting" | "working" | "review" | "active" | "settled";
+export type ThreadOverviewGroupId = ChildThreadGroup;
 
 /** A child thread the coordinator started, or a subagent its provider started. */
 export type ThreadOverviewKind = "thread" | "subagent";
@@ -32,20 +34,9 @@ export interface ThreadOverviewGroup {
   readonly entries: ReadonlyArray<ThreadOverviewEntry>;
 }
 
-const GROUP_OF_STATE: Record<ChildThreadState, ThreadOverviewGroupId | "done"> = {
-  waiting: "waiting",
-  failed: "waiting",
-  working: "working",
-  review: "review",
-  stopped: "done",
-  done: "done",
-};
-
 /** Finished threads split like the sidebar does: still active, or settled. */
 function groupOf(entry: ThreadOverviewEntry): ThreadOverviewGroupId {
-  const group = GROUP_OF_STATE[entry.state];
-  if (group !== "done") return group;
-  return entry.thread.settledOverride === "settled" ? "settled" : "active";
+  return childThreadGroupOf(entry.state, entry.thread.settledOverride);
 }
 
 const GROUPS: ReadonlyArray<{ readonly id: ThreadOverviewGroupId; readonly label: string }> = [

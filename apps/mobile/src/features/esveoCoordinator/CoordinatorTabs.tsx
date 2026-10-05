@@ -9,7 +9,8 @@ import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { waitingDecisionCount } from "@t3tools/shared/threadInbox";
 import {
-  type ChildThreadState,
+  type ChildThreadGroup,
+  childThreadGroupOf,
   resolveChildThreadState,
 } from "@t3tools/shared/threadOrchestration";
 import { useNavigation } from "@react-navigation/native";
@@ -122,16 +123,7 @@ const TAB_ROW_APPEARANCE = {
   providerIconSurfaceColor: "transparent",
 };
 
-type GroupId = "waiting" | "working" | "review" | "active" | "settled";
-
-const GROUP_OF_STATE: Record<ChildThreadState, GroupId | "done"> = {
-  waiting: "waiting",
-  failed: "waiting",
-  working: "working",
-  review: "review",
-  stopped: "done",
-  done: "done",
-};
+type GroupId = ChildThreadGroup;
 
 const GROUPS: ReadonlyArray<{ readonly id: GroupId; readonly label: string }> = [
   { id: "waiting", label: "Waiting on you" },
@@ -149,9 +141,7 @@ function CoordinatedThreadsList(props: {
   const groups = useMemo(() => {
     const byGroup = new Map<GroupId, EnvironmentThreadShell[]>();
     for (const thread of props.threads) {
-      const group = GROUP_OF_STATE[resolveChildThreadState(thread.source)];
-      const id: GroupId =
-        group !== "done" ? group : thread.settledOverride === "settled" ? "settled" : "active";
+      const id = childThreadGroupOf(resolveChildThreadState(thread.source), thread.settledOverride);
       byGroup.set(id, [...(byGroup.get(id) ?? []), thread]);
     }
     return GROUPS.flatMap((group) => {
