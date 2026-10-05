@@ -106,9 +106,23 @@ Work on the fork is tracked on the project board
 item is an issue in `esveo/t3code`, with the status `Ideen`, `In Arbeit` or
 `Done`. Keep it current as you work, without being asked:
 
-- **Starting a feature or fix:** find its issue on the board. If there is none,
-  create one (German title, a sentence or two of body, like the existing ones)
-  and add it to the board. Set it to `In Arbeit`.
+- **Starting a feature or fix:** first search the board for an issue that
+  already covers the same problem or feature, not just the same title
+  (`gh issue list -R esveo/t3code --state all --search "<keywords>"`).
+  - In `Ideen`: take that issue instead of creating a new one.
+  - In `In Arbeit`: find out who started it (see below). If it was not the
+    user, stop and warn the user before working on it, naming that person.
+    If it was the user, continue.
+  - None found: create one (German title, a sentence or two of body, like
+    the existing ones) and add it to the board.
+
+  Then set it to `In Arbeit` and assign it to the user
+  (`gh issue edit <N> -R esveo/t3code --add-assignee @me`), so the next agent
+  sees who works on it. Who started an issue: its assignees; failing that,
+  the actor of the issue's last status change (only recorded for changes made
+  in the web UI, not via `gh project item-edit`); failing that, whoever added
+  it to the board. The user is `gh api user --jq .login`.
+
 - **Before a larger feature:** check whether upstream already builds it or
   something close. Look at upstream's open pull requests
   (`gh pr list -R pingdotgg/t3code --search "<keywords>"`), its branches
@@ -133,6 +147,11 @@ gh project item-add 3 --owner esveo --url <issue url> --format json --jq .id
 # Item id of an existing issue
 gh project item-list 3 --owner esveo --format json \
   --jq '.items[] | select(.content.number == <N>) | .id'
+# Who started an issue: assignees, board item creator, status changes
+gh api graphql -f query='query{repository(owner:"esveo",name:"t3code"){issue(number:<N>){
+  assignees(first:5){nodes{login}} projectItems(first:5){nodes{creator{login}}}
+  timelineItems(last:5,itemTypes:[PROJECT_V2_ITEM_STATUS_CHANGED_EVENT]){nodes{
+  ... on ProjectV2ItemStatusChangedEvent{actor{login} status createdAt}}}}}}'
 # Set the status: Ideen 8bc1201f, In Arbeit 312ea0df, Done 02ced7e8
 gh project item-edit --project-id PVT_kwDOAmJGXc4BkTTD --id <item id> \
   --field-id PVTSSF_lADOAmJGXc4BkTTDzhjEWVE --single-select-option-id <option>
