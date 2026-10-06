@@ -39,8 +39,10 @@ function markAllSeen(): void {
 }
 
 interface ForkChangelogStoreState {
-  /** "new" after an update, "all" from the command palette. */
-  view: "new" | "all" | null;
+  open: boolean;
+  /** "new" after an update, "all" from the command palette. Kept after closing, so the
+   * dialog does not switch to the whole changelog while it animates out. */
+  view: "new" | "all";
   newEntries: ReadonlyArray<ForkChangelogEntry>;
   /** Called once per start: shows what arrived since the last start, if anything. */
   showNewSinceLastStart: () => void;
@@ -49,7 +51,8 @@ interface ForkChangelogStoreState {
 }
 
 export const useForkChangelogStore = create<ForkChangelogStoreState>()((set) => ({
-  view: null,
+  open: false,
+  view: "all",
   newEntries: [],
   showNewSinceLastStart: () => {
     const newEntries = findNewForkChangelogEntries(FORK_CHANGELOG_ENTRIES, readSeenCommits());
@@ -57,11 +60,11 @@ export const useForkChangelogStore = create<ForkChangelogStoreState>()((set) => 
       markAllSeen();
       return;
     }
-    set({ view: "new", newEntries });
+    set({ open: true, view: "new", newEntries });
   },
-  showAll: () => set({ view: "all" }),
+  showAll: () => set({ open: true, view: "all" }),
   close: () => {
     markAllSeen();
-    set({ view: null, newEntries: [] });
+    set({ open: false });
   },
 }));

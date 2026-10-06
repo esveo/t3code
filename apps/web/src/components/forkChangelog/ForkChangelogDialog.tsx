@@ -28,6 +28,7 @@ export const forkChangelogCommandItem: CommandPaletteActionItem = {
 };
 
 export function ForkChangelogDialog() {
+  const open = useForkChangelogStore((state) => state.open);
   const view = useForkChangelogStore((state) => state.view);
   const newEntries = useForkChangelogStore((state) => state.newEntries);
   const entries = view === "new" ? newEntries : FORK_CHANGELOG_ENTRIES;
@@ -38,9 +39,9 @@ export function ForkChangelogDialog() {
 
   return (
     <Dialog
-      open={view !== null}
-      onOpenChange={(open) => {
-        if (!open) useForkChangelogStore.getState().close();
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) useForkChangelogStore.getState().close();
       }}
     >
       <DialogPopup className="max-w-lg">
