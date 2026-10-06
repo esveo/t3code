@@ -1,7 +1,7 @@
 import { presentThreadShell } from "@t3tools/client-runtime/state/models";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId, OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import {
   CircleAlertIcon,
@@ -22,9 +22,6 @@ import {
   unlockNotificationAudio,
 } from "../threadNotifications";
 import { resolveSidebarThreadStatus } from "./Sidebar.logic";
-import { threadToastShortcuts } from "./split/threadToastShortcuts";
-import { ThreadToastIdentity } from "./split/ThreadToastIdentity";
-import { revealThreadInSplit } from "./split/splitPanes";
 import { toastManager } from "./ui/toast";
 
 export function ThreadNotificationCoordinator() {
@@ -91,6 +88,12 @@ export function ThreadNotificationCoordinator() {
   ));
 }
 
+interface NotificationState {
+  readonly raw: OrchestrationV2ThreadShell;
+  readonly attention: string | null;
+  readonly completion: number | null;
+}
+
 function EnvironmentNotifications({
   environmentId,
   onNotification,
@@ -99,6 +102,10 @@ function EnvironmentNotifications({
   onNotification: (environmentId: EnvironmentId, notification: Notification) => void;
 }) {
   const shell = useAtomValue(environmentShell.stateValueAtom(environmentId));
+  // The shell reducer keeps the thread list and unchanged thread objects
+  // stable, so this only rescans when a thread actually changed.
+  const threads =
+    shell.status === "live" && Option.isSome(shell.snapshot) ? shell.snapshot.value.threads : null;
   const mode = useClientSettings((settings) => settings.notificationMode);
   const inAppNotificationsEnabled = useClientSettings(
     (settings) => settings.inAppNotificationsEnabled,
@@ -107,42 +114,25 @@ function EnvironmentNotifications({
   const { environmentId: activeEnvironmentId, threadId: activeThreadId } = useParams({
     strict: false,
   });
-  const previous = useRef(
-    new Map<ThreadId, { attention: string | null; completion: number | null }>(),
-  );
-
-  // In a split the thread belongs next to the others, not in place of one: the
-  // grid focuses its pane or appends one, and only outside a split does opening
-  // a thread mean navigating.
-  const openThread = useCallback(
-    (threadId: ThreadId) => {
-      const handled = revealThreadInSplit(
-        { environmentId, threadId },
-        activeEnvironmentId && activeThreadId
-          ? {
-              environmentId: activeEnvironmentId as EnvironmentId,
-              threadId: activeThreadId as ThreadId,
-            }
-          : null,
-      );
-      if (handled) return;
-      void navigate({ to: "/$environmentId/$threadId", params: { environmentId, threadId } });
-    },
-    [activeEnvironmentId, activeThreadId, environmentId, navigate],
-  );
+  const previous = useRef(new Map<ThreadId, NotificationState>());
 
   useEffect(() => {
-    if (shell.status !== "live" || Option.isNone(shell.snapshot)) {
+    if (threads === null) {
       previous.current.clear();
       return;
     }
-    const next = new Map<ThreadId, { attention: string | null; completion: number | null }>();
-    for (const rawThread of shell.snapshot.value.threads) {
+    const next = new Map<ThreadId, NotificationState>();
+    for (const rawThread of threads) {
       if (rawThread.lineage.relationshipToParent === "subagent") continue;
+      const prior = previous.current.get(rawThread.id);
+      // The same object cannot produce a new notification.
+      if (prior?.raw === rawThread) {
+        next.set(rawThread.id, prior);
+        continue;
+      }
       const thread = presentThreadShell(environmentId, rawThread);
       let status = resolveSidebarThreadStatus(thread);
       if (status === "ready" && thread.latestRun?.status === "failed") status = "failed";
-      const prior = previous.current.get(thread.id);
       const attention =
         status === "input" || status === "approval" || status === "failed" || status === "limited"
           ? `${thread.latestRun?.runId ?? ""}:${status}`
@@ -155,7 +145,7 @@ function EnvironmentNotifications({
         Number.isFinite(completedAt)
           ? completedAt
           : (prior?.completion ?? null);
-      next.set(thread.id, { attention, completion });
+      next.set(thread.id, { raw: rawThread, attention, completion });
       if (!prior || thread.archivedAt !== null) continue;
       const kind =
         attention && attention !== prior.attention
@@ -185,48 +175,33 @@ function EnvironmentNotifications({
         document.hasFocus() &&
         (activeEnvironmentId !== environmentId || activeThreadId !== thread.id)
       ) {
-        const project = shell.snapshot.value.projects.find(
-          (candidate) => candidate.id === thread.projectId,
-        );
-        const shortcuts = threadToastShortcuts({ environmentId, threadId: thread.id }, () =>
-          toastManager.close(toastId),
-        );
         const toastId = toastManager.add({
-          onClose: shortcuts.disarm,
           type: kind === "completion" ? "success" : status === "failed" ? "error" : "warning",
-          // Fork: the session's name leads, its project's logo and name follow the status.
-          title: thread.title,
-          description: project ? `${title} · ${project.title}` : title,
+          title,
+          description: thread.title,
           data: {
             hideCopyButton: true,
-            ...shortcuts.data,
-            leadingAvatar: (
-              <ThreadToastIdentity
-                project={project ? { ...project, environmentId } : null}
-                statusIcon={
-                  kind === "completion" ? (
-                    <CircleCheckIcon aria-hidden className="size-4 text-success-foreground" />
-                  ) : status === "approval" ? (
-                    <ShieldQuestionIcon aria-hidden className="size-4 text-warning-foreground" />
-                  ) : status === "failed" ? (
-                    <CircleAlertIcon aria-hidden className="size-4 text-destructive-foreground" />
-                  ) : (
-                    <MessageCircleQuestionIcon
-                      aria-hidden
-                      className="size-4 text-info-foreground"
-                    />
-                  )
-                }
-              />
-            ),
+            leadingIcon:
+              kind === "completion" ? (
+                <CircleCheckIcon aria-hidden className="size-4 text-success-foreground" />
+              ) : status === "approval" ? (
+                <ShieldQuestionIcon aria-hidden className="size-4 text-warning-foreground" />
+              ) : status === "failed" ? (
+                <CircleAlertIcon aria-hidden className="size-4 text-destructive-foreground" />
+              ) : (
+                <MessageCircleQuestionIcon aria-hidden className="size-4 text-info-foreground" />
+              ),
           },
-          actionProps: shortcuts.openThread({
+          actionProps: {
             children: "Open thread",
             onClick: () => {
               toastManager.close(toastId);
-              openThread(thread.id);
+              void navigate({
+                to: "/$environmentId/$threadId",
+                params: { environmentId, threadId: thread.id },
+              });
             },
-          }),
+          },
         });
         continue;
       }
@@ -247,7 +222,10 @@ function EnvironmentNotifications({
         notification.addEventListener("click", () => {
           notification.close();
           window.focus();
-          openThread(thread.id);
+          void navigate({
+            to: "/$environmentId/$threadId",
+            params: { environmentId, threadId: thread.id },
+          });
         });
       } catch {
         // Some browsers expose Notification but reject desktop presentation.
@@ -260,9 +238,9 @@ function EnvironmentNotifications({
     environmentId,
     inAppNotificationsEnabled,
     mode,
+    navigate,
     onNotification,
-    openThread,
-    shell,
+    threads,
   ]);
 
   return null;

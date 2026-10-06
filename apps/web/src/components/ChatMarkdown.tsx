@@ -1,7 +1,4 @@
 import { usePullRequestLinking } from "~/hooks/usePullRequestLinking";
-import { parseThreadLinkHref } from "@t3tools/shared/threadOrchestration";
-import { ThreadLinkChip } from "./threadOrchestration/ThreadLinkChip";
-import { pullRequestMediaResource } from "./pullRequest/pullRequestMediaResource";
 import { useAtomValue } from "@effect/atom-react";
 import {
   COMPOSER_CONTEXT_CLIPBOARD_MIME,
@@ -37,6 +34,7 @@ import type {
   ThreadPullRequestKey,
 } from "@t3tools/contracts";
 import { faviconUrlForOrigin } from "@t3tools/shared/favicon";
+import { githubMediaFetchUrl } from "@t3tools/shared/githubMedia";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -55,7 +53,7 @@ import { inlineCodeFilePathCandidate } from "@t3tools/client-runtime/markdown-li
 import { mediaFileReference, mediaUrlReference } from "@t3tools/client-runtime/media-reference";
 import { mediaKindFromPath, mediaMimeTypeFromExtension } from "@t3tools/shared/filePreview";
 import * as Cause from "effect/Cause";
-import { AsyncResult } from "effect/unstable/reactivity";
+import { AsyncResult } from "effect/reactivity";
 import React, {
   Children,
   Suspense,
@@ -203,12 +201,6 @@ import {
 } from "../browser/openFileInPreview";
 import { resolveLinkTarget } from "../browser/browserLinkTarget";
 import { PullRequestLinkPreview } from "./pullRequest/PullRequestLinkPreview";
-// Fork: math and mermaid diagrams.
-import {
-  RICH_MARKDOWN_REMARK_PLUGINS,
-  withRichMarkdownSanitizeSchema,
-} from "./richMarkdown/remarkRichMarkdown";
-import { RICH_MARKDOWN_COMPONENTS } from "./richMarkdown/RichMarkdownComponents";
 
 interface ChatMarkdownProps {
   text: string;
@@ -477,7 +469,7 @@ function rehypePreserveImageSourceMeta() {
   };
 }
 
-const CHAT_MARKDOWN_SANITIZE_SCHEMA = withRichMarkdownSanitizeSchema({
+const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
   ...defaultSchema,
   attributes: {
     ...defaultSchema.attributes,
@@ -495,21 +487,13 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = withRichMarkdownSanitizeSchema({
   },
   protocols: {
     ...defaultSchema.protocols,
-    // Fork: t3-thread links are thread chips.
-    href: [
-      ...(defaultSchema.protocols?.href ?? []),
-      "file",
-      "t3-citation",
-      "t3-context",
-      "t3-thread",
-    ],
+    href: [...(defaultSchema.protocols?.href ?? []), "file", "t3-citation", "t3-context"],
     src: [...(defaultSchema.protocols?.src ?? []), "file", "t3-context"],
   },
-} satisfies Parameters<typeof rehypeSanitize>[0]);
+} satisfies Parameters<typeof rehypeSanitize>[0];
 
 const CHAT_MARKDOWN_REMARK_PLUGINS = [
   remarkGfm,
-  ...RICH_MARKDOWN_REMARK_PLUGINS,
   remarkKeepWindowsPathDestinations,
   remarkGithubAlerts,
   remarkNormalizeListItemIndentation,
@@ -520,7 +504,6 @@ const CHAT_MARKDOWN_REMARK_PLUGINS = [
 
 const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS = [
   remarkGfm,
-  ...RICH_MARKDOWN_REMARK_PLUGINS,
   remarkKeepWindowsPathDestinations,
   remarkGithubAlerts,
   remarkNormalizeListItemIndentation,
@@ -1785,7 +1768,8 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
         | "workspace-file"
         | "media-file"
         | "github-media"
-        | "azure-devops-media";
+        | "azure-devops-media"
+        | "tool-output-image";
     }
   >;
   readonly kind?: "image" | "video";
@@ -2572,7 +2556,7 @@ function useChatMarkdownState({
       NonNullable<ReturnType<typeof resolveMarkdownFileLinkMeta>>
     >();
     for (const href of extractMarkdownLinkHrefs(renderCodexFileCitationsAsMarkdown(text))) {
-      if (parseComposerContextHref(href) || parseThreadLinkHref(href)) continue;
+      if (parseComposerContextHref(href)) continue;
       const normalizedHref = normalizeMarkdownLinkHrefKey(href);
       if (metaByHref.has(normalizedHref)) continue;
       const meta = resolveMarkdownFileLinkMeta(normalizedHref, cwd, imageBaseDir ?? cwd);
@@ -2602,7 +2586,7 @@ function useChatMarkdownState({
   }, [inlineCodeFileLinkMetaByText, markdownFileLinkMetaByHref]);
   const markdownUrlTransform = useCallback((href: string) => {
     if (parseAssistantCitationHref(href)) return href;
-    if (parseComposerContextHref(href) || parseThreadLinkHref(href)) return href;
+    if (parseComposerContextHref(href)) return href;
     if (isWindowsDrivePathHref(href)) return href;
     return rewriteMarkdownFileUriHref(href) ?? defaultUrlTransform(href);
   }, []);
@@ -2942,7 +2926,6 @@ function markdownHeadingRenderer(level: 1 | 2 | 3 | 4 | 5 | 6) {
 
 // Keep component types stable when streaming changes the message state.
 const CHAT_MARKDOWN_COMPONENTS = {
-  ...RICH_MARKDOWN_COMPONENTS,
   h1: markdownHeadingRenderer(1),
   h2: markdownHeadingRenderer(2),
   h3: markdownHeadingRenderer(3),
@@ -3052,18 +3035,6 @@ const CHAT_MARKDOWN_COMPONENTS = {
     } = use(ChatMarkdownRendererContext);
     const citation = href ? parseAssistantCitationHref(href) : null;
     if (citation) return <AssistantCitationChip citation={citation} />;
-    // Fork: thread orchestration chips.
-    const linkedThreadId = href ? parseThreadLinkHref(href) : null;
-    const chipEnvironmentId = threadRef?.environmentId ?? environmentId;
-    if (linkedThreadId && chipEnvironmentId) {
-      return (
-        <ThreadLinkChip
-          environmentId={chipEnvironmentId}
-          threadId={linkedThreadId}
-          label={hastPlainTextDeep(node) || "Thread"}
-        />
-      );
-    }
     const contextReference = href ? parseComposerContextHref(href) : null;
     if (contextReference) {
       const label = hastPlainTextDeep(node) || contextReference.contextId;
@@ -3348,21 +3319,19 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const imageSource = classifyMarkdownImageSource(classifiedSrc, imageBaseDir ?? cwd);
     const kind = mediaKindFromPath(classifiedSrc) ?? "image";
     const directUri = imageSource._tag === "Direct" ? imageSource.uri : null;
-    // esveo fork: GitHub media or an Azure DevOps attachment, both fetched by the server.
-    const githubMediaResource =
-      directUri === null || cwd === undefined
-        ? null
-        : pullRequestMediaResource(cwd, resolveProtocolRelativeMediaUrl(directUri));
+    const githubMediaUrl =
+      directUri === null ? null : githubMediaFetchUrl(resolveProtocolRelativeMediaUrl(directUri));
     if (
       githubMedia &&
+      cwd !== undefined &&
       environmentId !== null &&
       directUri !== null &&
-      githubMediaResource !== null
+      githubMediaUrl !== null
     ) {
       return (
         <ChatMarkdownAssetImage
           environmentId={environmentId}
-          resource={githubMediaResource}
+          resource={{ _tag: "github-media", cwd, url: githubMediaUrl }}
           alt={altText}
           kind={kind}
           copyMarkdown={copyMarkdown}
@@ -3377,7 +3346,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
           // A server too old to sign this resource, or one with no route to GitHub, still leaves
           // the public half of these working exactly as it did before. The canonical URL, not the
           // authored one: a `blob` link addresses the page, and only the raw host has the bytes.
-          fallbackSrc={githubMediaResource.url}
+          fallbackSrc={githubMediaUrl}
           onImageExpand={imageExpand}
         />
       );

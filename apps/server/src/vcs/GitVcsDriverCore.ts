@@ -4,7 +4,7 @@ import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Hex from "effect/encoding/Hex";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
@@ -16,11 +16,12 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
-import { ChildProcess, ChildProcessSpawner } from "effect/unstable/process";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import {
   GitCommandError,
   VCS_COMMIT_GRAPH_DEFAULT_LIMIT,
+  type GitCommandFailureReason,
   T3_PROJECT_FILE_NAME,
   type ReviewDiffFileContentsInput,
   type ReviewDiffPreviewInput,
@@ -35,8 +36,8 @@ import { decodeJsonResult } from "@t3tools/shared/schemaJson";
 import { parseT3ProjectFile } from "@t3tools/shared/t3ProjectFile";
 import { resolveProjectFileBackedSetting } from "@t3tools/shared/projectSettings";
 import { gitCommandDuration, gitCommandsTotal, withMetrics } from "../observability/Metrics.ts";
-import { commitGraphLogArgs, parseCommitGraphLog } from "./commitGraphLog.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
+import { resolveWorktreesDirectory } from "../worktreesDirectory.ts";
 import {
   parseRemoteNames,
   parseRemoteNamesInGitOrder,
@@ -430,6 +431,65 @@ function gitCommandContext(
     cwd: input.cwd,
     argumentCount: input.args.length,
   } as const;
+}
+
+// Git states the actual cause on stderr, but stderr never leaves this module:
+// it echoes argv and remote URLs, which can carry credentials. Matching it
+// against fixed patterns yields a tag the caller can act on and a message that
+// quotes none of the matched text. Patterns run in order, specific first.
+const GIT_FAILURE_REASON_PATTERNS: ReadonlyArray<readonly [RegExp, GitCommandFailureReason]> = [
+  [/would clobber existing tag/i, "tag_would_be_clobbered"],
+  [/is already (?:used by worktree at|checked out at)/i, "branch_checked_out_in_worktree"],
+  [/a branch named .+ already exists/i, "branch_already_exists"],
+  // ssh names the methods it tried, so the parenthesized list varies:
+  // `(publickey)`, `(publickey,password)`, `(keyboard-interactive)`.
+  [
+    /(?:authentication failed|could not read Username|could not read Password|permission denied \([a-z-]+(?:,[a-z-]+)*\)|permission denied, please try again)/i,
+    "authentication_failed",
+  ],
+  // Distinct from a credential failure: the remote answered and the key it
+  // presented is untrusted, so pointing the user at credentials would misdirect.
+  [/host key verification failed/i, "host_key_unverified"],
+  [
+    /(?:could not read from remote repository|does not appear to be a git repository|repository .+ not found)/i,
+    "remote_unreachable",
+  ],
+  // Quoted-path forms only: an unquoted `fatal: <thing> already exists` also
+  // covers tag and ref collisions, which are not path collisions.
+  [/fatal: '[^']+' already exists|destination path .+ already exists/i, "path_already_exists"],
+];
+
+// Hooks write to the same stream git does, and nothing distinguishes their
+// text from git's: a pre-push hook echoing "authentication failed" would
+// otherwise be read as a credential failure. Git prefixes its own diagnostics
+// and states a push rejection on a `! [rejected]` line, so only those are
+// classified. `remote:` is deliberately excluded — git prefixes every byte the
+// server sends that way, remote hook output included, so trusting it would
+// reintroduce the same false positive from the other end of the connection.
+const GIT_DIAGNOSTIC_LINE_PATTERN = /^(?:fatal|error):|^!\s|^\s+!\s/;
+// ssh reports the refusal itself, unprefixed, and git only adds a generic
+// "Could not read from remote repository" after it. Dropping ssh's line would
+// leave that generic one to be read as an unreachable remote when the real
+// cause is credentials, so these specific refusals are classified too.
+const SSH_TRANSPORT_REFUSAL_PATTERN =
+  /Permission denied \((?:publickey|password|keyboard-interactive)|Permission denied, please try again|Host key verification failed/i;
+
+function classifyGitFailure(stderr: string): GitCommandFailureReason | null {
+  const diagnostics = stderr
+    .split(/\r?\n/)
+    .filter(
+      (line) =>
+        GIT_DIAGNOSTIC_LINE_PATTERN.test(line) ||
+        // A remote hook can echo ssh's wording; only the local ssh's line counts.
+        (!/^remote:/.test(line) && SSH_TRANSPORT_REFUSAL_PATTERN.test(line)),
+    )
+    .join("\n");
+  if (diagnostics.length === 0) return null;
+  if (isNonRepositoryGitStderr(diagnostics)) return "not_a_repository";
+  for (const [pattern, reason] of GIT_FAILURE_REASON_PATTERNS) {
+    if (pattern.test(diagnostics)) return reason;
+  }
+  return null;
 }
 
 function parseDefaultBranchFromRemoteHeadRef(value: string, remoteName: string): string | null {
@@ -872,6 +932,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
               cwd: commandInput.cwd,
               env: {
                 ...process.env,
+                // Status polling runs beside the user's own git commands; without this,
+                // `git status` takes index.lock to save its refreshed index.
+                GIT_OPTIONAL_LOCKS: "0",
                 ...input.env,
                 ...trace2Monitor.env,
               },
@@ -934,8 +997,10 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         yield* trace2Monitor.flush;
 
         if (!input.allowNonZeroExit && exitCode !== 0) {
+          const reason = classifyGitFailure(stderr.text);
           return yield* new GitCommandError({
             ...gitCommandContext(commandInput),
+            ...(reason === null ? {} : { reason }),
             detail: "Git command exited with a non-zero status.",
             exitCode,
             stdoutLength: stdout.text.length,
@@ -1016,17 +1081,22 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         : {}),
       ...(options.progress ? { progress: options.progress } : {}),
     }).pipe(
-      Effect.filterOrFail(
-        (result) => options.allowNonZeroExit || result.exitCode === 0,
-        (result) =>
+      Effect.flatMap((result) => {
+        if (options.allowNonZeroExit || result.exitCode === 0) {
+          return Effect.succeed(result);
+        }
+        const reason = classifyGitFailure(result.stderr);
+        return Effect.fail(
           new GitCommandError({
             ...gitCommandContext({ operation, cwd, args }),
+            ...(reason === null ? {} : { reason }),
             detail: options.fallbackErrorDetail ?? "Git command exited with a non-zero status.",
             ...(result.exitCode === null ? {} : { exitCode: result.exitCode }),
             stdoutLength: result.stdout.length,
             stderrLength: result.stderr.length,
           }),
-      ),
+        );
+      }),
     );
 
   const executeGitWithStableDiagnostics = (
@@ -1809,10 +1879,12 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const statusCacheKey = repositoryPaths?.gitCommonDir;
     const [numstatStdout, defaultBranch, hasPrimaryRemote] = yield* Effect.all(
       [
+        // Plumbing, because porcelain `git diff` rewrites the index even with
+        // GIT_OPTIONAL_LOCKS=0. -M keeps porcelain's rename detection.
         executeGitWithStableDiagnostics(
           "GitVcsDriver.statusDetails.numstat",
           cwd,
-          ["diff", "HEAD", "--numstat", "--"],
+          ["diff-index", "-M", "--numstat", "HEAD", "--"],
           { allowNonZeroExit: true },
         ).pipe(
           Effect.flatMap((result) => {
@@ -1821,7 +1893,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
               return Effect.map(
                 Effect.all([
                   runGitStdout("GitVcsDriver.statusDetails.numstat.unborn", cwd, [
-                    "diff",
+                    "diff-files",
                     "--numstat",
                   ]),
                   runGitStdout("GitVcsDriver.statusDetails.numstat.unborn.staged", cwd, [
@@ -1854,9 +1926,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
                 ...gitCommandContext({
                   operation: "GitVcsDriver.statusDetails.numstat",
                   cwd,
-                  args: ["diff", "HEAD", "--numstat", "--"],
+                  args: ["diff-index", "-M", "--numstat", "HEAD", "--"],
                 }),
-                detail: "git diff HEAD --numstat failed.",
+                detail: "git diff-index HEAD --numstat failed.",
                 exitCode: result.exitCode,
                 stdoutLength: result.stdout.length,
                 stderrLength: result.stderr.length,
@@ -2702,9 +2774,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const cwd = repository.worktreeRoot;
     // A per-file request only reads its own source.
     const dirtyRef = input.file?.sourceKind === "branch-range" ? null : "HEAD";
-    // Fork: a commit range compares its own refs, so it needs no merge base.
     const review =
-      input.file?.sourceKind === "working-tree" || input.range
+      input.file?.sourceKind === "working-tree"
         ? { baseRef: input.baseRef ?? null, mergeBase: null }
         : yield* resolveReviewMergeBase(cwd, repository.currentBranch, input.baseRef);
 
@@ -2758,49 +2829,6 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       );
       return { ...patch, files: stat.files };
     });
-    const hashDiff = (diff: string, files: ReadonlyArray<ReviewDiffFileStat>) =>
-      crypto.digest("SHA-256", new TextEncoder().encode(JSON.stringify([diff, files]))).pipe(
-        Effect.map(Encoding.encodeHex),
-        Effect.mapError(
-          (cause) =>
-            new GitCommandError({
-              operation: "GitVcsDriver.getReviewDiffPreview.hash",
-              command: "crypto.digest SHA-256",
-              cwd,
-              detail: "Failed to hash review diff.",
-              cause,
-            }),
-        ),
-      );
-
-    // Fork: the commit graph's selected range, from `base` to `head` (null: the working tree).
-    if (input.range) {
-      const range = input.range;
-      const base = range.base ?? (yield* readEmptyTreeHash(cwd));
-      const result =
-        range.head === null
-          ? yield* Effect.gen(function* () {
-              const untracked = yield* prepareUntrackedReviewIndex(cwd, pathArgs, input.file?.path);
-              const tracked = yield* readTrackedDiff(base, untracked?.env);
-              return untracked === null
-                ? { ...tracked, files: undefined, stdoutTruncated: true }
-                : tracked;
-            }).pipe(Effect.scoped)
-          : yield* readTrackedDiff(`${base}..${range.head}`);
-      const source: ReviewDiffPreviewSource = {
-        id: "commit-range",
-        kind: "commit-range",
-        title: "Commit range",
-        baseRef: range.base,
-        headRef: range.head,
-        diff: result.stdout,
-        ...(result.files === undefined ? {} : { files: result.files }),
-        diffHash: yield* hashDiff(result.stdout, result.files ?? []),
-        truncated: result.stdoutTruncated,
-      };
-      return { cwd: input.cwd, generatedAt: yield* DateTime.now, sources: [source] };
-    }
-
     const [dirtyTrackedResult, baseResult] = yield* Effect.gen(function* () {
       const untracked = yield* prepareUntrackedReviewIndex(cwd, pathArgs, input.file?.path);
       // With no base both sources diff HEAD, so read it once.
@@ -2826,6 +2854,20 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const baseFiles = baseResult.files;
     const dirtyDiff = dirtyTrackedResult.stdout;
     const baseDiff = baseResult.stdout;
+    const hashDiff = (diff: string, files: ReadonlyArray<ReviewDiffFileStat>) =>
+      crypto.digest("SHA-256", new TextEncoder().encode(JSON.stringify([diff, files]))).pipe(
+        Effect.map(Hex.encode),
+        Effect.mapError(
+          (cause) =>
+            new GitCommandError({
+              operation: "GitVcsDriver.getReviewDiffPreview.hash",
+              command: "crypto.digest SHA-256",
+              cwd,
+              detail: "Failed to hash review diff.",
+              cause,
+            }),
+        ),
+      );
     const [dirtyDiffHash, baseDiffHash] = yield* Effect.all([
       hashDiff(dirtyDiff, dirtyFiles ?? []),
       hashDiff(baseDiff, baseFiles ?? []),
@@ -2972,36 +3014,6 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   const getReviewDiffFileContents = Effect.fn("getReviewDiffFileContents")(function* (
     input: ReviewDiffFileContentsInput,
   ) {
-    // Fork: a commit range's new side is `headRef`, or the working tree when it is null.
-    if (input.sourceKind === "commit-range") {
-      if (!input.baseRef && input.changeType !== "new") {
-        return yield* reviewDiffFileError(input, "Commit range expansion requires a base commit.");
-      }
-      const headRef = input.headRef;
-      const repositoryRoot =
-        headRef === null
-          ? yield* runGitStdout(
-              "GitVcsDriver.getReviewDiffFileContents.repositoryRoot",
-              input.cwd,
-              ["rev-parse", "--show-toplevel"],
-            ).pipe(Effect.map((value) => value.trim()))
-          : null;
-      const [oldContents, newContents] = yield* Effect.all(
-        [
-          input.changeType === "new" || !input.baseRef
-            ? Effect.succeed("")
-            : readReviewFileAtRevision(input, input.baseRef, input.oldPath),
-          input.changeType === "deleted"
-            ? Effect.succeed("")
-            : headRef === null
-              ? readWorkingTreeReviewFile(input, repositoryRoot ?? input.cwd)
-              : readReviewFileAtRevision(input, headRef, input.newPath),
-        ],
-        { concurrency: 2 },
-      );
-      return { oldContents, newContents };
-    }
-
     const repositoryRoot = yield* runGitStdout(
       "GitVcsDriver.getReviewDiffFileContents.repositoryRoot",
       input.cwd,
@@ -3334,50 +3346,29 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     },
   );
 
-  const listCommitGraph: GitVcsDriver.GitVcsDriver["Service"]["listCommitGraph"] = Effect.fn(
-    "listCommitGraph",
-  )(function* (input) {
-    const repositoryPaths = yield* resolveRepositoryPaths(input.cwd).pipe(
-      Effect.catchTags({
-        GitCommandError: (error) =>
-          isMissingGitCwdError(error) ? Effect.succeed(null) : Effect.fail(error),
-      }),
-    );
-    if (repositoryPaths === null) {
-      return { commits: [], hasMore: false, isRepo: false, headSha: null, currentRefName: null };
-    }
-
-    const limit = input.limit ?? VCS_COMMIT_GRAPH_DEFAULT_LIMIT;
-    const [logStdout, headResult] = yield* Effect.all(
-      [
-        runGitStdout("GitVcsDriver.listCommitGraph", input.cwd, commitGraphLogArgs({ limit })),
-        executeGit("GitVcsDriver.listCommitGraph.head", input.cwd, ["rev-parse", "HEAD"], {
-          timeoutMs: 5_000,
-          allowNonZeroExit: true,
-        }),
-      ],
-      { concurrency: 2 },
-    );
-
-    // One commit past the window only answers whether more exist; it is not returned.
-    const parsed = parseCommitGraphLog(logStdout);
-    const headSha = headResult.exitCode === 0 ? headResult.stdout.trim() : "";
-    return {
-      commits: parsed.slice(0, limit),
-      hasMore: parsed.length > limit,
-      isRepo: true,
-      headSha: headSha.length > 0 ? headSha : null,
-      currentRefName: repositoryPaths.currentBranch,
-    };
-  });
-
   const createWorktree: GitVcsDriver.GitVcsDriver["Service"]["createWorktree"] = Effect.fn(
     "createWorktree",
   )(function* (input, options) {
     const targetBranch = input.newRefName ?? input.refName;
     const sanitizedBranch = targetBranch.replace(/\//g, "-");
     const repoName = path.basename(input.cwd);
-    const worktreePath = input.path ?? path.join(worktreesDir, repoName, sanitizedBranch);
+    let worktreePath = input.path;
+    if (worktreePath == null) {
+      const parentDir = resolveWorktreesDirectory(
+        options?.worktreesDirectory ?? "",
+        worktreesDir,
+        path,
+      );
+      if (parentDir === null) {
+        return yield* new GitCommandError({
+          operation: "GitVcsDriver.createWorktree",
+          command: "git worktree add",
+          cwd: input.cwd,
+          detail: `The worktree location "${options?.worktreesDirectory}" must be an absolute folder on this machine, not a drive root. Change it in Settings → Storage.`,
+        });
+      }
+      worktreePath = path.join(parentDir, repoName, sanitizedBranch);
+    }
     const args = input.newRefName
       ? ["worktree", "add", "-b", input.newRefName, worktreePath, input.refName]
       : ["worktree", "add", worktreePath, input.refName];
@@ -4007,7 +3998,6 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     getReviewDiffFileContents,
     readConfigValue,
     listRefs,
-    listCommitGraph,
     createWorktree: (input, options) =>
       withListRefsInvalidation(input.cwd, createWorktree(input, options)),
     fetchPullRequestBranch: (input) =>

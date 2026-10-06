@@ -1,8 +1,8 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import type { FileDiffMetadata } from "@pierre/diffs";
 import type { EnvironmentId, ReviewDiffPreviewSource, ReviewDiffRange } from "@t3tools/contracts";
-import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
-import * as Atom from "effect/unstable/reactivity/Atom";
+import * as AsyncResult from "effect/reactivity/AsyncResult";
+import * as Atom from "effect/reactivity/Atom";
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { getRenderablePatch, resolveFileDiffPath, type RenderablePatch } from "~/lib/diffRendering";
 import { reviewEnvironment } from "~/state/review";
@@ -12,7 +12,6 @@ export function useReviewFilePatches({
   cwd,
   source,
   baseRef,
-  range,
   ignoreWhitespace,
   theme,
   revision,
@@ -22,8 +21,6 @@ export function useReviewFilePatches({
   cwd: string | undefined;
   source: ReviewDiffPreviewSource | null;
   baseRef: string | null;
-  /** Set for a `commit-range` source, whose per-file patches come from the same range. */
-  range?: ReviewDiffRange | undefined;
   ignoreWhitespace: boolean;
   theme: "light" | "dark";
   revision: string | undefined;
@@ -36,7 +33,6 @@ export function useReviewFilePatches({
     source?.kind,
     source?.diffHash,
     baseRef,
-    range,
     ignoreWhitespace,
   ]);
   const [requested, setRequested] = useState({ scope, indices: [0, 1, 2, 3] });
@@ -68,7 +64,6 @@ export function useReviewFilePatches({
                     request: {
                       cwd,
                       ...(baseRef ? { baseRef } : {}),
-                      ...(range ? { range } : {}),
                       ignoreWhitespace,
                       file: {
                         path: file.path,
@@ -80,7 +75,7 @@ export function useReviewFilePatches({
                 }),
               };
             }),
-    [environmentId, cwd, source, files, indices, scope, baseRef, range, ignoreWhitespace],
+    [environmentId, cwd, source, files, indices, scope, baseRef, ignoreWhitespace],
   );
   const previousPreview = useRef({ scope, revision, queries: [] as typeof queries });
   useEffect(() => {

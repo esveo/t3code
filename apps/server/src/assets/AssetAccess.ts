@@ -2,6 +2,7 @@ import type { AssetResource } from "@t3tools/contracts";
 import {
   AssetAttachmentNotFoundError,
   AssetAzureDevOpsMediaUrlValidationError,
+  PROVIDER_SEND_TURN_MAX_IMAGE_BYTES,
   AssetGitHubMediaUrlValidationError,
   AssetPreviewTypeValidationError,
   AssetProjectFaviconInspectionError,
@@ -14,7 +15,9 @@ import {
   AssetWorkspacePathValidationError,
   AssetWorkspaceResolutionError,
   AssetWorkspaceRootNormalizationError,
+  ThreadId,
   ToolActivityNativeAppReference,
+  TurnItemId,
 } from "@t3tools/contracts";
 import {
   audioMimeTypeFromExtension,
@@ -30,15 +33,12 @@ import {
   type ImageDimensions,
 } from "@t3tools/shared/imageDimensions";
 import { githubMediaFetchUrl, githubMediaFileName } from "@t3tools/shared/githubMedia";
-import {
-  azureDevOpsMediaFetchUrl,
-  azureDevOpsMediaFileName,
-} from "@t3tools/shared/azureDevOpsMedia";
 import { PROJECT_FAVICON_FALLBACK_MARKER } from "@t3tools/shared/projectFavicon";
+import { toolOutputImages } from "@t3tools/shared/toolOutput";
 import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
-import * as Encoding from "effect/Encoding";
+import * as Hex from "effect/encoding/Hex";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
@@ -54,6 +54,7 @@ import {
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import { parseAttachmentFileExtension, resolveAttachmentPathById } from "../attachmentStore.ts";
 import * as ServerConfig from "../config.ts";
+import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import { expandHomePathWith } from "../pathExpansion.ts";
 import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
@@ -145,16 +146,16 @@ const AssetClaimsSchema = Schema.Union([
   }),
   Schema.Struct({
     version: Schema.Literal(1),
-    kind: Schema.Literal("github-media"),
-    /** Already narrowed to a GitHub media host at mint time; the signature is what keeps it there. */
-    url: Schema.String,
-    cwd: Schema.String,
+    kind: Schema.Literal("tool-output-image"),
+    threadId: ThreadId,
+    itemId: TurnItemId,
+    index: Schema.Number,
     expiresAt: Schema.Number,
   }),
-  // esveo fork: narrowed to an Azure DevOps pull request attachment at mint time.
   Schema.Struct({
     version: Schema.Literal(1),
-    kind: Schema.Literal("azure-devops-media"),
+    kind: Schema.Literal("github-media"),
+    /** Already narrowed to a GitHub media host at mint time; the signature is what keeps it there. */
     url: Schema.String,
     cwd: Schema.String,
     expiresAt: Schema.Number,
@@ -176,18 +177,16 @@ export type ResolvedAsset =
       readonly file?: OpenMediaFile;
     }
   | {
+      readonly kind: "bytes";
+      readonly bytes: Uint8Array;
+      readonly mimeType: string;
+    }
+  | {
       readonly kind: "github-media";
       readonly url: string;
       readonly cwd: string;
       /** When the signed URL that granted this stops working, which bounds how long a client
           may keep the bytes it fetched with it. */
-      readonly expiresAt: number;
-    }
-  // esveo fork
-  | {
-      readonly kind: "azure-devops-media";
-      readonly url: string;
-      readonly cwd: string;
       readonly expiresAt: number;
     };
 
@@ -217,6 +216,27 @@ const optionOnNotFound = <A, R>(
         error.reason._tag === "NotFound" ? Effect.succeed(Option.none<A>()) : Effect.fail(error),
     }),
   );
+
+// The largest image a provider turn accepts, as base64 (4 characters per 3 bytes).
+const MAX_TOOL_OUTPUT_IMAGE_BASE64_LENGTH = Math.ceil(PROVIDER_SEND_TURN_MAX_IMAGE_BYTES / 3) * 4;
+
+/**
+ * Decodes one image a tool returned inline; null when the stored item has no
+ * such image, or it is larger than a provider turn accepts.
+ */
+const readToolOutputImage = Effect.fn("AssetAccess.readToolOutputImage")(function* (input: {
+  readonly threadId: ThreadId;
+  readonly itemId: TurnItemId;
+  readonly index: number;
+}) {
+  const orchestrator = yield* Orchestrator.OrchestratorV2;
+  const item = yield* orchestrator.getTurnItem(input);
+  const image =
+    item?.type === "dynamic_tool" ? toolOutputImages(item.output)[input.index] : undefined;
+  return image?.data === undefined || image.data.length > MAX_TOOL_OUTPUT_IMAGE_BASE64_LENGTH
+    ? null
+    : { mimeType: image.mimeType, bytes: Buffer.from(image.data, "base64") };
+});
 
 const resolveCanonicalFile = Effect.fn("AssetAccess.resolveCanonicalFile")(function* (
   filePath: string,
@@ -677,7 +697,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
           ),
         );
         const revision = yield* crypto.digest("SHA-256", faviconBytes).pipe(
-          Effect.map(Encoding.encodeHex),
+          Effect.map(Hex.encode),
           Effect.mapError(
             (cause) =>
               new AssetProjectFaviconInspectionError({
@@ -690,6 +710,28 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
       } else {
         fileName = PROJECT_FAVICON_FALLBACK_MARKER;
       }
+      break;
+    }
+    case "tool-output-image": {
+      const image = yield* readToolOutputImage(input.resource).pipe(
+        Effect.mapError(
+          (cause) => new AssetWorkspaceAssetInspectionError({ resource: input.resource, cause }),
+        ),
+      );
+      if (image === null) {
+        return yield* new AssetWorkspaceAssetNotFoundError({ resource: input.resource });
+      }
+      claims = {
+        version: 1,
+        kind: "tool-output-image",
+        threadId: input.resource.threadId,
+        itemId: input.resource.itemId,
+        index: input.resource.index,
+        expiresAt,
+      };
+      // The allowed types are all `image/<extension>`.
+      fileName = `image-${input.resource.index + 1}.${image.mimeType.slice("image/".length)}`;
+      imageDimensions = readImageDimensions(image.bytes);
       break;
     }
     case "native-app-icon": {
@@ -715,21 +757,6 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
         expiresAt,
       };
       fileName = githubMediaFileName(fetchUrl);
-      break;
-    }
-    case "azure-devops-media": {
-      const fetchUrl = azureDevOpsMediaFetchUrl(input.resource.url);
-      if (fetchUrl === null) {
-        return yield* new AssetAzureDevOpsMediaUrlValidationError({});
-      }
-      claims = {
-        version: 1,
-        kind: "azure-devops-media",
-        url: fetchUrl,
-        cwd: input.resource.cwd,
-        expiresAt,
-      };
-      fileName = azureDevOpsMediaFileName(fetchUrl);
       break;
     }
   }
@@ -832,16 +859,6 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
       : null;
   }
 
-  // esveo fork
-  if (claims.kind === "azure-devops-media") {
-    return {
-      kind: "azure-devops-media",
-      url: claims.url,
-      cwd: claims.cwd,
-      expiresAt: claims.expiresAt,
-    } satisfies ResolvedAsset;
-  }
-
   if (claims.kind === "github-media") {
     return {
       kind: "github-media",
@@ -849,6 +866,20 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
       cwd: claims.cwd,
       expiresAt: claims.expiresAt,
     } satisfies ResolvedAsset;
+  }
+
+  if (claims.kind === "tool-output-image") {
+    const image = yield* readToolOutputImage(claims).pipe(
+      Effect.tapError((cause) =>
+        Effect.logError("Failed to read tool output image.", {
+          threadId: claims.threadId,
+          itemId: claims.itemId,
+          cause,
+        }),
+      ),
+      Effect.orElseSucceed(() => null),
+    );
+    return image ? ({ kind: "bytes", ...image } satisfies ResolvedAsset) : null;
   }
 
   if (claims.kind === "native-app-icon") {
