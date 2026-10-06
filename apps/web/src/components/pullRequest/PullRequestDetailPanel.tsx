@@ -75,7 +75,6 @@ import {
   pullRequestEnvironment,
   pullRequestListEntryToSummary,
   newestPullRequestSummary,
-  usePullRequestTurnRefresh,
   useSharedPullRequestSummary,
 } from "~/state/pullRequests";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -175,6 +174,9 @@ import {
   summarizePullRequestChecks,
 } from "./pullRequestPresentation";
 import { PullRequestGlyph } from "./pullRequestIcons";
+import { PullRequestDiffUpdateNotice } from "../pullRequestDiffUpdate/PullRequestDiffUpdateNotice";
+import { pullRequestDiffRevision } from "../pullRequestDiffUpdate/pullRequestDiffUpdate.logic";
+import { usePullRequestDiffUpdate } from "../pullRequestDiffUpdate/usePullRequestDiffUpdate";
 
 type DetailTab = "summary" | "timeline" | "code";
 
@@ -584,7 +586,6 @@ export function PullRequestDetailPanel({
   const activityQuery = useEnvironmentQuery(
     pullRequestEnvironment.activity({ environmentId, input: reference }),
   );
-  const turnRefresh = usePullRequestTurnRefresh(environmentId);
   const [cachedDetail, setCachedDetail] = useState(() =>
     readPullRequestDetailSnapshot(
       typeof window === "undefined" ? undefined : window.localStorage,
@@ -806,7 +807,11 @@ export function PullRequestDetailPanel({
     nativeStackQuery.refresh();
   }, [activityQuery.refresh, detailQuery.refresh, nativeStackQuery.refresh]);
   const [refreshToken, setRefreshToken] = useState(0);
-  const codeRefreshToken = refreshToken + (turnRefresh ?? 0);
+  const diffUpdate = usePullRequestDiffUpdate({
+    key: tabScopeKey,
+    revision: coreDetail ? pullRequestDiffRevision(coreDetail) : null,
+    settled: !detailQuery.isPending,
+  });
   const activityRevision = useRef<{ readonly key: string; readonly updatedAt: string } | null>(
     null,
   );
@@ -818,7 +823,6 @@ export function PullRequestDetailPanel({
       // mutation's activity refresh can leave SWR displaying its previous value.
       if (activityQuery.isPending) return;
       activityQuery.refresh();
-      setRefreshToken((token) => token + 1);
     }
     activityRevision.current = next;
   }, [activityQuery.isPending, activityQuery.refresh, coreDetail, tabScopeKey]);
@@ -846,10 +850,11 @@ export function PullRequestDetailPanel({
       await invalidate({ environmentId, input: { reference } });
       refreshDetail();
       setRefreshToken((token) => token + 1);
+      diffUpdate.acceptNext();
     } finally {
       setIsInvalidating(false);
     }
-  }, [environmentId, invalidate, reference, refreshDetail]);
+  }, [diffUpdate.acceptNext, environmentId, invalidate, reference, refreshDetail]);
   // A refresh asked for by the page: the detail, and through the token below, the diff with it.
   const appliedForcedToken = useRef(forcedRefreshToken);
   useEffect(() => {
@@ -2748,9 +2753,17 @@ export function PullRequestDetailPanel({
                     fixFindingLabel={handoffLabels.fixFinding}
                     onFixFinding={startFixFinding}
                     onRefresh={refreshDetail}
-                    refreshToken={codeRefreshToken}
+                    refreshToken={refreshToken}
                   />
                 </Suspense>
+                {diffUpdate.outdated ? (
+                  <PullRequestDiffUpdateNotice
+                    onRefresh={() => {
+                      diffUpdate.accept();
+                      setRefreshToken((token) => token + 1);
+                    }}
+                  />
+                ) : null}
               </div>
             ) : null}
           </PullRequestMarkdownContext>
