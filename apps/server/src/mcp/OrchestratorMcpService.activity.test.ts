@@ -21,6 +21,7 @@ import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import type * as McpInvocationContext from "./McpInvocationContext.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
@@ -420,9 +421,12 @@ it("readThread and sendToThread reach threads in other projects", async () => {
             if (threadId === foreignThreadId) return Effect.succeed(foreignProjection(threadId));
             return Effect.die(`unexpected thread ${threadId}`);
           },
-          // Fork: user-attached context remains readable even when the scoped
-          // shell lookup cannot reach the other project.
-          getThreadShell: () => Effect.succeed(null),
+          getThreadShell: (threadId) =>
+            Effect.succeed(
+              threadId === foreignThreadId
+                ? (foreignProjection(threadId).thread as unknown as OrchestrationV2ThreadShell)
+                : null,
+            ),
           getTimelinePage: (threadId) =>
             Effect.succeed({
               items: foreignProjection(threadId).visibleTurnItems,
@@ -514,5 +518,10 @@ it("readThread and sendToThread reach threads in other projects", async () => {
       .deleteScheduledTask(makeScope(), { scheduledTaskId: ScheduledTaskId.make("task-foreign") })
       .pipe(Effect.flip);
     expect(staleDelete.code).toBe("parent_not_active");
-  }).pipe(Effect.provide(layer), Effect.runPromise);
+  }).pipe(
+    Effect.provide(layer),
+    // Fork: other projects' threads are reachable only with Cross-project threads on.
+    Effect.provide(ServerSettings.layerTest({ enableCrossProjectThreads: true })),
+    Effect.runPromise,
+  );
 });
