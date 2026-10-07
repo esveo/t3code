@@ -5,16 +5,22 @@
  * it, and the decisions tools (opt-in, Settings) keep the questions it has
  * for the user in its Inbox.
  */
-import { McpCapabilityUnavailableError, TrimmedNonEmptyString } from "@t3tools/contracts";
+import {
+  McpCapabilityUnavailableError,
+  OrchestratorMcpFailure,
+  TrimmedNonEmptyString,
+} from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import * as McpSchema from "effect/unstable/ai/McpSchema";
-import * as Tool from "effect/unstable/ai/Tool";
-import * as Toolkit from "effect/unstable/ai/Toolkit";
+import * as McpSchema from "effect/ai/McpSchema";
+import * as Tool from "effect/ai/Tool";
+import * as Toolkit from "effect/ai/Toolkit";
 
+import { ThreadManagementService } from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { areDecisionToolsOn } from "../../McpOrchestrationTools.ts";
 
-const dependencies = [McpInvocationContext.McpInvocationContext];
+// McpToolAccess checks the caller with ThreadManagementService and refuses with OrchestratorMcpFailure.
+const dependencies = [McpInvocationContext.McpInvocationContext, ThreadManagementService];
 
 // Offered in tools/list, and callable, only while the user has decisions on (Settings).
 const whileDecisionsOn = () => areDecisionToolsOn();
@@ -60,6 +66,7 @@ export class ThreadOrchestrationFailedError extends Schema.TaggedError<ThreadOrc
 
 export const ThreadsToolError = Schema.Union([
   McpCapabilityUnavailableError,
+  OrchestratorMcpFailure,
   ThreadOrchestrationNestedError,
   ChildThreadNotFoundError,
   ThreadNotFoundError,

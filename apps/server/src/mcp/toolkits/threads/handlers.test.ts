@@ -18,14 +18,15 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
-import type { Tool } from "effect/unstable/ai";
+import type { Tool } from "effect/ai";
 
 import * as ServerConfig from "../../../config.ts";
 import { ThreadManagementService } from "../../../orchestration-v2/ThreadManagementService.ts";
-import { SqlitePersistenceMemory } from "../../../persistence/Layers/Sqlite.ts";
+import { layerMemory as SqlitePersistenceMemory } from "../../../persistence/Sqlite.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as ThreadCoordinators from "../../../threadOrchestration/ThreadCoordinators.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import * as McpToolAccess from "../../McpToolAccess.ts";
 import { ThreadsToolkitHandlersLive } from "./handlers.ts";
 import { ThreadsToolkit } from "./tools.ts";
 
@@ -85,7 +86,17 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (options: {
   readonly decisions?: boolean;
   readonly crossProject?: boolean;
 }) {
-  const threads = [thread("coordinator"), ...options.threads];
+  const callerId = options.caller ?? COORDINATOR;
+  // The caller owns a live run, as `McpToolAccess.actsAsCaller` requires.
+  const threads = [thread("coordinator"), ...options.threads].map((candidate) =>
+    candidate.id === callerId
+      ? {
+          ...candidate,
+          activeRunId: candidate.latestRunId,
+          providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+        }
+      : candidate,
+  );
   const management = Layer.mock(ThreadManagementService)({
     getThreadShell: (threadId) =>
       Effect.succeed(threads.find((candidate) => candidate.id === threadId) ?? null),
@@ -108,7 +119,11 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (options: {
   const dependencies = Layer.mergeAll(base, Layer.succeedContext(coordinatorsContext));
   const coordinators = Context.get(coordinatorsContext, ThreadCoordinators.ThreadCoordinators);
   const toolkit = yield* ThreadsToolkit.pipe(
-    Effect.provide(ThreadsToolkitHandlersLive.pipe(Layer.provide(dependencies))),
+    Effect.provide(
+      McpToolAccess.HandlersLayer.layer(ThreadsToolkitHandlersLive).pipe(
+        Layer.provide(dependencies),
+      ),
+    ),
   );
   const call = <Name extends keyof typeof ThreadsToolkit.tools>(
     name: Name,
@@ -122,9 +137,13 @@ const makeHarness = Effect.fn("makeThreadsToolkitHarness")(function* (options: {
       ),
       Effect.provideService(McpInvocationContext.McpInvocationContext, {
         environmentId: EnvironmentId.make("environment-1"),
-        threadId: options.caller ?? COORDINATOR,
-        providerSessionId: "session-1",
-        providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+        requestNamespace: "session-1",
+        thread: {
+          threadId: callerId,
+          providerSessionId: "session-1",
+          providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+        },
+        client: undefined,
         capabilities: new Set<McpInvocationContext.McpCapability>(["orchestration"]),
         issuedAt: 1,
       }),

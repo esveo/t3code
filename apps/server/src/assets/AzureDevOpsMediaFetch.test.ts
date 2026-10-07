@@ -3,8 +3,8 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import { HttpClient, HttpClientResponse, HttpServerResponse } from "effect/unstable/http";
-import { ChildProcessSpawner } from "effect/unstable/process";
+import { HttpClient, HttpClientResponse, HttpServerResponse } from "effect/http";
+import { ChildProcessSpawner } from "effect/process";
 
 import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
@@ -12,6 +12,7 @@ import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
 import * as T3ProjectFileLoader from "../project/T3ProjectFileLoader.ts";
 import * as AzureDevOpsCli from "../sourceControl/AzureDevOpsCli.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
+import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import { ASSET_ROUTE_PREFIX, issueAssetUrl, resolveAsset } from "./AssetAccess.ts";
 import { azureDevOpsMediaHttpResponse } from "./AzureDevOpsMediaFetch.ts";
 import * as NativeAppIconResolver from "./NativeAppIconResolver.ts";
@@ -138,6 +139,7 @@ const configLayer = ServerConfig.ServerConfig.layerTest(process.cwd(), {
 });
 const assetLayer = Layer.mergeAll(
   NodeHttpPlatform.layer,
+  Layer.mock(Orchestrator.OrchestratorV2)({ getTurnItem: () => Effect.succeed(null) }),
   configLayer,
   WorkspacePaths.layer,
   ProjectFaviconResolver.layer.pipe(

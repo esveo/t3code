@@ -19,8 +19,8 @@ import * as Schedule from "effect/Schedule";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
-import { HttpClient } from "effect/unstable/http";
-import { Atom } from "effect/unstable/reactivity";
+import { HttpClient } from "effect/http";
+import { Atom } from "effect/reactivity";
 
 import * as RemoteEnvironmentAuthorization from "../authorization/service.ts";
 import * as EnvironmentRegistry from "../connection/registry.ts";
@@ -1021,7 +1021,7 @@ export function createEnvironmentThreadStateAtoms<R, E>(
 
 export * from "./archivedThreads.ts";
 export * from "./checkpointDiff.ts";
-export * from "./boundedThreadSnapshotHttp.ts";
+export * as BoundedThreadSnapshotLoader from "./boundedThreadSnapshotHttp.ts";
 export * as ThreadHistoryController from "./threadHistoryController.ts";
 // Flat so consumers' inferred types can name it.
 export type { ThreadHistoryLoadEarlierResult } from "./threadHistoryController.ts";

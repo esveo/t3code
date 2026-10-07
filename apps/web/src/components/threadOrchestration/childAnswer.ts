@@ -3,7 +3,7 @@ import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import { parseThreadKey, threadKey } from "@t3tools/client-runtime/state/entities";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { parseThreadUpdates } from "@t3tools/shared/threadOrchestration";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 
 import { useProject, useThreadShell } from "~/state/entities";
 import { environmentThreadDetails } from "~/state/threads";

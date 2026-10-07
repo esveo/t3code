@@ -27,7 +27,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
-import * as Mime from "effect/unstable/http/Mime";
+import * as Mime from "effect/http/Mime";
 
 import {
   attachmentFileExtension,
@@ -206,14 +206,15 @@ export const makeThreadAttachments = Effect.gen(function* () {
       }
       return claimed;
     }).pipe(
-      Effect.catchTag("PlatformError", (error) =>
-        Effect.fail(
-          new OrchestratorMcpFailure({
-            code: "orchestration_error",
-            message: `Could not copy the attachment: ${error.message}`,
-          }),
-        ),
-      ),
+      Effect.catchTags({
+        PlatformError: (error) =>
+          Effect.fail(
+            new OrchestratorMcpFailure({
+              code: "orchestration_error",
+              message: `Could not copy the attachment: ${error.message}`,
+            }),
+          ),
+      }),
       Effect.tapError(() => removeWritten),
     );
   });

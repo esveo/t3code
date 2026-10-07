@@ -27,6 +27,7 @@ import * as ThreadDecisions from "../../../threadDecisions/ThreadDecisions.ts";
 import { ThreadCoordinators } from "../../../threadOrchestration/ThreadCoordinators.ts";
 import { CROSS_PROJECT_THREADS_HINT } from "../../forkThreadReach.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import * as McpToolAccess from "../../McpToolAccess.ts";
 import {
   ChildThreadNotFoundError,
   type ChildThreadSummary,
@@ -149,11 +150,17 @@ const make = Effect.gen(function* () {
       .coordinatorOf(thread)
       .pipe(Effect.catchCause(failWith("Could not read the thread")));
 
+  /** The calling thread's id; every tool here acts as that thread (`McpToolAccess`). */
+  const callerThreadId = McpInvocationContext.McpInvocationContext.pipe(
+    Effect.flatMap((scope) => McpInvocationContext.requireThreadScope(scope, "This tool")),
+    Effect.map((scope) => scope.thread.threadId),
+  );
+
   /** The calling thread, when it may coordinate. */
   const requireCoordinator = Effect.gen(function* () {
-    const scope = yield* McpInvocationContext.McpInvocationContext;
-    const thread = yield* readShell(scope.threadId);
-    if (thread === null) return yield* failure(`Thread ${scope.threadId} was not found.`);
+    const callerId = yield* callerThreadId;
+    const thread = yield* readShell(callerId);
+    if (thread === null) return yield* failure(`Thread ${callerId} was not found.`);
     if ((yield* coordinatorOf(thread)) !== null) {
       return yield* new ThreadOrchestrationNestedError({});
     }
@@ -166,14 +173,14 @@ const make = Effect.gen(function* () {
    * as `child`, limited to the items it asked.
    */
   const requireDecisions = Effect.gen(function* () {
-    const scope = yield* McpInvocationContext.McpInvocationContext;
     if (!(yield* decisionsOn)) {
       return yield* failure(
         "Decisions are turned off, so ask the user in chat instead. The user can turn them on in Settings → General.",
       );
     }
-    const thread = yield* readShell(scope.threadId);
-    if (thread === null) return yield* failure(`Thread ${scope.threadId} was not found.`);
+    const callerId = yield* callerThreadId;
+    const thread = yield* readShell(callerId);
+    if (thread === null) return yield* failure(`Thread ${callerId} was not found.`);
     const coordinatorId = yield* coordinatorOf(thread);
     if (coordinatorId === null) return { coordinator: thread, child: null };
     const coordinator = yield* readShell(coordinatorId);
@@ -200,10 +207,10 @@ const make = Effect.gen(function* () {
     return child;
   });
 
-  return ThreadsToolkit.of({
+  return {
     // Same link as the sidebar's Assign to coordinator; ThreadCoordinators
     // checks the rules again (one level deep, no cycles).
-    adopt_thread: (input) =>
+    adopt_thread: McpToolAccess.actsAsCaller((input) =>
       Effect.gen(function* () {
         const { coordinator } = yield* requireCoordinator;
         const threadId = ThreadId.make(input.threadId);
@@ -234,8 +241,9 @@ const make = Effect.gen(function* () {
           previousParentThreadId: previousCoordinatorThreadId,
         };
       }),
+    ),
 
-    upsert_decision: (input) =>
+    upsert_decision: McpToolAccess.actsAsCaller((input) =>
       Effect.gen(function* () {
         const { coordinator, child } = yield* requireDecisions;
         // A child asks for itself: the item shows it as the source, and the
@@ -277,8 +285,9 @@ const make = Effect.gen(function* () {
           open: all.filter((candidate) => candidate.status === "open").length,
         };
       }),
+    ),
 
-    resolve_decision: (input) =>
+    resolve_decision: McpToolAccess.actsAsCaller((input) =>
       Effect.gen(function* () {
         const { coordinator, child } = yield* requireDecisions;
         yield* ThreadDecisions.withService((decisions) =>
@@ -298,8 +307,9 @@ const make = Effect.gen(function* () {
         ).pipe(Effect.mapError((error) => failure(error.message)));
         return { resolved: true };
       }),
+    ),
 
-    list_decisions: (input) =>
+    list_decisions: McpToolAccess.readsAsCaller((input) =>
       Effect.gen(function* () {
         const { coordinator, child } = yield* requireDecisions;
         const status = input.status ?? "open";
@@ -312,7 +322,8 @@ const make = Effect.gen(function* () {
             .map(summarizeDecision),
         };
       }),
-  });
+    ),
+  } satisfies McpToolAccess.Handlers<typeof ThreadsToolkit.tools>;
 });
 
-export const ThreadsToolkitHandlersLive = ThreadsToolkit.toLayer(make);
+export const ThreadsToolkitHandlersLive = McpToolAccess.toLayer(ThreadsToolkit, make);

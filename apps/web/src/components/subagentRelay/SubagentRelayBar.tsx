@@ -8,7 +8,12 @@
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { formatProviderSubagentStatus } from "@t3tools/client-runtime/state/thread-execution";
-import { isOrchestrationV2WorkActive, type EnvironmentId, type ThreadId } from "@t3tools/contracts";
+import {
+  AuthOrchestrationOperateScope,
+  isOrchestrationV2WorkActive,
+  type EnvironmentId,
+  type ThreadId,
+} from "@t3tools/contracts";
 import { ArrowUpLeftIcon } from "lucide-react";
 import {
   type ComponentProps,
@@ -28,6 +33,7 @@ import type { ProviderSubagentBar } from "~/components/chat/ProviderSubagentBar"
 import { newMessageId } from "~/lib/utils";
 import { useThreadShell } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
+import { useEnvironmentScope } from "~/state/session";
 import { threadEnvironment } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { buildSubagentRelayMessage } from "./subagentRelay.logic";
@@ -52,6 +58,7 @@ export function SubagentRelayBar(
     [environmentId, target],
   );
   const parent = useThreadShell(parentRef);
+  const canOperateThread = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const startTurn = useAtomCommand(threadEnvironment.startTurn);
   const stop = useAtomCommand(subagentRelayEnvironment.stop);
   const [text, setText] = useState("");
@@ -166,6 +173,7 @@ export function SubagentRelayBar(
                 <ComposerPrimaryActions
                   compact={false}
                   pendingAction={null}
+                  canOperateThread={canOperateThread}
                   isRunning={showStop}
                   canInterrupt={showStop}
                   showPlanFollowUpPrompt={false}

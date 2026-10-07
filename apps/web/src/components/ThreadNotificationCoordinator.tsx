@@ -1,7 +1,7 @@
 import { presentThreadShell } from "@t3tools/client-runtime/state/models";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate, useParams } from "@tanstack/react-router";
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId, OrchestrationV2ThreadShell, ThreadId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import {
   CircleAlertIcon,
@@ -91,6 +91,12 @@ export function ThreadNotificationCoordinator() {
   ));
 }
 
+interface NotificationState {
+  readonly raw: OrchestrationV2ThreadShell;
+  readonly attention: string | null;
+  readonly completion: number | null;
+}
+
 function EnvironmentNotifications({
   environmentId,
   onNotification,
@@ -99,6 +105,10 @@ function EnvironmentNotifications({
   onNotification: (environmentId: EnvironmentId, notification: Notification) => void;
 }) {
   const shell = useAtomValue(environmentShell.stateValueAtom(environmentId));
+  // The shell reducer keeps the thread list and unchanged thread objects
+  // stable, so this only rescans when a thread actually changed.
+  const threads =
+    shell.status === "live" && Option.isSome(shell.snapshot) ? shell.snapshot.value.threads : null;
   const mode = useClientSettings((settings) => settings.notificationMode);
   const inAppNotificationsEnabled = useClientSettings(
     (settings) => settings.inAppNotificationsEnabled,
@@ -107,9 +117,7 @@ function EnvironmentNotifications({
   const { environmentId: activeEnvironmentId, threadId: activeThreadId } = useParams({
     strict: false,
   });
-  const previous = useRef(
-    new Map<ThreadId, { attention: string | null; completion: number | null }>(),
-  );
+  const previous = useRef(new Map<ThreadId, NotificationState>());
 
   // In a split the thread belongs next to the others, not in place of one: the
   // grid focuses its pane or appends one, and only outside a split does opening
@@ -132,17 +140,22 @@ function EnvironmentNotifications({
   );
 
   useEffect(() => {
-    if (shell.status !== "live" || Option.isNone(shell.snapshot)) {
+    if (threads === null) {
       previous.current.clear();
       return;
     }
-    const next = new Map<ThreadId, { attention: string | null; completion: number | null }>();
-    for (const rawThread of shell.snapshot.value.threads) {
+    const next = new Map<ThreadId, NotificationState>();
+    for (const rawThread of threads) {
       if (rawThread.lineage.relationshipToParent === "subagent") continue;
+      const prior = previous.current.get(rawThread.id);
+      // The same object cannot produce a new notification.
+      if (prior?.raw === rawThread) {
+        next.set(rawThread.id, prior);
+        continue;
+      }
       const thread = presentThreadShell(environmentId, rawThread);
       let status = resolveSidebarThreadStatus(thread);
       if (status === "ready" && thread.latestRun?.status === "failed") status = "failed";
-      const prior = previous.current.get(thread.id);
       const attention =
         status === "input" || status === "approval" || status === "failed" || status === "limited"
           ? `${thread.latestRun?.runId ?? ""}:${status}`
@@ -155,7 +168,7 @@ function EnvironmentNotifications({
         Number.isFinite(completedAt)
           ? completedAt
           : (prior?.completion ?? null);
-      next.set(thread.id, { attention, completion });
+      next.set(thread.id, { raw: rawThread, attention, completion });
       if (!prior || thread.archivedAt !== null) continue;
       const kind =
         attention && attention !== prior.attention
@@ -185,9 +198,9 @@ function EnvironmentNotifications({
         document.hasFocus() &&
         (activeEnvironmentId !== environmentId || activeThreadId !== thread.id)
       ) {
-        const project = shell.snapshot.value.projects.find(
-          (candidate) => candidate.id === thread.projectId,
-        );
+        const project = Option.isSome(shell.snapshot)
+          ? shell.snapshot.value.projects.find((candidate) => candidate.id === thread.projectId)
+          : undefined;
         const shortcuts = threadToastShortcuts({ environmentId, threadId: thread.id }, () =>
           toastManager.close(toastId),
         );
@@ -263,6 +276,7 @@ function EnvironmentNotifications({
     onNotification,
     openThread,
     shell,
+    threads,
   ]);
 
   return null;

@@ -15,7 +15,7 @@ import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
-import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import { layerMemory as SqlitePersistenceMemory } from "../persistence/Sqlite.ts";
 import * as ThreadCoordinators from "./ThreadCoordinators.ts";
 
 const at = DateTime.makeUnsafe("2026-09-01T00:00:00.000Z");

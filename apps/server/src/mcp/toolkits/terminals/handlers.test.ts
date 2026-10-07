@@ -10,11 +10,12 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
-import type { Tool } from "effect/unstable/ai";
+import type { Tool } from "effect/ai";
 
 import { OrchestratorV2 } from "../../../orchestration-v2/Orchestrator.ts";
 import { TerminalManager } from "../../../terminal/Manager.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import * as McpToolAccess from "../../McpToolAccess.ts";
 import { TerminalsToolkitHandlersLive } from "./handlers.ts";
 import { TerminalsToolkit } from "./tools.ts";
 
@@ -73,7 +74,11 @@ const call = <Name extends keyof typeof TerminalsToolkit.tools>(
 ) =>
   Effect.gen(function* () {
     const toolkit = yield* TerminalsToolkit.pipe(
-      Effect.provide(TerminalsToolkitHandlersLive.pipe(Layer.provide(dependencies))),
+      Effect.provide(
+        McpToolAccess.HandlersLayer.layer(TerminalsToolkitHandlersLive).pipe(
+          Layer.provide(dependencies),
+        ),
+      ),
     );
     return yield* toolkit.handle(name, params as never).pipe(
       Stream.unwrap,
@@ -85,9 +90,13 @@ const call = <Name extends keyof typeof TerminalsToolkit.tools>(
   }).pipe(
     Effect.provideService(McpInvocationContext.McpInvocationContext, {
       environmentId: EnvironmentId.make("environment-1"),
-      threadId: CALLER,
-      providerSessionId: "provider-session-1",
-      providerInstanceId: ProviderInstanceId.make("claude"),
+      requestNamespace: "provider-session-1",
+      thread: {
+        threadId: CALLER,
+        providerSessionId: "provider-session-1",
+        providerInstanceId: ProviderInstanceId.make("claude"),
+      },
+      client: undefined,
       capabilities: new Set<McpInvocationContext.McpCapability>(["pull-requests"]),
       issuedAt: 1,
     }),

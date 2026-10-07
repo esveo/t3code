@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import { OrchestratorV2 } from "../../../orchestration-v2/Orchestrator.ts";
 import * as TerminalManager from "../../../terminal/Manager.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
+import * as McpToolAccess from "../../McpToolAccess.ts";
 import { terminalTail } from "./terminalText.ts";
 import {
   READ_TERMINAL_DEFAULT_LINES,
@@ -37,12 +38,14 @@ const make = Effect.gen(function* () {
   const resolveThreadId = Effect.fn("TerminalsToolkit.resolveThreadId")(function* (
     requested: ThreadId | undefined,
   ) {
-    const scope = yield* McpInvocationContext.McpInvocationContext;
-    if (requested === undefined || requested === scope.threadId) return scope.threadId;
-    const [caller, target] = yield* Effect.all([
-      threadShell(scope.threadId),
-      threadShell(requested),
-    ]);
+    const scope = yield* McpInvocationContext.McpInvocationContext.pipe(
+      Effect.flatMap((invocation) =>
+        McpInvocationContext.requireThreadScope(invocation, "Terminal tools"),
+      ),
+    );
+    const callerId = scope.thread.threadId;
+    if (requested === undefined || requested === callerId) return callerId;
+    const [caller, target] = yield* Effect.all([threadShell(callerId), threadShell(requested)]);
     if (caller.projectId !== target.projectId) {
       return yield* new TerminalThreadOutsideProjectError({ threadId: requested });
     }
@@ -71,14 +74,16 @@ const make = Effect.gen(function* () {
     updatedAt: terminal.updatedAt,
   });
 
-  return TerminalsToolkit.of({
-    list_terminals: (input) =>
+  // Fork: terminals belong to the calling thread's project, so only thread callers read them.
+  return {
+    list_terminals: McpToolAccess.readsAsCaller((input) =>
       Effect.gen(function* () {
         const threadId = yield* resolveThreadId(input.threadId);
         const loaded = yield* loadedTerminals(threadId);
         return { threadId, terminals: loaded.map(entryOf) };
       }),
-    read_terminal: (input) =>
+    ),
+    read_terminal: McpToolAccess.readsAsCaller((input) =>
       Effect.gen(function* () {
         const threadId = yield* resolveThreadId(input.threadId);
         const loaded = yield* loadedTerminals(threadId);
@@ -105,7 +110,8 @@ const make = Effect.gen(function* () {
           truncated: tail.truncated,
         };
       }),
-  });
+    ),
+  } satisfies McpToolAccess.Handlers<typeof TerminalsToolkit.tools>;
 });
 
-export const TerminalsToolkitHandlersLive = TerminalsToolkit.toLayer(make);
+export const TerminalsToolkitHandlersLive = McpToolAccess.toLayer(TerminalsToolkit, make);

@@ -2,7 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentThread } from "@t3tools/client-runtime/state/shell";
 import type { OrchestrationV2Subagent, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useMemo } from "react";
 
 import { useThreadShell, useThreadShells } from "~/state/entities";

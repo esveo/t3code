@@ -2,9 +2,9 @@ import { ThreadId } from "@t3tools/contracts";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
-import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import { layerMemory as SqlitePersistenceMemory } from "../persistence/Sqlite.ts";
 import { readThreadUsage } from "./ThreadUsageQuery.ts";
 import { emptySessionUsageReport, type SessionUsageInput } from "./threadSessionUsage.ts";
 import { UsageService } from "./UsageService.ts";
