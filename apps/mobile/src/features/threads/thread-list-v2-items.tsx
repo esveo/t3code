@@ -931,6 +931,8 @@ export const ThreadListV2Row = memo(function ThreadListV2Row(props: {
     Platform.OS === "android" && !sidebarPane ? (
       <EsveoThreadRowContent
         thread={thread}
+        project={props.project}
+        projectTitle={props.projectTitle ?? props.project?.title ?? ""}
         status={status}
         isUnread={isUnread}
         trailingLabel={statusLabel?.label ?? timeLabel}

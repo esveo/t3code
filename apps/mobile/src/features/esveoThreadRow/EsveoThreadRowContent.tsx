@@ -1,18 +1,25 @@
 /**
  * Fork: the Android home list row in the desktop's Threads-panel look. A status
- * dot, the title on one line, then provider, model and branch; time or status
- * and the pull request sit on the right. Replaces the upstream card content
- * (project line, two-line title, monospace branch) on Android phones only.
+ * dot, the title on one line, then the project (unless turned off in
+ * Settings → Appearance), provider, model and branch; time or status and the
+ * pull request sit on the right. Replaces the upstream card content (project
+ * line, two-line title, monospace branch) on Android phones only.
  */
-import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import { useAtomValue } from "@effect/atom-react";
+import type {
+  EnvironmentProject,
+  EnvironmentThreadShell,
+} from "@t3tools/client-runtime/state/shell";
 import { formatModelSlugName } from "@t3tools/shared/model";
 import type { ReactNode } from "react";
 import { View } from "react-native";
 
 import { SymbolView } from "../../components/AppSymbol";
 import { AppText as Text } from "../../components/AppText";
+import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { ProviderInstanceIcon } from "../../components/ProviderIcon";
 import { cn } from "../../lib/cn";
+import { esveoThreadRowShowsProjectAtom } from "./esveoThreadRowPreferences";
 import type { useThreadPr } from "../../state/use-thread-pr";
 import type { getThreadListV2RowAppearance } from "../threads/thread-list-v2-row-appearance";
 import type { ThreadRowProviderInstance } from "../threads/thread-provider-instance";
@@ -40,6 +47,9 @@ const IDLE_DOT = "#6b7280";
 
 export function EsveoThreadRowContent(props: {
   readonly thread: EnvironmentThreadShell;
+  /** Omitted where every row shares one project, as in a coordinator's tab. */
+  readonly project?: EnvironmentProject | null;
+  readonly projectTitle?: string;
   readonly status: ThreadListV2Status;
   readonly isUnread: boolean;
   /** Status label or the time, as the upstream row shows it. */
@@ -55,6 +65,7 @@ export function EsveoThreadRowContent(props: {
   readonly searchMatch: ReactNode;
 }) {
   const { thread, rowAppearance } = props;
+  const showsProject = useAtomValue(esveoThreadRowShowsProjectAtom) && !!props.projectTitle;
   const model = formatModelSlugName(thread.modelSelection.model);
   const error =
     (props.status === "failed" || props.status === "limited") && thread.runtime?.lastError
@@ -86,6 +97,30 @@ export function EsveoThreadRowContent(props: {
           </Text>
         ) : (
           <View className="mt-0.5 flex-row items-center gap-1">
+            {showsProject ? (
+              <>
+                {props.project ? (
+                  <ProjectFavicon
+                    environmentId={thread.environmentId}
+                    faviconPath={props.project.faviconPath}
+                    projectIcon={props.project.projectIcon}
+                    size={12}
+                    projectTitle={props.project.title}
+                    workspaceRoot={props.project.workspaceRoot}
+                  />
+                ) : null}
+                <Text
+                  className={cn("shrink-0 text-xs", rowAppearance.mutedForegroundClassName)}
+                  numberOfLines={1}
+                  style={{ maxWidth: "45%" }}
+                >
+                  {props.projectTitle}
+                </Text>
+                <Text className={cn("text-xs", rowAppearance.mutedForegroundClassName)}>
+                  {"  ·  "}
+                </Text>
+              </>
+            ) : null}
             {props.providerInstance ? (
               <ProviderInstanceIcon
                 iconUrl={props.providerIconUrl}
