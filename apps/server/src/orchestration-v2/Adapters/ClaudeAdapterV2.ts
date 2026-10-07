@@ -1765,6 +1765,13 @@ function claudePendingBackgroundTask(input: {
   };
 }
 
+// Fork: the SDK flags tasks that are not activity as `ambient`, such as the
+// artifact watch Claude Code arms on every publish. They stay off the Waiting
+// roster, or a finished turn (and a delegated task) would wait on them forever.
+function isClaudeAmbientTask(task: object): boolean {
+  return Reflect.get(task, "ambient") === true;
+}
+
 function claudeTaskTypeFromSdkMessage(message: SDKMessage): string | null {
   if (typeof message !== "object" || message === null) {
     return null;
@@ -1813,7 +1820,7 @@ function parseClaudeBackgroundTaskEntry(
   const taskType = typeof rawTaskType === "string" ? rawTaskType : null;
   // Mirror the incremental path: only opaque non-subagent types currently
   // supported for Waiting. Subagent/agent entries stay on the subagent path.
-  if (!isClaudeOpaqueBackgroundTaskType(taskType)) {
+  if (!isClaudeOpaqueBackgroundTaskType(taskType) || isClaudeAmbientTask(entry)) {
     return null;
   }
   const description = Reflect.get(entry, "description");
@@ -5344,7 +5351,11 @@ export function makeClaudeAdapterV2(
             // A foreground task blocks its tool call (a subagent's own Bash
             // steps included), so it is not background work; one moved to
             // the background later arrives in background_tasks_changed.
-            if (!isClaudeNonSubagentTask(message) || message.is_backgrounded === false) {
+            if (
+              !isClaudeNonSubagentTask(message) ||
+              message.is_backgrounded === false ||
+              isClaudeAmbientTask(message)
+            ) {
               return false;
             }
             yield* upsertPendingBackgroundTask(

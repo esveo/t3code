@@ -3736,6 +3736,70 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
+  // Fork: Claude Code arms an ambient watch on every artifact publish.
+  it.effect("keeps ambient watches off the roster", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        const now = yield* DateTime.now;
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now,
+            attemptId: RunAttemptId.make("attempt-claude-ambient-watch"),
+            text: "Publish the page.",
+            attachments: [],
+          }),
+        );
+        const ambientWatch = {
+          task_id: "ambient-watch",
+          description: "live updates for artifact (auto-armed on publish)",
+          task_type: "monitor_ws",
+          ambient: true,
+        };
+        yield* Queue.offer(
+          harness.sdkMessages,
+          claudeSdkFrame({
+            type: "system",
+            subtype: "task_started",
+            ...ambientWatch,
+            uuid: "00000000-0000-4000-8000-000000000311",
+            session_id: WAKE_NATIVE_SESSION,
+          }),
+        );
+        yield* Queue.offer(
+          harness.sdkMessages,
+          claudeSdkFrame({
+            type: "system",
+            subtype: "background_tasks_changed",
+            tasks: [
+              ambientWatch,
+              { task_id: "watch-task", description: "Watch the deploy", task_type: "monitor_ws" },
+            ],
+            uuid: "00000000-0000-4000-8000-000000000312",
+            session_id: WAKE_NATIVE_SESSION,
+          }),
+        );
+        yield* Queue.offer(
+          harness.sdkMessages,
+          makeResultFrame({ uuid: "00000000-0000-4000-8000-000000000313", result: "Published." }),
+        );
+        yield* awaitUntil(() => harness.terminalEvents().length === 1, "turn terminal");
+
+        const rosters = providerThreadRosterEvents(harness.events).map(
+          (event) => event.providerThread.pendingBackgroundTasks,
+        );
+        assert.isFalse(
+          rosters.some((roster) => roster?.some((task) => task.taskId === "ambient-watch")),
+        );
+        assert.deepEqual(rosters.at(-1), [
+          { taskId: "watch-task", kind: "monitor", description: "Watch the deploy" },
+        ]);
+      }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
+    ),
+  );
+
   it.effect("stops background work after the turn settled", () =>
     Effect.scoped(
       Effect.gen(function* () {
