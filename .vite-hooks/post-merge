@@ -1,0 +1,1 @@
+scripts/fork/install-if-lockfile-changed.sh "$@"
