@@ -37,6 +37,11 @@ describe("generate mobile Uniwind themes", () => {
       "ember-dark",
       "iris-light",
       "iris-dark",
+      // Fork: esveo palettes.
+      "esveo-light",
+      "esveo-dark",
+      "esveo-midnight-light",
+      "esveo-midnight-dark",
     ]);
 
     const stylesheet = renderUniwindThemesCSS();
