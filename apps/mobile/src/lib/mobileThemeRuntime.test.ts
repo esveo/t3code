@@ -28,8 +28,10 @@ describe("mobileThemeRuntime", () => {
       (operation) => operation.kind === "update-text-variables",
     );
 
-    expect(variableOperations).toHaveLength(12);
-    expect(variableOperations.at(-1)?.themeName).toBe("iris-dark");
+    // Fork: 12 upstream themes + 4 esveo themes.
+    expect(variableOperations).toHaveLength(16);
+    // Fork: esveo palettes come last.
+    expect(variableOperations.at(-1)?.themeName).toBe("esveo-midnight-dark");
     expect(operations.at(-1)).toEqual({
       kind: "set-appearance-mode",
       appearance: "light",
@@ -68,11 +70,12 @@ describe("mobileThemeRuntime", () => {
       baseFontSize: 18,
     });
 
-    expect(operations).toHaveLength(12);
+    // Fork: 12 upstream themes + 4 esveo themes.
+    expect(operations).toHaveLength(16);
     expect(operations.every((operation) => operation.kind === "update-text-variables")).toBe(true);
     expect(operations.at(-1)).toMatchObject({
       kind: "update-text-variables",
-      themeName: "iris-dark",
+      themeName: "esveo-midnight-dark", // Fork: esveo palettes come last.
     });
   });
 
