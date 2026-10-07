@@ -12,7 +12,7 @@ import {
 } from "../Adapters/ClaudeAdapterV2.testkit.ts";
 import * as IdAllocator from "../IdAllocator.ts";
 import * as EffectWorker from "../EffectWorker.ts";
-import { makeSqlitePersistenceLive } from "../../persistence/Layers/Sqlite.ts";
+import * as SqlitePersistence from "../../persistence/Sqlite.ts";
 import { provideDeterministicTestRuntime } from "./DeterministicRuntime.ts";
 import { CLAUDE_BACKGROUND_SUBAGENT_AFTER_ROOT_PROMPT } from "./fixtures/claude_background_subagent_after_root/input.ts";
 import {
@@ -20,10 +20,8 @@ import {
   materializeFixtureInput,
   projectionFor,
 } from "./fixtures/shared.ts";
-import {
-  makeOrchestratorV2ProviderReplayLayer,
-  runOrchestratorV2ProviderReplayScenario,
-} from "./ProviderReplayHarness.ts";
+import { runOrchestratorV2ProviderReplayScenario } from "./ProviderReplayHarness.ts";
+import * as ProviderReplayHarness from "./ProviderReplayHarness.ts";
 import { runOrchestratorV2Scenario } from "./OrchestratorScenario.ts";
 import { checkpointWorkspace } from "./ReplayFixtureWorkspace.ts";
 import { readProviderReplayTranscript } from "./ReplayTranscriptNdjson.ts";
@@ -167,7 +165,7 @@ const runRestart = Effect.fn("runRestart")(function* (input: {
   const phase1Steps = materialized.steps.slice(0, firstIdle + 1);
   const phase2Steps = materialized.steps.slice(firstIdle + 1);
   const { harness, assertComplete } = makeClaudeRestartReplayHarness(transcript);
-  const databaseLayer = makeSqlitePersistenceLive(path.join(tempDir, "state.sqlite")).pipe(
+  const layerDatabase = SqlitePersistence.layerFromPath(path.join(tempDir, "state.sqlite")).pipe(
     Layer.provide(NodeServices.layer),
   );
   const scenario = (name: string, steps: typeof materialized.steps) => ({
@@ -181,7 +179,7 @@ const runRestart = Effect.fn("runRestart")(function* (input: {
 
   const before = yield* Effect.scoped(
     runOrchestratorV2ProviderReplayScenario(scenario("before-restart", phase1Steps), harness, {
-      databaseLayer,
+      databaseLayer: layerDatabase,
     }),
   );
   const settled = projectionFor(before, SCENARIO);
@@ -198,8 +196,8 @@ const runRestart = Effect.fn("runRestart")(function* (input: {
       return yield* runOrchestratorV2Scenario(restartScenario);
     }).pipe(
       Effect.provide(
-        makeOrchestratorV2ProviderReplayLayer(restartScenario, harness, {
-          databaseLayer,
+        ProviderReplayHarness.layerProviderReplay(restartScenario, harness, {
+          databaseLayer: layerDatabase,
           recoverOnStartup: true,
           continueThreadsAfterServerUpdate: input.continueThreadsAfterServerUpdate,
         }),
@@ -216,7 +214,7 @@ const runRestart = Effect.fn("runRestart")(function* (input: {
 
   const after = yield* Effect.scoped(
     runOrchestratorV2ProviderReplayScenario(scenario("after-restart", phase2Steps), harness, {
-      databaseLayer,
+      databaseLayer: layerDatabase,
       continueThreadsAfterServerUpdate: input.continueThreadsAfterServerUpdate,
     }),
   );

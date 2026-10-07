@@ -3,7 +3,11 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
+import {
+  AuthFilesystemWriteScope,
+  type EnvironmentId,
+  type ScopedThreadRef,
+} from "@t3tools/contracts";
 import {
   buildCollapsedProposedPlanPreviewMarkdown,
   buildProposedPlanMarkdownFilename,
@@ -32,6 +36,7 @@ import { stackedThreadToast, toastManager } from "../ui/toast";
 import { projectEnvironment } from "~/state/projects";
 import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useAtomCommand } from "~/state/use-atom-command";
+import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 
 export const ProposedPlanCard = memo(function ProposedPlanCard({
   planMarkdown,
@@ -57,6 +62,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
     setRevealedSeen(revealed);
     if (revealed) setExpanded(true);
   }
+  const canWriteFiles = useEnvironmentScope(environmentId, AuthFilesystemWriteScope);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [savePath, setSavePath] = useState("");
   const [isSavingToWorkspace, setIsSavingToWorkspace] = useState(false);
@@ -96,6 +102,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   };
 
   const openSaveDialog = () => {
+    if (!canWriteFiles) return;
     if (!workspaceRoot) {
       toastManager.add(
         stackedThreadToast({
@@ -112,7 +119,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
 
   const handleSaveToWorkspace = () => {
     const relativePath = savePath.trim();
-    if (!workspaceRoot) {
+    if (!workspaceRoot || !readEnvironmentScope(environmentId, AuthFilesystemWriteScope)) {
       return;
     }
     if (!relativePath) {
@@ -178,7 +185,10 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
               {isCopied ? "Copied!" : "Copy to clipboard"}
             </MenuItem>
             <MenuItem onClick={handleDownload}>Download as markdown</MenuItem>
-            <MenuItem onClick={openSaveDialog} disabled={!workspaceRoot || isSavingToWorkspace}>
+            <MenuItem
+              onClick={openSaveDialog}
+              disabled={!canWriteFiles || !workspaceRoot || isSavingToWorkspace}
+            >
               Save to workspace
             </MenuItem>
           </MenuPopup>
@@ -266,7 +276,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
             <Button
               size="sm"
               onClick={() => void handleSaveToWorkspace()}
-              disabled={isSavingToWorkspace}
+              disabled={!canWriteFiles || isSavingToWorkspace}
             >
               {isSavingToWorkspace ? "Saving..." : "Save"}
             </Button>

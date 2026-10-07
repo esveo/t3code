@@ -58,7 +58,7 @@ function commandId(input: {
     [
       "command",
       "mcp",
-      stablePart(input.scope.providerSessionId),
+      stablePart(input.scope.requestNamespace),
       "thread-update",
       stablePart(input.threadId),
       stablePart(input.action),
@@ -147,47 +147,44 @@ const make = Effect.gen(function* () {
       );
     }
 
-    const parentShell = yield* threadManagement
-      .getThreadShell(scope.threadId)
-      .pipe(
-        Effect.mapError((error) =>
-          failure(
-            "orchestration_error",
-            `Unable to locate calling thread ${scope.threadId}: ${errorMessage(error)}`,
-          ),
-        ),
+    const threadId = input.threadId ?? scope.thread?.threadId;
+    if (threadId === undefined) {
+      return yield* failure(
+        "target_required",
+        "Pass threadId: this MCP client is not running inside a T3 thread.",
       );
-    if (parentShell === null) {
-      return yield* failure("thread_not_found", `Calling thread ${scope.threadId} was not found.`);
     }
-    const parent = yield* threadManagement
-      .getThreadRecords(scope.threadId, [])
+    const shell = yield* threadManagement
+      .getThreadShell(threadId)
       .pipe(
         Effect.mapError((error) =>
           failure(
             "orchestration_error",
-            `Unable to read calling thread ${scope.threadId}: ${errorMessage(error)}`,
+            `Unable to locate thread ${threadId}: ${errorMessage(error)}`,
           ),
         ),
       );
-    const threadId = input.threadId ?? scope.threadId;
-    const target =
-      threadId === scope.threadId
-        ? parent
+    if (shell === null || shell.deletedAt !== null) {
+      return yield* failure("thread_not_found", `Thread ${threadId} was not found.`);
+    }
+    const projectId =
+      scope.thread === undefined || scope.thread.threadId === threadId
+        ? shell.projectId
         : yield* threadManagement
-            .getProjectThreadRecords(
-              // Fork: another project's thread with cross-project threads on (forkThreadReach.ts).
-              {
-                projectId: yield* threadProjectId(
-                  threadManagement,
-                  threadId,
-                  parent.thread.projectId,
-                ),
-                threadId,
-              },
-              [],
-            )
-            .pipe(Effect.mapError(threadLookupFailure));
+            .getThreadShell(scope.thread.threadId)
+            .pipe(
+              Effect.mapError(() =>
+                failure("orchestration_error", "Unable to locate the calling thread."),
+              ),
+              Effect.flatMap((caller) =>
+                caller === null || caller.deletedAt !== null
+                  ? Effect.fail(failure("thread_not_found", "The calling thread was not found."))
+                  : threadProjectId(threadManagement, threadId, caller.projectId),
+              ),
+            );
+    const target = yield* threadManagement
+      .getProjectThreadRecords({ projectId, threadId }, [])
+      .pipe(Effect.mapError(threadLookupFailure));
     const requestKey =
       input.clientRequestId === undefined
         ? yield* crypto.randomUUIDv4.pipe(Effect.orDie)
