@@ -198,9 +198,9 @@ function EnvironmentNotifications({
         document.hasFocus() &&
         (activeEnvironmentId !== environmentId || activeThreadId !== thread.id)
       ) {
-        const project = shell.snapshot.value.projects.find(
-          (candidate) => candidate.id === thread.projectId,
-        );
+        const project = Option.isSome(shell.snapshot)
+          ? shell.snapshot.value.projects.find((candidate) => candidate.id === thread.projectId)
+          : undefined;
         const shortcuts = threadToastShortcuts({ environmentId, threadId: thread.id }, () =>
           toastManager.close(toastId),
         );

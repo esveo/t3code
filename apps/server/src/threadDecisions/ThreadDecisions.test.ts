@@ -10,7 +10,7 @@ import {
   ThreadManagementService,
   type ThreadManagementSendInput,
 } from "../orchestration-v2/ThreadManagementService.ts";
-import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import { layerMemory as SqlitePersistenceMemory } from "../persistence/Sqlite.ts";
 import * as ThreadDecisions from "./ThreadDecisions.ts";
 
 const COORDINATOR = ThreadId.make("coordinator");

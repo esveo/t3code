@@ -7400,7 +7400,9 @@ export function makeClaudeAdapterV2(
                 forkUndeliveredPrompts.begin({
                   nativeThreadId,
                   providerTurnId,
-                  promptUuid: claudePromptUuid(turnInput.attemptId),
+                  promptUuid: yield* claudePromptUuid(turnInput.attemptId).pipe(
+                    Effect.provideService(Crypto.Crypto, crypto),
+                  ),
                   message: userMessage,
                 }),
               );

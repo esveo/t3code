@@ -352,13 +352,7 @@ export const OrchestratorMcpThreadListInput = Schema.Struct({
   includeSubagents: Schema.optional(Schema.Boolean),
   cursor: Schema.optional(NonNegativeInt),
   limit: Schema.optional(PositiveInt.check(Schema.isLessThanOrEqualTo(100))),
-  // Fork: list another project's threads, or every project's.
-  projectId: Schema.optional(
-    ProjectId.annotate({
-      description:
-        "List this project's threads (t3_project_list) instead of the calling one's. Needs Cross-project threads turned on.",
-    }),
-  ),
+  // Fork: every project's threads.
   scope: Schema.optional(
     Schema.Literals(["project", "all"]).annotate({
       description:

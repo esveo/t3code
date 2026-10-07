@@ -91,6 +91,11 @@ async function renderPanel(overrides: Partial<ComponentProps<typeof RightPanelTa
         pullRequestAvailable={false}
         pullRequestsAvailable={false}
         deviceAvailable={false}
+        // Fork: the Git graph and agent stage tabs.
+        onAddGitGraph={noop}
+        onAddAgentStage={noop}
+        gitGraphAvailable={false}
+        agentStageAvailable={false}
         {...overrides}
       >
         content

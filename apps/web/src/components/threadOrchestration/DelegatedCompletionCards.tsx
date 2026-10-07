@@ -10,7 +10,7 @@ import {
   THREAD_UPDATE_TAG,
   type TaggedThreadMessage,
 } from "@t3tools/shared/threadOrchestration";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 import { useAtomValue } from "@effect/atom-react";
 
 import { environmentThreadDetails } from "~/state/threads";

@@ -1,6 +1,6 @@
 import { useAtomValue } from "@effect/atom-react";
 import { EnvironmentId, ThreadId, type OrchestrationV2ProjectedTurnItem } from "@t3tools/contracts";
-import { Atom } from "effect/unstable/reactivity";
+import { Atom } from "effect/reactivity";
 
 import { environmentThreadDetails } from "../../state/threads";
 

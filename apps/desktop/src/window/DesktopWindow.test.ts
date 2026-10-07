@@ -1405,7 +1405,7 @@ describe("DesktopWindow", () => {
       const host = makeFakeBrowserWindow();
       const popout = makeFakeBrowserWindow();
       const openedExternalUrls: unknown[] = [];
-      const layer = makeTestLayer({
+      const layer = layerTest({
         window: host.window,
         createCount: yield* Ref.make(0),
         mainWindow: yield* Ref.make<Option.Option<Electron.BrowserWindow>>(Option.none()),

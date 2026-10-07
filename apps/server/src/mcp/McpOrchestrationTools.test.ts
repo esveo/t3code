@@ -12,14 +12,14 @@ import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
-import { McpServer } from "effect/unstable/ai";
-import { HttpBody, HttpClient, HttpRouter } from "effect/unstable/http";
+import { HttpBody, HttpClient, HttpRouter } from "effect/http";
 
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as McpHttpServer from "./McpHttpServer.ts";
 import * as McpOrchestrationTools from "./McpOrchestrationTools.ts";
 import * as McpSessionRegistry from "./McpSessionRegistry.ts";
+import * as McpToolAccess from "./McpToolAccess.ts";
 import { ThreadsToolkit } from "./toolkits/threads/tools.ts";
 
 /** Test settings that announce every update, as the real service does. */
@@ -41,21 +41,23 @@ const SettingsLive = Layer.effect(
 );
 
 // The switches are what is under test, so every handler just answers.
-const ThreadsToolkitStubLive = McpServer.toolkit(ThreadsToolkit).pipe(
-  Layer.provide(
-    ThreadsToolkit.toLayer(
-      Object.fromEntries(
-        Object.keys(ThreadsToolkit.tools).map((name) => [
-          name,
-          () => Effect.succeed(name === "list_decisions" ? { decisions: [] } : ({} as never)),
-        ]),
-      ) as never,
-    ),
+const ThreadsToolkitStubLive = McpHttpServer.toolkitRegistration(
+  ThreadsToolkit,
+  McpToolAccess.toLayer(
+    ThreadsToolkit,
+    Object.fromEntries(
+      Object.keys(ThreadsToolkit.tools).map((name) => [
+        name,
+        McpToolAccess.reads(() =>
+          Effect.succeed(name === "list_decisions" ? { decisions: [] } : ({} as never)),
+        ),
+      ]),
+    ) as never,
   ),
 );
 
 const TestLayer = Layer.mergeAll(ThreadsToolkitStubLive).pipe(
-  Layer.provideMerge(McpHttpServer.McpTransportLive),
+  Layer.provideMerge(McpHttpServer.layerMcpTransport),
   Layer.provideMerge(McpSessionRegistry.layer),
   Layer.provide(
     Layer.succeed(ServerEnvironment.ServerEnvironment, {

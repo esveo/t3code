@@ -9,7 +9,7 @@
 import type { ThreadId } from "@t3tools/contracts";
 import { coordinatorThreadIdOf } from "@t3tools/shared/threadOrchestration";
 import * as Effect from "effect/Effect";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 export interface OpenThreadRow {
   readonly id: ThreadId;

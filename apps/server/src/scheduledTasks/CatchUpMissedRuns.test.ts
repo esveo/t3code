@@ -6,12 +6,13 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as TestClock from "effect/testing/TestClock";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
-import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import { layerMemory as SqlitePersistenceMemory } from "../persistence/Sqlite.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
+import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as ScheduledTaskService from "./ScheduledTaskService.ts";
 
 const localAt = (day: number, hour: number) =>
@@ -83,6 +84,7 @@ it.effect("catches up a missed fixed-time run once only when the task opts in", 
                   ),
               }),
               Layer.mock(ThreadManagementService.ThreadManagementService)({}),
+              Layer.mock(SecretRequests.SecretRequests)({}),
               NodeCrypto.layer,
               Scheduler.layer,
             ),

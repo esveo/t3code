@@ -3115,58 +3115,22 @@ const layerWsRpc = (
             ),
           ),
         // Fork: decisions a coordinator asks the user for.
-        [THREAD_DECISIONS_WS_METHODS.subscribe]: (input) =>
-          observeRpcStream(
-            THREAD_DECISIONS_WS_METHODS.subscribe,
-            ThreadDecisions.subscribeRpc(input),
-            { "rpc.aggregate": "orchestration" },
-          ),
-        [THREAD_DECISIONS_WS_METHODS.act]: (input) =>
-          observeRpcEffect(THREAD_DECISIONS_WS_METHODS.act, ThreadDecisions.actRpc(input), {
-            "rpc.aggregate": "orchestration",
-          }),
+        [THREAD_DECISIONS_WS_METHODS.subscribe]: (input) => ThreadDecisions.subscribeRpc(input),
+        [THREAD_DECISIONS_WS_METHODS.act]: (input) => ThreadDecisions.actRpc(input),
         // Fork: notes and todos of the Notes tab.
-        [FORK_NOTES_WS_METHODS.subscribe]: (input) =>
-          observeRpcStream(FORK_NOTES_WS_METHODS.subscribe, ForkNotes.subscribeRpc(input), {
-            "rpc.aggregate": "server",
-          }),
-        [FORK_NOTES_WS_METHODS.act]: (input) =>
-          observeRpcEffect(FORK_NOTES_WS_METHODS.act, ForkNotes.actRpc(input), {
-            "rpc.aggregate": "server",
-          }),
+        [FORK_NOTES_WS_METHODS.subscribe]: (input) => ForkNotes.subscribeRpc(input),
+        [FORK_NOTES_WS_METHODS.act]: (input) => ForkNotes.actRpc(input),
         // Fork: which coordinator a thread reports to.
-        [THREAD_COORDINATORS_WS_METHODS.subscribe]: (_input) =>
-          observeRpcStream(
-            THREAD_COORDINATORS_WS_METHODS.subscribe,
-            ThreadCoordinators.subscribeRpc(),
-            { "rpc.aggregate": "orchestration" },
-          ),
-        [THREAD_COORDINATORS_WS_METHODS.set]: (input) =>
-          observeRpcEffect(THREAD_COORDINATORS_WS_METHODS.set, ThreadCoordinators.setRpc(input), {
-            "rpc.aggregate": "orchestration",
-          }),
+        [THREAD_COORDINATORS_WS_METHODS.subscribe]: (_input) => ThreadCoordinators.subscribeRpc(),
+        [THREAD_COORDINATORS_WS_METHODS.set]: (input) => ThreadCoordinators.setRpc(input),
         // Fork: dictation in the composer.
-        [VOICE_INPUT_WS_METHODS.prepare]: (input) =>
-          observeRpcStream(VOICE_INPUT_WS_METHODS.prepare, VoiceInput.prepareRpc(input), {
-            "rpc.aggregate": "server",
-          }),
-        [VOICE_INPUT_WS_METHODS.transcribe]: (input) =>
-          observeRpcEffect(VOICE_INPUT_WS_METHODS.transcribe, VoiceInput.transcribeRpc(input), {
-            "rpc.aggregate": "server",
-          }),
+        [VOICE_INPUT_WS_METHODS.prepare]: (input) => VoiceInput.prepareRpc(input),
+        [VOICE_INPUT_WS_METHODS.transcribe]: (input) => VoiceInput.transcribeRpc(input),
         // Fork: stop and message a provider subagent from its thread.
         [PROVIDER_SUBAGENT_CONTROL_WS_METHODS.target]: (input) =>
-          observeRpcEffect(
-            PROVIDER_SUBAGENT_CONTROL_WS_METHODS.target,
-            ProviderSubagentControl.target(providerSubagentControlDeps, input),
-            { "rpc.aggregate": "orchestration" },
-          ),
+          ProviderSubagentControl.target(providerSubagentControlDeps, input),
         [PROVIDER_SUBAGENT_CONTROL_WS_METHODS.stop]: (input) =>
-          observeRpcEffect(
-            PROVIDER_SUBAGENT_CONTROL_WS_METHODS.stop,
-            ProviderSubagentControl.stop(providerSubagentControlDeps, input),
-            { "rpc.aggregate": "orchestration" },
-          ),
+          ProviderSubagentControl.stop(providerSubagentControlDeps, input),
       });
       return handlers;
     }),

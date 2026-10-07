@@ -8,7 +8,7 @@
  * after the migrations on every start, and so survives any upstream sync.
  */
 import * as Effect from "effect/Effect";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 /**
  * Carries the V1 coordinator links into V2. V1 kept a child's coordinator in

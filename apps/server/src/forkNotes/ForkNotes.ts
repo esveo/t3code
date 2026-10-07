@@ -23,7 +23,7 @@ import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
-import * as SqlClient from "effect/unstable/sql/SqlClient";
+import * as SqlClient from "effect/sql/SqlClient";
 
 export class ForkNotes extends Context.Service<
   ForkNotes,
@@ -218,7 +218,7 @@ export const make = Effect.gen(function* () {
       Effect.gen(function* () {
         const touched = yield* apply(action).pipe(
           sql.withTransaction,
-          Effect.catchTag("SqlError", storeFailed("save")),
+          Effect.catchTags({ SqlError: storeFailed("save") }),
         );
         for (const target of touched) {
           yield* PubSub.publish(changes, scopeKey(target));

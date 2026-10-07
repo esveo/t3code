@@ -3,10 +3,10 @@
  * tools read what the TerminalManager already holds in memory; they never
  * open, attach to, write to, restart or close a terminal.
  */
-import { TerminalSessionStatus, ThreadId } from "@t3tools/contracts";
+import { OrchestratorMcpFailure, TerminalSessionStatus, ThreadId } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
-import * as Tool from "effect/unstable/ai/Tool";
-import * as Toolkit from "effect/unstable/ai/Toolkit";
+import * as Tool from "effect/ai/Tool";
+import * as Toolkit from "effect/ai/Toolkit";
 
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { OrchestratorV2 } from "../../../orchestration-v2/Orchestrator.ts";
@@ -87,6 +87,8 @@ export class TerminalLookupFailedError extends Schema.TaggedError<TerminalLookup
 }
 
 export const TerminalToolError = Schema.Union([
+  // McpToolAccess refuses a caller outside a T3 thread with it.
+  OrchestratorMcpFailure,
   TerminalThreadNotFoundError,
   TerminalThreadOutsideProjectError,
   TerminalNotLoadedError,

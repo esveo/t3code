@@ -1836,7 +1836,18 @@ describe("fork: OrchestratorMcpService across projects", () => {
   const projection = (thread: OrchestrationV2ThreadProjection["thread"]) =>
     ({
       thread,
-      runs: [],
+      // The caller's live run, so it may act on other threads.
+      runs:
+        thread.id === callerId
+          ? [
+              {
+                id: RunId.make("run:fork-caller"),
+                ordinal: 1,
+                status: "running",
+                providerInstanceId: ProviderInstanceId.make("codex"),
+              },
+            ]
+          : [],
       messages: [],
       subagents: [],
       providerThreads: [],
@@ -1847,9 +1858,13 @@ describe("fork: OrchestratorMcpService across projects", () => {
     }) as unknown as OrchestrationV2ThreadProjection;
   const scope: McpInvocationContext.McpInvocationScope = {
     environmentId: EnvironmentId.make("environment:fork-reach"),
-    threadId: callerId,
-    providerSessionId: "provider-session:fork-reach",
-    providerInstanceId: ProviderInstanceId.make("codex"),
+    requestNamespace: "provider-session:fork-reach",
+    thread: {
+      threadId: callerId,
+      providerSessionId: "provider-session:fork-reach",
+      providerInstanceId: ProviderInstanceId.make("codex"),
+    },
+    client: undefined,
     capabilities: new Set(["orchestration"]),
     issuedAt: 1,
   };
@@ -1903,6 +1918,8 @@ describe("fork: OrchestratorMcpService across projects", () => {
         list: () => Effect.succeed([]),
       }),
       Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+      Layer.mock(ProjectService.ProjectService)({}),
+      Layer.mock(SecretRequests.SecretRequests)({}),
     );
     return Effect.gen(function* () {
       return yield* body(yield* OrchestratorMcpService.OrchestratorMcpService, sent);

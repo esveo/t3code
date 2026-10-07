@@ -55,7 +55,8 @@ import { PullRequestsToolkit } from "./toolkits/pullRequests/tools.ts";
 import { ThreadsToolkitHandlersLive } from "./toolkits/threads/handlers.ts";
 import { ThreadsToolkit } from "./toolkits/threads/tools.ts";
 // Fork: read-only terminal drawer access.
-import { TerminalsToolkitRegistrationLive } from "./toolkits/terminals/registration.ts";
+import { TerminalsToolkitHandlersLive } from "./toolkits/terminals/handlers.ts";
+import { TerminalsToolkit } from "./toolkits/terminals/tools.ts";
 import * as DeviceHandlers from "./toolkits/device/handlers.ts";
 import {
   DeviceScreenshotTool,
@@ -849,11 +850,14 @@ export const layerDeviceToolkit = Layer.mergeAll(
   layerDeviceScreenshotRegistration,
 );
 
-// Fork: these toolkits predate upstream's access declarations and retain
-// their own caller checks in their handlers.
-const ThreadsToolkitRegistrationLive = McpServer.toolkit(ThreadsToolkit).pipe(
-  Layer.provide(ThreadsToolkitHandlersLive),
-  Layer.provide(OrchestratorMcpService.layer),
+// Fork: the coordinator and terminal toolkits.
+const ThreadsToolkitRegistrationLive = toolkitRegistration(
+  ThreadsToolkit,
+  ThreadsToolkitHandlersLive,
+).pipe(Layer.provide(OrchestratorMcpService.layer));
+const TerminalsToolkitRegistrationLive = toolkitRegistration(
+  TerminalsToolkit,
+  TerminalsToolkitHandlersLive,
 );
 
 export const layerMcpTransport = McpServer.layerHttp({
@@ -861,10 +865,7 @@ export const layerMcpTransport = McpServer.layerHttp({
   version: packageJson.version,
   path: "/mcp",
   protocols: [McpProtocol.v2025_06_18],
-}).pipe(
-  Layer.provide(layerMcpAuthMiddleware),
-  Layer.provide(McpOrchestrationTools.layer),
-);
+}).pipe(Layer.provide(layerMcpAuthMiddleware), Layer.provide(McpOrchestrationTools.layer));
 
 export const layer = Layer.mergeAll(
   layerPreviewToolkit,

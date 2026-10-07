@@ -243,6 +243,13 @@ const ThreadSearchTool = Tool.make("t3_thread_search", {
   parameters: Schema.Struct({
     ...OrchestrationSearchThreadsInput.fields,
     projectId: Schema.optional(ProjectId),
+    // Fork: `scope` widens the search to every project.
+    scope: Schema.optional(
+      Schema.Literals(["project", "all"]).annotate({
+        description:
+          "project (default): one project. all: every project; a thread caller needs Cross-project threads turned on.",
+      }),
+    ),
   }),
   success: OrchestrationSearchThreadsResult,
   dependencies: [...commandTool.dependencies, ThreadSearch.ThreadSearch],

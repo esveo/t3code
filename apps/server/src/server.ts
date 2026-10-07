@@ -589,6 +589,8 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   // The asset route uses the registry's GitHub credential for private PR media.
   Layer.provideMerge(layerSourceControlProviderRegistry),
   Layer.provideMerge(GitHubCli.layer),
+  // esveo fork: likewise `AzureDevOpsCli`, for Azure DevOps pull request attachments.
+  Layer.provideMerge(AzureDevOpsCli.layer),
   Layer.provideMerge(layerGit),
   Layer.provideMerge(layerVcs),
   Layer.provideMerge(Layer.mergeAll(layerTerminal, layerPreview, layerDevice)),

@@ -15,13 +15,8 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Redacted from "effect/Redacted";
-import {
-  FetchHttpClient,
-  HttpClient,
-  HttpClientRequest,
-  HttpServerResponse,
-} from "effect/unstable/http";
-import * as Mime from "effect/unstable/http/Mime";
+import { FetchHttpClient, HttpClient, HttpClientRequest, HttpServerResponse } from "effect/http";
+import * as Mime from "effect/http/Mime";
 
 import * as AzureDevOpsCli from "../sourceControl/AzureDevOpsCli.ts";
 

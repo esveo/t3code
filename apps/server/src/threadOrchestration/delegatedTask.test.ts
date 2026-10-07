@@ -23,11 +23,11 @@ import * as Stream from "effect/Stream";
 import * as CheckpointStore from "../checkpointing/CheckpointStore.ts";
 import { ServerConfig } from "../config.ts";
 import { layer as mcpSessionRegistryTestLayer } from "../mcp/McpSessionRegistry.testkit.ts";
-import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
+import { layerMemory as SqlitePersistenceMemory } from "../persistence/Sqlite.ts";
 import { ProjectEnrichmentService } from "../project/ProjectEnrichmentService.ts";
 import { ProjectService } from "../project/ProjectService.ts";
 import type { ProviderInstance } from "../provider/ProviderDriver.ts";
-import { ProviderInstanceRegistry } from "../provider/Services/ProviderInstanceRegistry.ts";
+import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
@@ -37,11 +37,11 @@ import { EventSinkV2 } from "../orchestration-v2/EventSink.ts";
 import { OrchestratorV2 } from "../orchestration-v2/Orchestrator.ts";
 import type { ProviderAdapterV2Shape } from "../orchestration-v2/ProviderAdapter.ts";
 import {
-  OrchestrationV2EventSinkLayerLive,
-  OrchestrationV2LayerLive,
-  ProjectServiceLayerLive,
+  layer as OrchestrationV2LayerLive,
+  layerEventSink as OrchestrationV2EventSinkLayerLive,
+  layerProjectService as ProjectServiceLayerLive,
 } from "../orchestration-v2/runtimeLayer.ts";
-import { worktreeRepairDependenciesTestLayer } from "../orchestration-v2/ProviderTurnStartService.testkit.ts";
+import { layer as worktreeRepairDependenciesTestLayer } from "../orchestration-v2/ProviderTurnStartService.testkit.ts";
 
 const PlatformTestLayer = Layer.merge(
   NodeServices.layer,
