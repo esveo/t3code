@@ -2,6 +2,7 @@
 
 Every feature and fix this fork adds on top of [T3 Code](https://github.com/pingdotgg/t3code), each with the commits that made it.
 
+- Fix: a delegated task or thread that publishes a Claude artifact counts as finished again instead of waiting forever on the artifact's live-update watch ([66a9fed](https://github.com/esveo/t3code/commit/66a9fedf40298714f962ac6c5143fc31cda637c3)).
 - A finished thread that leaves a command such as a dev server running shows as Done in the sidebar until you open it, instead of receding as Waiting ([91cd38f](https://github.com/esveo/t3code/commit/91cd38fa4e4939e54e45901746e8a8414a4e1700)).
 - A Notes tab in the right panel keeps notes and todos per thread, per project and globally, captured with ⌥⌘K, sorted and ticked off by dragging, and inserted into the composer in one click ([1884019](https://github.com/esveo/t3code/commit/18840195e62cfe17be61e5f5d7cf88824b9a7733), [4b16f0d](https://github.com/esveo/t3code/commit/4b16f0d2e190f516505115a0f32b051e5af5ab48), [fab2b88](https://github.com/esveo/t3code/commit/fab2b8827fe46ec71df85c3da89dbbf25f815fd4)).
 - Fix: the Git graph's diff preview works for projects outside the server's folder, as on Windows ([287206f](https://github.com/esveo/t3code/commit/287206fb4710dc357020dad0bf641bd1d41897e7)).
