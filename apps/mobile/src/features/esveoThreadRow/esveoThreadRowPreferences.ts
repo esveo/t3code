@@ -1,4 +1,4 @@
-import { AsyncResult, Atom } from "effect/unstable/reactivity";
+import { AsyncResult, Atom } from "effect/reactivity";
 
 import { mobilePreferencesAtom } from "../../state/preferences";
 
