@@ -13,6 +13,12 @@ import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { WsThreadDecisionsActRpc, WsThreadDecisionsSubscribeRpc } from "./threadDecisions.ts";
 import { WsForkNotesActRpc, WsForkNotesSubscribeRpc } from "./forkNotes.ts";
+// Fork: user insights.
+import {
+  WsUserInsightsActRpc,
+  WsUserInsightsReadRpc,
+  WsUserInsightsSuggestRpc,
+} from "./userInsights.ts";
 import {
   WsThreadCoordinatorsSetRpc,
   WsThreadCoordinatorsSubscribeRpc,
@@ -1957,6 +1963,10 @@ export const WsRpcGroup = RpcGroup.make(
   // Fork: notes and todos in the Notes tab.
   WsForkNotesSubscribeRpc,
   WsForkNotesActRpc,
+  // Fork: user insights.
+  WsUserInsightsReadRpc,
+  WsUserInsightsActRpc,
+  WsUserInsightsSuggestRpc,
   // Fork: which coordinator a thread reports to.
   WsThreadCoordinatorsSubscribeRpc,
   WsThreadCoordinatorsSetRpc,

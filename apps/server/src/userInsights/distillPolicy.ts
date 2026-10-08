@@ -37,6 +37,10 @@ export const UserInsightsState = Schema.Struct({
   mutedThreads: Schema.Record(Schema.String, Schema.String),
   threadCooldowns: Schema.Record(Schema.String, Schema.String),
   consecutiveMisses: Schema.Record(Schema.String, Schema.Number),
+  /** Acceptance counts only feedback after this; set when suggestions are turned back on. */
+  acceptanceResetAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  /** Turns that passed every suggestion gate, for "every third turn" throttling. */
+  eligibleSuggests: Schema.optionalKey(Schema.Number),
 });
 export type UserInsightsState = typeof UserInsightsState.Type;
 

@@ -65,6 +65,7 @@ import {
   THREAD_COORDINATORS_WS_METHODS,
   THREAD_DECISIONS_WS_METHODS,
   FORK_NOTES_WS_METHODS,
+  USER_INSIGHTS_WS_METHODS,
   VOICE_INPUT_WS_METHODS,
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS,
   type ProjectEntriesFailure,
@@ -195,6 +196,7 @@ import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration-v2/workflowScriptQuery.ts";
 import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
 import * as ForkNotes from "./forkNotes/ForkNotes.ts";
+import * as UserInsights from "./userInsights/UserInsights.ts";
 import * as ThreadCoordinators from "./threadOrchestration/ThreadCoordinators.ts";
 import * as VoiceInput from "./voiceInput/VoiceInput.ts";
 import * as ProviderSubagentControl from "./providerSubagentControl/ProviderSubagentControl.ts";
@@ -3120,6 +3122,10 @@ const layerWsRpc = (
         // Fork: notes and todos of the Notes tab.
         [FORK_NOTES_WS_METHODS.subscribe]: (input) => ForkNotes.subscribeRpc(input),
         [FORK_NOTES_WS_METHODS.act]: (input) => ForkNotes.actRpc(input),
+        // Fork: user insights.
+        [USER_INSIGHTS_WS_METHODS.read]: (_input) => UserInsights.readRpc(),
+        [USER_INSIGHTS_WS_METHODS.act]: (input) => UserInsights.actRpc(input),
+        [USER_INSIGHTS_WS_METHODS.suggest]: (input) => UserInsights.suggestRpc(input),
         // Fork: which coordinator a thread reports to.
         [THREAD_COORDINATORS_WS_METHODS.subscribe]: (_input) => ThreadCoordinators.subscribeRpc(),
         [THREAD_COORDINATORS_WS_METHODS.set]: (input) => ThreadCoordinators.setRpc(input),

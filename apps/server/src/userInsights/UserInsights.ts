@@ -12,6 +12,11 @@
  * File access goes through one lock; the model call itself runs outside it
  * (under its own lock, so one distill at a time), so observing never waits
  * on Haiku.
+ *
+ * Once the profile is ready, a client asks for next-message suggestions after
+ * a finished turn. One set per thread and turn: a second window on the same
+ * turn shares the first one's call. The user's next message in that thread
+ * tells whether the set was taken, which feeds throttling and the next distill.
  */
 import {
   USER_INSIGHTS_DAILY_COST_CAP_USD,
@@ -19,15 +24,20 @@ import {
   USER_INSIGHTS_READY_SAMPLES,
   USER_INSIGHTS_TRAIT_IDS,
   type OrchestrationV2DomainEvent,
+  type ThreadId,
+  type UserInsightsAction,
   UserInsightsError,
   type UserInsightsProfile,
   type UserInsightsSnapshot,
   type UserInsightsStatus,
+  type UserInsightsSuggestResult,
+  type UserInsightsSuggestSkip,
   type UserInsightsTraitId,
   type UserInsightsUsageSummary,
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
@@ -61,8 +71,23 @@ import {
   isProfileReady,
   validateOps,
 } from "./profileMerge.ts";
-import { buildDistillPrompt, DistillOutput, selectDistillEvidence } from "./prompts.ts";
+import {
+  buildDistillPrompt,
+  buildSuggestPrompt,
+  DistillOutput,
+  sanitizeSuggestions,
+  selectDistillEvidence,
+  SuggestOutput,
+} from "./prompts.ts";
 import { makeUserInsightsStore, type UsageRecord } from "./store.ts";
+import {
+  acceptanceLevel,
+  classifyOutcome,
+  countEligibleTurn,
+  muteThread,
+  recordOutcome,
+  suggestGate,
+} from "./suggestPolicy.ts";
 import { DAY_MS, fromIso, toIso } from "./time.ts";
 
 export type DistillResult =
@@ -94,10 +119,33 @@ export class UserInsights extends Context.Service<
     readonly reset: Effect.Effect<void, UserInsightsError>;
     /** Removes the whole folder. */
     readonly deleteAll: Effect.Effect<void, UserInsightsError>;
+    /**
+     * Next-message suggestions for the thread's finished latest turn, at most
+     * one model call per turn. Empty with a reason when none are due.
+     */
+    readonly suggest: (threadId: ThreadId) => Effect.Effect<UserInsightsSuggestResult>;
+    /** One user action from a client: suggestion feedback, mute, and profile control. */
+    readonly act: (action: UserInsightsAction) => Effect.Effect<void, UserInsightsError>;
   }
 >()("t3/userInsights/UserInsights") {}
 
 const TICK_INTERVAL = "1 minute";
+/** Suggestion sets remembered per turn, so other windows reuse them. */
+const MAX_REMEMBERED_SETS = 200;
+
+/** A shown set, until the user's next message in its thread says what became of it. */
+interface OpenSet {
+  readonly setId: string;
+  readonly labels: ReadonlyArray<string>;
+  readonly prompts: ReadonlyArray<string>;
+  readonly filledIndex: number | null;
+}
+
+const skipped = (reason: UserInsightsSuggestSkip): UserInsightsSuggestResult => ({
+  setId: null,
+  suggestions: [],
+  skipped: reason,
+});
 
 const traitOrder = (id: string) => (USER_INSIGHTS_TRAIT_IDS as ReadonlyArray<string>).indexOf(id);
 
@@ -132,6 +180,14 @@ export const make = Effect.gen(function* () {
   const io = yield* Semaphore.make(1);
   const distilling = yield* Semaphore.make(1);
   const isNew = makeSeenIds();
+  /** Shown sets by thread id. */
+  const openSets = new Map<string, OpenSet>();
+  /** Suggest results by set id (thread and turn), including calls still running. */
+  const sets = new Map<string, Deferred.Deferred<UserInsightsSuggestResult>>();
+  const forgetSuggestions = Effect.sync(() => {
+    openSets.clear();
+    sets.clear();
+  });
 
   const settings = settingsService.getSettings.pipe(Effect.option);
   const enabled = settings.pipe(
@@ -157,10 +213,26 @@ export const make = Effect.gen(function* () {
         projectId: shell?.projectId ?? null,
         now,
       });
+      const open = openSets.get(event.threadId);
+      openSets.delete(event.threadId);
       yield* locked(
         Effect.gen(function* () {
           yield* store.appendEvidence(record);
-          const state = yield* loadState(now);
+          let state = yield* loadState(now);
+          if (open !== undefined) {
+            const filled =
+              open.filledIndex === null ? null : (open.prompts[open.filledIndex] ?? null);
+            const outcome = classifyOutcome(filled, event.payload.text);
+            yield* store.appendFeedback({
+              ts: toIso(now),
+              threadId: event.threadId,
+              setId: open.setId,
+              labels: open.labels,
+              outcome,
+              ...(open.filledIndex === null ? {} : { index: open.filledIndex }),
+            });
+            state = recordOutcome(state, event.threadId, outcome, now);
+          }
           yield* store.writeState({
             ...state,
             pendingEvidence: state.pendingEvidence + 1,
@@ -173,13 +245,14 @@ export const make = Effect.gen(function* () {
     );
 
   const usageRecord = (input: {
+    readonly purpose: UsageRecord["purpose"];
     readonly now: number;
     readonly usage: ModelUsage;
     readonly ok: boolean;
     readonly error?: string;
   }): UsageRecord => ({
     ts: toIso(input.now),
-    purpose: "distill",
+    purpose: input.purpose,
     model: input.usage.model,
     inputTokens: input.usage.inputTokens,
     outputTokens: input.usage.outputTokens,
@@ -220,11 +293,15 @@ export const make = Effect.gen(function* () {
                 return { kind: "skip", reason: "no-evidence" } as const;
               }
               const profile = yield* loadProfile(startedAt);
+              const since = state.lastDistillAt === null ? 0 : fromIso(state.lastDistillAt);
+              const feedback = (yield* store.readFeedback).filter(
+                (entry) => fromIso(entry.ts) > since,
+              );
               return {
                 kind: "run",
                 consumed: state.pendingEvidence,
                 selected,
-                prompt: buildDistillPrompt({ profile, evidence: selected }),
+                prompt: buildDistillPrompt({ profile, evidence: selected, feedback }),
               } as const;
             }),
           );
@@ -256,7 +333,13 @@ export const make = Effect.gen(function* () {
               });
               if (!outcome.ok) {
                 yield* store.appendUsage(
-                  usageRecord({ now: endedAt, usage, ok: false, error: outcome.error.message }),
+                  usageRecord({
+                    purpose: "distill",
+                    now: endedAt,
+                    usage,
+                    ok: false,
+                    error: outcome.error.message,
+                  }),
                 );
                 yield* store.writeState(recordFailure(state, endedAt));
                 yield* Effect.logWarning("user-insights.distill-failed", {
@@ -264,7 +347,9 @@ export const make = Effect.gen(function* () {
                 });
                 return { kind: "failed", message: outcome.error.message } as const;
               }
-              yield* store.appendUsage(usageRecord({ now: endedAt, usage, ok: true }));
+              yield* store.appendUsage(
+                usageRecord({ purpose: "distill", now: endedAt, usage, ok: true }),
+              );
               // Merge onto the profile as it is now, so a user edit made
               // during the call is not lost.
               const profile = yield* loadProfile(endedAt);
@@ -318,11 +403,12 @@ export const make = Effect.gen(function* () {
         folderPath: store.directory,
       } satisfies UserInsightsSnapshot;
     }
-    const { profile, state, usage } = yield* locked(
+    const { profile, state, usage, feedback } = yield* locked(
       Effect.all({
         profile: loadProfile(now),
         state: loadState(now),
         usage: store.readUsage,
+        feedback: store.readFeedback,
       }),
     );
     return {
@@ -330,6 +416,9 @@ export const make = Effect.gen(function* () {
         profile,
         state,
         claudeAvailable: current.value.providers.claudeAgent.enabled,
+        lowAcceptance:
+          current.value.enableUserInsightsSuggestions &&
+          acceptanceLevel(feedback, state.acceptanceResetAt) === "paused",
         now,
       }),
       traits: [...profile.traits].toSorted((a, b) => traitOrder(a.id) - traitOrder(b.id)),
@@ -381,9 +470,291 @@ export const make = Effect.gen(function* () {
             ),
           ),
         );
+        yield* Effect.forkScoped(followSuggestionsToggle);
         yield* tick.pipe(Effect.repeat(Schedule.spaced(TICK_INTERVAL)));
       }),
     );
+
+  const suggestionsOn = (
+    value: Option.Option<{
+      readonly enableUserInsights: boolean;
+      readonly enableUserInsightsSuggestions: boolean;
+    }>,
+  ) =>
+    Option.isSome(value) &&
+    value.value.enableUserInsights &&
+    value.value.enableUserInsightsSuggestions;
+
+  /**
+   * Turning suggestions back on clears a low-acceptance pause: acceptance
+   * then only counts sets shown from now on.
+   */
+  const resetAcceptance = Effect.gen(function* () {
+    const now = yield* Clock.currentTimeMillis;
+    yield* locked(
+      loadState(now).pipe(
+        Effect.flatMap((state) =>
+          store.writeState({ ...state, acceptanceResetAt: toIso(now), eligibleSuggests: 0 }),
+        ),
+      ),
+    );
+  });
+
+  const followSuggestionsToggle = Effect.gen(function* () {
+    let wasOn = suggestionsOn(yield* settings);
+    yield* settingsService.streamChanges.pipe(
+      Stream.runForEach((next) => {
+        const on = suggestionsOn(Option.some(next));
+        const turnedOn = on && !wasOn;
+        wasOn = on;
+        return turnedOn ? resetAcceptance : Effect.void;
+      }),
+    );
+  }).pipe(
+    Effect.catchCause((cause) =>
+      Effect.logWarning("user-insights.settings-stream-failed", { cause }),
+    ),
+  );
+
+  const rememberSet = (setId: string, deferred: Deferred.Deferred<UserInsightsSuggestResult>) => {
+    sets.set(setId, deferred);
+    if (sets.size > MAX_REMEMBERED_SETS) {
+      const oldest = sets.keys().next().value;
+      if (oldest !== undefined) sets.delete(oldest);
+    }
+  };
+
+  const lastText = (
+    messages: ReadonlyArray<{
+      readonly role: string;
+      readonly text: string;
+      readonly streaming: boolean;
+    }>,
+    role: "user" | "assistant",
+  ) => {
+    const found = messages.findLast(
+      (message) => message.role === role && !message.streaming && message.text.trim().length > 0,
+    );
+    return found === undefined ? null : found.text;
+  };
+
+  /** The model call behind one new set; never fails, a failure is a skip. */
+  const createSet = (input: {
+    readonly threadId: ThreadId;
+    readonly setId: string;
+    readonly title: string;
+    readonly userText: string | null;
+    readonly assistantText: string;
+  }) =>
+    Effect.gen(function* () {
+      const startedAt = yield* Clock.currentTimeMillis;
+      const prepared = yield* locked(
+        Effect.gen(function* () {
+          const state = yield* loadState(startedAt);
+          const feedback = yield* store.readFeedback;
+          const counted = countEligibleTurn(
+            state,
+            acceptanceLevel(feedback, state.acceptanceResetAt),
+          );
+          yield* store.writeState(counted.state);
+          if (!counted.allowed) return null;
+          const profile = yield* loadProfile(startedAt);
+          return buildSuggestPrompt({
+            profile,
+            threadTitle: input.title,
+            userText: input.userText,
+            assistantText: input.assistantText,
+            feedback,
+          });
+        }),
+      );
+      if (prepared === null) return skipped("throttled");
+
+      const outcome = yield* model.run({ prompt: prepared, outputSchema: SuggestOutput }).pipe(
+        Effect.map((result) => ({ ok: true, ...result }) as const),
+        Effect.catch((error) => Effect.succeed({ ok: false, error } as const)),
+      );
+      const endedAt = yield* Clock.currentTimeMillis;
+      if (!outcome.ok && outcome.error.reason === "unavailable") return skipped("paused");
+      const reported = outcome.ok ? outcome.usage : (outcome.error.usage ?? emptyUsage());
+      const usage =
+        reported.durationMs > 0 ? reported : { ...reported, durationMs: endedAt - startedAt };
+      yield* locked(
+        Effect.gen(function* () {
+          yield* store.appendUsage(
+            usageRecord({
+              purpose: "suggest",
+              now: endedAt,
+              usage,
+              ok: outcome.ok,
+              ...(outcome.ok ? {} : { error: outcome.error.message }),
+            }),
+          );
+          const state = yield* loadState(endedAt);
+          yield* store.writeState(
+            recordCall(state, { purpose: "suggest", costUsd: usage.costUsd }),
+          );
+        }),
+      );
+      if (!outcome.ok) {
+        yield* Effect.logWarning("user-insights.suggest-failed", {
+          message: outcome.error.message,
+        });
+        return skipped("failed");
+      }
+      const suggestions = sanitizeSuggestions(outcome.output);
+      if (suggestions.length === 0) return skipped("nothing-useful");
+      openSets.set(input.threadId, {
+        setId: input.setId,
+        labels: suggestions.map((suggestion) => suggestion.label),
+        prompts: suggestions.map((suggestion) => suggestion.prompt),
+        filledIndex: null,
+      });
+      return { setId: input.setId, suggestions, skipped: null } satisfies UserInsightsSuggestResult;
+    }).pipe(
+      Effect.catch((error) =>
+        Effect.logWarning("user-insights.suggest-error", { message: error.message }).pipe(
+          Effect.as(skipped("failed")),
+        ),
+      ),
+    );
+
+  const suggest: UserInsights["Service"]["suggest"] = (threadId) => {
+    /** The set this call is computing, if it started one. */
+    let started: Deferred.Deferred<UserInsightsSuggestResult> | null = null;
+    return Effect.gen(function* () {
+      const current = yield* settings;
+      if (!suggestionsOn(current) || Option.isNone(current)) return skipped("off");
+      if (!current.value.providers.claudeAgent.enabled) return skipped("paused");
+      const shell = yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null));
+      if (
+        shell === null ||
+        shell.latestRunId === null ||
+        shell.activeRunId !== null ||
+        shell.pendingRuntimeRequest !== null ||
+        shell.lineage.relationshipToParent === "subagent"
+      ) {
+        return skipped("not-idle");
+      }
+      const runId = shell.latestRunId;
+      const now = yield* Clock.currentTimeMillis;
+      const gate = yield* locked(
+        Effect.gen(function* () {
+          const state = yield* loadState(now);
+          const feedback = yield* store.readFeedback;
+          return suggestGate({
+            state,
+            threadId,
+            ready: isProfileReady(yield* loadProfile(now)),
+            paused: pauseReason(state, { claudeAvailable: true }, now) !== null,
+            acceptance: acceptanceLevel(feedback, state.acceptanceResetAt),
+            now,
+          });
+        }),
+      );
+      if (gate !== null) return skipped(gate);
+
+      const setId = `${threadId}:${runId}`;
+      const existing = sets.get(setId);
+      if (existing !== undefined) return yield* Deferred.await(existing);
+      const deferred = Deferred.makeUnsafe<UserInsightsSuggestResult>();
+      started = deferred;
+      rememberSet(setId, deferred);
+
+      const { messages } = yield* threads
+        .getThreadRecords(threadId, ["messages"], { messageRunIds: [runId] })
+        .pipe(Effect.orElseSucceed(() => ({ messages: [] })));
+      const assistantText = lastText(messages, "assistant");
+      const result =
+        assistantText === null
+          ? skipped("not-idle")
+          : yield* createSet({
+              threadId,
+              setId,
+              title: shell.title,
+              userText: lastText(messages, "user"),
+              assistantText,
+            });
+      yield* Deferred.succeed(deferred, result);
+      return result;
+    }).pipe(
+      // A caller that went away or broke must not leave other windows
+      // waiting on its set; the next ask for this turn starts over.
+      Effect.onExit(() =>
+        Effect.sync(() => {
+          const deferred = started;
+          if (deferred === null || Deferred.isDoneUnsafe(deferred)) return;
+          for (const [setId, entry] of sets) if (entry === deferred) sets.delete(setId);
+          Deferred.doneUnsafe(deferred, Effect.succeed(skipped("failed")));
+        }),
+      ),
+    );
+  };
+
+  /** Suggestion feedback and mutes only count while insights are on. */
+  const whenEnabled = (effect: Effect.Effect<void, UserInsightsError>) =>
+    enabled.pipe(Effect.flatMap((on) => (on ? effect : Effect.void)));
+
+  const act: UserInsights["Service"]["act"] = (action) => {
+    switch (action.type) {
+      case "suggestion.fill":
+        return Effect.sync(() => {
+          const open = openSets.get(action.threadId);
+          if (open?.setId !== action.setId || action.index >= open.prompts.length) return;
+          openSets.set(action.threadId, { ...open, filledIndex: action.index });
+        });
+      case "suggestion.dismiss":
+        return whenEnabled(
+          Effect.gen(function* () {
+            const open = openSets.get(action.threadId);
+            if (open?.setId !== action.setId) return;
+            openSets.delete(action.threadId);
+            // Other windows and remounts on this turn must not bring it back.
+            const dismissed = Deferred.makeUnsafe<UserInsightsSuggestResult>();
+            Deferred.doneUnsafe(dismissed, Effect.succeed(skipped("dismissed")));
+            sets.set(open.setId, dismissed);
+            const now = yield* Clock.currentTimeMillis;
+            yield* locked(
+              Effect.gen(function* () {
+                yield* store.appendFeedback({
+                  ts: toIso(now),
+                  threadId: action.threadId,
+                  setId: open.setId,
+                  labels: open.labels,
+                  outcome: "dismissed",
+                });
+                const state = yield* loadState(now);
+                yield* store.writeState(recordOutcome(state, action.threadId, "dismissed", now));
+              }),
+            );
+          }),
+        );
+      case "thread.mute":
+        return whenEnabled(
+          Effect.gen(function* () {
+            openSets.delete(action.threadId);
+            const now = yield* Clock.currentTimeMillis;
+            yield* locked(
+              loadState(now).pipe(
+                Effect.flatMap((state) =>
+                  store.writeState(muteThread(state, action.threadId, now)),
+                ),
+              ),
+            );
+          }),
+        );
+      case "trait.edit":
+        return editTrait(action.id, action.value);
+      case "trait.delete":
+        return deleteTrait(action.id);
+      case "profile.undo":
+        return undo;
+      case "data.reset":
+        return locked(store.reset).pipe(Effect.andThen(forgetSuggestions));
+      case "data.deleteAll":
+        return locked(store.deleteAll).pipe(Effect.andThen(forgetSuggestions));
+    }
+  };
 
   return UserInsights.of({
     start,
@@ -394,8 +765,10 @@ export const make = Effect.gen(function* () {
     editTrait,
     deleteTrait,
     undo,
-    reset: locked(store.reset),
-    deleteAll: locked(store.deleteAll),
+    reset: locked(store.reset).pipe(Effect.andThen(forgetSuggestions)),
+    deleteAll: locked(store.deleteAll).pipe(Effect.andThen(forgetSuggestions)),
+    suggest,
+    act,
   });
 });
 
@@ -404,10 +777,13 @@ export function statusOf(input: {
   readonly profile: UserInsightsProfile;
   readonly state: UserInsightsState;
   readonly claudeAvailable: boolean;
+  /** Suggestions are on but paused for low acceptance. */
+  readonly lowAcceptance?: boolean;
   readonly now: number;
 }): UserInsightsStatus {
   const reason = pauseReason(input.state, { claudeAvailable: input.claudeAvailable }, input.now);
   if (reason !== null) return { state: "paused", reason };
+  if (input.lowAcceptance === true) return { state: "paused", reason: "low-acceptance" };
   if (isProfileReady(input.profile)) return { state: "ready" };
   return {
     state: "learning",
@@ -437,3 +813,11 @@ export const withService = <A>(
       ? use(insights.value)
       : Effect.fail(failure("This server does not keep user insights.")),
   );
+
+export const readRpc = () => withService((insights) => insights.snapshot);
+
+export const actRpc = (action: UserInsightsAction) =>
+  withService((insights) => insights.act(action)).pipe(Effect.as({}));
+
+export const suggestRpc = (input: { readonly threadId: ThreadId }) =>
+  withService((insights) => insights.suggest(input.threadId));

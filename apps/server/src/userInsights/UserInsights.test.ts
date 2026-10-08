@@ -18,15 +18,16 @@ import {
   UserInsightsModel,
   UserInsightsModelError,
 } from "./HaikuCli.ts";
-import type { DistillOutput } from "./prompts.ts";
+import type { DistillOutput, SuggestOutput } from "./prompts.ts";
 import { makeUserInsightsStore } from "./store.ts";
 import * as UserInsights from "./UserInsights.ts";
+import { toIso } from "./time.ts";
 import { userMessageEvent } from "./userInsights.testkit.ts";
 
 const NOW = Date.UTC(2026, 9, 8, 12);
 
 type ModelAnswer = Effect.Effect<
-  { readonly output: DistillOutput; readonly usage: ModelUsage },
+  { readonly output: DistillOutput | SuggestOutput; readonly usage: ModelUsage },
   UserInsightsModelError
 >;
 
@@ -47,6 +48,8 @@ interface Harness {
   readonly store: Effect.Success<ReturnType<typeof makeUserInsightsStore>>;
   readonly prompts: Ref.Ref<ReadonlyArray<string>>;
   readonly answers: Ref.Ref<ReadonlyArray<ModelAnswer>>;
+  /** What the thread shell says; change `latestRunId` to start a new turn. */
+  readonly shell: Ref.Ref<Record<string, unknown>>;
 }
 
 const withInsights = <A, E>(
@@ -54,6 +57,9 @@ const withInsights = <A, E>(
     readonly enabled: boolean;
     readonly answers?: ReadonlyArray<ModelAnswer>;
     readonly events?: Stream.Stream<OrchestrationV2DomainEvent>;
+    readonly suggestions?: boolean;
+    readonly shell?: Record<string, unknown>;
+    readonly messages?: ReadonlyArray<Record<string, unknown>>;
   },
   body: (harness: Harness) => Effect.Effect<A, E, FileSystem.FileSystem>,
 ) =>
@@ -73,23 +79,78 @@ const withInsights = <A, E>(
           }) as never,
       }),
     );
+    const shell = yield* Ref.make<Record<string, unknown>>({
+      projectId: "project-1",
+      ...idleShell,
+      ...options.shell,
+    });
     const management = Layer.mock(ThreadManagementService)({
-      getThreadShell: () => Effect.succeed({ projectId: "project-1" } as never),
+      getThreadShell: () => Ref.get(shell) as never,
+      getThreadRecords: (() =>
+        Effect.succeed({ messages: options.messages ?? lastExchange })) as never,
       streamDomainEvents: options.events ?? Stream.empty,
     });
     const config = ServerConfig.layerTest(process.cwd(), { prefix: "user-insights-" });
     const dependencies = Layer.mergeAll(
       management,
       model,
-      settingsLayerTest({ enableUserInsights: options.enabled }),
+      settingsLayerTest({
+        enableUserInsights: options.enabled,
+        enableUserInsightsSuggestions: options.suggestions ?? true,
+      }),
       config,
     ).pipe(Layer.provideMerge(NodeServices.layer));
     return yield* Effect.gen(function* () {
       const insights = yield* UserInsights.UserInsights;
       const store = yield* makeUserInsightsStore((yield* ServerConfig).stateDir);
-      return yield* body({ insights, store, prompts, answers });
+      return yield* body({ insights, store, prompts, answers, shell });
     }).pipe(Effect.provide(UserInsights.layer.pipe(Layer.provideMerge(dependencies))));
   });
+
+const idleShell = {
+  title: "Fix the login",
+  latestRunId: "run-1",
+  activeRunId: null,
+  pendingRuntimeRequest: null,
+  lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: "thread-1" },
+};
+
+const lastExchange = [
+  { role: "user", text: "Bitte den Login fixen", streaming: false },
+  { role: "assistant", text: "Done, the login works again.", streaming: false },
+];
+
+const suggestAnswer = (
+  suggestions: SuggestOutput["suggestions"] = [
+    {
+      label: "Tests laufen lassen",
+      description: "Run the test suite.",
+      prompt: "Lass die Tests laufen",
+    },
+    { label: "Committen", description: "Commit the fix.", prompt: "Bitte committen" },
+  ],
+): ModelAnswer => Effect.succeed({ output: { suggestions }, usage: usage(0.002) });
+
+/** A profile that passes the readiness gate. */
+const readyProfile = (now: number) => {
+  const trait = (id: string) =>
+    ({
+      id,
+      value: `value of ${id}`,
+      support: 30,
+      contradict: 0,
+      confidence: 0.9,
+      lastSeen: toIso(now),
+      pinned: false,
+      examples: [],
+    }) as never;
+  return {
+    schemaVersion: 1 as const,
+    updatedAt: toIso(now),
+    sampleCount: 40,
+    traits: ["style.language", "style.tone", "work.stack", "flow.followups"].map(trait),
+  };
+};
 
 describe("UserInsights", () => {
   it.effect("does nothing while turned off", () =>
@@ -251,5 +312,177 @@ describe("UserInsights", () => {
         }).pipe(Effect.scoped),
       );
     }),
+  );
+
+  it.effect("suggests once the profile is ready, once per turn", () =>
+    withInsights({ enabled: true, answers: [suggestAnswer()] }, ({ insights, store, prompts }) =>
+      Effect.gen(function* () {
+        const threadId = "thread-1" as never;
+        assert.deepEqual(yield* insights.suggest(threadId), {
+          setId: null,
+          suggestions: [],
+          skipped: "not-ready",
+        });
+        yield* store.writeProfile(readyProfile(NOW));
+        const [first, second] = yield* Effect.all(
+          [insights.suggest(threadId), insights.suggest(threadId)],
+          { concurrency: "unbounded" },
+        );
+        assert.strictEqual(first.setId, "thread-1:run-1");
+        assert.deepEqual(
+          first.suggestions.map((suggestion) => suggestion.prompt),
+          ["Lass die Tests laufen", "Bitte committen"],
+        );
+        assert.deepEqual(second, first);
+        const sent = yield* Ref.get(prompts);
+        assert.strictEqual(sent.length, 1);
+        assert.include(sent[0], "Done, the login works again.");
+        assert.include(sent[0], "flow.followups: value of flow.followups");
+        const ledger = yield* store.readUsage;
+        assert.deepEqual(
+          ledger.map((record) => [record.purpose, record.ok]),
+          [["suggest", true]],
+        );
+        assert.strictEqual((yield* store.readState)?.suggestsToday, 1);
+      }),
+    ),
+  );
+
+  it.effect("asks nothing while suggestions are off or the thread is busy", () =>
+    Effect.gen(function* () {
+      yield* withInsights({ enabled: true, suggestions: false }, ({ insights, prompts }) =>
+        Effect.gen(function* () {
+          assert.strictEqual((yield* insights.suggest("thread-1" as never)).skipped, "off");
+          assert.strictEqual((yield* Ref.get(prompts)).length, 0);
+        }),
+      );
+      yield* withInsights(
+        { enabled: true, shell: { activeRunId: "run-2" } },
+        ({ insights, store }) =>
+          Effect.gen(function* () {
+            yield* store.writeProfile(readyProfile(NOW));
+            assert.strictEqual((yield* insights.suggest("thread-1" as never)).skipped, "not-idle");
+          }),
+      );
+      yield* withInsights(
+        {
+          enabled: true,
+          shell: {
+            lineage: { parentThreadId: "p", relationshipToParent: "subagent", rootThreadId: "p" },
+          },
+        },
+        ({ insights, store }) =>
+          Effect.gen(function* () {
+            yield* store.writeProfile(readyProfile(NOW));
+            assert.strictEqual((yield* insights.suggest("thread-1" as never)).skipped, "not-idle");
+          }),
+      );
+    }),
+  );
+
+  it.effect("learns from what the user does with a set", () =>
+    withInsights({ enabled: true, answers: [suggestAnswer()] }, ({ insights, store }) =>
+      Effect.gen(function* () {
+        const threadId = "thread-1" as never;
+        yield* store.writeProfile(readyProfile(NOW));
+        const set = yield* insights.suggest(threadId);
+        assert.isNotNull(set.setId);
+        yield* insights.act({
+          type: "suggestion.fill",
+          threadId,
+          setId: set.setId as never,
+          index: 1,
+        });
+        yield* insights.observe(userMessageEvent({ id: "after-1" }, "Bitte committen"));
+        // A later message has no open set left to judge.
+        yield* insights.observe(userMessageEvent({ id: "after-2" }, "Und pushen"));
+        const feedback = yield* store.readFeedback;
+        assert.deepEqual(
+          feedback.map((record) => [record.outcome, record.index]),
+          [["accepted", 1]],
+        );
+      }),
+    ),
+  );
+
+  it.effect("cools a thread down after two missed sets, and mutes on request", () =>
+    withInsights(
+      { enabled: true, answers: [suggestAnswer(), suggestAnswer(), suggestAnswer()] },
+      ({ insights, store, prompts, shell }) =>
+        Effect.gen(function* () {
+          const threadId = "thread-1" as never;
+          const nextTurn = (runId: string) =>
+            Ref.update(shell, (current) => ({ ...current, latestRunId: runId }));
+          yield* store.writeProfile(readyProfile(NOW));
+          const first = yield* insights.suggest(threadId);
+          yield* insights.act({
+            type: "suggestion.dismiss",
+            threadId,
+            setId: first.setId as never,
+          });
+          // Another window on the same turn does not bring it back.
+          assert.strictEqual((yield* insights.suggest(threadId)).skipped, "dismissed");
+          yield* insights.observe(userMessageEvent({ id: "after-1" }, "Etwas anderes"));
+          yield* nextTurn("run-2");
+          assert.strictEqual((yield* insights.suggest(threadId)).skipped, null);
+          yield* insights.observe(userMessageEvent({ id: "after-2" }, "Noch etwas"));
+          assert.deepEqual(
+            (yield* store.readFeedback).map((record) => record.outcome),
+            ["dismissed", "ignored"],
+          );
+          yield* nextTurn("run-3");
+          assert.strictEqual((yield* insights.suggest(threadId)).skipped, "cooldown");
+          yield* TestClock.adjust("31 minutes");
+          yield* insights.act({ type: "thread.mute", threadId });
+          assert.strictEqual((yield* insights.suggest(threadId)).skipped, "muted");
+          assert.strictEqual((yield* Ref.get(prompts)).length, 2);
+        }),
+    ),
+  );
+
+  it.effect("records a failed suggest call without retrying it for the same turn", () =>
+    withInsights(
+      {
+        enabled: true,
+        answers: [
+          Effect.fail(
+            new UserInsightsModelError({ reason: "failed", message: "boom", usage: usage(0.001) }),
+          ),
+        ],
+      },
+      ({ insights, store, prompts }) =>
+        Effect.gen(function* () {
+          yield* store.writeProfile(readyProfile(NOW));
+          assert.strictEqual((yield* insights.suggest("thread-1" as never)).skipped, "failed");
+          assert.strictEqual((yield* insights.suggest("thread-1" as never)).skipped, "failed");
+          assert.strictEqual((yield* Ref.get(prompts)).length, 1);
+          assert.deepEqual(
+            (yield* store.readUsage).map((record) => [record.purpose, record.ok, record.error]),
+            [["suggest", false, "boom"]],
+          );
+        }),
+    ),
+  );
+
+  it.effect("passes suggestion feedback to the next distill", () =>
+    withInsights({ enabled: true, answers: [suggestAnswer()] }, ({ insights, store, prompts }) =>
+      Effect.gen(function* () {
+        const threadId = "thread-1" as never;
+        yield* store.writeProfile(readyProfile(NOW));
+        const set = yield* insights.suggest(threadId);
+        yield* insights.act({
+          type: "suggestion.fill",
+          threadId,
+          setId: set.setId as never,
+          index: 0,
+        });
+        yield* insights.observe(
+          userMessageEvent({ id: "after-1" }, "Lass die Tests laufen, bitte"),
+        );
+        yield* insights.distillNow;
+        const distillPrompt = (yield* Ref.get(prompts))[1];
+        assert.include(distillPrompt, 'edited: "Tests laufen lassen"');
+      }),
+    ),
   );
 });
