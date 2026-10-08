@@ -137,6 +137,7 @@ import {
 } from "../SubagentProjection.ts";
 // Fork: prompt cache window for the composer's cache timer.
 import { makeClaudePromptCacheTracker } from "./ClaudePromptCache.ts";
+import { claudeTaskProgressText, subagentWithIdleProgress } from "./ClaudeSubagentProgress.ts";
 
 export const CLAUDE_PROVIDER = ProviderDriverKind.make("claudeAgent");
 export const CLAUDE_AGENT_SDK_QUERY_PROTOCOL = "claude-agent-sdk.query" as const;
@@ -880,6 +881,8 @@ export function makeClaudeQueryOptions(input: {
         ? "bypassPermissions"
         : (input.permissionMode ?? "default")),
     includePartialMessages: true,
+    // fork: a ~30s summary of each running subagent's work on task_progress.
+    agentProgressSummaries: true,
     ...(compiledSelection.effort === undefined
       ? {}
       : {
@@ -5248,6 +5251,31 @@ export function makeClaudeAdapterV2(
           }
         });
 
+        // fork: a background subagent's progress line goes out while its
+        // parent is idle. bufferWakeMessage drops task_progress, so nothing
+        // replays it; the registry keeps the line so a repeat is not re-sent
+        // and the wake replay carries it on like a live one.
+        const publishIdleSubagentProgress = Effect.fnUntraced(function* (
+          message: Extract<SDKMessage, { readonly subtype: "task_progress" }>,
+        ) {
+          const registered = (yield* Ref.get(sessionSubagentsByTaskId)).get(message.task_id);
+          const subagent = subagentWithIdleProgress(
+            registered?.task,
+            claudeTaskProgressText(message),
+            yield* DateTime.now,
+          );
+          if (registered === undefined || subagent === null) return;
+          // Only while the entry read above is still current: a concurrent
+          // fiber (wake drain) may have terminalized it meanwhile.
+          const applied = yield* Ref.modify(sessionSubagentsByTaskId, (current) =>
+            current.get(message.task_id) === registered
+              ? [true, new Map(current).set(message.task_id, { ...registered, task: subagent })]
+              : [false, current],
+          );
+          if (!applied) return;
+          yield* emitProviderEvent({ type: "subagent.updated", driver: CLAUDE_PROVIDER, subagent });
+        });
+
         const bufferWakeMessage = Effect.fnUntraced(function* (wakeInput: {
           readonly nativeThreadId: string;
           readonly message: SDKMessage;
@@ -5697,6 +5725,9 @@ export function makeClaudeAdapterV2(
           }
           const context = yield* Ref.get(activeTurn);
           if (context === null) {
+            if (message.type === "system" && message.subtype === "task_progress") {
+              yield* publishIdleSubagentProgress(message);
+            }
             // task_notification must buffer wake evidence while still tracked
             // on the roster; clearing first would drop the wake pin.
             if (message.type === "system" && message.subtype === "task_notification") {
@@ -6111,7 +6142,7 @@ export function makeClaudeAdapterV2(
           }
 
           if (message.type === "system" && message.subtype === "task_progress") {
-            const progress = message.description.trim();
+            const progress = claudeTaskProgressText(message);
             const isBackgroundTask = yield* hasPendingBackgroundTaskOnNativeThread(
               liveQuery.nativeThreadId,
               message.task_id,

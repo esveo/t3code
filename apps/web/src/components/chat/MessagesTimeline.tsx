@@ -24,6 +24,7 @@ import {
 } from "./PinnedUserMessage";
 import { LiveUserMessageMarker } from "../esveoBrand/LiveUserMessageMarker";
 import { ThoughtTrailButton } from "./ThoughtTrailButton";
+import { useSubagentProgress } from "../subagentProgress/useSubagentProgress";
 import { usePublishTimelineThoughts } from "./thoughtTrailStore";
 import {
   COMPOSER_CONTEXT_KINDS,
@@ -3702,9 +3703,12 @@ function CompactingLabel() {
 function ThinkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "thinking" }> }) {
   const ctx = use(TimelineRowCtx);
   const { isCompacting, isPreparingWorktree } = use(TimelineRowActivityCtx);
+  const subagentProgress = useSubagentProgress(ctx.threadRef);
   // Reserve the activity row during setup so the handoff keeps the same height.
   if (isPreparingWorktree || isCompacting) return <WorkLogRow label="" />;
-  const activity = <LiveActivityRow label="Thinking" iconName="brain" active shimmer />;
+  const activity = (
+    <LiveActivityRow label={subagentProgress ?? "Thinking"} iconName="brain" active shimmer />
+  );
   const { groupId } = row;
   if (groupId === undefined) return activity;
   return (
