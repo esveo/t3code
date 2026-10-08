@@ -4,9 +4,10 @@
  * Claude reports a `task_progress` for every tool a subagent starts
  * ("Running npm test") and, with `agentProgressSummaries`, a short summary of
  * its work about every 30 seconds. A background subagent keeps working after
- * its parent's turn ended; from then on the adapter holds all its frames in
- * the wake buffer until it finishes, so its thread would show nothing but
- * "Thinking". Its progress line goes out right away instead.
+ * its parent's turn ended; from then on the adapter holds its frames for the
+ * wake replay and drops its `task_progress`, so its thread would show nothing
+ * but "Thinking" until it finishes. Its progress line goes out right away
+ * instead.
  *
  * @module ClaudeSubagentProgress
  */

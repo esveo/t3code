@@ -7000,6 +7000,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         for (const [index, progress] of [
           { description: "Running Wait for emulator boot" },
           { description: "Running Wait for emulator boot", summary: "Installing the APK" },
+          // A repeated line is not re-sent.
+          { description: "Running Wait for emulator boot", summary: "Installing the APK" },
+          { description: "Running Launch the app" },
         ].entries()) {
           yield* Queue.offer(
             harness.sdkMessages,
@@ -7015,11 +7018,12 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             }),
           );
         }
-        yield* awaitUntil(() => progressLines().length === 2, "idle progress published");
+        yield* awaitUntil(() => progressLines().length === 3, "idle progress published");
 
         assert.deepEqual(progressLines(), [
           ["Running Wait for emulator boot", "running"],
           ["Installing the APK", "running"],
+          ["Running Launch the app", "running"],
         ]);
         assert.equal(harness.continuationRequests.length, 0);
       }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),

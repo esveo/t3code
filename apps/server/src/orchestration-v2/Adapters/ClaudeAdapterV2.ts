@@ -5252,7 +5252,9 @@ export function makeClaudeAdapterV2(
         });
 
         // fork: a background subagent's progress line goes out while its
-        // parent is idle; the frame stays buffered for the wake replay.
+        // parent is idle. bufferWakeMessage drops task_progress, so nothing
+        // replays it; the registry keeps the line so a repeat is not re-sent
+        // and the wake replay carries it on like a live one.
         const publishIdleSubagentProgress = Effect.fnUntraced(function* (
           message: Extract<SDKMessage, { readonly subtype: "task_progress" }>,
         ) {
@@ -5262,7 +5264,15 @@ export function makeClaudeAdapterV2(
             claudeTaskProgressText(message),
             yield* DateTime.now,
           );
-          if (subagent === null) return;
+          if (registered === undefined || subagent === null) return;
+          // Only while the entry read above is still current: a concurrent
+          // fiber (wake drain) may have terminalized it meanwhile.
+          const applied = yield* Ref.modify(sessionSubagentsByTaskId, (current) =>
+            current.get(message.task_id) === registered
+              ? [true, new Map(current).set(message.task_id, { ...registered, task: subagent })]
+              : [false, current],
+          );
+          if (!applied) return;
           yield* emitProviderEvent({ type: "subagent.updated", driver: CLAUDE_PROVIDER, subagent });
         });
 
