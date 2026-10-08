@@ -533,6 +533,21 @@ export const SETTINGS_SEARCH_ITEMS = [
     fork: true,
     searchTerms: ["compact context tokens threshold size"],
   },
+  // Fork: user insights.
+  {
+    id: "user-insights",
+    title: "User insights",
+    to: "/settings/general",
+    fork: true,
+    searchTerms: ["learn profile style habits personal haiku privacy usage cost reset delete"],
+  },
+  {
+    id: "user-insights-suggestions",
+    title: "Prompt suggestions",
+    to: "/settings/general",
+    fork: true,
+    searchTerms: ["suggest next message follow-up composer user insights"],
+  },
   {
     id: "continue-threads-after-server-update",
     title: "Continue threads after restarts",

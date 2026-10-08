@@ -25,6 +25,8 @@ describe("esveo settings search", () => {
         "thread-decisions",
         "thread-details-open-by-default",
         "two-line-thread-cards",
+        "user-insights",
+        "user-insights-suggestions",
         "voice-input",
       ].toSorted(),
     );
