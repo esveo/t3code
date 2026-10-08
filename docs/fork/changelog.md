@@ -2,6 +2,7 @@
 
 Every feature and fix this fork adds on top of [T3 Code](https://github.com/pingdotgg/t3code), each with the commits that made it.
 
+- Fix: the update menu offers a new build only once its server is built or found unchanged, instead of pairing the new app with the previous commit's server while the server still builds ([48693e9](https://github.com/esveo/t3code/commit/48693e9d30f3d70251eea4968a1e983e06c5ae08)).
 - Fix: a file path an agent names relative to the home folder, such as `.claude/settings.json`, opens from there read-only when the project has no such file, and a file missing in both places says so instead of showing a raw read error ([7c53774](https://github.com/esveo/t3code/commit/7c537744d929daef8a256b3e21656c523503694e)).
 - After a pull, merge or rebase that changes `pnpm-lock.yaml`, a git hook reinstalls dependencies, so typecheck and tests no longer run against old packages ([b262b68](https://github.com/esveo/t3code/commit/b262b6832174c4313e60877e25acc39904237a68)).
 - Android thread rows show the project icon and name again, switchable under Settings → Appearance → Thread list ([e87a29d](https://github.com/esveo/t3code/commit/e87a29d1962654de886c82668a11b34117b55094), [9546600](https://github.com/esveo/t3code/commit/9546600a39af455c5bf943fa253ada5741716b33)).
