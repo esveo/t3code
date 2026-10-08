@@ -11,7 +11,7 @@ import { TestClock } from "effect/testing";
 
 import { ServerConfig } from "../config.ts";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
-import { layerTest as settingsLayerTest } from "../serverSettings.ts";
+import { layerTest as settingsLayerTest, ServerSettingsService } from "../serverSettings.ts";
 import {
   emptyUsage,
   type ModelUsage,
@@ -51,6 +51,7 @@ interface Harness {
   readonly answers: Ref.Ref<ReadonlyArray<ModelAnswer>>;
   /** What the thread shell says; change `latestRunId` to start a new turn. */
   readonly shell: Ref.Ref<Record<string, unknown>>;
+  readonly settings: ServerSettingsService["Service"];
 }
 
 const withInsights = <A, E>(
@@ -104,7 +105,8 @@ const withInsights = <A, E>(
     return yield* Effect.gen(function* () {
       const insights = yield* UserInsights.UserInsights;
       const store = yield* makeUserInsightsStore((yield* ServerConfig).stateDir);
-      return yield* body({ insights, store, prompts, answers, shell });
+      const settings = yield* ServerSettingsService;
+      return yield* body({ insights, store, prompts, answers, shell, settings });
     }).pipe(Effect.provide(UserInsights.layer.pipe(Layer.provideMerge(dependencies))));
   });
 
@@ -535,6 +537,92 @@ describe("UserInsights", () => {
         const afterDelete = yield* insights.snapshot;
         assert.strictEqual(afterDelete.usage.total.calls, 0);
         assert.isFalse(afterDelete.hasStoredData);
+      }),
+    ),
+  );
+
+  it.effect("writes nothing when insights were turned off during a distill", () =>
+    withInsights({ enabled: true }, ({ insights, store, answers, settings }) =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        yield* insights.observe(message(1));
+        yield* Ref.set(answers, [
+          Effect.gen(function* () {
+            yield* settings.updateSettings({ enableUserInsights: false });
+            yield* store.deleteAll;
+            return yield* answer([
+              { traitId: "style.tone", op: "add", value: "Direct", count: 1, evidence: [1] },
+            ]);
+          }).pipe(Effect.orDie),
+        ]);
+        assert.deepEqual(yield* insights.distillNow, { kind: "skipped", reason: "disabled" });
+        assert.isFalse(yield* fs.exists(store.directory));
+      }),
+    ),
+  );
+
+  it.effect("a reset during a distill keeps the ledger but drops the result", () =>
+    withInsights({ enabled: true }, ({ insights, store, answers }) =>
+      Effect.gen(function* () {
+        yield* insights.observe(message(1));
+        yield* Ref.set(answers, [
+          insights.reset.pipe(
+            Effect.orDie,
+            Effect.andThen(
+              answer(
+                [{ traitId: "style.tone", op: "add", value: "Direct", count: 1, evidence: [1] }],
+                0.01,
+              ),
+            ),
+          ),
+        ]);
+        assert.deepEqual(yield* insights.distillNow, { kind: "skipped", reason: "reset" });
+        assert.isNull(yield* store.readProfile);
+        assert.strictEqual((yield* store.readUsage).length, 1);
+        assert.strictEqual((yield* store.readState)?.costTodayUsd, 0.01);
+        assert.strictEqual((yield* store.readState)?.pendingEvidence, 0);
+      }),
+    ),
+  );
+
+  it.effect("a set finished after the user wrote on is not held against them", () =>
+    withInsights({ enabled: true }, ({ insights, store, answers, shell }) =>
+      Effect.gen(function* () {
+        const threadId = "thread-1" as never;
+        yield* store.writeProfile(readyProfile(NOW));
+        yield* Ref.set(answers, [
+          Ref.update(shell, (current) => ({ ...current, latestRunId: "run-2" })).pipe(
+            Effect.andThen(suggestAnswer()),
+          ),
+        ]);
+        assert.strictEqual((yield* insights.suggest(threadId)).skipped, "not-idle");
+        yield* insights.observe(userMessageEvent({ id: "after-1" }, "Weiter"));
+        assert.deepEqual(yield* store.readFeedback, []);
+        assert.strictEqual((yield* store.readUsage).length, 1);
+      }),
+    ),
+  );
+
+  it.effect("trims the evidence while no distill gets through", () =>
+    withInsights({ enabled: true }, ({ insights, store }) =>
+      Effect.gen(function* () {
+        for (let index = 0; index < 600; index += 1) {
+          yield* store.appendEvidence({
+            ts: toIso(NOW),
+            threadId: "thread-1",
+            projectId: null,
+            messageId: `old-${index}`,
+            chars: 5,
+            words: 1,
+            lang: "de",
+            hasCode: false,
+            hasPath: false,
+            endsWithQuestion: false,
+          });
+        }
+        yield* store.writeState({ ...emptyState(NOW), pendingEvidence: 499 });
+        yield* insights.observe(message(1));
+        assert.strictEqual((yield* store.readEvidence).length, 500);
       }),
     ),
   );

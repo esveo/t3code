@@ -212,7 +212,7 @@ ${traits.length > 0 ? traits : "(nothing confident yet)"}
 How they reacted to earlier suggestions:
 ${reactions.length > 0 ? reactions : "(none yet)"}
 
-Thread: ${JSON.stringify(input.threadTitle)}
+Thread: ${JSON.stringify(redact(input.threadTitle))}
 
 Their last message:
 ${exchange(input.userText)}

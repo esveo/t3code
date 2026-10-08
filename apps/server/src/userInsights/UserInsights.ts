@@ -81,7 +81,7 @@ import {
   selectDistillEvidence,
   SuggestOutput,
 } from "./prompts.ts";
-import { makeUserInsightsStore, type UsageRecord } from "./store.ts";
+import { EVIDENCE_MAX_RECORDS, makeUserInsightsStore, type UsageRecord } from "./store.ts";
 import {
   acceptanceLevel,
   classifyOutcome,
@@ -195,7 +195,10 @@ export const make = Effect.gen(function* () {
   const openSets = new Map<string, OpenSet>();
   /** Suggest results by set id (thread and turn), including calls still running. */
   const sets = new Map<string, Deferred.Deferred<UserInsightsSuggestResult>>();
-  const forgetSuggestions = Effect.sync(() => {
+  /** Bumped by reset and delete, so a model call still running discards its result. */
+  let generation = 0;
+  const forgetLearned = Effect.sync(() => {
+    generation += 1;
     openSets.clear();
     sets.clear();
   });
@@ -204,6 +207,17 @@ export const make = Effect.gen(function* () {
   const enabled = settings.pipe(
     Effect.map((value) => Option.isSome(value) && value.value.enableUserInsights),
   );
+  /**
+   * What a finished model call may still do: nothing once insights were
+   * turned off meanwhile, only the ledger once the data was reset or deleted
+   * (and the folder is still there), or everything.
+   */
+  const afterCall = (startGeneration: number) =>
+    Effect.gen(function* () {
+      if (!(yield* enabled)) return "nothing" as const;
+      if (generation === startGeneration) return "everything" as const;
+      return (yield* store.exists) ? ("ledger-only" as const) : ("nothing" as const);
+    });
   const loadState = (now: number) =>
     store.readState.pipe(Effect.map((state) => rollDay(state ?? emptyState(now), now)));
   const loadProfile = (now: number) =>
@@ -244,11 +258,15 @@ export const make = Effect.gen(function* () {
             });
             state = recordOutcome(state, event.threadId, outcome, now);
           }
+          const pendingEvidence = state.pendingEvidence + 1;
           yield* store.writeState({
             ...state,
-            pendingEvidence: state.pendingEvidence + 1,
+            pendingEvidence,
             lastMessageAt: toIso(now),
           });
+          // Distills trim the files; when none succeeds for a long time
+          // (Claude off, backoff), the evidence must not grow without end.
+          if (pendingEvidence % EVIDENCE_MAX_RECORDS === 0) yield* store.trim(now);
         }),
       );
     }).pipe(
@@ -319,6 +337,7 @@ export const make = Effect.gen(function* () {
           if (prepared.kind === "skip")
             return { kind: "skipped", reason: prepared.reason } as const;
 
+          const startGeneration = generation;
           const outcome = yield* model
             .run({ prompt: prepared.prompt, outputSchema: DistillOutput })
             .pipe(
@@ -338,6 +357,9 @@ export const make = Effect.gen(function* () {
 
           return yield* locked(
             Effect.gen(function* () {
+              // Turned off or deleted during the call: leave the folder alone.
+              const allowed = yield* afterCall(startGeneration);
+              if (allowed === "nothing") return { kind: "skipped", reason: "disabled" } as const;
               let state = recordCall(yield* loadState(endedAt), {
                 purpose: "distill",
                 costUsd: usage.costUsd,
@@ -361,6 +383,11 @@ export const make = Effect.gen(function* () {
               yield* store.appendUsage(
                 usageRecord({ purpose: "distill", now: endedAt, usage, ok: true }),
               );
+              if (allowed === "ledger-only") {
+                // Reset during the call: the ops describe evidence that is gone.
+                yield* store.writeState(state);
+                return { kind: "skipped", reason: "reset" } as const;
+              }
               // Merge onto the profile as it is now, so a user edit made
               // during the call is not lost.
               const profile = yield* loadProfile(endedAt);
@@ -537,6 +564,16 @@ export const make = Effect.gen(function* () {
     }
   };
 
+  /** A thread whose user never writes again must not keep its set forever. */
+  const rememberOpenSet = (threadId: string, open: OpenSet) => {
+    openSets.delete(threadId);
+    openSets.set(threadId, open);
+    if (openSets.size > MAX_REMEMBERED_SETS) {
+      const oldest = openSets.keys().next().value;
+      if (oldest !== undefined) openSets.delete(oldest);
+    }
+  };
+
   const lastText = (
     messages: ReadonlyArray<{
       readonly role: string;
@@ -554,6 +591,7 @@ export const make = Effect.gen(function* () {
   /** The model call behind one new set; never fails, a failure is a skip. */
   const createSet = (input: {
     readonly threadId: ThreadId;
+    readonly runId: string;
     readonly setId: string;
     readonly title: string;
     readonly userText: string | null;
@@ -561,6 +599,7 @@ export const make = Effect.gen(function* () {
   }) =>
     Effect.gen(function* () {
       const startedAt = yield* Clock.currentTimeMillis;
+      const startGeneration = generation;
       const prepared = yield* locked(
         Effect.gen(function* () {
           const state = yield* loadState(startedAt);
@@ -592,8 +631,10 @@ export const make = Effect.gen(function* () {
       const reported = outcome.ok ? outcome.usage : (outcome.error.usage ?? emptyUsage());
       const usage =
         reported.durationMs > 0 ? reported : { ...reported, durationMs: endedAt - startedAt };
-      yield* locked(
+      const allowed = yield* locked(
         Effect.gen(function* () {
+          const allowed = yield* afterCall(startGeneration);
+          if (allowed === "nothing") return allowed;
           yield* store.appendUsage(
             usageRecord({
               purpose: "suggest",
@@ -607,8 +648,12 @@ export const make = Effect.gen(function* () {
           yield* store.writeState(
             recordCall(state, { purpose: "suggest", costUsd: usage.costUsd }),
           );
+          return allowed;
         }),
       );
+      // Turned off or reset during the call: the profile it was based on is gone.
+      if (allowed === "nothing") return skipped("off");
+      if (allowed === "ledger-only") return skipped("not-ready");
       if (!outcome.ok) {
         yield* Effect.logWarning("user-insights.suggest-failed", {
           message: outcome.error.message,
@@ -617,7 +662,15 @@ export const make = Effect.gen(function* () {
       }
       const suggestions = sanitizeSuggestions(outcome.output);
       if (suggestions.length === 0) return skipped("nothing-useful");
-      openSets.set(input.threadId, {
+      // The user wrote on while the model ran: no client shows this set, so
+      // their next message must not count as ignoring it.
+      const shell = yield* threads
+        .getThreadShell(input.threadId)
+        .pipe(Effect.orElseSucceed(() => null));
+      if (shell === null || shell.latestRunId !== input.runId || shell.activeRunId !== null) {
+        return skipped("not-idle");
+      }
+      rememberOpenSet(input.threadId, {
         setId: input.setId,
         labels: suggestions.map((suggestion) => suggestion.label),
         prompts: suggestions.map((suggestion) => suggestion.prompt),
@@ -683,6 +736,7 @@ export const make = Effect.gen(function* () {
           ? skipped("not-idle")
           : yield* createSet({
               threadId,
+              runId,
               setId,
               title: shell.title,
               userText: lastText(messages, "user"),
@@ -763,9 +817,9 @@ export const make = Effect.gen(function* () {
       case "profile.undo":
         return undo;
       case "data.reset":
-        return locked(store.reset).pipe(Effect.andThen(forgetSuggestions));
+        return locked(store.reset).pipe(Effect.andThen(forgetLearned));
       case "data.deleteAll":
-        return locked(store.deleteAll).pipe(Effect.andThen(forgetSuggestions));
+        return locked(store.deleteAll).pipe(Effect.andThen(forgetLearned));
     }
   };
 
@@ -778,8 +832,8 @@ export const make = Effect.gen(function* () {
     editTrait,
     deleteTrait,
     undo,
-    reset: locked(store.reset).pipe(Effect.andThen(forgetSuggestions)),
-    deleteAll: locked(store.deleteAll).pipe(Effect.andThen(forgetSuggestions)),
+    reset: locked(store.reset).pipe(Effect.andThen(forgetLearned)),
+    deleteAll: locked(store.deleteAll).pipe(Effect.andThen(forgetLearned)),
     suggest,
     act,
   });
