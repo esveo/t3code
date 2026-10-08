@@ -500,6 +500,8 @@ import {
 } from "./chat/QueuedRunsControl";
 import { useLinkedThreadPullRequest } from "./ThreadStatusIndicators";
 import type { ComposerBannerStackItem } from "./chat/ComposerBannerStack";
+// Fork: user insights.
+import { useUserInsightsBannerItems } from "./userInsights/useUserInsightsBannerItems";
 import { ComposerSurface } from "./chat/ComposerSurface";
 import { resolveThreadSyncPhase } from "../threadSync";
 import {
@@ -7977,6 +7979,15 @@ export default function ChatView(props: ChatViewProps) {
     usageLimitsBanner,
     wokeThreadBannerItem,
   ]);
+  // Fork: user insights. Next-message suggestions join the notices.
+  const composerBannerItemsWithInsights = useUserInsightsBannerItems({
+    items: composerBannerItems,
+    environmentId,
+    threadShell: activeThreadShell,
+    composerDraftTarget,
+    hasPendingRequests: pendingApprovals.length > 0 || pendingUserInputs.length > 0,
+    onFilled: focusComposer,
+  });
 
   useEffect(() => {
     setPendingServerThreadEnvMode(null);
@@ -11768,7 +11779,7 @@ export default function ChatView(props: ChatViewProps) {
                                   />
                                 ) : null
                               }
-                              bannerItems={composerBannerItems}
+                              bannerItems={composerBannerItemsWithInsights}
                               // With attachments or contexts aboard the pick just inserts the
                               // text, so it sends as a prompt like the typed path would.
                               onUsageLimitsCommand={
