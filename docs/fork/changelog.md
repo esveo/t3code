@@ -2,6 +2,7 @@
 
 Every feature and fix this fork adds on top of [T3 Code](https://github.com/pingdotgg/t3code), each with the commits that made it.
 
+- Fix: a file path an agent names relative to the home folder, such as `.claude/settings.json`, opens from there read-only when the project has no such file, and a file missing in both places says so instead of showing a raw read error ([7c53774](https://github.com/esveo/t3code/commit/7c537744d929daef8a256b3e21656c523503694e)).
 - After a pull, merge or rebase that changes `pnpm-lock.yaml`, a git hook reinstalls dependencies, so typecheck and tests no longer run against old packages ([b262b68](https://github.com/esveo/t3code/commit/b262b6832174c4313e60877e25acc39904237a68)).
 - Android thread rows show the project icon and name again, switchable under Settings → Appearance → Thread list ([e87a29d](https://github.com/esveo/t3code/commit/e87a29d1962654de886c82668a11b34117b55094), [9546600](https://github.com/esveo/t3code/commit/9546600a39af455c5bf943fa253ada5741716b33)).
 - Fix: a delegated task or thread that publishes a Claude artifact counts as finished again instead of waiting forever on the artifact's live-update watch ([66a9fed](https://github.com/esveo/t3code/commit/66a9fedf40298714f962ac6c5143fc31cda637c3)).
