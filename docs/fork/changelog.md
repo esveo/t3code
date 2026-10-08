@@ -2,6 +2,7 @@
 
 Every feature and fix this fork adds on top of [T3 Code](https://github.com/pingdotgg/t3code), each with the commits that made it.
 
+- Fix: a Claude subagent that keeps working after its parent's turn shows what it works on in its thread on web, desktop and mobile and in the agent stage, instead of only Thinking ([ecc30c6](https://github.com/esveo/t3code/commit/ecc30c6ae6550cc2409188fae2dcc183cd2879db), [3a1bfcc](https://github.com/esveo/t3code/commit/3a1bfcc23c18f531c00f59c038bddefa35e710d7), [987b4e9](https://github.com/esveo/t3code/commit/987b4e98e044447be07280d40e0eba2f3e9397aa)).
 - Fix: a desktop app paired before the permission split now says so where files fail to load and offers the pair command on every launch until it is paired again ([7a2d32a](https://github.com/esveo/t3code/commit/7a2d32a51e1f532a8874a565d0d7df9acf99461e)).
 - Fix: the update menu offers a new build only once its server is built or found unchanged, instead of pairing the new app with the previous commit's server while the server still builds; it takes effect once the checkout the app was started from has pulled `fork` ([48693e9](https://github.com/esveo/t3code/commit/48693e9d30f3d70251eea4968a1e983e06c5ae08)).
 - Fix: a file path an agent names relative to the home folder, such as `.claude/settings.json`, opens from there read-only when the project has no such file, and a file missing in both places says so instead of showing a raw read error ([7c53774](https://github.com/esveo/t3code/commit/7c537744d929daef8a256b3e21656c523503694e)).
