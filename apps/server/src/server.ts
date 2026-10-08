@@ -82,6 +82,9 @@ import * as DelegatedAttachments from "./mcp/toolkits/threads/attachments.ts";
 import * as ThreadCoordinators from "./threadOrchestration/ThreadCoordinators.ts";
 import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
 import * as ForkNotes from "./forkNotes/ForkNotes.ts";
+// Fork: user insights.
+import * as UserInsights from "./userInsights/UserInsights.ts";
+import * as UserInsightsModel from "./userInsights/HaikuCli.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as ProjectEnrichmentService from "./project/ProjectEnrichmentService.ts";
@@ -580,6 +583,8 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   ThreadDecisions.layer,
   // Fork: notes and todos of the Notes tab.
   ForkNotes.layer,
+  // Fork: user insights, learned in the background while the setting is on.
+  UserInsights.startedLayer.pipe(Layer.provide(UserInsightsModel.layer)),
 ).pipe(
   // Core Services
   Layer.provideMerge(layerOrchestrationApplication),
