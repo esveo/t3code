@@ -53,6 +53,8 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import {
   distillDecision,
   emptyState,
+  MAX_DISTILLS_PER_DAY,
+  MAX_SUGGESTS_PER_DAY,
   pauseReason,
   recordCall,
   recordFailure,
@@ -149,10 +151,17 @@ const skipped = (reason: UserInsightsSuggestSkip): UserInsightsSuggestResult => 
 
 const traitOrder = (id: string) => (USER_INSIGHTS_TRAIT_IDS as ReadonlyArray<string>).indexOf(id);
 
-const sumUsage = (records: ReadonlyArray<UsageRecord>) => ({
-  calls: records.length,
-  costUsd: records.reduce((total, record) => total + record.costUsd, 0),
-});
+const sumUsage = (records: ReadonlyArray<UsageRecord>) => {
+  let inputTokens = 0;
+  let outputTokens = 0;
+  let costUsd = 0;
+  for (const record of records) {
+    inputTokens += record.inputTokens + record.cacheReadTokens + record.cacheCreationTokens;
+    outputTokens += record.outputTokens;
+    costUsd += record.costUsd;
+  }
+  return { calls: records.length, inputTokens, outputTokens, costUsd };
+};
 
 /** Today (UTC), the last seven days and all time, from the usage ledger. */
 export function summarizeUsage(
@@ -166,6 +175,8 @@ export function summarizeUsage(
     total: sumUsage(records),
     lastDistillAt: input.lastDistillAt,
     dailyCapUsd: USER_INSIGHTS_DAILY_COST_CAP_USD,
+    maxDistillsPerDay: MAX_DISTILLS_PER_DAY,
+    maxSuggestsPerDay: MAX_SUGGESTS_PER_DAY,
   };
 }
 
@@ -401,6 +412,7 @@ export const make = Effect.gen(function* () {
         traits: [],
         usage: summarizeUsage([], { now, lastDistillAt: null }),
         folderPath: store.directory,
+        hasStoredData: yield* locked(store.exists),
       } satisfies UserInsightsSnapshot;
     }
     const { profile, state, usage, feedback } = yield* locked(
@@ -424,6 +436,7 @@ export const make = Effect.gen(function* () {
       traits: [...profile.traits].toSorted((a, b) => traitOrder(a.id) - traitOrder(b.id)),
       usage: summarizeUsage(usage, { now, lastDistillAt: state.lastDistillAt }),
       folderPath: store.directory,
+      hasStoredData: yield* locked(store.exists),
     } satisfies UserInsightsSnapshot;
   });
 

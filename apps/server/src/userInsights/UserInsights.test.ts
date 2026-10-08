@@ -18,6 +18,7 @@ import {
   UserInsightsModel,
   UserInsightsModelError,
 } from "./HaikuCli.ts";
+import { emptyState } from "./distillPolicy.ts";
 import type { DistillOutput, SuggestOutput } from "./prompts.ts";
 import { makeUserInsightsStore } from "./store.ts";
 import * as UserInsights from "./UserInsights.ts";
@@ -485,4 +486,104 @@ describe("UserInsights", () => {
       }),
     ),
   );
+
+  it.effect("keeps a value the user edited when a distill tries to revise it", () =>
+    withInsights(
+      {
+        enabled: true,
+        answers: [
+          answer([
+            { traitId: "style.tone", op: "revise", value: "Polite", count: 5, evidence: [1] },
+            { traitId: "style.tone", op: "contradict", value: null, count: 5, evidence: [1] },
+          ]),
+        ],
+      },
+      ({ insights }) =>
+        Effect.gen(function* () {
+          yield* insights.act({ type: "trait.edit", id: "style.tone", value: "  Direct  " });
+          yield* insights.observe(message(1));
+          assert.strictEqual((yield* insights.distillNow).kind, "distilled");
+          const [tone] = (yield* insights.snapshot).traits;
+          assert.strictEqual(tone?.value, "Direct");
+          assert.isTrue(tone?.pinned);
+          assert.isAbove(tone?.contradict ?? 0, 0);
+          const error = yield* insights
+            .act({ type: "trait.edit", id: "style.tone", value: "x".repeat(161) })
+            .pipe(Effect.flip);
+          assert.strictEqual(error._tag, "UserInsightsError");
+        }),
+    ),
+  );
+
+  it.effect("reset forgets the profile but keeps usage; delete everything removes all", () =>
+    withInsights({ enabled: true, answers: [answer([], 0.02)] }, ({ insights, store }) =>
+      Effect.gen(function* () {
+        yield* insights.observe(message(1));
+        yield* insights.distillNow;
+        yield* insights.act({ type: "trait.edit", id: "style.tone", value: "Direct" });
+        yield* insights.act({ type: "data.reset" });
+        const afterReset = yield* insights.snapshot;
+        assert.deepEqual(afterReset.traits, []);
+        assert.deepEqual(afterReset.status, { state: "learning", samples: 0, requiredSamples: 40 });
+        assert.strictEqual(afterReset.usage.total.calls, 1);
+        assert.isTrue(afterReset.hasStoredData);
+        assert.strictEqual((yield* store.readEvidence).length, 0);
+        const undo = yield* insights.act({ type: "profile.undo" }).pipe(Effect.flip);
+        assert.strictEqual(undo._tag, "UserInsightsError");
+
+        yield* insights.act({ type: "data.deleteAll" });
+        const afterDelete = yield* insights.snapshot;
+        assert.strictEqual(afterDelete.usage.total.calls, 0);
+        assert.isFalse(afterDelete.hasStoredData);
+      }),
+    ),
+  );
+
+  it.effect("shows stored data while off, so it can still be deleted", () =>
+    withInsights({ enabled: false }, ({ insights, store }) =>
+      Effect.gen(function* () {
+        assert.isFalse((yield* insights.snapshot).hasStoredData);
+        yield* store.writeState(emptyState(NOW));
+        assert.isTrue((yield* insights.snapshot).hasStoredData);
+        yield* insights.act({ type: "data.deleteAll" });
+        assert.isFalse((yield* insights.snapshot).hasStoredData);
+      }),
+    ),
+  );
+});
+
+describe("summarizeUsage", () => {
+  const record = (ts: string, costUsd: number) => ({
+    ts,
+    purpose: "distill" as const,
+    model: "claude-haiku-4-5",
+    inputTokens: 100,
+    outputTokens: 20,
+    cacheReadTokens: 1000,
+    cacheCreationTokens: 10,
+    costUsd,
+    costEstimated: false,
+    durationMs: 1,
+    ok: true,
+  });
+
+  it("splits today, the last seven days and the whole ledger, counting cache tokens as input", () => {
+    const summary = UserInsights.summarizeUsage(
+      [
+        record("2026-09-01T12:00:00.000Z", 0.1),
+        record("2026-10-03T12:00:00.000Z", 0.02),
+        record("2026-10-08T08:00:00.000Z", 0.01),
+      ],
+      { now: NOW, lastDistillAt: null },
+    );
+    assert.deepEqual(summary.today, {
+      calls: 1,
+      inputTokens: 1110,
+      outputTokens: 20,
+      costUsd: 0.01,
+    });
+    assert.strictEqual(summary.last7Days.calls, 2);
+    assert.strictEqual(summary.total.calls, 3);
+    assert.closeTo(summary.total.costUsd, 0.13, 1e-9);
+  });
 });

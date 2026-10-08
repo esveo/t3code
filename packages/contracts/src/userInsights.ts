@@ -97,6 +97,10 @@ export type UserInsightsStatus = typeof UserInsightsStatus.Type;
 
 export const UserInsightsUsageTotals = Schema.Struct({
   calls: NonNegativeInt,
+  /** Prompt tokens, cache reads and writes included. */
+  inputTokens: Schema.Number,
+  outputTokens: Schema.Number,
+  /** Equivalent API cost; the calls run on the user's Claude subscription. */
   costUsd: Schema.Number,
 });
 export type UserInsightsUsageTotals = typeof UserInsightsUsageTotals.Type;
@@ -107,6 +111,8 @@ export const UserInsightsUsageSummary = Schema.Struct({
   total: UserInsightsUsageTotals,
   lastDistillAt: Schema.NullOr(IsoDateTime),
   dailyCapUsd: Schema.Number,
+  maxDistillsPerDay: NonNegativeInt,
+  maxSuggestsPerDay: NonNegativeInt,
 });
 export type UserInsightsUsageSummary = typeof UserInsightsUsageSummary.Type;
 
@@ -116,6 +122,8 @@ export const UserInsightsSnapshot = Schema.Struct({
   usage: UserInsightsUsageSummary,
   /** Where the server keeps everything it learned, to open it. */
   folderPath: Schema.String,
+  /** The folder exists, also while insights are off, so it can still be deleted. */
+  hasStoredData: Schema.Boolean,
 });
 export type UserInsightsSnapshot = typeof UserInsightsSnapshot.Type;
 

@@ -57,6 +57,8 @@ import { ThreadsToolkit } from "./toolkits/threads/tools.ts";
 // Fork: read-only terminal drawer access.
 import { TerminalsToolkitHandlersLive } from "./toolkits/terminals/handlers.ts";
 import { TerminalsToolkit } from "./toolkits/terminals/tools.ts";
+// Fork: user insights.
+import { UserInsightsToolkit, UserInsightsToolkitHandlersLive } from "../userInsights/mcpTool.ts";
 import * as DeviceHandlers from "./toolkits/device/handlers.ts";
 import {
   DeviceScreenshotTool,
@@ -850,7 +852,7 @@ export const layerDeviceToolkit = Layer.mergeAll(
   layerDeviceScreenshotRegistration,
 );
 
-// Fork: the coordinator and terminal toolkits.
+// Fork: the coordinator, terminal and user insights toolkits.
 const ThreadsToolkitRegistrationLive = toolkitRegistration(
   ThreadsToolkit,
   ThreadsToolkitHandlersLive,
@@ -858,6 +860,10 @@ const ThreadsToolkitRegistrationLive = toolkitRegistration(
 const TerminalsToolkitRegistrationLive = toolkitRegistration(
   TerminalsToolkit,
   TerminalsToolkitHandlersLive,
+);
+const UserInsightsToolkitRegistrationLive = toolkitRegistration(
+  UserInsightsToolkit,
+  UserInsightsToolkitHandlersLive,
 );
 
 export const layerMcpTransport = McpServer.layerHttp({
@@ -881,4 +887,5 @@ export const layer = Layer.mergeAll(
   layerHtmlToolkit,
   ThreadsToolkitRegistrationLive,
   TerminalsToolkitRegistrationLive,
+  UserInsightsToolkitRegistrationLive,
 ).pipe(Layer.provideMerge(layerMcpTransport));

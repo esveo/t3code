@@ -175,6 +175,8 @@ export const makeUserInsightsStore = Effect.fn("makeUserInsightsStore")(function
   return {
     directory,
     files,
+    /** Whether the folder is there; a failed check reads as there, so it can still be deleted. */
+    exists: fs.exists(directory).pipe(Effect.orElseSucceed(() => true)),
     readProfile: readJson(files.profile, UserInsightsProfile),
     readPreviousProfile: readJson(files.profilePrev, UserInsightsProfile),
     /** Saves the profile and keeps the one it replaces as `profile.prev.json`. */
