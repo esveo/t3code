@@ -66,8 +66,10 @@ scripts/fork-app.sh restart fork
 ```
 
 `prepare` builds the checkout — including uncommitted changes — into a staging
-slot and promotes it to `builds/<branch>/`, replacing that branch's older
-build. `restart <branch>` swaps that build into `current/` and relaunches, and
+slot and, once the server half below is settled, promotes it to
+`builds/<branch>/`, replacing that branch's older build; the update menu pairs
+a build with the branch's recorded server, so neither is offered before the
+other is ready. `restart <branch>` swaps that build into `current/` and relaunches, and
 moves the build it replaces back into its own branch's slot, so you can return
 to it. From then on the app's own update menu runs `restart` for you, so the
 usual loop is: `prepare`, then pick the branch in the app.
@@ -338,9 +340,10 @@ For the app, `scripts/fork-app.sh stop` is enough; the official
 ## Rebuilding later
 
 `scripts/fork-app.sh prepare`, then the branch in the update menu. It rebuilds
-the server too when that changed; `scripts/fork-app.sh prepare-server` rebuilds
-only the server, for example after a server build failed. Both happen on their
-own for commits pushed to `origin/fork`. The plist
+the server too when that changed, and offers the build only once the server is
+done; when the server build fails, fix the cause and run `prepare` again.
+`scripts/fork-app.sh prepare-server` rebuilds only the server. Both happen on
+their own for commits pushed to `origin/fork`. The plist
 and the cloud environment variables stay valid and do not need redoing —
 unless a rebase brings a `SERVICE_LAUNCHER_PROTOCOL` bump, in which case step 4
 has to be repeated, because the plist would still name a launcher speaking the

@@ -13,9 +13,10 @@
 # background service, so restarting it never stops agents.
 #
 #   scripts/fork-app.sh prepare           build this checkout (including uncommitted
-#                                         changes) into builds/<branch>/, replacing
-#                                         that branch's older build, then its server
-#                                         as prepare-server does — agents run this
+#                                         changes) into staging/, then its server as
+#                                         prepare-server does, then move the build
+#                                         into builds/<branch>/, replacing that
+#                                         branch's older build — agents run this
 #   scripts/fork-app.sh restart <branch>  switch to that branch's build and relaunch;
 #                                         the app's update menu runs this, beside
 #                                         restart-service when the branch's server
@@ -328,7 +329,10 @@ install_dock_launcher() {
   /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$bundle"
 }
 
-prepare() {
+# Builds the checkout into staging/ and leaves it there; publish_app moves it
+# into its branch's slot. The prepare lock is held until the script exits, so
+# staging/ stays ours across the server build in between.
+build_app() {
   local source_repo="$SCRIPT_REPO"
   acquire_lock prepare
   trap 'release_lock prepare' EXIT
@@ -355,9 +359,16 @@ prepare() {
   printf '{"label": "%s", "branch": "%s", "commit": "%s", "dirty": %s, "source": "%s", "builtAt": "%s", "sizeBytes": %s}\n' \
     "$label" "$branch" "$sha" "$([[ -n "$dirty" ]] && echo true || echo false)" \
     "$source_repo" "$(date -u +%FT%TZ)" "$(size_of "$staging")" > "$staging/.fork-build.json"
+  echo "Built $label into staging/."
+}
 
-  # The branch's older build becomes the next staging area and keeps its
-  # node_modules; the swap is what the update menu sees, so it is atomic-ish.
+# Moves the build in staging/ into its branch's slot. The branch's older build
+# becomes the next staging area and keeps its node_modules; the swap is what
+# the update menu sees, so it is atomic-ish.
+publish_app() {
+  local staging="$ROOT/staging" slug label
+  slug="$(build_slug "$staging")"
+  label="$(label_of "$staging")"
   acquire_lock swap
   local slot="$BUILDS_DIR/$slug"
   if [[ -d "$slot" ]]; then
@@ -371,16 +382,22 @@ prepare() {
   echo "Prepared $label into builds/$slug. The app's update menu now offers it."
 }
 
-# The app and, unless it is unchanged, its server. The server runs as its own
-# process, so a failure there cannot take the finished app build with it.
+# The app and, unless it is unchanged, its server. The app reaches its slot
+# only once the server side is settled (built, found unchanged, or blocked):
+# the update menu pairs a slot with whatever servers/<branch>.json says at the
+# time, so an app published first would be offered with the previous commit's
+# server for the minutes the server build takes. The server runs as its own
+# process, so a failure there cannot take the staged app build with it; it is
+# not published then either, so the menu never offers mixed versions.
 prepare_with_server() {
-  prepare
+  build_app
   "$SCRIPT_PATH" prepare-server || {
-    echo "The app build is prepared, but its server is missing: the menu would keep" >&2
-    echo "the service on its current server. Fix the cause and run" >&2
-    echo "'scripts/fork-app.sh prepare-server' in this checkout." >&2
+    echo "The server build failed, so the app build stays in staging/ and is not" >&2
+    echo "offered: the menu would pair it with the previous commit's server. Fix" >&2
+    echo "the cause and run 'scripts/fork-app.sh prepare' in this checkout again." >&2
     return 1
   }
+  publish_app
 }
 
 # Builds a t3 runtime from this checkout and makes it the service's active

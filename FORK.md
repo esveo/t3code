@@ -177,15 +177,15 @@ one with the app's update menu. Your job ends with that build prepared.
    asked to ship stays on its branch, and `prepare` from that branch is fine
    for trying it out — just say which branch the prepared build came from.
 4. Run `scripts/fork-app.sh prepare` from the checkout or worktree that holds
-   what should be built. It builds into
+   what should be built. It builds the app, then the branch's server when
+   anything the server is built from changed, including uncommitted changes,
+   and only then puts the build into
    `~/Documents/private/t3code-app/builds/<branch>`, replacing that branch's
    older build and touching neither the running app nor other branches'
-   builds, and then builds the branch's server when anything the server is
-   built from changed, including uncommitted changes. The service keeps
-   running; the update menu offers the switch. It takes one to two minutes,
-   more when the server is rebuilt. If it fails, fix the cause and run it
-   again; if only the server failed, `scripts/fork-app.sh prepare-server`
-   catches up on it.
+   builds. The service keeps running; the update menu offers the switch. It
+   takes one to two minutes, more when the server is rebuilt. If it fails,
+   also on the server, the build is not offered: fix the cause and run it
+   again.
 5. Update the feature's board item (see [The board](#the-board)).
 6. End with a short message: what changed, branch and commit, what you
    verified, and that the build is prepared, so the update menu offers it

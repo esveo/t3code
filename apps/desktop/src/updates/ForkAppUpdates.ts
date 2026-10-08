@@ -4,9 +4,10 @@
  * slot (`<root>/current`); `scripts/fork-app.sh prepare` builds a checkout
  * into `<root>/builds/<branch>`, replacing that branch's older build, and
  * `prepare-server` builds a t3 runtime for the background service when the
- * server changed, recorded in `<root>/servers/<branch>.json`. Every minute
- * this runs `fork-app.sh watch`, which does both for new commits on
- * `origin/fork`.
+ * server changed, recorded in `<root>/servers/<branch>.json`. A build is
+ * paired with whatever that file says, so `prepare` fills the slot only after
+ * the server is recorded. Every minute this runs `fork-app.sh watch`, which
+ * does both for new commits on `origin/fork`.
  *
  * Every waiting build is reported in `forkBuilds`; the update menu installs
  * or deletes one by branch. Installing runs `fork-app.sh restart <branch>`
