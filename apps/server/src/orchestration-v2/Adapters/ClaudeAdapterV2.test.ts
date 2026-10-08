@@ -6949,6 +6949,83 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
+  // fork: background subagent progress while the parent is idle
+  it.effect("publishes a background subagent's progress while the root turn is idle", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const SUBAGENT_TASK_ID = "task-idle-progress";
+        const harness = yield* makeWakeHarness;
+        const now = yield* DateTime.now;
+        const progressLines = () =>
+          harness.events.flatMap((event) =>
+            event.type === "subagent.updated" && event.subagent.progress !== undefined
+              ? [[event.subagent.progress, event.subagent.status] as const]
+              : [],
+          );
+
+        yield* harness.runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId: harness.threadId,
+            providerThread: harness.providerThread,
+            now,
+            attemptId: RunAttemptId.make("attempt-claude-idle-progress"),
+            text: "Spawn a background subagent.",
+            attachments: [],
+          }),
+        );
+        yield* Queue.offer(
+          harness.sdkMessages,
+          claudeSdkFrame({
+            type: "system",
+            subtype: "task_started",
+            task_id: SUBAGENT_TASK_ID,
+            tool_use_id: "toolu-idle-progress",
+            description: "Smoke-test the release build",
+            subagent_type: "general-purpose",
+            task_type: "local_agent",
+            prompt: "Smoke-test the release build.",
+            uuid: "00000000-0000-4000-8000-000000000391",
+            session_id: WAKE_NATIVE_SESSION,
+          }),
+        );
+        yield* Queue.offer(
+          harness.sdkMessages,
+          makeResultFrame({
+            uuid: "00000000-0000-4000-8000-000000000392",
+            result: "Spawned the subagent in the background.",
+          }),
+        );
+        yield* awaitUntil(() => harness.terminalEvents().length === 1, "turn terminal");
+
+        for (const [index, progress] of [
+          { description: "Running Wait for emulator boot" },
+          { description: "Running Wait for emulator boot", summary: "Installing the APK" },
+        ].entries()) {
+          yield* Queue.offer(
+            harness.sdkMessages,
+            claudeSdkFrame({
+              type: "system",
+              subtype: "task_progress",
+              task_id: SUBAGENT_TASK_ID,
+              tool_use_id: "toolu-idle-progress",
+              ...progress,
+              usage: { total_tokens: 100, tool_uses: index + 1, duration_ms: 1000 },
+              uuid: `00000000-0000-4000-8000-00000000039${3 + index}`,
+              session_id: WAKE_NATIVE_SESSION,
+            }),
+          );
+        }
+        yield* awaitUntil(() => progressLines().length === 2, "idle progress published");
+
+        assert.deepEqual(progressLines(), [
+          ["Running Wait for emulator boot", "running"],
+          ["Installing the APK", "running"],
+        ]);
+        assert.equal(harness.continuationRequests.length, 0);
+      }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
+    ),
+  );
+
   it.effect("re-opens a resumed subagent whose task_started races past settle", () =>
     Effect.scoped(
       Effect.gen(function* () {
