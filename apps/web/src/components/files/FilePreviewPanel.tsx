@@ -58,6 +58,7 @@ import { PREFERRED_HIGHLIGHTER } from "~/lib/syntaxHighlighting";
 import { cn } from "~/lib/utils";
 import type { ChatFileAttachment } from "~/types";
 import { isAbsolutePath, resolvePathLinkTarget } from "~/terminal-links";
+import { HomePathFallbackAttempt, useHomePathFallback } from "../homePathFallback/homePathFallback";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
@@ -1018,8 +1019,13 @@ export default function FilePreviewPanel({
   selectedFilePending,
   workspaceMutationId,
 }: FilePreviewPanelProps) {
-  const relativePath =
-    attachment === undefined ? resolveFilePreviewPath(requestedPath, cwd) : requestedPath;
+  const homePathFallback = useHomePathFallback(
+    environmentId,
+    cwd,
+    attachment === undefined ? resolveFilePreviewPath(requestedPath, cwd) : requestedPath,
+    attachment === undefined,
+  );
+  const relativePath = homePathFallback.path;
   const { resolvedTheme } = useTheme();
   const wordWrap = useClientSettings((settings) => settings.wordWrap);
   const canOperatePreview = useEnvironmentScope(environmentId, AuthPreviewOperateScope);
@@ -1370,8 +1376,13 @@ export default function FilePreviewPanel({
             <div role="alert" className="flex min-h-0 flex-1 flex-col overflow-auto">
               <div className="my-auto flex shrink-0 flex-col gap-3 px-6 py-6 text-center text-xs leading-relaxed">
                 <p className="text-destructive">
-                  {file.readError ? filePreviewReadErrorMessage(file.readError) : file.error}
+                  {homePathFallback.missingHomePath
+                    ? "The file does not exist in the workspace or the home folder."
+                    : file.readError
+                      ? filePreviewReadErrorMessage(file.readError)
+                      : file.error}
                 </p>
+                <HomePathFallbackAttempt homePath={homePathFallback.missingHomePath} />
                 {attemptedPath ? (
                   <p className="text-muted-foreground">
                     Attempted path
