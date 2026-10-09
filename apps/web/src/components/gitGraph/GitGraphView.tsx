@@ -1,6 +1,6 @@
 import type { EnvironmentId, VcsCommitGraphEntry, VcsCommitGraphRef } from "@t3tools/contracts";
 import { GitBranchIcon, GitCommitHorizontalIcon, XIcon } from "lucide-react";
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { DiffStatLabel } from "~/components/chat/DiffStatLabel";
 
@@ -14,7 +14,7 @@ import { vcsEnvironment } from "~/state/vcs";
 import { layoutCommitGraph } from "./commitGraphLayout";
 import { edgePath, LANE_PADDING, LANE_WIDTH, ROW_HEIGHT } from "./edgePath";
 import { GitGraphColumnHeader } from "./GitGraphColumnHeader";
-import { gitGraphColumnVar, useGitGraphColumnWidths } from "./gitGraphColumns";
+import { useGitGraphColumnStyle, useGitGraphColumnWidths } from "./gitGraphColumns";
 import { GitGraphDiff } from "./GitGraphDiff";
 import {
   GIT_GRAPH_FRESH_MS,
@@ -149,15 +149,11 @@ export function GitGraphView({
   const listRef = useRef<HTMLDivElement>(null);
   const [columnWidths, setColumnWidth] = useGitGraphColumnWidths();
   const widths = { ...columnWidths, graph: columnWidths.graph ?? graphWidth };
-  const columnStyle = {
-    [gitGraphColumnVar("graph")]: `${widths.graph}px`,
-    [gitGraphColumnVar("author")]: `${widths.author}px`,
-    [gitGraphColumnVar("date")]: `${widths.date}px`,
-    [gitGraphColumnVar("sha")]: `${widths.sha}px`,
-  } as CSSProperties;
+  const listScope = useId();
+  const previewColumnWidth = useGitGraphColumnStyle(listRef, listScope, widths);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background">
+    <div className="flex h-full min-h-0 w-full min-w-0 flex-1 flex-col bg-background">
       <header
         className={cn(
           "flex shrink-0 items-center gap-3 border-b px-4",
@@ -195,7 +191,7 @@ export function GitGraphView({
       <div className="@container/gitgraph flex min-h-0 flex-1 flex-col @2xl/gitgraph:flex-row">
         <div
           ref={listRef}
-          style={columnStyle}
+          data-git-graph-list={listScope}
           className={cn(
             "@container/gitgraphrow min-h-0 min-w-0 flex-1 overflow-auto",
             range && "flex-[2]",
@@ -213,7 +209,7 @@ export function GitGraphView({
             <>
               <GitGraphColumnHeader
                 widths={widths}
-                containerRef={listRef}
+                onPreview={previewColumnWidth}
                 onResize={setColumnWidth}
               />
               <div className="relative px-4 py-1">
@@ -221,7 +217,7 @@ export function GitGraphView({
                 <svg
                   aria-hidden
                   className="pointer-events-none absolute top-1 left-4"
-                  style={{ width: `var(${gitGraphColumnVar("graph")})` }}
+                  data-git-graph-col="graph"
                   height={commits.length * ROW_HEIGHT}
                 >
                   {layout.edges.map((edge) => (
@@ -276,7 +272,15 @@ export function GitGraphView({
 
                 <ul className="relative">
                   {layout.rows.map((row) => (
-                    <li key={row.commit.sha}>
+                    // Off-screen rows skip layout, so a column drag only
+                    // relays out what is visible.
+                    <li
+                      key={row.commit.sha}
+                      style={{
+                        contentVisibility: "auto",
+                        containIntrinsicSize: `auto ${ROW_HEIGHT}px`,
+                      }}
+                    >
                       <button
                         type="button"
                         onClick={(event) =>
@@ -288,10 +292,8 @@ export function GitGraphView({
                             ),
                           )
                         }
-                        style={{
-                          height: ROW_HEIGHT,
-                          paddingLeft: `var(${gitGraphColumnVar("graph")})`,
-                        }}
+                        data-git-graph-row
+                        style={{ height: ROW_HEIGHT }}
                         className={cn(
                           "flex w-full items-center gap-3 rounded-md pr-2 text-left text-sm",
                           "hover:bg-accent/40",
@@ -335,19 +337,19 @@ export function GitGraphView({
                           the rest; the details pane still has all of it. */}
                             <span
                               className="hidden shrink-0 truncate text-xs text-muted-foreground @xl/gitgraphrow:block"
-                              style={{ width: `var(${gitGraphColumnVar("author")})` }}
+                              data-git-graph-col="author"
                             >
                               {row.commit.author}
                             </span>
                             <span
                               className="shrink-0 truncate text-right text-xs text-muted-foreground"
-                              style={{ width: `var(${gitGraphColumnVar("date")})` }}
+                              data-git-graph-col="date"
                             >
                               {relativeTime(row.commit.authoredAt)}
                             </span>
                             <span
                               className="hidden shrink-0 truncate text-right font-mono text-[11px] text-muted-foreground/70 @lg/gitgraphrow:block"
-                              style={{ width: `var(${gitGraphColumnVar("sha")})` }}
+                              data-git-graph-col="sha"
                             >
                               {row.commit.sha.slice(0, 8)}
                             </span>

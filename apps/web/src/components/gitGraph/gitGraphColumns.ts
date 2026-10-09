@@ -1,4 +1,5 @@
 import * as Schema from "effect/Schema";
+import { useCallback, useLayoutEffect, useRef, type RefObject } from "react";
 
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 
@@ -39,8 +40,62 @@ export function resizedGitGraphColumnWidth(
   return Math.round(Math.min(MAX_WIDTH, Math.max(MIN_WIDTH[column], width)));
 }
 
-/** Rows read their widths from these variables, so a drag repaints without re-rendering. */
-export const gitGraphColumnVar = (column: GitGraphColumn) => `--esveo-git-graph-${column}`;
+const COLUMNS: ReadonlyArray<GitGraphColumn> = ["graph", "author", "date", "sha"];
+
+/**
+ * The commit list sizes its cells with one small stylesheet instead of inline
+ * widths or inherited CSS variables: rewriting it restyles only the cells, which
+ * keeps a drag at a fraction of a frame even with a thousand rows. Cells carry
+ * `data-git-graph-col`, rows `data-git-graph-row`, the list `data-git-graph-list`.
+ */
+function gitGraphColumnRules(scope: string, widths: Readonly<Record<GitGraphColumn, number>>) {
+  const list = `[data-git-graph-list="${scope}"]`;
+  return [
+    `${list} [data-git-graph-row] { padding-left: ${widths.graph}px; }`,
+    ...COLUMNS.map(
+      (column) => `${list} [data-git-graph-col="${column}"] { width: ${widths[column]}px; }`,
+    ),
+  ].join("\n");
+}
+
+/**
+ * Keeps the list's stylesheet on `widths` and returns `preview`, which shows a
+ * width mid-drag without a React render; the drag saves the final width itself.
+ */
+export function useGitGraphColumnStyle(
+  listRef: RefObject<HTMLElement | null>,
+  scope: string,
+  widths: Readonly<Record<GitGraphColumn, number>>,
+) {
+  const styleRef = useRef<HTMLStyleElement | null>(null);
+  const widthsRef = useRef(widths);
+  useLayoutEffect(() => {
+    const ownerDocument = listRef.current?.ownerDocument ?? document;
+    const style = ownerDocument.createElement("style");
+    ownerDocument.head.append(style);
+    styleRef.current = style;
+    return () => {
+      style.remove();
+      styleRef.current = null;
+    };
+  }, [listRef]);
+  const { graph, author, date, sha } = widths;
+  useLayoutEffect(() => {
+    widthsRef.current = { graph, author, date, sha };
+    if (styleRef.current === null) return;
+    styleRef.current.textContent = gitGraphColumnRules(scope, widthsRef.current);
+  }, [scope, graph, author, date, sha]);
+  return useCallback(
+    (column: GitGraphColumn, width: number) => {
+      if (styleRef.current === null) return;
+      styleRef.current.textContent = gitGraphColumnRules(scope, {
+        ...widthsRef.current,
+        [column]: width,
+      });
+    },
+    [scope],
+  );
+}
 
 export function useGitGraphColumnWidths() {
   const [widths, setWidths] = useLocalStorage(
