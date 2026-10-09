@@ -2,6 +2,7 @@
 
 Every feature and fix this fork adds on top of [T3 Code](https://github.com/pingdotgg/t3code), each with the commits that made it.
 
+- Git graph columns can be resized by dragging the edges in the new header row; double-click an edge to reset it, and the widths are remembered ([34a9ebf](https://github.com/esveo/t3code/commit/34a9ebf0f6cdd4a4b85b88cb65c57fb816bcd90f), [ff7cb0f](https://github.com/esveo/t3code/commit/ff7cb0ffa50e626a704d77d3fbb7c1af595a5dc4)).
 - Fix: a pull request's diff no longer reloads mid-review; new commits show a Refresh button instead, like on GitHub ([955b7ae](https://github.com/esveo/t3code/commit/955b7aedc383b2715b29baa7c435fc35113abca2)).
 - Scheduled tasks at a fixed time can catch up a run missed while the app was off or asleep: with Catch up missed runs on, it runs once when the app is back instead of skipping to the next time ([93aa238](https://github.com/esveo/t3code/commit/93aa2386e7e80edd2875c5a77f280f8ba7a195a8)).
 - Fix: a thread started from a draft no longer stays empty when its contents were requested before the server created it ([3737274](https://github.com/esveo/t3code/commit/373727441e3b20b4de506fd98f65ea6f5ef7aba1)).
