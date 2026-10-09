@@ -1,11 +1,13 @@
 /**
  * Fork: user insights. The texts and output schemas of the Haiku calls. Kept
- * short and stable: the CLI's own system prompt already dominates the cost.
+ * short and stable, so calls stay cheap and fast.
  */
 import {
   USER_INSIGHTS_MAX_SUGGESTIONS,
+  USER_INSIGHTS_MAX_TRAIT_VALUE_LENGTH,
   USER_INSIGHTS_SUGGESTION_DESCRIPTION_MAX,
   USER_INSIGHTS_SUGGESTION_LABEL_MAX,
+  USER_INSIGHTS_TRAIT_IDS,
   type UserInsightsProfile,
   type UserInsightsSuggestion,
   type UserInsightsTraitId,
@@ -39,19 +41,26 @@ export const TRAIT_DEFINITIONS: Record<UserInsightsTraitId, string> = {
   "notes.5": "Any other stable habit worth remembering.",
 };
 
+/**
+ * The limits are hard caps for the model (the CLI enforces the JSON schema):
+ * without them Haiku once wrote about 15k tokens, ran past the per-call budget
+ * and timed out. One op per trait id at most.
+ */
 export const DistillOutput = Schema.Struct({
   ops: Schema.Array(
     Schema.Struct({
       traitId: Schema.String,
       op: Schema.Literals(["add", "support", "contradict", "revise", "noop"]),
       /** The new value for `add` and `revise`, null otherwise. */
-      value: Schema.NullOr(Schema.String),
+      value: Schema.NullOr(
+        Schema.String.check(Schema.isMaxLength(USER_INSIGHTS_MAX_TRAIT_VALUE_LENGTH)),
+      ),
       /** How many of the excerpts back this operation. */
       count: Schema.Number,
       /** Excerpt numbers, as shown. */
-      evidence: Schema.Array(Schema.Number),
+      evidence: Schema.Array(Schema.Number).check(Schema.isMaxLength(3)),
     }),
-  ),
+  ).check(Schema.isMaxLength(USER_INSIGHTS_TRAIT_IDS.length)),
 });
 export type DistillOutput = typeof DistillOutput.Type;
 
