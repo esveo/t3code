@@ -109,6 +109,7 @@ export function pathForSide(fileDiff: FileDiffMetadata, side: DiffSide) {
 
 interface KeyLike {
   readonly key: string;
+  readonly code?: string;
   readonly metaKey: boolean;
   readonly ctrlKey: boolean;
   readonly altKey: boolean;
@@ -124,20 +125,55 @@ export function isNavigationModifier(event: Omit<KeyLike, "key">, mac: boolean) 
 export const isNavigationModifierKey = (key: string, mac: boolean) =>
   mac ? key === "Meta" : key === "Control";
 
-/** VS Code's Go Back: Ctrl+- and Cmd+[ on macOS, Alt+Left elsewhere. */
-export function isBackShortcut(event: KeyLike, mac: boolean) {
+const isMinusKey = (event: KeyLike) =>
+  event.code === "Minus" || event.key === "-" || event.key === "_";
+
+/**
+ * VS Code's Go Back and Go Forward: Ctrl+- and Ctrl+Shift+- on macOS, where
+ * Cmd+[ and Cmd+] also work outside an editor (in one they outdent and
+ * indent); Alt+Left and Alt+Right elsewhere.
+ */
+function isHistoryShortcut(event: KeyLike, mac: boolean, inEditor: boolean, forward: boolean) {
   if (mac) {
     return (
-      (event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey && event.key === "[") ||
-      (event.ctrlKey && !event.metaKey && !event.altKey && event.key === "-")
+      (!inEditor &&
+        event.metaKey &&
+        !event.ctrlKey &&
+        !event.altKey &&
+        !event.shiftKey &&
+        event.key === (forward ? "]" : "[")) ||
+      (event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey &&
+        event.shiftKey === forward &&
+        isMinusKey(event))
     );
   }
-  return event.altKey && !event.ctrlKey && !event.metaKey && event.key === "ArrowLeft";
+  return (
+    event.altKey &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.shiftKey &&
+    event.key === (forward ? "ArrowRight" : "ArrowLeft")
+  );
 }
+
+export const isBackShortcut = (event: KeyLike, mac: boolean, inEditor = false) =>
+  isHistoryShortcut(event, mac, inEditor, false);
+
+export const isForwardShortcut = (event: KeyLike, mac: boolean, inEditor = false) =>
+  isHistoryShortcut(event, mac, inEditor, true);
 
 /** VS Code's Find All References. */
 export const isReferencesShortcut = (event: KeyLike) =>
   event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey && event.key === "F12";
+
+/** VS Code's Go to Definition. */
+export const isDefinitionShortcut = (event: KeyLike) =>
+  !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey && event.key === "F12";
+
+/** Mouse button 5, the "forward" side button. */
+export const isForwardMouseButton = (button: number) => button === 4;
 
 /** Mouse button 4, the "back" side button. */
 export const isBackMouseButton = (button: number) => button === 3;
@@ -210,6 +246,13 @@ export type NavigationPlace =
       readonly revision: CodeNavigationRevision;
       readonly path: string;
       readonly line: number;
+    }
+  | {
+      /** The built-in editor, at a repository path of the working tree. */
+      readonly kind: "editor";
+      readonly path: string;
+      readonly line: number;
+      readonly column: number;
     };
 
 const HISTORY_LIMIT = 50;
@@ -228,14 +271,66 @@ export function popPlace(history: ReadonlyArray<NavigationPlace>) {
   return { place: history.at(-1) ?? null, history: history.slice(0, -1) };
 }
 
+export interface NavigationHistory {
+  readonly back: ReadonlyArray<NavigationPlace>;
+  readonly forward: ReadonlyArray<NavigationPlace>;
+}
+
+export const EMPTY_HISTORY: NavigationHistory = { back: [], forward: [] };
+
+/** A new navigation from `from`: it can be gone back to, and nothing is ahead anymore. */
+export function recordNavigation(history: NavigationHistory, from: NavigationPlace) {
+  return { back: pushPlace(history.back, from), forward: [] } satisfies NavigationHistory;
+}
+
+/**
+ * Goes back or forward: returns the place to open, and the history with
+ * `current` (where the user is now) on the other stack to return to.
+ */
+export function stepHistory(
+  history: NavigationHistory,
+  direction: "back" | "forward",
+  current: NavigationPlace | null,
+): { readonly place: NavigationPlace | null; readonly history: NavigationHistory } {
+  const from = direction === "back" ? history.back : history.forward;
+  const to = direction === "back" ? history.forward : history.back;
+  const { place, history: rest } = popPlace(from);
+  if (!place) return { place: null, history };
+  const other = current ? pushPlace(to, current) : to;
+  return {
+    place,
+    history: direction === "back" ? { back: rest, forward: other } : { back: other, forward: rest },
+  };
+}
+
 function samePlace(left: NavigationPlace, right: NavigationPlace) {
   if (left.kind !== right.kind || left.path !== right.path || left.line !== right.line) {
     return false;
   }
   if (left.kind === "diff" && right.kind === "diff") return left.side === right.side;
+  if (left.kind === "editor") return true;
   return (
     left.kind === "file" &&
     right.kind === "file" &&
     revisionKey(left.revision) === revisionKey(right.revision)
   );
+}
+
+const trimSlashes = (path: string) => path.replaceAll("\\", "/").replace(/\/+$/, "");
+
+/**
+ * The repository path of a file the editor shows relative to the project's
+ * workspace, which may be a folder inside the repository. The way back is
+ * `resolveDiffPathForWorkspace`.
+ */
+export function repositoryPathOf(
+  workspacePath: string,
+  workspaceRoot: string,
+  repositoryRoot: string | undefined,
+) {
+  if (!repositoryRoot) return workspacePath;
+  const root = trimSlashes(repositoryRoot);
+  const workspace = trimSlashes(workspaceRoot);
+  if (workspace === root || !workspace.startsWith(`${root}/`)) return workspacePath;
+  return `${workspace.slice(root.length + 1)}/${workspacePath}`;
 }

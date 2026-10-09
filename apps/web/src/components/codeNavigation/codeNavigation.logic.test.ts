@@ -9,6 +9,9 @@ import {
   groupByFile,
   isBackMouseButton,
   isBackShortcut,
+  isDefinitionShortcut,
+  isForwardMouseButton,
+  isForwardShortcut,
   isLineInDiff,
   isNavigationModifier,
   isReferencesShortcut,
@@ -16,14 +19,23 @@ import {
   popPlace,
   pullRequestRevisions,
   pushPlace,
+  recordNavigation,
+  repositoryPathOf,
   revisionForSide,
   sideOfRevision,
+  stepHistory,
+  EMPTY_HISTORY,
   WORKING_TREE,
   type NavigationPlace,
 } from "./codeNavigation.logic";
 
-const key = (key: string, modifiers: Partial<Record<"meta" | "ctrl" | "alt" | "shift", true>>) => ({
+const key = (
+  key: string,
+  modifiers: Partial<Record<"meta" | "ctrl" | "alt" | "shift", true>>,
+  code?: string,
+) => ({
   key,
+  ...(code ? { code } : {}),
   metaKey: modifiers.meta === true,
   ctrlKey: modifiers.ctrl === true,
   altKey: modifiers.alt === true,
@@ -131,6 +143,26 @@ describe("keys", () => {
     assert.isFalse(isBackMouseButton(0));
   });
 
+  it("goes forward like VS Code, and leaves Cmd+[ and Cmd+] to an editor's indent", () => {
+    assert.isTrue(isForwardShortcut(key("]", { meta: true }), true));
+    assert.isTrue(isForwardShortcut(key("_", { ctrl: true, shift: true }, "Minus"), true));
+    assert.isFalse(isForwardShortcut(key("-", { ctrl: true }, "Minus"), true));
+    assert.isTrue(isForwardShortcut(key("ArrowRight", { alt: true }), false));
+    assert.isFalse(isForwardShortcut(key("ArrowRight", { alt: true }), true));
+
+    assert.isFalse(isBackShortcut(key("[", { meta: true }), true, true));
+    assert.isFalse(isForwardShortcut(key("]", { meta: true }), true, true));
+    assert.isTrue(isBackShortcut(key("-", { ctrl: true }, "Minus"), true, true));
+    assert.isTrue(isBackShortcut(key("ArrowLeft", { alt: true }), false, true));
+    assert.isTrue(isForwardMouseButton(4));
+    assert.isFalse(isForwardMouseButton(3));
+  });
+
+  it("goes to a definition with F12 alone", () => {
+    assert.isTrue(isDefinitionShortcut(key("F12", {})));
+    assert.isFalse(isDefinitionShortcut(key("F12", { shift: true })));
+  });
+
   it("finds references with Shift+F12 only", () => {
     assert.isTrue(isReferencesShortcut(key("F12", { shift: true })));
     assert.isFalse(isReferencesShortcut(key("F12", {})));
@@ -206,5 +238,43 @@ describe("history", () => {
     for (let line = 1; line <= 60; line++) history = pushPlace(history, diffPlace(line));
     assert.equal(history.length, 50);
     assert.deepEqual(history[0], diffPlace(11));
+  });
+
+  it("goes back and forward across editor files, dropping what is ahead on a new navigation", () => {
+    const editor = (path: string, line: number): NavigationPlace => ({
+      kind: "editor",
+      path,
+      line,
+      column: 0,
+    });
+    // a.ts:3 → b.ts:10 → c.ts:1
+    let history = recordNavigation(EMPTY_HISTORY, editor("a.ts", 3));
+    history = recordNavigation(history, editor("b.ts", 10));
+
+    const back = stepHistory(history, "back", editor("c.ts", 1));
+    assert.deepEqual(back.place, editor("b.ts", 10));
+    const backAgain = stepHistory(back.history, "back", editor("b.ts", 12));
+    assert.deepEqual(backAgain.place, editor("a.ts", 3));
+    assert.deepEqual(backAgain.history, {
+      back: [],
+      forward: [editor("c.ts", 1), editor("b.ts", 12)],
+    });
+
+    const forward = stepHistory(backAgain.history, "forward", editor("a.ts", 3));
+    assert.deepEqual(forward.place, editor("b.ts", 12));
+    assert.deepEqual(forward.history.back, [editor("a.ts", 3)]);
+
+    const branched = recordNavigation(forward.history, editor("b.ts", 12));
+    assert.deepEqual(branched.forward, []);
+    assert.isNull(stepHistory(branched, "forward", null).place);
+  });
+});
+
+describe("paths", () => {
+  it("prefixes a workspace path with the workspace's folder inside the repository", () => {
+    assert.equal(repositoryPathOf("src/a.ts", "/repo", "/repo"), "src/a.ts");
+    assert.equal(repositoryPathOf("src/a.ts", "/repo/apps/web/", "/repo"), "apps/web/src/a.ts");
+    assert.equal(repositoryPathOf("src/a.ts", "/elsewhere", "/repo"), "src/a.ts");
+    assert.equal(repositoryPathOf("src/a.ts", "/repo/apps", undefined), "src/a.ts");
   });
 });

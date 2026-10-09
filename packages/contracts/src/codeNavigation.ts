@@ -55,6 +55,11 @@ export const CodeNavigationPositionInput = Schema.Struct({
   line: PositiveInt,
   /** 0-based, in UTF-16 code units. */
   column: NonNegativeInt,
+  /**
+   * The file's text as the client shows it, used instead of the file at the
+   * revision: an editor's unsaved buffer, so positions match what the user sees.
+   */
+  content: Schema.optional(Schema.String),
 });
 export type CodeNavigationPositionInput = typeof CodeNavigationPositionInput.Type;
 

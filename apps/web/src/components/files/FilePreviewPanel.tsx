@@ -89,6 +89,10 @@ import {
 } from "./filePreviewMode";
 import { useFileSaveCoordinator } from "./useFileSaveCoordinator";
 import {
+  EditorCodeNavigation,
+  useEditorCodeNavigation,
+} from "../codeNavigation/EditorCodeNavigation";
+import {
   getOptimisticProjectFileQueryData,
   setProjectFileQueryData,
   useProjectFileQuery,
@@ -637,6 +641,7 @@ function EditableFileSurface({
     },
     [editor],
   );
+  const codeNavigationOptions = useEditorCodeNavigation(editor, relativePath);
 
   const removeAnnotationEntry = useCallback(
     (entryId: string) => {
@@ -812,6 +817,7 @@ function EditableFileSurface({
               themeType: resolvedTheme,
               unsafeCSS: FILE_LINK_REVEAL_UNSAFE_CSS,
               onPostRender: handlePostRender,
+              ...codeNavigationOptions,
             }}
             selectedLines={selectedRange}
             lineAnnotations={lineAnnotations}
@@ -1271,21 +1277,30 @@ export default function FilePreviewPanel({
                 onPostRender={onFilePostRender}
               />
             ) : (
-              <DiffWorkerPoolProvider>
-                <EditableFileSurface
-                  key={`${relativePath}:${resolvedTheme}`}
-                  environmentId={environmentId}
-                  cwd={cwd}
-                  relativePath={relativePath}
-                  composerDraftTarget={composerDraftTarget}
-                  contents={file.data.contents}
-                  resolvedTheme={resolvedTheme}
-                  revealRequestId={revealRequestId}
-                  wordWrap={wordWrap}
-                  onPostRender={onFilePostRender}
-                  onPendingChange={onPendingChange}
-                />
-              </DiffWorkerPoolProvider>
+              <EditorCodeNavigation
+                environmentId={environmentId}
+                cwd={cwd}
+                threadRef={threadRef}
+                relativePath={relativePath}
+                contents={file.data.contents}
+                dirty={selectedFilePending}
+              >
+                <DiffWorkerPoolProvider>
+                  <EditableFileSurface
+                    key={`${relativePath}:${resolvedTheme}`}
+                    environmentId={environmentId}
+                    cwd={cwd}
+                    relativePath={relativePath}
+                    composerDraftTarget={composerDraftTarget}
+                    contents={file.data.contents}
+                    resolvedTheme={resolvedTheme}
+                    revealRequestId={revealRequestId}
+                    wordWrap={wordWrap}
+                    onPostRender={onFilePostRender}
+                    onPendingChange={onPendingChange}
+                  />
+                </DiffWorkerPoolProvider>
+              </EditorCodeNavigation>
             )
           ) : null}
         </div>

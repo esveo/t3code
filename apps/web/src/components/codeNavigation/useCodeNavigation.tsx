@@ -1,15 +1,16 @@
 /**
- * Fork: VS Code-style code navigation for a diff viewer. Cmd/Ctrl+hover
- * underlines what has a definition, Cmd/Ctrl+click goes there (a picker when
- * there are several, references when the word is the definition), Shift+F12
- * and the context menu find references, and Cmd+[ / Alt+Left / mouse back
- * return. Targets inside the diff scroll into view; others open a read-only
- * file view at the same revision.
+ * Fork: VS Code-style code navigation for a diff viewer or the built-in
+ * editor. Cmd/Ctrl+hover underlines what has a definition, Cmd/Ctrl+click or
+ * F12 goes there (a picker when there are several, references when the word
+ * is the definition), Shift+F12 and the context menu find references, and
+ * Cmd+[ / Ctrl+- / Alt+Left / mouse back return (forward likewise). Targets
+ * inside the diff scroll into view; working-tree targets of the editor open in
+ * the editor; others open a read-only file view at the same revision.
  *
  * A surface mounts it with: `mount` as the ref of the element around the viewer
  * (positioned, it hosts the overlay), `options` spread into the viewer's
  * options, and `overlay` rendered inside the container. The underline's CSS
- * ships with every viewer (`StyledDiffCodeView`).
+ * ships with every diff viewer (`StyledDiffCodeView`); the editor adds it itself.
  */
 import type { CodeViewScrollTarget, FileDiffMetadata, TokenEventBase } from "@pierre/diffs";
 import type {
@@ -36,19 +37,25 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import {
   type DiffRevisions,
   type DiffSide,
+  EMPTY_HISTORY,
   isBackMouseButton,
   isBackShortcut,
+  isDefinitionShortcut,
+  isForwardMouseButton,
+  isForwardShortcut,
   isLineInDiff,
   isNavigationModifier,
   isNavigationModifierKey,
   isReferencesShortcut,
+  type NavigationHistory,
   type NavigationPlace,
   pathForSide,
-  popPlace,
-  pushPlace,
+  recordNavigation,
   revisionForSide,
   revisionKey,
   sideOfRevision,
+  stepHistory,
+  WORKING_TREE,
 } from "./codeNavigation.logic";
 import { clearLink, columnAtPoint, flashLine, lineElementOf, showLink } from "./codeNavigationDom";
 import {
@@ -72,12 +79,32 @@ export interface CodeNavigationFile {
   readonly fileKey?: string;
 }
 
+/** The built-in editor's file, navigated in the working tree. */
+export interface CodeNavigationEditor {
+  /** Its repository path; null when it is outside the repository. */
+  readonly path: string | null;
+  /** The buffer, sent along while it is not saved yet so positions match what the user sees. */
+  readonly text: string;
+  readonly dirty: boolean;
+  /** The primary caret, 1-based line and 0-based column; null without one. */
+  readonly caret: () => { readonly line: number; readonly column: number } | null;
+}
+
 export interface CodeNavigationSurface {
   readonly environmentId: EnvironmentId | null | undefined;
   readonly cwd: string | null | undefined;
   readonly revisions: DiffRevisions;
   readonly files: ReadonlyArray<CodeNavigationFile>;
   readonly codeView: { scrollTo(target: CodeViewScrollTarget): void } | null;
+  readonly editor?: CodeNavigationEditor | undefined;
+  /**
+   * Opens a working-tree file (repository path) in the built-in editor; false
+   * when it cannot. The editor goes there directly, other surfaces offer it in
+   * the read-only file view.
+   */
+  readonly openInEditor?: ((path: string, line: number, column: number) => boolean) | undefined;
+  /** Keeps back and forward across remounts of surfaces sharing it, such as editor tabs. */
+  readonly historyKey?: string | undefined;
 }
 
 /** The trailing context Pierre's CodeView passes to item callbacks. */
@@ -88,14 +115,20 @@ export interface TokenContext {
 }
 export type TokenProps = TokenEventBase & { readonly side?: DiffSide };
 
-interface Hover {
-  readonly token: HTMLElement;
-  readonly lineCharStart: number;
+/** What a navigation starts from: a hovered token or the editor's caret. */
+interface Origin {
   readonly revision: CodeNavigationRevision;
   readonly path: string;
-  readonly line: number;
   readonly place: NavigationPlace;
 }
+
+interface Hover extends Origin {
+  readonly token: HTMLElement;
+  readonly lineCharStart: number;
+  readonly line: number;
+}
+
+type Position = Omit<CodeNavigationPositionInput, "cwd">;
 
 type Picker = {
   readonly x: number;
@@ -106,21 +139,45 @@ type Picker = {
 };
 
 /** The hovered position, at the character under the pointer. */
-const positionOf = (hover: Hover, x: number, y: number) => ({
+const positionOf = (hover: Hover, x: number, y: number): Position => ({
   revision: hover.revision,
   path: hover.path,
   line: hover.line,
   column: columnAtPoint(hover.token, hover.lineCharStart, x, y),
 });
 
+/** An editor place is where the caret or click was, to the column. */
+const placeAt = (origin: Origin, position: Position): NavigationPlace =>
+  origin.place.kind === "editor"
+    ? { ...origin.place, line: position.line, column: position.column }
+    : origin.place;
+
 const MAC = typeof navigator !== "undefined" && isMacPlatform(navigator.platform);
+
+const histories = new Map<string, NavigationHistory>();
+
+/** Pointer events Alt+click turned into the editor's add-cursor click. */
+const remappedEvents = new WeakSet<Event>();
+
+/** A click on the code of a line, not its gutter or a comment below it. */
+function isCodeTarget(event: Event) {
+  const target = event.composedPath()[0];
+  return (
+    target instanceof Element &&
+    target.closest("[data-line]") !== null &&
+    target.closest("[data-gutter], [data-line-annotation]") === null
+  );
+}
 
 export function useCodeNavigation(surface: CodeNavigationSurface) {
   const [container, setContainer] = useState<HTMLElement | null>(null);
   const [fileView, setFileView] = useState<FileViewTarget | null>(null);
   const [picker, setPicker] = useState<Picker | null>(null);
   const [references, setReferences] = useState<ReferencesState | null>(null);
-  const [history, setHistory] = useState<ReadonlyArray<NavigationPlace>>([]);
+  const historyKey = surface.historyKey;
+  const [history, setHistoryState] = useState<NavigationHistory>(
+    () => (historyKey ? histories.get(historyKey) : undefined) ?? EMPTY_HISTORY,
+  );
   // Event handlers read the latest values without re-subscribing.
   const surfaceRef = useRef(surface);
   const fileViewRef = useRef(fileView);
@@ -130,6 +187,14 @@ export function useCodeNavigation(surface: CodeNavigationSurface) {
     fileViewRef.current = fileView;
     historyRef.current = history;
   });
+  const setHistory = useCallback(
+    (next: NavigationHistory) => {
+      historyRef.current = next;
+      if (historyKey) histories.set(historyKey, next);
+      setHistoryState(next);
+    },
+    [historyKey],
+  );
 
   const resolveDefinitionCommand = useAtomCommand(codeNavigationEnvironment.resolveDefinition, {
     reportFailure: false,
@@ -151,15 +216,29 @@ export function useCodeNavigation(surface: CodeNavigationSurface) {
     new Map<string, Promise<CodeNavigationDefinitionResult | null>>(),
   );
   const lineSymbolsRef = useRef(new Map<string, CodeNavigationDefinitionResult[]>());
-  /** The diff the caches belong to: a refreshed diff may mean edited working-tree files. */
-  const cacheOwnerRef = useRef<object | null>(null);
+  /**
+   * What the caches belong to: a refreshed diff may mean edited working-tree
+   * files, an edit in the editor moves every position after it.
+   */
+  const cacheOwnerRef = useRef<unknown>(null);
+
+  /** The request for a position: an unsaved editor buffer stands in for its file on disk. */
+  const requestOf = useCallback((position: Position): CodeNavigationPositionInput | null => {
+    const { cwd, editor } = surfaceRef.current;
+    if (!cwd) return null;
+    const unsaved =
+      editor?.dirty && position.revision._tag === "workingTree" && position.path === editor.path;
+    return { cwd, ...position, ...(unsaved ? { content: editor.text } : {}) };
+  }, []);
 
   const resolve = useCallback(
-    (position: Omit<CodeNavigationPositionInput, "cwd">) => {
-      const { environmentId, cwd, files } = surfaceRef.current;
-      if (!environmentId || !cwd) return Promise.resolve(null);
-      if (cacheOwnerRef.current !== files || definitionCacheRef.current.size > CACHE_LIMIT) {
-        cacheOwnerRef.current = files;
+    (position: Position) => {
+      const { environmentId, files, editor } = surfaceRef.current;
+      const input = requestOf(position);
+      if (!environmentId || !input) return Promise.resolve(null);
+      const owner = editor ? editor.text : files;
+      if (cacheOwnerRef.current !== owner || definitionCacheRef.current.size > CACHE_LIMIT) {
+        cacheOwnerRef.current = owner;
         definitionCacheRef.current.clear();
         lineSymbolsRef.current.clear();
       }
@@ -176,10 +255,7 @@ export function useCodeNavigation(surface: CodeNavigationSurface) {
       const key = `${lineKey}|${position.column}`;
       const cached = definitionCacheRef.current.get(key);
       if (cached) return cached;
-      const pending = resolveDefinitionCommand({
-        environmentId,
-        input: { cwd, ...position },
-      }).then((result) => {
+      const pending = resolveDefinitionCommand({ environmentId, input }).then((result) => {
         if (result._tag !== "Success") {
           definitionCacheRef.current.delete(key);
           return null;
@@ -194,7 +270,7 @@ export function useCodeNavigation(surface: CodeNavigationSurface) {
       definitionCacheRef.current.set(key, pending);
       return pending;
     },
-    [resolveDefinitionCommand],
+    [requestOf, resolveDefinitionCommand],
   );
 
   const hoverOf = useCallback((props: TokenProps, context?: TokenContext): Hover | null => {
@@ -217,12 +293,38 @@ export function useCodeNavigation(surface: CodeNavigationSurface) {
       };
     }
     const file = fileViewRef.current;
+    const editorPath = surfaceRef.current.editor?.path;
+    // The editor is a standalone file without item context; the file view covers it while open.
+    if (!file && !item && editorPath) {
+      return {
+        ...base,
+        revision: WORKING_TREE,
+        path: editorPath,
+        place: { kind: "editor", path: editorPath, line: props.lineNumber, column: 0 },
+      };
+    }
     if (!file) return null;
     return {
       ...base,
       revision: file.revision,
       path: file.path,
       place: { kind: "file", revision: file.revision, path: file.path, line: props.lineNumber },
+    };
+  }, []);
+
+  /** The editor's caret as a navigation origin, while the editor is what the user looks at. */
+  const caretOrigin = useCallback((): { origin: Origin; position: Position } | null => {
+    const { editor } = surfaceRef.current;
+    const caret = editor?.caret();
+    if (!editor?.path || !caret || fileViewRef.current) return null;
+    const position = { revision: WORKING_TREE, path: editor.path, ...caret };
+    return {
+      origin: {
+        revision: WORKING_TREE,
+        path: editor.path,
+        place: { kind: "editor", path: editor.path, ...caret },
+      },
+      position,
     };
   }, []);
 
@@ -283,53 +385,82 @@ export function useCodeNavigation(surface: CodeNavigationSurface) {
     [container],
   );
 
+  /** Opens a working-tree file in the editor, from the editor itself. */
+  const openEditorPlace = useCallback((path: string, line: number, column: number) => {
+    const { editor, openInEditor } = surfaceRef.current;
+    if (!editor || !openInEditor?.(path, line, column)) return false;
+    setFileView(null);
+    currentPlaceRef.current = { kind: "editor", path, line, column };
+    return true;
+  }, []);
+
   const openPlace = useCallback(
-    (revision: CodeNavigationRevision, path: string, line: number) => {
+    (revision: CodeNavigationRevision, path: string, line: number, column: number) => {
+      if (revision._tag === "workingTree" && openEditorPlace(path, line, column)) return;
       const side = sideOfRevision(surfaceRef.current.revisions, revision);
       if (side && revealInDiff(path, side, line, false)) return;
       setFileView({ revision, path, line });
       currentPlaceRef.current = { kind: "file", revision, path, line };
     },
-    [revealInDiff],
+    [openEditorPlace, revealInDiff],
   );
 
   const navigate = useCallback(
     (location: CodeNavigationLocation, revision: CodeNavigationRevision, from: NavigationPlace) => {
-      setHistory((current) => pushPlace(current, from));
+      setHistory(recordNavigation(historyRef.current, from));
       setPicker(null);
-      openPlace(revision, location.path, location.line);
+      openPlace(revision, location.path, location.line, location.column);
     },
-    [openPlace],
+    [openPlace, setHistory],
   );
 
-  const goBack = useCallback(() => {
-    const { place, history: rest } = popPlace(historyRef.current);
-    if (!place) return;
-    setHistory(rest);
-    setPicker(null);
-    if (place.kind === "diff") {
-      if (!revealInDiff(place.path, place.side, place.line, true)) setFileView(null);
-      return;
-    }
-    setFileView({ revision: place.revision, path: place.path, line: place.line });
-    currentPlaceRef.current = place;
-  }, [revealInDiff]);
+  /** Where the user is now, to come back to after going back or forward. */
+  const currentPlace = useCallback(
+    (): NavigationPlace | null => caretOrigin()?.origin.place ?? currentPlaceRef.current,
+    [caretOrigin],
+  );
+
+  const step = useCallback(
+    (direction: "back" | "forward") => {
+      const { place, history: next } = stepHistory(historyRef.current, direction, currentPlace());
+      if (!place) return;
+      setHistory(next);
+      setPicker(null);
+      if (place.kind === "diff") {
+        if (!revealInDiff(place.path, place.side, place.line, true)) setFileView(null);
+        return;
+      }
+      if (place.kind === "editor") {
+        if (!openEditorPlace(place.path, place.line, place.column)) {
+          setFileView({ revision: WORKING_TREE, path: place.path, line: place.line });
+        }
+        return;
+      }
+      setFileView({ revision: place.revision, path: place.path, line: place.line });
+      currentPlaceRef.current = place;
+    },
+    [currentPlace, openEditorPlace, revealInDiff, setHistory],
+  );
+  const goBack = useCallback(() => step("back"), [step]);
+  const goForward = useCallback(() => step("forward"), [step]);
 
   const showReferences = useCallback(
-    (hover: Hover, position: Omit<CodeNavigationPositionInput, "cwd">) => {
-      const { environmentId, cwd } = surfaceRef.current;
-      if (!environmentId || !cwd) return;
+    (origin: Origin, position: Position) => {
+      const { environmentId } = surfaceRef.current;
+      const input = requestOf(position);
+      if (!environmentId || !input) return;
+      const from = placeAt(origin, position);
       setPicker(null);
-      currentPlaceRef.current = hover.place;
+      currentPlaceRef.current = from;
       const request = Date.now();
       setReferences({
         request,
-        revision: hover.revision,
-        from: hover.place,
+        revision: origin.revision,
+        from,
         result: null,
         error: null,
       });
-      void findReferencesCommand({ environmentId, input: { cwd, ...position } }).then((result) => {
+      void findReferencesCommand({ environmentId, input }).then((result) => {
         setReferences((current) =>
           current?.request !== request
             ? current
@@ -339,24 +470,19 @@ export function useCodeNavigation(surface: CodeNavigationSurface) {
         );
       });
     },
-    [findReferencesCommand],
+    [findReferencesCommand, requestOf],
   );
 
   const goToDefinition = useCallback(
-    (hover: Hover, position: Omit<CodeNavigationPositionInput, "cwd">, x: number, y: number) => {
+    (origin: Origin, position: Position, x: number, y: number) => {
       void resolve(position).then((result) => {
         if (!result?.symbol) return;
-        if (result.isDefinition) return showReferences(hover, position);
+        if (result.isDefinition) return showReferences(origin, position);
         const [first, ...others] = result.definitions;
         if (!first) return;
-        if (others.length === 0) return navigate(first, hover.revision, hover.place);
-        setPicker({
-          x,
-          y,
-          revision: hover.revision,
-          locations: result.definitions,
-          from: hover.place,
-        });
+        const from = placeAt(origin, position);
+        if (others.length === 0) return navigate(first, origin.revision, from);
+        setPicker({ x, y, revision: origin.revision, locations: result.definitions, from });
       });
     },
     [navigate, resolve, showReferences],
@@ -408,13 +534,55 @@ export function useCodeNavigation(surface: CodeNavigationSurface) {
       clearHoverLink();
     };
     const onMouseUp = (event: MouseEvent) => {
-      if (!isBackMouseButton(event.button) || historyRef.current.length === 0) return;
+      const back = isBackMouseButton(event.button);
+      if (!back && !isForwardMouseButton(event.button)) return;
+      const { back: behind, forward: ahead } = historyRef.current;
+      if ((back ? behind : ahead).length === 0) return;
       event.preventDefault();
-      goBack();
+      step(back ? "back" : "forward");
+    };
+    // In the editor Cmd/Ctrl+click navigates instead of adding a cursor, and
+    // Alt+click adds the cursor instead, as in VS Code. Pierre's editor listens
+    // inside its shadow root, so the container's capture phase comes first.
+    const editing = surfaceRef.current.editor !== undefined;
+    const onEditorPointerDown = (event: PointerEvent) => {
+      if (remappedEvents.has(event) || event.button !== 0 || !isCodeTarget(event)) return;
+      if (isNavigationModifier(event, MAC)) {
+        event.stopPropagation();
+        return;
+      }
+      if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
+      event.stopPropagation();
+      const remapped = new PointerEvent("pointerdown", {
+        bubbles: true,
+        composed: true,
+        cancelable: true,
+        clientX: event.clientX,
+        clientY: event.clientY,
+        screenX: event.screenX,
+        screenY: event.screenY,
+        button: event.button,
+        buttons: event.buttons,
+        pointerId: event.pointerId,
+        pointerType: event.pointerType,
+        isPrimary: event.isPrimary,
+        metaKey: MAC,
+        ctrlKey: !MAC,
+      });
+      remappedEvents.add(remapped);
+      event.composedPath()[0]?.dispatchEvent(remapped);
+    };
+    const onEditorMouseDown = (event: MouseEvent) => {
+      if (event.button !== 0 || !isNavigationModifier(event, MAC) || !isCodeTarget(event)) return;
+      // Keeps the caret and selection where they are; the click still reaches the token.
+      event.preventDefault();
+      event.stopPropagation();
     };
     const onContextMenu = (event: MouseEvent) => {
       const hover = hoverRef.current;
-      if (!hover || !event.composedPath().includes(hover.token)) return;
+      // The editor keeps its Cut/Copy/Paste menu; F12 and Shift+F12 navigate there.
+      if (!hover || hover.place.kind === "editor") return;
+      if (!event.composedPath().includes(hover.token)) return;
       const api = readLocalApi();
       if (!api) return;
       event.preventDefault();
@@ -438,13 +606,19 @@ export function useCodeNavigation(surface: CodeNavigationSurface) {
     container.addEventListener("pointerleave", onPointerLeave);
     container.addEventListener("mouseup", onMouseUp);
     container.addEventListener("contextmenu", onContextMenu);
+    if (editing) {
+      container.addEventListener("pointerdown", onEditorPointerDown, true);
+      container.addEventListener("mousedown", onEditorMouseDown, true);
+    }
     return () => {
       container.removeEventListener("pointermove", onPointerMove);
       container.removeEventListener("pointerleave", onPointerLeave);
       container.removeEventListener("mouseup", onMouseUp);
       container.removeEventListener("contextmenu", onContextMenu);
+      container.removeEventListener("pointerdown", onEditorPointerDown, true);
+      container.removeEventListener("mousedown", onEditorMouseDown, true);
     };
-  }, [clearHoverLink, container, goBack, goToDefinition, scheduleLookup, showReferences]);
+  }, [clearHoverLink, container, goToDefinition, scheduleLookup, showReferences, step]);
 
   // The modifier, shortcuts and window blur.
   const overlayOpen = fileView !== null || picker !== null || references !== null;
@@ -456,13 +630,30 @@ export function useCodeNavigation(surface: CodeNavigationSurface) {
         if (hoverRef.current) scheduleLookup();
         return;
       }
-      const active = pointerRef.current.inside || overlayOpen;
+      const editorFocused =
+        surfaceRef.current.editor !== undefined && container.contains(document.activeElement);
+      const active = pointerRef.current.inside || overlayOpen || editorFocused;
       if (!active) return;
-      if (isBackShortcut(event, MAC) && historyRef.current.length > 0) {
+      // Typing in the editor keeps Cmd+[ and Cmd+] for outdent and indent.
+      const inEditor = editorFocused && !fileView;
+      const { back, forward } = historyRef.current;
+      const caret = editorFocused ? caretOrigin() : null;
+      const hover = hoverRef.current;
+      const { x, y } = pointerRef.current;
+      if (isBackShortcut(event, MAC, inEditor) && back.length > 0) {
         goBack();
-      } else if (isReferencesShortcut(event) && hoverRef.current) {
-        const { x, y } = pointerRef.current;
-        showReferences(hoverRef.current, positionOf(hoverRef.current, x, y));
+      } else if (isForwardShortcut(event, MAC, inEditor) && forward.length > 0) {
+        goForward();
+      } else if (isReferencesShortcut(event) && (caret || hover)) {
+        if (caret) showReferences(caret.origin, caret.position);
+        else if (hover) showReferences(hover, positionOf(hover, x, y));
+      } else if (isDefinitionShortcut(event) && (caret || hover)) {
+        if (caret) {
+          const anchor = container.getBoundingClientRect();
+          goToDefinition(caret.origin, caret.position, anchor.left + 24, anchor.top + 24);
+        } else if (hover) {
+          goToDefinition(hover, positionOf(hover, x, y), x, y);
+        }
       } else if (event.key === "Escape" && overlayOpen) {
         if (picker) setPicker(null);
         else if (references) setReferences(null);
@@ -470,7 +661,7 @@ export function useCodeNavigation(surface: CodeNavigationSurface) {
       } else {
         return;
       }
-      // Captured ahead of the app's own Cmd+[ (browser back) and Escape handlers.
+      // Captured ahead of the app's own Cmd+[ (browser back), F12 and Escape handlers.
       event.preventDefault();
       event.stopImmediatePropagation();
     };
@@ -492,9 +683,13 @@ export function useCodeNavigation(surface: CodeNavigationSurface) {
       window.removeEventListener("blur", onBlur);
     };
   }, [
+    caretOrigin,
     clearHoverLink,
     container,
+    fileView,
     goBack,
+    goForward,
+    goToDefinition,
     overlayOpen,
     picker,
     references,
@@ -513,6 +708,15 @@ export function useCodeNavigation(surface: CodeNavigationSurface) {
     [navigate, references],
   );
 
+  // Other surfaces offer the editor for working-tree files, without leaving their history.
+  const { openInEditor } = surface;
+  const openFileViewInEditor =
+    fileView?.revision._tag === "workingTree" && openInEditor && !surface.editor
+      ? () => {
+          if (openInEditor(fileView.path, fileView.line, 0)) setFileView(null);
+        }
+      : undefined;
+
   const overlay: ReactNode = (
     <>
       {fileView && surface.environmentId && surface.cwd ? (
@@ -521,11 +725,12 @@ export function useCodeNavigation(surface: CodeNavigationSurface) {
           cwd={surface.cwd}
           target={fileView}
           options={options}
-          canGoBack={history.length > 0}
+          canGoBack={history.back.length > 0}
           onBack={goBack}
           onClose={() => setFileView(null)}
+          onOpenInEditor={openFileViewInEditor}
         />
-      ) : history.length > 0 ? (
+      ) : history.back.length > 0 ? (
         <CodeNavigationBackButton onBack={goBack} />
       ) : null}
       {references ? (

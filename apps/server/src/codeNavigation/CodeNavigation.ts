@@ -8,6 +8,7 @@
  * `git grep` over the language's files at the same revision. Parsed files are
  * cached by blob sha (immutable), working-tree files by path and mtime.
  */
+import * as NodeCrypto from "node:crypto";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 
@@ -84,10 +85,15 @@ export class CodeNavigation extends Context.Service<
   }
 >()("t3/codeNavigation/CodeNavigation") {}
 
-/** A revision resolved to a commit in a repository; a null commit is the working tree. */
+/**
+ * A revision resolved to a commit in a repository; a null commit is the working
+ * tree. `buffer` is a file the client sent as it shows it (an editor's unsaved
+ * text): it stands in for that path everywhere, also in repository searches.
+ */
 interface RepositoryRevision {
   readonly root: string;
   readonly commit: string | null;
+  readonly buffer?: IndexedFile;
 }
 
 interface IndexedFile {
@@ -318,8 +324,40 @@ export const make = Effect.gen(function* () {
     });
   };
 
+  /** A client's text of a file, cached by its hash: hovering repeats the same text a lot. */
+  const parseBuffer = Effect.fn("CodeNavigation.parseBuffer")(function* (
+    path: string,
+    content: string,
+  ) {
+    if (content.length > MAX_PARSED_FILE_BYTES) return null;
+    const hash = NodeCrypto.createHash("sha1").update(content).digest("hex");
+    const key = `buffer:${path}:${hash}`;
+    const cached = indexCache.get(key);
+    if (cached !== undefined) return cached;
+    const index = yield* parse(path, content);
+    indexCache.set(key, index);
+    return index;
+  });
+
   /** Indexes of the files among `paths` that exist at the revision, in the order given. */
   const loadIndexes = Effect.fn("CodeNavigation.loadIndexes")(function* (
+    revision: RepositoryRevision,
+    paths: ReadonlyArray<string>,
+  ) {
+    const buffer = revision.buffer;
+    if (!buffer || !paths.includes(buffer.path)) return yield* loadStoredIndexes(revision, paths);
+    const others = yield* loadStoredIndexes(
+      revision,
+      paths.filter((path) => path !== buffer.path),
+    );
+    const order = [...new Set(paths)];
+    return [...others, buffer].sort(
+      (left, right) => order.indexOf(left.path) - order.indexOf(right.path),
+    );
+  });
+
+  /** Indexes of the files among `paths` as stored at the revision, ignoring an unsaved buffer. */
+  const loadStoredIndexes = Effect.fn("CodeNavigation.loadStoredIndexes")(function* (
     revision: RepositoryRevision,
     paths: ReadonlyArray<string>,
   ) {
@@ -424,6 +462,15 @@ export const make = Effect.gen(function* () {
       const lines = byPath.get(path) ?? [];
       lines.push(text);
       byPath.set(path, lines);
+    }
+    const buffer = revision.buffer;
+    if (buffer) {
+      byPath.delete(buffer.path);
+      const word = new RegExp(
+        `(?<![A-Za-z0-9_])${name.replace(/[$.*+?^()[\]{}|\\]/g, "\\$&")}(?![A-Za-z0-9_])`,
+      );
+      const lines = buffer.index.lines.filter((line) => word.test(line));
+      if (lines.length > 0) byPath.set(buffer.path, lines);
     }
     return [...byPath.entries()].map(([path, lines]): GrepFile => ({ path, lines }));
   });
@@ -633,6 +680,13 @@ export const make = Effect.gen(function* () {
       ),
     );
     if (!revision) return null;
+    if (input.content !== undefined) {
+      const index = yield* parseBuffer(path, input.content);
+      if (!index) return null;
+      const buffer = { path, index };
+      const occurrence = occurrenceAt(index, input.line - 1, input.column);
+      return occurrence ? { revision: { ...revision, buffer }, file: buffer, occurrence } : null;
+    }
     const file = yield* loadIndex(revision, path);
     if (!file) return null;
     const occurrence = occurrenceAt(file.index, input.line - 1, input.column);

@@ -264,6 +264,47 @@ describe("CodeNavigation", () => {
     }).pipe(Effect.scoped, Effect.provide(TestLayer)),
   );
 
+  it.effect("navigates an unsaved buffer instead of the file on disk", () =>
+    Effect.gen(function* () {
+      const { cwd } = yield* makeRepository;
+      const navigation = yield* CodeNavigation.CodeNavigation;
+      // Two lines inserted above everything, and a use of `local` the disk does not have.
+      const buffer = `// one\n// two\n${MAIN}export const again = local(3);\n`;
+      const position = {
+        ...at(cwd, { _tag: "workingTree" }, "src/main.ts", buffer, "local", 2),
+        content: buffer,
+      };
+      const result = yield* navigation.resolveDefinition(position);
+      assert.deepStrictEqual(result.symbol, { name: "local", line: 17, column: 21, endColumn: 26 });
+      assert.deepStrictEqual(
+        result.definitions.map(({ path, line }) => ({ path, line })),
+        [{ path: "src/main.ts", line: 6 }],
+      );
+      const references = yield* navigation.findReferences(position);
+      assert.deepStrictEqual(
+        references.references.map(({ path, line }) => ({ path, line })),
+        [
+          { path: "src/main.ts", line: 6 },
+          { path: "src/main.ts", line: 12 },
+          { path: "src/main.ts", line: 17 },
+        ],
+      );
+      // An import back into the buffer's file lands on the buffer's lines too.
+      const helpers = yield* navigation.findReferences({
+        ...at(cwd, { _tag: "workingTree" }, "src/main.ts", buffer, "helper(x)"),
+        content: buffer,
+      });
+      assert.deepStrictEqual(
+        helpers.references.map(({ path, line }) => ({ path, line })),
+        [
+          { path: "src/main.ts", line: 3 },
+          { path: "src/main.ts", line: 8 },
+          { path: "src/lib/helpers.ts", line: 1 },
+        ],
+      );
+    }).pipe(Effect.scoped, Effect.provide(TestLayer)),
+  );
+
   it.effect("follows a relative Python import", () =>
     Effect.gen(function* () {
       const { cwd, newCommit } = yield* makeRepository;

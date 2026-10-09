@@ -9,7 +9,7 @@ import type {
   EnvironmentId,
 } from "@t3tools/contracts";
 import type { CodeViewHandle } from "@pierre/diffs/react";
-import { ArrowLeftIcon, XIcon } from "lucide-react";
+import { ArrowLeftIcon, SquarePenIcon, XIcon } from "lucide-react";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { DiffPanelLoadingState } from "~/components/DiffPanelShell";
@@ -255,6 +255,7 @@ export function CodeNavigationFileView({
   canGoBack,
   onBack,
   onClose,
+  onOpenInEditor,
 }: {
   readonly environmentId: EnvironmentId;
   readonly cwd: string;
@@ -263,6 +264,8 @@ export function CodeNavigationFileView({
   readonly canGoBack: boolean;
   readonly onBack: () => void;
   readonly onClose: () => void;
+  /** Offered for working-tree files the built-in editor can open. */
+  readonly onOpenInEditor?: (() => void) | undefined;
 }) {
   const { resolvedTheme } = useTheme();
   const wordWrap = useClientSettings((settings) => settings.wordWrap);
@@ -348,6 +351,12 @@ export function CodeNavigationFileView({
           <span className="shrink-0 text-muted-foreground">· truncated</span>
         ) : null}
         <span className="ml-auto shrink-0 text-muted-foreground">Read-only</span>
+        {onOpenInEditor ? (
+          <Button size="xs" variant="ghost" onClick={onOpenInEditor} title="Open in editor">
+            <SquarePenIcon />
+            Edit
+          </Button>
+        ) : null}
         <Button size="icon-xs" variant="ghost" onClick={onClose} aria-label="Close file">
           <XIcon />
         </Button>
