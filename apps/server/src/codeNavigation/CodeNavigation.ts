@@ -44,13 +44,7 @@ import {
   rangeContains,
   visibleDefinitions,
 } from "./fileIndex.ts";
-import {
-  type CodeNavigationLanguageFamily,
-  definitionLinePattern,
-  familyPathspecs,
-  isSearchableName,
-  languageForPath,
-} from "./languages.ts";
+import { familyPathspecs, isSearchableName, languageForPath } from "./languages.ts";
 import { makePullRequestRevisions } from "./pullRequestRevision.ts";
 
 /** Files above this size are neither parsed nor searched. */
@@ -399,7 +393,7 @@ export const make = Effect.gen(function* () {
   /** Files of the family that contain `name` as a word, with the matching lines. */
   const grep = Effect.fn("CodeNavigation.grep")(function* (
     revision: RepositoryRevision,
-    family: CodeNavigationLanguageFamily,
+    family: string,
     name: string,
   ) {
     const result = yield* git(
@@ -450,11 +444,12 @@ export const make = Effect.gen(function* () {
       if (!language || depth > IMPORT_DEPTH) return [];
       const file = (yield* loadIndexes(revision, language.importCandidates(fromPath, source)))[0];
       if (!file) {
-        // Python's `from . import module` imports a module, not a name.
-        if (language.family === "python" && imported !== "*") {
-          const moduleSource = source.endsWith(".")
+        // Python's `from . import module` (Rust's `use crate::module`) imports a module, not a name.
+        const separator = language.moduleSeparator;
+        if (separator && imported !== "*") {
+          const moduleSource = source.endsWith(separator)
             ? `${source}${imported}`
-            : `${source}.${imported}`;
+            : `${source}${separator}${imported}`;
           return yield* followImport(revision, fromPath, moduleSource, "*", depth + 1);
         }
         return [];
@@ -503,26 +498,33 @@ export const make = Effect.gen(function* () {
       return [];
     });
 
-  /** Paths the file's relative imports may point at. */
+  /**
+   * Whether a path is one the file's imports may point at: a candidate itself,
+   * in a candidate directory (a Go package), or ending with a candidate (a
+   * Java class below its source root).
+   */
   const importedPaths = (file: IndexedFile) => {
     const language = languageForPath(file.path);
-    return new Set(
+    const candidates = new Set(
       language
         ? file.index.imports.flatMap((binding) =>
             language.importCandidates(file.path, binding.source),
           )
         : [],
     );
+    const matches = (path: string) =>
+      candidates.has(path) || [...candidates].some((candidate) => path.endsWith(`/${candidate}`));
+    return (path: string) => matches(path) || matches(NodePath.posix.dirname(path));
   };
 
   const rankPaths = (file: IndexedFile, paths: ReadonlyArray<string>) => {
-    const imported = importedPaths(file);
+    const isImported = importedPaths(file);
     const directory = NodePath.posix.dirname(file.path);
     const area = file.path.split("/").slice(0, 2).join("/");
     const rank = (path: string) =>
       path === file.path
         ? 0
-        : imported.has(path)
+        : isImported(path)
           ? 1
           : NodePath.posix.dirname(path) === directory
             ? 2
@@ -541,7 +543,7 @@ export const make = Effect.gen(function* () {
   ) {
     const language = languageForPath(file.path);
     if (!language || !isSearchableName(name)) return [];
-    const pattern = definitionLinePattern(language.family, name);
+    const pattern = language.definitionLine(name);
     const hits = (yield* grep(revision, language.family, name)).filter((hit) =>
       hit.lines.some((line) => pattern.test(line)),
     );
@@ -550,7 +552,8 @@ export const make = Effect.gen(function* () {
       hits.map((hit) => hit.path),
     ).slice(0, MAX_DEFINITION_SEARCH_FILES);
     const files = yield* loadIndexes(revision, paths);
-    const matches = (member: boolean) =>
+    // Members, or anything but members; both where `this` is implicit.
+    const matches = (members: boolean | "both") =>
       files.flatMap((candidate) =>
         candidate.index.definitions
           .filter(
@@ -558,15 +561,17 @@ export const make = Effect.gen(function* () {
               definition.name === name &&
               definition.topLevel &&
               definition.kind !== "import" &&
-              (member
-                ? MEMBER_KINDS.has(definition.kind)
-                : !MEMBER_KINDS.has(definition.kind) &&
-                  kindFitsOccurrence(definition.kind, occurrence)),
+              (MEMBER_KINDS.has(definition.kind)
+                ? members !== false
+                : members !== true && kindFitsOccurrence(definition.kind, occurrence)),
           )
           .map((definition) => location(candidate, definition)),
       );
     const found = occurrence.member ? matches(true) : [];
-    return (found.length > 0 ? found : matches(false)).slice(0, MAX_DEFINITIONS);
+    return (found.length > 0 ? found : matches(language.implicitMembers ? "both" : false)).slice(
+      0,
+      MAX_DEFINITIONS,
+    );
   });
 
   /** The definitions an occurrence refers to, nearest first. */
@@ -585,6 +590,8 @@ export const make = Effect.gen(function* () {
       if (namespace) {
         const found = yield* followImport(revision, file.path, namespace.source, name, 0);
         if (found.length > 0) return found;
+        // A Go package's function, not a method of the same name.
+        return yield* searchDefinitions(revision, file, { ...occurrence, member: false }, name);
       }
       const own = file.index.definitions.filter(
         (definition) => definition.name === name && MEMBER_KINDS.has(definition.kind),
@@ -603,6 +610,13 @@ export const make = Effect.gen(function* () {
       // A package import: look for the exported name across the repository (workspace packages).
       if (binding.imported === "*" || binding.imported === "default") return [];
       return yield* searchDefinitions(revision, file, occurrence, binding.imported);
+    }
+    // An implicit `this`: a member of a class in this file.
+    if (languageForPath(file.path)?.implicitMembers) {
+      const members = file.index.definitions.filter(
+        (definition) => definition.name === name && MEMBER_KINDS.has(definition.kind),
+      );
+      if (members.length > 0) return members.map((definition) => location(file, definition));
     }
     return yield* searchDefinitions(revision, file, occurrence, name);
   });
@@ -653,9 +667,10 @@ export const make = Effect.gen(function* () {
     const target = yield* symbolAt(input);
     if (!target) return { symbol: null, references: [], truncated: false };
     const { revision, file, occurrence } = target;
-    const name = occurrence.name;
     const own = definitionAt(file.index, occurrence);
     const ownDefinition = own && own.kind !== "import" ? own : null;
+    // A definition's own name, which may drop a sigil (PHP's `private $x` defines `x`).
+    const name = ownDefinition?.name ?? occurrence.name;
 
     // A local (a parameter, a variable inside a function): its uses in its scope.
     const local = ownDefinition
@@ -685,6 +700,8 @@ export const make = Effect.gen(function* () {
       return { symbol: symbolOf(occurrence), references: [], truncated: false };
     }
     const member = ownDefinition ? MEMBER_KINDS.has(ownDefinition.kind) : occurrence.member;
+    // With an implicit `this`, a member is also named without an object.
+    const anyMemberness = language.implicitMembers === true;
     const hits = yield* grep(revision, language.family, name);
     const paths = rankPaths(
       file,
@@ -699,12 +716,12 @@ export const make = Effect.gen(function* () {
           .map((binding) => binding.local),
       );
       for (const candidate of candidateFile.index.occurrences) {
-        if (candidate.name !== name) continue;
         const definition = definitionAt(candidateFile.index, candidate);
+        if ((definition?.name ?? candidate.name) !== name) continue;
         const isMemberName =
           candidate.member || (definition !== null && MEMBER_KINDS.has(definition.kind));
         const viaNamespace = candidate.objectName !== null && namespaces.has(candidate.objectName);
-        if (member ? !isMemberName : isMemberName && !viaNamespace) continue;
+        if (!anyMemberness && (member ? !isMemberName : isMemberName && !viaNamespace)) continue;
         // Another file's own local of the same name is not this symbol.
         if (!member && candidateFile.path !== file.path) {
           const shadowing = definition ?? visibleDefinitions(candidateFile.index, candidate)[0];

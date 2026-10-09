@@ -6,7 +6,7 @@
 import * as NodeModule from "node:module";
 import type * as TreeSitter from "web-tree-sitter";
 
-import type { CodeNavigationLanguage, CodeNavigationLanguageId } from "./languages.ts";
+import type { CodeNavigationLanguage } from "./languages.ts";
 
 /** A position in a file: 0-based row, column in UTF-16 code units. */
 export interface SourcePoint {
@@ -24,11 +24,14 @@ export const MEMBER_KINDS: ReadonlySet<string> = new Set(["method", "field"]);
 const TYPE_ONLY_KINDS: ReadonlySet<string> = new Set(["interface", "type", "typeParameter"]);
 
 /** Whether a definition of `kind` can be what an occurrence in a type (or value) position means. */
-export const kindFitsOccurrence = (kind: string, occurrence: { readonly type: boolean }) =>
-  occurrence.type
-    ? TYPE_ONLY_KINDS.has(kind) || kind === "class" || kind === "enum" || kind === "module"
-    : !TYPE_ONLY_KINDS.has(kind);
-const LOCAL_KINDS: ReadonlySet<string> = new Set(["parameter", "typeParameter"]);
+export const kindFitsOccurrence = (kind: string, occurrence: { readonly type: boolean | null }) =>
+  occurrence.type === null
+    ? true
+    : occurrence.type
+      ? TYPE_ONLY_KINDS.has(kind) || kind === "class" || kind === "enum" || kind === "module"
+      : !TYPE_ONLY_KINDS.has(kind);
+/** Kinds scoped to their function (Bash's `local`), not to the nearest block. */
+const LOCAL_KINDS: ReadonlySet<string> = new Set(["parameter", "typeParameter", "local"]);
 /** Scopes that hold a class's members. */
 const CLASS_SCOPE_TYPES: ReadonlySet<string> = new Set(["class_body", "class_definition"]);
 
@@ -54,12 +57,12 @@ export interface IndexedOccurrence {
   readonly member: boolean;
   /** `a` in `a.b`, when the object is a plain identifier. */
   readonly objectName: string | null;
-  /** Names a type (TypeScript's `type_identifier`), not a value. */
-  readonly type: boolean;
+  /** Names a type (TypeScript's `type_identifier`), not a value; null when the language does not tell. */
+  readonly type: boolean | null;
 }
 
 export interface IndexedImport {
-  /** The name in this file. */
+  /** The name in this file; empty for an import of a whole file (`#include`), which only ranks searches. */
   readonly local: string;
   /** The name in the imported module: `default`, `*` for a namespace, or the exported name. */
   readonly imported: string;
@@ -73,7 +76,7 @@ export interface IndexedReExport {
 }
 
 export interface FileIndex {
-  readonly language: CodeNavigationLanguageId;
+  readonly language: string;
   readonly lines: ReadonlyArray<string>;
   readonly definitions: ReadonlyArray<IndexedDefinition>;
   readonly occurrences: ReadonlyArray<IndexedOccurrence>;
@@ -96,7 +99,7 @@ interface LoadedLanguage {
 }
 
 let runtimePromise: Promise<typeof TreeSitter> | null = null;
-const loadedLanguages = new Map<CodeNavigationLanguageId, Promise<LoadedLanguage>>();
+const loadedLanguages = new Map<string, Promise<LoadedLanguage>>();
 
 function loadRuntime(): Promise<typeof TreeSitter> {
   runtimePromise ??= (async () => {
@@ -150,98 +153,32 @@ function enclosing(node: TreeSitter.Node, types: ReadonlySet<string>): TreeSitte
   return null;
 }
 
-const unquote = (text: string) => text.replace(/^['"`]|['"`]$/g, "");
+/** Fields that hold the object of a member access, across grammars (`a` in `a.b`, `a::b`, `a->b`). */
+const OBJECT_FIELDS = [
+  "object",
+  "operand",
+  "value",
+  "argument",
+  "path",
+  "scope",
+  "receiver",
+  "expression",
+  "package",
+];
 
-function collectJsModuleLinks(root: TreeSitter.Node): {
-  imports: IndexedImport[];
-  reExports: IndexedReExport[];
-  defaultExport: string | null;
-} {
-  const imports: IndexedImport[] = [];
-  const reExports: IndexedReExport[] = [];
-  let defaultExport: string | null = null;
-  for (const statement of root.namedChildren) {
-    if (!statement) continue;
-    const sourceNode = statement.childForFieldName("source");
-    const source = sourceNode ? unquote(sourceNode.text) : null;
-    if (statement.type === "import_statement" && source !== null) {
-      const clause = statement.namedChildren.find((child) => child?.type === "import_clause");
-      for (const part of clause?.namedChildren ?? []) {
-        if (!part) continue;
-        if (part.type === "identifier") {
-          imports.push({ local: part.text, imported: "default", source });
-        } else if (part.type === "namespace_import") {
-          const local = part.namedChildren.find((child) => child?.type === "identifier");
-          if (local) imports.push({ local: local.text, imported: "*", source });
-        } else if (part.type === "named_imports") {
-          for (const specifier of part.namedChildren) {
-            if (specifier?.type !== "import_specifier") continue;
-            const name = specifier.childForFieldName("name")?.text;
-            const alias = specifier.childForFieldName("alias")?.text;
-            if (name) imports.push({ local: alias ?? name, imported: name, source });
-          }
-        }
-      }
-    } else if (statement.type === "export_statement") {
-      const isDefault = statement.children.some((child) => child?.type === "default");
-      if (source !== null) {
-        const clause = statement.namedChildren.find((child) => child?.type === "export_clause");
-        if (!clause) {
-          reExports.push({ source, names: null });
-        } else {
-          const names = new Map<string, string>();
-          for (const specifier of clause.namedChildren) {
-            if (specifier?.type !== "export_specifier") continue;
-            const name = specifier.childForFieldName("name")?.text;
-            const alias = specifier.childForFieldName("alias")?.text;
-            if (name) names.set(alias ?? name, name);
-          }
-          reExports.push({ source, names });
-        }
-      } else if (isDefault) {
-        const declaration = statement.childForFieldName("declaration");
-        const value = statement.childForFieldName("value");
-        defaultExport =
-          declaration?.childForFieldName("name")?.text ??
-          (value?.type === "identifier" ? value.text : null);
-      }
-    }
+/** `a` in `a.b`, when the object is a plain identifier. */
+function memberObjectName(root: TreeSitter.Node, occurrence: IndexedOccurrence): string | null {
+  const node = root.descendantForPosition({ row: occurrence.row, column: occurrence.column });
+  const access = node?.parent;
+  if (!node || !access) return null;
+  for (const field of OBJECT_FIELDS) {
+    const object = access.childForFieldName(field);
+    if (!object || object.id === node.id) continue;
+    return object.type === "identifier" || object.type === "package_identifier"
+      ? object.text
+      : null;
   }
-  return { imports, reExports, defaultExport };
-}
-
-function collectPythonImports(root: TreeSitter.Node): IndexedImport[] {
-  const imports: IndexedImport[] = [];
-  for (const statement of root.descendantsOfType(["import_from_statement", "import_statement"])) {
-    if (!statement) continue;
-    if (statement.type === "import_from_statement") {
-      const source = statement.childForFieldName("module_name")?.text;
-      if (!source) continue;
-      for (const name of statement.childrenForFieldName("name")) {
-        if (!name) continue;
-        if (name.type === "aliased_import") {
-          const imported = name.childForFieldName("name")?.text;
-          const alias = name.childForFieldName("alias")?.text;
-          if (imported && alias) imports.push({ local: alias, imported, source });
-        } else {
-          imports.push({ local: name.text, imported: name.text, source });
-        }
-      }
-    } else {
-      for (const name of statement.childrenForFieldName("name")) {
-        if (!name) continue;
-        const dotted = name.type === "aliased_import" ? name.childForFieldName("name") : name;
-        const alias = name.type === "aliased_import" ? name.childForFieldName("alias")?.text : null;
-        if (!dotted) continue;
-        imports.push({
-          local: alias ?? dotted.text.split(".")[0]!,
-          imported: "*",
-          source: alias ? dotted.text : dotted.text.split(".")[0]!,
-        });
-      }
-    }
-  }
-  return imports;
+  return null;
 }
 
 /** Parses `source` and extracts its index; null when the parser gives up. */
@@ -255,6 +192,7 @@ export async function indexFile(
   try {
     const root = tree.rootNode;
     const definitionsByPosition = new Map<string, IndexedDefinition>();
+    const patternByPosition = new Map<string, number>();
     for (const match of loaded.definitions.matches(root)) {
       const nameNode = match.captures.find((capture) => capture.name === "name")?.node;
       const definitionCapture = match.captures.find((capture) =>
@@ -264,8 +202,16 @@ export async function indexFile(
       const kind = definitionCapture.name.slice("definition.".length);
       const key = positionKey(nameNode.startPosition.row, nameNode.startPosition.column);
       const existing = definitionsByPosition.get(key);
-      // Python matches a method as a function too; the member kind wins.
-      if (existing && !MEMBER_KINDS.has(kind)) continue;
+      // A method also matches as a function: the member kind wins, otherwise
+      // the earlier pattern (Bash's `local x=` over `x=`).
+      if (
+        existing &&
+        (MEMBER_KINDS.has(existing.kind) !== MEMBER_KINDS.has(kind)
+          ? !MEMBER_KINDS.has(kind)
+          : patternByPosition.get(key)! <= match.patternIndex)
+      ) {
+        continue;
+      }
       const scopeNode = LOCAL_KINDS.has(kind)
         ? enclosing(definitionCapture.node, language.functionTypes)
         : enclosing(definitionCapture.node, language.scopeTypes);
@@ -280,8 +226,12 @@ export async function indexFile(
       const topLevel =
         owner.id === root.id ||
         (memberClass !== null && enclosing(memberClass, language.scopeTypes)?.id === root.id);
+      const sigil = MEMBER_KINDS.has(kind) ? language.memberSigil : undefined;
       definitionsByPosition.set(key, {
-        name: nameNode.text,
+        name:
+          sigil && nameNode.text.startsWith(sigil)
+            ? nameNode.text.slice(sigil.length)
+            : nameNode.text,
         kind,
         row: nameNode.startPosition.row,
         column: nameNode.startPosition.column,
@@ -289,6 +239,7 @@ export async function indexFile(
         scope: rangeOf(owner),
         topLevel,
       });
+      patternByPosition.set(key, match.patternIndex);
     }
 
     const occurrencesByPosition = new Map<string, IndexedOccurrence>();
@@ -300,6 +251,7 @@ export async function indexFile(
         memberPositions.add(key);
         continue;
       }
+      if (capture.name !== "id") continue;
       if (node.startPosition.row !== node.endPosition.row) continue;
       occurrencesByPosition.set(key, {
         name: node.text,
@@ -308,31 +260,24 @@ export async function indexFile(
         endColumn: node.endPosition.column,
         member: false,
         objectName: null,
-        type: node.type === "type_identifier",
+        type: language.typeIdentifierTypes ? language.typeIdentifierTypes.has(node.type) : null,
       });
     }
     const occurrences = [...occurrencesByPosition.entries()].map(([key, occurrence]) => {
-      if (!memberPositions.has(key)) return occurrence;
-      const node = root.descendantForPosition({ row: occurrence.row, column: occurrence.column });
-      const object = node?.parent?.childForFieldName("object") ?? null;
-      return {
-        ...occurrence,
-        member: true,
-        objectName: object?.type === "identifier" ? object.text : null,
-      };
+      // The name an import binds is not a member, even inside a path (Rust's `use a::b`).
+      if (!memberPositions.has(key) || definitionsByPosition.get(key)?.kind === "import") {
+        return occurrence;
+      }
+      return { ...occurrence, member: true, objectName: memberObjectName(root, occurrence) };
     });
     occurrences.sort((left, right) => left.row - right.row || left.column - right.column);
 
-    const links =
-      language.family === "python"
-        ? { imports: collectPythonImports(root), reExports: [], defaultExport: null }
-        : collectJsModuleLinks(root);
     return {
       language: language.id,
       lines: source.split(/\r?\n/),
       definitions: [...definitionsByPosition.values()],
       occurrences,
-      ...links,
+      ...language.moduleLinks(root),
     };
   } finally {
     tree.delete();
@@ -345,13 +290,14 @@ export const comparePoints = (left: SourcePoint, right: SourcePoint) =>
 export const rangeContains = (range: SourceRange, point: SourcePoint) =>
   comparePoints(range.start, point) <= 0 && comparePoints(point, range.end) <= 0;
 
+/** The identifier at a position; the innermost one where identifiers nest. */
 export function occurrenceAt(
   index: FileIndex,
   row: number,
   column: number,
 ): IndexedOccurrence | null {
   return (
-    index.occurrences.find(
+    index.occurrences.findLast(
       (occurrence) =>
         occurrence.row === row && occurrence.column <= column && column < occurrence.endColumn,
     ) ?? null

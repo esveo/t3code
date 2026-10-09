@@ -41,6 +41,7 @@ import {
   STAGE_INSTALL_ARGS,
 } from "./build-desktop-artifact.ts";
 import { selectCliRuntimeExternalDependencies } from "./lib/cli-external-packages.ts";
+import { pruneForkTreeSitter } from "./lib/fork-tree-sitter-prune.ts";
 import { resolveCatalogDependencies } from "./lib/resolve-catalog.ts";
 
 const BuildPlatform = Schema.Literals(["mac", "linux", "win"]);
@@ -247,6 +248,10 @@ const stageRuntimeExternals = Effect.fn("stageRuntimeExternals")(function* (inpu
   // nothing runs, and the npm registry refuses a tarball that contains any
   // symlink, so strip every `.bin` directory below node_modules.
   yield* removeNestedBinDirectories(fs, path, path.join(input.stageDir, "node_modules"));
+  yield* pruneForkTreeSitter({
+    repoRoot: input.repoRoot,
+    nodeModulesDir: path.join(input.stageDir, "node_modules"),
+  });
 });
 
 const removeNestedBinDirectories = (
