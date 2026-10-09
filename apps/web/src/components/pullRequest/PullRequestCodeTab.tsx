@@ -62,6 +62,7 @@ import { DiffFileTree } from "../diffs/DiffFileTree";
 import { useCodeViewFileReveal } from "../diffs/useCodeViewFileReveal";
 import { diffFileTreeEntries } from "../diffs/diffFileTree.logic";
 import { StyledDiffCodeView } from "../diffs/StyledDiffCodeView";
+import { usePullRequestCodeNavigation } from "../codeNavigation/usePullRequestCodeNavigation";
 import { Button } from "../ui/button";
 import { MorphIcon } from "~/components/MorphIcon";
 import { Checkbox } from "../ui/checkbox";
@@ -865,6 +866,15 @@ function PullRequestCodeTab({
     [omittedFileStats],
   );
 
+  // Fork: go to definition and find references in the pull request's diff.
+  const { mount: mountCodeNavigation, ...codeNavigation } = usePullRequestCodeNavigation({
+    environmentId,
+    reference,
+    detail,
+    commit,
+    files: items,
+    codeView: viewer,
+  });
   const diffViewOptions = useMemo(
     () => ({
       diffStyle: diffLayout === "split" ? ("split" as const) : ("unified" as const),
@@ -883,8 +893,18 @@ function PullRequestCodeTab({
       // wired.
       onGutterUtilityClick: beginComment,
       onLineSelectionEnd: beginComment,
+      ...codeNavigation.options,
     }),
-    [diffLayout, wordWrap, resolvedTheme, loadDiffFiles, canCommentOnLines, draft, beginComment],
+    [
+      diffLayout,
+      wordWrap,
+      resolvedTheme,
+      loadDiffFiles,
+      canCommentOnLines,
+      draft,
+      beginComment,
+      codeNavigation.options,
+    ],
   );
 
   const runThreadCommand = useCallback(
@@ -1464,6 +1484,7 @@ function PullRequestCodeTab({
         {/* Relative wrapper so the review overlay floats over the diff rather than pushing it
             up; the viewer inside still owns its own scrolling. */}
         <div
+          ref={mountCodeNavigation}
           className="relative min-h-0 min-w-0 flex-1"
           // The chevron answers this too, but the whole header row is the target a reader
           // actually aims for. The header lives in the viewer's shadow tree, so the capture
@@ -1516,6 +1537,7 @@ function PullRequestCodeTab({
             renderAnnotation={renderAnnotation}
             unsafeCSSExtra={REPLACE_FILE_COUNTS_CSS}
           />
+          {codeNavigation.overlay}
         </div>
         {fileTreeOpen ? (
           <aside className="flex w-[min(20rem,40%)] min-w-48 shrink-0 border-l border-border/60">

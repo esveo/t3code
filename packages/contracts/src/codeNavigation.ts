@@ -21,12 +21,28 @@ export const CODE_NAVIGATION_WS_METHODS = {
  * revision git understands (a sha, `HEAD`, a branch); `mergeBase` is the merge
  * base of `ref` and `HEAD`, the old side of the branch diff; `checkpoint` is
  * the snapshot after turn `turnCount` of a thread (0 is the thread's start).
+ * `pullRequest` is one side of a pull request's diff as the host computes it:
+ * `head` is the head commit (or `commit`), `base` its merge base with
+ * `baseBranch` (or `commit`'s parent). Commits the clone lacks are fetched from
+ * the remote that hosts `repository` (`owner/name`).
  */
 export const CodeNavigationRevision = Schema.Union([
   Schema.TaggedStruct("workingTree", {}),
   Schema.TaggedStruct("git", { ref: TrimmedNonEmptyString }),
   Schema.TaggedStruct("mergeBase", { ref: TrimmedNonEmptyString }),
   Schema.TaggedStruct("checkpoint", { threadId: ThreadId, turnCount: NonNegativeInt }),
+  Schema.TaggedStruct("pullRequest", {
+    side: Schema.Literals(["base", "head"]),
+    repository: TrimmedNonEmptyString,
+    number: PositiveInt,
+    baseBranch: TrimmedNonEmptyString,
+    /** The head commit as the host reports it; asked of the remote when absent. */
+    headSha: Schema.optional(TrimmedNonEmptyString),
+    /** The pull request's oldest commit: its parent is the base once the head is merged. */
+    firstCommit: Schema.optional(TrimmedNonEmptyString),
+    /** One commit of the change instead of all of it. */
+    commit: Schema.optional(TrimmedNonEmptyString),
+  }),
 ]);
 export type CodeNavigationRevision = typeof CodeNavigationRevision.Type;
 

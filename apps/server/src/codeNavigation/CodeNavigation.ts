@@ -51,6 +51,7 @@ import {
   isSearchableName,
   languageForPath,
 } from "./languages.ts";
+import { makePullRequestRevisions } from "./pullRequestRevision.ts";
 
 /** Files above this size are neither parsed nor searched. */
 const MAX_PARSED_FILE_BYTES = 1_000_000;
@@ -64,6 +65,15 @@ const MAX_REFERENCES = 1_000;
 const INDEX_CACHE_ENTRIES = 600;
 const IMPORT_DEPTH = 4;
 const PREVIEW_LENGTH = 240;
+const FETCH_TIMEOUT_MS = 60_000;
+/** Fetches run unattended: a remote asking for credentials fails instead of waiting. */
+const NONINTERACTIVE_GIT_ENV = Object.freeze({
+  GCM_INTERACTIVE: "never",
+  GIT_ASKPASS: "",
+  GIT_TERMINAL_PROMPT: "0",
+  SSH_ASKPASS: "",
+  SSH_ASKPASS_REQUIRE: "never",
+} satisfies NodeJS.ProcessEnv);
 
 export class CodeNavigation extends Context.Service<
   CodeNavigation,
@@ -194,6 +204,16 @@ export const make = Effect.gen(function* () {
   const indexCache = new LruCache<FileIndex | null>(INDEX_CACHE_ENTRIES);
   const rootByCwd = new Map<string, string>();
   const checkpointCommits = new Map<string, string>();
+  const pullRequestCommit = yield* makePullRequestRevisions((root, args, options) =>
+    vcs.run({
+      operation: `CodeNavigation.pullRequest.${args[0]}`,
+      command: "git",
+      cwd: root,
+      args,
+      allowNonZeroExit: true,
+      ...(options?.network ? { timeoutMs: FETCH_TIMEOUT_MS, env: NONINTERACTIVE_GIT_ENV } : {}),
+    }),
+  );
 
   const git = (
     operation: string,
@@ -268,6 +288,11 @@ export const make = Effect.gen(function* () {
     if (revision._tag === "workingTree") return { root, commit: null } satisfies RepositoryRevision;
     if (revision._tag === "git" && /^[0-9a-f]{40}$/.test(revision.ref)) {
       return { root, commit: revision.ref };
+    }
+    if (revision._tag === "pullRequest") {
+      const commit = yield* pullRequestCommit(root, revision);
+      if (!commit) return yield* failure("The pull request's commits are unavailable.");
+      return { root, commit };
     }
     const checkpointKey =
       revision._tag === "checkpoint" ? `${root}:${revision.threadId}:${revision.turnCount}` : null;
@@ -587,7 +612,13 @@ export const make = Effect.gen(function* () {
   ) {
     const path = normalizeRepositoryPath(input.path);
     if (!path || !languageForPath(path)) return null;
-    const revision = yield* resolveRevision(input.cwd, input.revision);
+    const revision = yield* resolveRevision(input.cwd, input.revision).pipe(
+      // A pull request whose commits are out of reach has nothing to navigate; not an error.
+      Effect.catch((error) =>
+        input.revision._tag === "pullRequest" ? Effect.succeed(null) : Effect.fail(error),
+      ),
+    );
+    if (!revision) return null;
     const file = yield* loadIndex(revision, path);
     if (!file) return null;
     const occurrence = occurrenceAt(file.index, input.line - 1, input.column);

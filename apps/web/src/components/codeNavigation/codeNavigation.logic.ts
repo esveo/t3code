@@ -58,12 +58,49 @@ export function diffPanelRevisions(selection: DiffPanelSelection): DiffRevisions
   }
 }
 
-export const revisionKey = (revision: CodeNavigationRevision) =>
-  revision._tag === "workingTree"
-    ? "worktree"
-    : revision._tag === "checkpoint"
-      ? `checkpoint:${revision.threadId}:${revision.turnCount}`
-      : `${revision._tag}:${revision.ref}`;
+/** What a pull request's Code tab shows: the whole change, or one commit of it. */
+export interface PullRequestDiffScope {
+  readonly repository: string;
+  readonly number: number;
+  readonly baseBranch: string;
+  readonly headSha: string | undefined;
+  readonly commits: ReadonlyArray<{ readonly oid: string; readonly committedDate: string }>;
+  /** The commit the scope dropdown picked; null for all commits. */
+  readonly commit: string | null;
+}
+
+/** A pull request's head against its merge base, or one of its commits against its parent. */
+export function pullRequestRevisions(scope: PullRequestDiffScope): DiffRevisions {
+  const firstCommit = scope.commits.reduce<(typeof scope.commits)[number] | undefined>(
+    (oldest, commit) =>
+      oldest === undefined || Date.parse(commit.committedDate) < Date.parse(oldest.committedDate)
+        ? commit
+        : oldest,
+    undefined,
+  )?.oid;
+  const shared = {
+    _tag: "pullRequest" as const,
+    repository: scope.repository,
+    number: scope.number,
+    baseBranch: scope.baseBranch,
+    ...(scope.headSha ? { headSha: scope.headSha } : {}),
+    ...(scope.commit ? { commit: scope.commit } : firstCommit ? { firstCommit } : {}),
+  };
+  return { base: { ...shared, side: "base" }, head: { ...shared, side: "head" } };
+}
+
+export const revisionKey = (revision: CodeNavigationRevision) => {
+  switch (revision._tag) {
+    case "workingTree":
+      return "worktree";
+    case "checkpoint":
+      return `checkpoint:${revision.threadId}:${revision.turnCount}`;
+    case "pullRequest":
+      return `pullRequest:${revision.side}:${revision.repository}#${revision.number}:${revision.commit ?? revision.headSha ?? ""}`;
+    default:
+      return `${revision._tag}:${revision.ref}`;
+  }
+};
 
 /** The file a side of a diff shows: a deletion or rename names the old path there. */
 export function pathForSide(fileDiff: FileDiffMetadata, side: DiffSide) {

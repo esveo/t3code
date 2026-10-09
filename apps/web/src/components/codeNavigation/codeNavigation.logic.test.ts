@@ -14,6 +14,7 @@ import {
   isReferencesShortcut,
   pathForSide,
   popPlace,
+  pullRequestRevisions,
   pushPlace,
   revisionForSide,
   sideOfRevision,
@@ -33,6 +34,35 @@ const fileDiff = (overrides: Partial<FileDiffMetadata>) =>
   ({ name: "src/a.ts", hunks: [], ...overrides }) as unknown as FileDiffMetadata;
 
 describe("revisions", () => {
+  it("resolves a pull request's sides, carrying its oldest commit or the picked one", () => {
+    const scope = {
+      repository: "acme/app",
+      number: 7,
+      baseBranch: "main",
+      headSha: "h".repeat(40),
+      commits: [
+        { oid: "c2", committedDate: "2026-10-02T10:00:00+02:00" },
+        { oid: "c1", committedDate: "2026-10-02T09:00:00Z" },
+      ],
+      commit: null,
+    };
+    const shared = {
+      _tag: "pullRequest",
+      repository: "acme/app",
+      number: 7,
+      baseBranch: "main",
+      headSha: "h".repeat(40),
+    } as const;
+    const whole = pullRequestRevisions(scope);
+    // 10:00+02:00 is 08:00Z, earlier than c1.
+    assert.deepEqual(whole.base, { ...shared, firstCommit: "c2", side: "base" });
+    assert.deepEqual(whole.head, { ...shared, firstCommit: "c2", side: "head" });
+    const one = pullRequestRevisions({ ...scope, commit: "c1" });
+    assert.deepEqual(one.head, { ...shared, commit: "c1", side: "head" });
+    assert.strictEqual(sideOfRevision(one, { ...shared, commit: "c1", side: "base" }), "deletions");
+    assert.strictEqual(sideOfRevision(one, whole.head!), null);
+  });
+
   it("resolves a commit against its first parent, and the working tree against HEAD", () => {
     const commit = gitGraphRevisions({ base: "abc^", head: "abc" });
     assert.deepEqual(revisionForSide(commit, "deletions"), { _tag: "git", ref: "abc^" });
