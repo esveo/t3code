@@ -181,6 +181,10 @@ import { useAtomCommand } from "../state/use-atom-command";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { projectEnvironment } from "../state/projects";
 import {
+  needsNestedRepoFileLookup,
+  useNestedRepoFileLinkResolver,
+} from "./nestedRepoFileLinks/useNestedRepoFileLinkResolver";
+import {
   claimWorkspaceBasenameLookup,
   needsWorkspaceBasenameLookup,
   pickWorkspaceBasenameMatch,
@@ -2775,8 +2779,12 @@ function useChatMarkdownState({
     },
     [canOperatePreview, createAssetUrl, cwd, openPreview, preparedConnection, threadRef],
   );
+  const resolveNestedRepoFile = useNestedRepoFileLinkResolver(environmentId, cwd);
   const findWorkspaceBasenameMatch = useCallback(
     async (workspaceRelativePath: string) => {
+      if (needsNestedRepoFileLookup(workspaceRelativePath)) {
+        return resolveNestedRepoFile(workspaceRelativePath);
+      }
       if (
         !cwd ||
         environmentId === null ||
@@ -2798,7 +2806,7 @@ function useChatMarkdownState({
         ? pickWorkspaceBasenameMatch(workspaceRelativePath, result.value.entries)
         : null;
     },
-    [cwd, environmentId, searchProjectEntries],
+    [cwd, environmentId, resolveNestedRepoFile, searchProjectEntries],
   );
   // A bare filename resolves to the workspace root, which is rarely where the
   // file is, so ask the index before opening. Absolute host paths open as-is.
@@ -2810,7 +2818,10 @@ function useChatMarkdownState({
       const isLatestLookup = claimWorkspaceBasenameLookup();
       const openAt = (path: string) =>
         useRightPanelStore.getState().openFile(threadRef, path, line);
-      if (!cwd || !needsWorkspaceBasenameLookup(panelPath)) {
+      if (
+        !cwd ||
+        (!needsWorkspaceBasenameLookup(panelPath) && !needsNestedRepoFileLookup(panelPath))
+      ) {
         openAt(panelPath);
         return;
       }
