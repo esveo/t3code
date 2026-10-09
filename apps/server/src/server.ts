@@ -43,14 +43,15 @@ import * as ProviderEventIngestor from "./orchestration-v2/ProviderEventIngestor
 import * as ModelManifest from "./provider/ModelManifest.ts";
 import * as ResetCreditCoordinator from "./provider/resetCreditCoordinator.ts";
 import * as ProviderEventLoggers from "./provider/ProviderEventLoggers.ts";
-import * as OpenCodeRuntime from "./provider/opencodeRuntime.ts";
-import * as OpenCodeServerLedger from "./provider/OpenCodeServerLedger.ts";
-import * as AcpRegistryCatalog from "./provider/AcpRegistryCatalog.ts";
+import * as OpenCodeRuntime from "@t3tools/provider-opencode/server/OpenCodeRuntime";
+import * as OpenCodeServerLedger from "@t3tools/provider-opencode/server/OpenCodeServerLedger";
+import * as ProviderHostLive from "./provider/ProviderHostLive.ts";
+import * as AcpRegistrySupport from "@t3tools/provider-acp-registry/server/AcpRegistrySupport";
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as CheckpointStore from "./checkpointing/CheckpointStore.ts";
 import * as AzureDevOpsCli from "./sourceControl/AzureDevOpsCli.ts";
 import * as BitbucketApi from "./sourceControl/BitbucketApi.ts";
-import * as GitHubCli from "./sourceControl/GitHubCli.ts";
+import * as GitHubApi from "./sourceControl/GitHubApi.ts";
 import * as GitLabCli from "./sourceControl/GitLabCli.ts";
 import * as ForgejoCli from "./sourceControl/ForgejoCli.ts";
 import * as TextGeneration from "./textGeneration/TextGeneration.ts";
@@ -162,6 +163,7 @@ import * as NativeTelemetryClient from "./resourceTelemetry/NativeTelemetryClien
 import * as ResourceAttribution from "./resourceTelemetry/ResourceAttribution.ts";
 import * as ResourceMonitorBinary from "./resourceTelemetry/ResourceMonitorBinary.ts";
 import * as ResourceTelemetry from "./resourceTelemetry/ResourceTelemetry.ts";
+import * as CursorUsageReader from "./usage/cursorUsageReader.ts";
 import * as UsageService from "./usage/UsageService.ts";
 import * as RuntimeLayer from "./orchestration-v2/runtimeLayer.ts";
 import * as ProjectStore from "./orchestration-v2/ProjectStore.ts";
@@ -234,7 +236,10 @@ const layerBackground = BackgroundPolicy.layer.pipe(
   Layer.provideMerge(layerServerSettings),
 );
 
-const layerUsage = UsageService.layer.pipe(Layer.provide(layerServerSettings));
+const layerUsage = UsageService.layer.pipe(
+  Layer.provide(layerServerSettings),
+  Layer.provide(CursorUsageReader.layer),
+);
 
 const layerResourceDiagnostics = Layer.mergeAll(
   HostResources.layer,
@@ -279,7 +284,7 @@ const layerSourceControlProviderRegistry = SourceControlProviderRegistry.layer.p
     Layer.mergeAll(
       AzureDevOpsCli.layer,
       BitbucketApi.layer,
-      GitHubCli.layer,
+      GitHubApi.layerWithDependencies,
       GitLabCli.layer,
       ForgejoCli.layer,
     ),
@@ -591,6 +596,7 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   Layer.provideMerge(GitHubCli.layer),
   // esveo fork: likewise `AzureDevOpsCli`, for Azure DevOps pull request attachments.
   Layer.provideMerge(AzureDevOpsCli.layer),
+  Layer.provideMerge(GitHubApi.layerWithDependencies),
   Layer.provideMerge(layerGit),
   Layer.provideMerge(layerVcs),
   Layer.provideMerge(Layer.mergeAll(layerTerminal, layerPreview, layerDevice)),
@@ -604,8 +610,7 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   // The instance registry is the new routing keystone — text generation,
   // adapter lookup, and runtime ingestion all resolve `ProviderInstanceId`
   // through this layer. Built-in drivers come from `BUILT_IN_DRIVERS`;
-  // `providerInstances` hydration merges `settings.providers.<kind>`
-  // with explicit `providerInstances` entries on boot.
+  // hydration adds their default instances to `providerInstances` on boot.
   Layer.provideMerge(ProviderInstanceRegistryHydration.layer),
   Layer.provideMerge(
     Layer.mergeAll(
@@ -619,7 +624,7 @@ const layerRuntimeCoreDependencies = layerRuntimeCoreDependenciesBase.pipe(
   Layer.provideMerge(layerPtyAdapter),
   // Search, prepare, status inspection, and turn launch share one registry
   // cache so every client and provider instance sees the same prepared agents.
-  Layer.provideMerge(AcpRegistryCatalog.layer.pipe(Layer.provide(layerServerSettings))),
+  Layer.provideMerge(AcpRegistrySupport.layerFromHost.pipe(Layer.provide(ProviderHostLive.layer))),
   // Shared native/canonical NDJSON writers used by both the per-instance
   // V2 drivers and the orchestration runtime. Provide resource attribution so
   // the rewritten telemetry pipeline can account for logical NDJSON writes.
@@ -636,7 +641,18 @@ const layerRuntimeCoreDependencies = layerRuntimeCoreDependenciesBase.pipe(
   // the rewritten registry reads snapshots off the instance registry and
   // no longer transitively provides it. Exposing it at the runtime level
   // keeps a single Live for all opencode consumers.
-  Layer.provideMerge(OpenCodeRuntime.layer.pipe(Layer.provide(OpenCodeServerLedger.layer))),
+  Layer.provideMerge(
+    OpenCodeRuntime.layer.pipe(
+      Layer.provide(
+        Layer.unwrap(
+          Effect.gen(function* () {
+            const config = yield* ServerConfig.ServerConfig;
+            return OpenCodeServerLedger.layer({ stateDir: config.stateDir });
+          }),
+        ),
+      ),
+    ),
+  ),
   Layer.provideMerge(layerWorkspace),
   Layer.provideMerge(ProjectEnrichmentService.layer),
   Layer.provideMerge(Layer.mergeAll(NativeAppIconResolver.layer, layerProjectFaviconResolver)),
