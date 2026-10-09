@@ -810,6 +810,38 @@ describe("UserInsights import of past messages", () => {
     ),
   );
 
+  it.effect("retries a failed batch once before it backs off", () => {
+    const boom = () =>
+      Effect.fail(
+        new UserInsightsModelError({ reason: "failed", message: "boom", usage: usage(0.001) }),
+      );
+    return withInsights(
+      {
+        enabled: true,
+        pastThreads: { "past-thread": pastExchanges("past", 40, 2) },
+        // First batch fails once and then learns; the second fails twice.
+        answers: [boom(), toneAdd(), boom(), boom()],
+      },
+      ({ insights, store }) =>
+        Effect.gen(function* () {
+          yield* insights.queueImport;
+          assert.strictEqual(yield* insights.runImport, 1);
+          assert.deepEqual((yield* insights.snapshot).import, {
+            state: "running",
+            done: 30,
+            total: 40,
+          });
+          const state = yield* store.readState;
+          assert.strictEqual(state?.failures, 1);
+          assert.isNotNull(state?.backoffUntil);
+          assert.deepEqual(
+            (yield* store.readUsage).map((record) => record.ok),
+            [false, true, false, false],
+          );
+        }),
+    );
+  });
+
   it.effect("waits at the daily cost cap and resumes the next day, also after a restart", () =>
     withInsights(
       {

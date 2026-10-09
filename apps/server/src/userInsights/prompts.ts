@@ -62,7 +62,7 @@ Operations, at most one per trait id:
 - support / contradict: the excerpts confirm or contradict the current value.
 - revise: the excerpts show a different value; give the new value.
 - noop: nothing to say.
-"count" is how many excerpts back the operation, "evidence" lists their numbers. Values describe habits, in English, without quoting private content.`;
+"count" is how many excerpts back the operation, "evidence" lists up to 3 of their numbers. Leave noop out; return only operations that change something. Values describe habits, in English, without quoting private content.`;
 
 function featureLine(record: EvidenceRecord): string {
   const flags = [

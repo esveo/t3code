@@ -554,132 +554,140 @@ export const make = Effect.gen(function* () {
    * their age weight and moved into the evidence, so a later import skips
    * them. Waits (returns "stop") at the cost cap, in backoff, or while off;
    * the tick resumes it. Cancel, reset and delete during the call drop it.
+   * A failed call returns "retry" when `mayRetry`, so one hiccup of the CLI
+   * does not pause the import (and live learning) for 15 minutes.
    */
-  const importBatch: Effect.Effect<"learned" | "finished" | "stop"> = distilling
-    .withPermits(1)(
-      Effect.gen(function* () {
-        if (!(yield* enabled)) return "stop" as const;
-        const startedAt = yield* Clock.currentTimeMillis;
-        const prepared = yield* locked(
-          Effect.gen(function* () {
-            const state = yield* loadState(startedAt);
-            const cursor = state.import;
-            if (cursor?.state !== "running") return null;
-            if (isOverBudget(state) || isBackingOff(state, startedAt)) return null;
-            const batch = (yield* store.readImportQueue).slice(
-              cursor.done,
-              cursor.done + IMPORT_BATCH_SIZE,
-            );
-            if (batch.length === 0) {
-              // The queue is gone (deleted by hand); end the import where it is.
-              yield* store.writeState({ ...state, import: { ...cursor, state: "done" } });
-              yield* store.removeImportQueue;
-              return null;
-            }
-            // Shown newest first, like a distill.
-            const shown = batch.toReversed();
-            return {
-              cursor,
-              batch,
-              shown,
-              prompt: buildDistillPrompt({
-                profile: yield* loadProfile(startedAt),
-                evidence: shown,
-              }),
-            };
-          }),
-        );
-        if (prepared === null) return "stop" as const;
-
-        const startGeneration = generation;
-        const outcome = yield* model
-          .run({ prompt: prepared.prompt, outputSchema: DistillOutput })
-          .pipe(
-            Effect.map((result) => ({ ok: true, ...result }) as const),
-            Effect.catch((error) => Effect.succeed({ ok: false, error } as const)),
+  const importBatch = (
+    mayRetry: boolean,
+  ): Effect.Effect<"learned" | "finished" | "retry" | "stop"> =>
+    distilling
+      .withPermits(1)(
+        Effect.gen(function* () {
+          if (!(yield* enabled)) return "stop" as const;
+          const startedAt = yield* Clock.currentTimeMillis;
+          const prepared = yield* locked(
+            Effect.gen(function* () {
+              const state = yield* loadState(startedAt);
+              const cursor = state.import;
+              if (cursor?.state !== "running") return null;
+              if (isOverBudget(state) || isBackingOff(state, startedAt)) return null;
+              const batch = (yield* store.readImportQueue).slice(
+                cursor.done,
+                cursor.done + IMPORT_BATCH_SIZE,
+              );
+              if (batch.length === 0) {
+                // The queue is gone (deleted by hand); end the import where it is.
+                yield* store.writeState({ ...state, import: { ...cursor, state: "done" } });
+                yield* store.removeImportQueue;
+                return null;
+              }
+              // Shown newest first, like a distill.
+              const shown = batch.toReversed();
+              return {
+                cursor,
+                batch,
+                shown,
+                prompt: buildDistillPrompt({
+                  profile: yield* loadProfile(startedAt),
+                  evidence: shown,
+                }),
+              };
+            }),
           );
-        const endedAt = yield* Clock.currentTimeMillis;
-        if (!outcome.ok && outcome.error.reason === "unavailable") return "stop" as const;
-        const reported = outcome.ok ? outcome.usage : (outcome.error.usage ?? emptyUsage());
-        const usage =
-          reported.durationMs > 0 ? reported : { ...reported, durationMs: endedAt - startedAt };
+          if (prepared === null) return "stop" as const;
 
-        return yield* locked(
-          Effect.gen(function* () {
-            const allowed = yield* afterCall(startGeneration);
-            if (allowed === "nothing") return "stop" as const;
-            const state = recordCall(yield* loadState(endedAt), {
-              purpose: "import",
-              costUsd: usage.costUsd,
-            });
-            yield* store.appendUsage(
-              usageRecord({
+          const startGeneration = generation;
+          const outcome = yield* model
+            .run({ prompt: prepared.prompt, outputSchema: DistillOutput })
+            .pipe(
+              Effect.map((result) => ({ ok: true, ...result }) as const),
+              Effect.catch((error) => Effect.succeed({ ok: false, error } as const)),
+            );
+          const endedAt = yield* Clock.currentTimeMillis;
+          if (!outcome.ok && outcome.error.reason === "unavailable") return "stop" as const;
+          const reported = outcome.ok ? outcome.usage : (outcome.error.usage ?? emptyUsage());
+          const usage =
+            reported.durationMs > 0 ? reported : { ...reported, durationMs: endedAt - startedAt };
+
+          return yield* locked(
+            Effect.gen(function* () {
+              const allowed = yield* afterCall(startGeneration);
+              if (allowed === "nothing") return "stop" as const;
+              const state = recordCall(yield* loadState(endedAt), {
                 purpose: "import",
-                now: endedAt,
-                usage,
-                ok: outcome.ok,
-                ...(outcome.ok ? {} : { error: outcome.error.message }),
-              }),
-            );
-            if (!outcome.ok) {
-              yield* store.writeState(recordFailure(state, endedAt));
-              yield* Effect.logWarning("user-insights.import-failed", {
-                message: outcome.error.message,
+                costUsd: usage.costUsd,
               });
-              return "stop" as const;
-            }
-            const cursor = state.import;
-            const current =
-              allowed === "everything" &&
-              cursor?.id === prepared.cursor.id &&
-              cursor.state === "running" &&
-              cursor.done === prepared.cursor.done;
-            if (!current) {
-              // Cancelled or reset during the call: only the cost counts.
-              yield* store.writeState(state);
-              return "stop" as const;
-            }
-            const profile = yield* loadProfile(endedAt);
-            const { accepted } = validateOps(outcome.output.ops, {
-              profile,
-              excerptCount: prepared.shown.length,
-            });
-            yield* store.writeProfile(
-              applyOps(profile, accepted, {
-                now: endedAt,
-                evidenceIds: prepared.shown.map((record) => record.messageId),
-                newSamples: prepared.batch.length,
-                weight: batchWeight(prepared.batch, endedAt),
-              }),
-            );
-            // Before the pending tail, which the next distill takes from the end.
-            const evidence = yield* store.readEvidence;
-            const at = Math.max(0, evidence.length - state.pendingEvidence);
-            yield* store.writeEvidence([
-              ...evidence.slice(0, at),
-              ...prepared.batch,
-              ...evidence.slice(at),
-            ]);
-            const done = cursor.done + prepared.batch.length;
-            const finished = done >= cursor.total;
-            yield* store.writeState({
-              ...state,
-              failures: 0,
-              backoffUntil: null,
-              import: { ...cursor, done, state: finished ? "done" : "running" },
-            });
-            if (finished) yield* store.removeImportQueue;
-            yield* store.trim(endedAt);
-            return finished ? ("finished" as const) : ("learned" as const);
-          }),
-        );
-      }),
-    )
-    .pipe(
-      Effect.catchCause((cause) =>
-        Effect.logWarning("user-insights.import-error", { cause }).pipe(Effect.as("stop" as const)),
-      ),
-    );
+              yield* store.appendUsage(
+                usageRecord({
+                  purpose: "import",
+                  now: endedAt,
+                  usage,
+                  ok: outcome.ok,
+                  ...(outcome.ok ? {} : { error: outcome.error.message }),
+                }),
+              );
+              if (!outcome.ok) {
+                yield* store.writeState(mayRetry ? state : recordFailure(state, endedAt));
+                yield* Effect.logWarning("user-insights.import-failed", {
+                  message: outcome.error.message,
+                  retry: mayRetry,
+                });
+                return mayRetry ? ("retry" as const) : ("stop" as const);
+              }
+              const cursor = state.import;
+              const current =
+                allowed === "everything" &&
+                cursor?.id === prepared.cursor.id &&
+                cursor.state === "running" &&
+                cursor.done === prepared.cursor.done;
+              if (!current) {
+                // Cancelled or reset during the call: only the cost counts.
+                yield* store.writeState(state);
+                return "stop" as const;
+              }
+              const profile = yield* loadProfile(endedAt);
+              const { accepted } = validateOps(outcome.output.ops, {
+                profile,
+                excerptCount: prepared.shown.length,
+              });
+              yield* store.writeProfile(
+                applyOps(profile, accepted, {
+                  now: endedAt,
+                  evidenceIds: prepared.shown.map((record) => record.messageId),
+                  newSamples: prepared.batch.length,
+                  weight: batchWeight(prepared.batch, endedAt),
+                }),
+              );
+              // Before the pending tail, which the next distill takes from the end.
+              const evidence = yield* store.readEvidence;
+              const at = Math.max(0, evidence.length - state.pendingEvidence);
+              yield* store.writeEvidence([
+                ...evidence.slice(0, at),
+                ...prepared.batch,
+                ...evidence.slice(at),
+              ]);
+              const done = cursor.done + prepared.batch.length;
+              const finished = done >= cursor.total;
+              yield* store.writeState({
+                ...state,
+                failures: 0,
+                backoffUntil: null,
+                import: { ...cursor, done, state: finished ? "done" : "running" },
+              });
+              if (finished) yield* store.removeImportQueue;
+              yield* store.trim(endedAt);
+              return finished ? ("finished" as const) : ("learned" as const);
+            }),
+          );
+        }),
+      )
+      .pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("user-insights.import-error", { cause }).pipe(
+            Effect.as("stop" as const),
+          ),
+        ),
+      );
 
   /** Set while a fiber works through the import, so there is only ever one. */
   let importing = false;
@@ -688,11 +696,15 @@ export const make = Effect.gen(function* () {
     importing = true;
     return Effect.gen(function* () {
       let batches = 0;
-      let result = yield* importBatch;
+      let result = yield* importBatch(true);
       while (result !== "stop") {
+        if (result === "retry") {
+          result = yield* importBatch(false);
+          continue;
+        }
         batches += 1;
         if (result === "finished") break;
-        result = yield* importBatch;
+        result = yield* importBatch(true);
       }
       return batches;
     }).pipe(Effect.ensuring(Effect.sync(() => (importing = false))));

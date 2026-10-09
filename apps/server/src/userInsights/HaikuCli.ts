@@ -31,7 +31,7 @@ const USER_INSIGHTS_SYSTEM_PROMPT =
 
 export const USER_INSIGHTS_MODEL = "claude-haiku-4-5";
 export const MAX_BUDGET_PER_CALL_USD = 0.05;
-export const CALL_TIMEOUT_MS = 120_000;
+export const CALL_TIMEOUT_MS = 180_000;
 /** Haiku 4.5 list prices per token, for when the CLI reports no cost. */
 const INPUT_USD_PER_TOKEN = 1 / 1_000_000;
 const OUTPUT_USD_PER_TOKEN = 5 / 1_000_000;
