@@ -90,6 +90,7 @@ import { createGitDiffFileContentsLoader } from "../lib/diffFileContents";
 import { useReviewFilePatches } from "./diffs/useReviewFilePatches";
 import { DiffFileLoadingBoundary } from "./diffs/DiffFileLoadingBoundary";
 import { DiffFileStatus } from "./diffs/DiffFileStatus";
+import { useDiffPanelCodeNavigation } from "./codeNavigation/useDiffPanelCodeNavigation";
 
 type DiffThemeType = "light" | "dark";
 const AUTOMATIC_BASE_REF = "__automatic_base_ref__";
@@ -491,6 +492,18 @@ export default function DiffPanel({
         }),
     [collapsedDiffFileKeys, renderableFileEntries, lazySource, readyFilePaths],
   );
+  // Fork: go to definition and find references in the diff.
+  const { mount: mountCodeNavigation, ...codeNavigation } = useDiffPanelCodeNavigation({
+    environmentId: activeThread?.environmentId,
+    cwd: (selectedRunId === null ? branchDiffPreview.data?.cwd : null) ?? activeCwd,
+    turn:
+      selectedRunId === null
+        ? null
+        : { threadId: activeThreadId, turnCount: selectedCheckpointTurnCount },
+    gitSource: selectedGitSource,
+    files: codeViewFiles,
+    codeView,
+  });
   const diffFileKeys = useMemo(
     () => renderableFileEntries.map((file) => file.fileKey),
     [renderableFileEntries],
@@ -1023,7 +1036,8 @@ export default function DiffPanel({
             ) : lazySource || renderablePatch?.kind === "files" ? (
               <div className="flex min-h-0 flex-1 overflow-hidden">
                 <div
-                  className="min-h-0 min-w-0 flex-1"
+                  ref={mountCodeNavigation}
+                  className="relative min-h-0 min-w-0 flex-1"
                   onClickCapture={(event) => {
                     const composedPath = event.nativeEvent.composedPath?.() ?? [];
                     for (const node of composedPath) {
@@ -1156,8 +1170,10 @@ export default function DiffPanel({
                       themeType: resolvedTheme as DiffThemeType,
                       stickyHeaders: true,
                       ...(currentLoadDiffFiles ? { loadDiffFiles } : {}),
+                      ...codeNavigation.options,
                     }}
                   />
+                  {codeNavigation.overlay}
                 </div>
                 {fileTreeOpen ? (
                   <aside className="flex w-[min(16rem,40%)] min-w-40 shrink-0 border-l border-border/60">

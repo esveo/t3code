@@ -9,10 +9,13 @@ import {
 /* oxlint-enable eslint/no-restricted-imports */
 import type { Ref } from "react";
 
+import { CODE_NAVIGATION_UNSAFE_CSS } from "~/components/codeNavigation/codeNavigationDom";
 import { DIFF_SURFACE_THEME_UNSAFE_CSS } from "~/lib/diffRendering";
 import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
 
+// Fork: CODE_NAVIGATION_UNSAFE_CSS styles code navigation's link underline and line flash.
 const DIFF_VIEW_UNSAFE_CSS = `${DIFF_SURFACE_THEME_UNSAFE_CSS}
+${CODE_NAVIGATION_UNSAFE_CSS}
 :is(
   [data-line],
   [data-line-annotation],

@@ -1,10 +1,13 @@
 import type { CodeViewDiffItem, FileDiffMetadata } from "@pierre/diffs";
+import type { CodeViewHandle } from "@pierre/diffs/react";
 import type { EnvironmentId, ReviewDiffRange, VcsCommitGraphEntry } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 import { ArrowRightIcon, ChevronDownIcon, ChevronRightIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { DiffStatLabel } from "~/components/chat/DiffStatLabel";
+import { gitGraphRevisions } from "~/components/codeNavigation/codeNavigation.logic";
+import { useCodeNavigation } from "~/components/codeNavigation/useCodeNavigation";
 import { DiffPanelLoadingState } from "~/components/DiffPanelShell";
 import { DiffFileLoadingBoundary } from "~/components/diffs/DiffFileLoadingBoundary";
 import { StyledDiffCodeView } from "~/components/diffs/StyledDiffCodeView";
@@ -175,6 +178,16 @@ export function GitGraphDiff({
     [loadNextFiles, renderableFiles.length, settledFileCount],
   );
 
+  const [codeView, setCodeView] = useState<CodeViewHandle<undefined> | null>(null);
+  const revisions = useMemo(() => gitGraphRevisions(range), [range]);
+  const { mount: mountCodeNavigation, ...codeNavigation } = useCodeNavigation({
+    environmentId,
+    cwd: preview.data?.cwd ?? cwd,
+    revisions,
+    files: items,
+    codeView,
+  });
+
   const single = points.length === 1 ? points[0] : undefined;
   const authored = single && single.sha !== WORKTREE_ID ? new Date(single.authoredAt) : null;
   const fileCount = source?.files?.length ?? renderableFiles.length;
@@ -253,7 +266,8 @@ export function GitGraphDiff({
             </p>
           ) : null}
           <div
-            className="min-h-0 flex-1"
+            ref={mountCodeNavigation}
+            className="relative min-h-0 flex-1"
             onClickCapture={(event) => {
               const composedPath = event.nativeEvent.composedPath?.() ?? [];
               if (composedPath.some((node) => node instanceof HTMLButtonElement)) return;
@@ -270,6 +284,7 @@ export function GitGraphDiff({
           >
             <StyledDiffCodeView<undefined>
               className="h-full min-h-0 overflow-auto"
+              viewerRef={setCodeView}
               items={items}
               renderCodeViewFooter={renderLoadingBoundary}
               renderHeaderPrefix={(item) =>
@@ -290,8 +305,10 @@ export function GitGraphDiff({
                 themeType: resolvedTheme,
                 stickyHeaders: true,
                 ...(loadDiffFiles ? { loadDiffFiles } : {}),
+                ...codeNavigation.options,
               }}
             />
+            {codeNavigation.overlay}
           </div>
         </>
       )}
