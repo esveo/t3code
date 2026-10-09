@@ -49,7 +49,9 @@ export function statusText(status: UserInsightsStatus): string {
     case "off":
       return "Off";
     case "learning":
-      return `Learning: ${status.samples} of ${status.requiredSamples} messages before suggestions start`;
+      return `Learning: ${status.samples} of ${status.requiredSamples} messages before suggestions start${
+        status.pending ? `, ${status.pending} collected for the next update` : ""
+      }`;
     case "ready":
       return "Ready: suggestions can appear after a finished turn";
     case "paused":

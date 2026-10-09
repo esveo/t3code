@@ -33,11 +33,24 @@ describe("distillDecision", () => {
     expect(distillDecision(waiting, enabled, NOW + MINUTE)).toEqual({ kind: "distill" });
   });
 
-  it("distills a small batch after an hour since the last distill", () => {
+  it("distills a full batch after 15 minutes even when the user never pauses", () => {
+    const busy = state({
+      pendingEvidence: 12,
+      firstPendingAt: toIso(NOW - 14 * MINUTE),
+      lastMessageAt: toIso(NOW - 30_000),
+    });
+    expect(distillDecision(busy, enabled, NOW)).toEqual({ kind: "skip", reason: "waiting" });
+    expect(
+      distillDecision({ ...busy, lastMessageAt: toIso(NOW + 30_000) }, enabled, NOW + MINUTE),
+    ).toEqual({ kind: "distill" });
+  });
+
+  it("distills a small batch once its oldest message waited an hour", () => {
     const small = state({
       pendingEvidence: 3,
+      firstPendingAt: toIso(NOW - 59 * MINUTE),
       lastMessageAt: toIso(NOW),
-      lastDistillAt: toIso(NOW - 59 * MINUTE),
+      lastDistillAt: toIso(NOW - 2 * DAY_MS),
     });
     expect(distillDecision(small, enabled, NOW).kind).toBe("skip");
     expect(distillDecision(small, enabled, NOW + MINUTE)).toEqual({ kind: "distill" });
@@ -73,6 +86,9 @@ describe("counters", () => {
     expect(twice.backoffUntil).toBe(toIso(NOW + 60 * MINUTE));
     const recovered = recordSuccess({ ...twice, pendingEvidence: 12 }, 10, NOW);
     expect(recovered).toMatchObject({ failures: 0, backoffUntil: null, pendingEvidence: 2 });
+    // The two messages that arrived during the call wait from now on.
+    expect(recovered.firstPendingAt).toBe(toIso(NOW));
+    expect(recordSuccess({ ...twice, pendingEvidence: 10 }, 10, NOW).firstPendingAt).toBeNull();
   });
 
   it("counts calls and resets them on a new day", () => {

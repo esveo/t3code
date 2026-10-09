@@ -222,6 +222,7 @@ describe("UserInsights", () => {
             state: "learning",
             samples: 10,
             requiredSamples: 40,
+            pending: 0,
           });
           assert.strictEqual(snapshot.usage.today.calls, 1);
         }),
@@ -261,7 +262,7 @@ describe("UserInsights", () => {
   );
 
   it.effect("stops calling the model once today's cost cap is reached", () =>
-    withInsights({ enabled: true, answers: [answer([], 0.6)] }, ({ insights, prompts }) =>
+    withInsights({ enabled: true, answers: [answer([], 1.2)] }, ({ insights, prompts }) =>
       Effect.gen(function* () {
         yield* insights.observe(message(1));
         assert.strictEqual((yield* insights.distillNow).kind, "distilled");
@@ -526,7 +527,12 @@ describe("UserInsights", () => {
         yield* insights.act({ type: "data.reset" });
         const afterReset = yield* insights.snapshot;
         assert.deepEqual(afterReset.traits, []);
-        assert.deepEqual(afterReset.status, { state: "learning", samples: 0, requiredSamples: 40 });
+        assert.deepEqual(afterReset.status, {
+          state: "learning",
+          samples: 0,
+          requiredSamples: 40,
+          pending: 0,
+        });
         assert.strictEqual(afterReset.usage.total.calls, 1);
         assert.isTrue(afterReset.hasStoredData);
         assert.strictEqual((yield* store.readEvidence).length, 0);

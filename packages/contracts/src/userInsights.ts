@@ -23,7 +23,7 @@ export const USER_INSIGHTS_READY_TRAITS = 4;
 /** Confidence a trait needs to count towards readiness. */
 export const USER_INSIGHTS_READY_CONFIDENCE = 0.7;
 /** Daily ceiling of Haiku spend, in equivalent API cost as reported by the Claude CLI. */
-export const USER_INSIGHTS_DAILY_COST_CAP_USD = 0.5;
+export const USER_INSIGHTS_DAILY_COST_CAP_USD = 1;
 /** Longest trait value Haiku or the user may store. */
 export const USER_INSIGHTS_MAX_TRAIT_VALUE_LENGTH = 160;
 
@@ -89,6 +89,8 @@ export const UserInsightsStatus = Schema.Union([
     state: Schema.Literal("learning"),
     samples: NonNegativeInt,
     requiredSamples: NonNegativeInt,
+    /** Messages collected but not yet learned from; optional for older servers. */
+    pending: Schema.optionalKey(NonNegativeInt),
   }),
   Schema.Struct({ state: Schema.Literal("ready") }),
   Schema.Struct({ state: Schema.Literal("paused"), reason: UserInsightsPauseReason }),

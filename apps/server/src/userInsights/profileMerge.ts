@@ -22,8 +22,14 @@ export const STALE_AFTER_DAYS = 60;
 export const STALE_BELOW_CONFIDENCE = 0.3;
 export const MAX_NOTES = 5;
 export const MAX_EXAMPLES = 3;
-/** Most observations one operation may claim, so one answer cannot swamp a trait. */
-export const MAX_OP_COUNT = 10;
+/**
+ * Most observations one operation may claim. Haiku tends to credit every
+ * message of a batch to every trait, so one batch moves a trait at most this
+ * far and confidence builds over several batches, not one.
+ */
+export const MAX_OP_COUNT = 3;
+/** Support a user edit gives its trait. */
+export const PINNED_SUPPORT = 10;
 
 export type DistillOpKind = "add" | "support" | "contradict" | "revise" | "noop";
 
@@ -265,7 +271,7 @@ export function editTrait(
   const edited = withConfidence({
     id,
     value: value.trim(),
-    support: Math.max(existing?.support ?? 0, MAX_OP_COUNT),
+    support: Math.max(existing?.support ?? 0, PINNED_SUPPORT),
     contradict: 0,
     confidence: 0,
     lastSeen: nowIso,

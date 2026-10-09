@@ -25,6 +25,10 @@ import { makeClaudeEnvironment } from "../provider/Drivers/ClaudeHome.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { toJsonSchemaObject } from "../textGeneration/TextGenerationUtils.ts";
 
+/** The whole system prompt of a user insights call; the task is in the prompt. */
+const USER_INSIGHTS_SYSTEM_PROMPT =
+  "You analyze messages for a local tool and answer only with JSON that matches the given schema.";
+
 export const USER_INSIGHTS_MODEL = "claude-haiku-4-5";
 export const MAX_BUDGET_PER_CALL_USD = 0.05;
 export const CALL_TIMEOUT_MS = 120_000;
@@ -222,6 +226,14 @@ export const make = Effect.gen(function* () {
             String(MAX_BUDGET_PER_CALL_USD),
             "--settings",
             '{"disableAllHooks":true}',
+            // No user, project or local settings (CLAUDE.md, memory) and no
+            // Claude Code system prompt: the prompt on stdin carries every
+            // instruction, and the fixed input drops from about 7600 tokens
+            // to about 600. Subscription login still works, unlike --bare.
+            "--setting-sources",
+            "",
+            "--system-prompt",
+            USER_INSIGHTS_SYSTEM_PROMPT,
           ],
           { env: environment },
         );

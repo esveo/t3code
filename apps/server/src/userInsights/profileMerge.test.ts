@@ -125,6 +125,17 @@ describe("applyOps", () => {
     expect(next.traits[0]!.confidence).toBeCloseTo(confidenceOf(3, 0));
   });
 
+  it("moves a trait by at most three observations per batch", () => {
+    const next = applyOps(
+      profileWith([]),
+      [op({ traitId: "style.tone", op: "add", value: "Direct", count: 10, evidence: [1] })],
+      input,
+    );
+    const tone = next.traits.find((t) => t.id === "style.tone");
+    expect(tone?.support).toBe(3);
+    expect(confidenceLevel(tone?.confidence ?? 0)).toBe("medium");
+  });
+
   it("decays old counts before adding new support", () => {
     const old = profileWith([
       trait({ id: "work.stack", support: 8, lastSeen: toIso(NOW - 30 * DAY_MS) }),

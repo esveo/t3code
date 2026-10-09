@@ -14,7 +14,9 @@ export const MAX_SUGGESTS_PER_DAY = 60;
 /** Pending messages that trigger a distill once the user paused for a moment. */
 export const DISTILL_BATCH = 10;
 export const DISTILL_IDLE_MS = 2 * 60 * 1000;
-/** Fewer pending messages still get distilled after an hour. */
+/** A full batch also runs once its oldest message waited this long, pause or not. */
+export const DISTILL_BATCH_MAX_WAIT_MS = 15 * 60 * 1000;
+/** Fewer pending messages still get distilled once the oldest waited an hour. */
 export const DISTILL_MIN_BATCH = 3;
 export const DISTILL_STALE_MS = 60 * 60 * 1000;
 export const BACKOFF_FIRST_MS = 15 * 60 * 1000;
@@ -25,6 +27,8 @@ export const UserInsightsState = Schema.Struct({
   /** Observed messages not yet distilled. */
   pendingEvidence: Schema.Number,
   lastMessageAt: Schema.NullOr(Schema.String),
+  /** When the oldest pending message arrived; missing in older state files. */
+  firstPendingAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
   lastDistillAt: Schema.NullOr(Schema.String),
   backoffUntil: Schema.NullOr(Schema.String),
   /** Consecutive failed distills. */
@@ -86,8 +90,11 @@ export type DistillDecision =
 
 /**
  * Distill when enabled, not backing off, under the daily caps, and either a
- * full batch waits and the user paused for two minutes, or a small one waited
- * an hour since the last distill (before the first one, since the last message). `state` must already be rolled to `now`.
+ * full batch waits and the user paused for two minutes or its oldest message
+ * waited 15 minutes, or a small batch's oldest message waited an hour. Someone
+ * who writes in several threads at once rarely pauses for two minutes, so the
+ * wait counts from the oldest pending message, not the latest. `state` must
+ * already be rolled to `now`.
  */
 export function distillDecision(
   state: UserInsightsState,
@@ -99,16 +106,14 @@ export function distillDecision(
   if (isOverBudget(state)) return { kind: "skip", reason: "budget" };
   if (state.distillsToday >= MAX_DISTILLS_PER_DAY) return { kind: "skip", reason: "daily-limit" };
   if (state.pendingEvidence < DISTILL_MIN_BATCH) return { kind: "skip", reason: "not-enough" };
+  const oldestWait = since(state.firstPendingAt ?? state.lastMessageAt, now);
   if (
     state.pendingEvidence >= DISTILL_BATCH &&
-    since(state.lastMessageAt, now) >= DISTILL_IDLE_MS
+    (since(state.lastMessageAt, now) >= DISTILL_IDLE_MS || oldestWait >= DISTILL_BATCH_MAX_WAIT_MS)
   ) {
     return { kind: "distill" };
   }
-  // Before the first distill, the hour counts from the latest message.
-  if (since(state.lastDistillAt ?? state.lastMessageAt, now) >= DISTILL_STALE_MS) {
-    return { kind: "distill" };
-  }
+  if (oldestWait >= DISTILL_STALE_MS) return { kind: "distill" };
   return { kind: "skip", reason: "waiting" };
 }
 
@@ -142,9 +147,12 @@ export function recordSuccess(
   consumed: number,
   now: number,
 ): UserInsightsState {
+  const pendingEvidence = Math.max(0, state.pendingEvidence - consumed);
   return {
     ...state,
-    pendingEvidence: Math.max(0, state.pendingEvidence - consumed),
+    pendingEvidence,
+    // Messages that arrived during the call start a new wait.
+    firstPendingAt: pendingEvidence > 0 ? toIso(now) : null,
     lastDistillAt: toIso(now),
     failures: 0,
     backoffUntil: null,

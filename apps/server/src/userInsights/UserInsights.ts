@@ -263,6 +263,10 @@ export const make = Effect.gen(function* () {
             ...state,
             pendingEvidence,
             lastMessageAt: toIso(now),
+            firstPendingAt:
+              state.pendingEvidence === 0 || !state.firstPendingAt
+                ? toIso(now)
+                : state.firstPendingAt,
           });
           // Distills trim the files; when none succeeds for a long time
           // (Claude off, backoff), the evidence must not grow without end.
@@ -318,7 +322,7 @@ export const make = Effect.gen(function* () {
               const selected = selectDistillEvidence(pending);
               if (selected.length === 0) {
                 // The evidence is gone (trimmed or deleted by hand); start over.
-                yield* store.writeState({ ...state, pendingEvidence: 0 });
+                yield* store.writeState({ ...state, pendingEvidence: 0, firstPendingAt: null });
                 return { kind: "skip", reason: "no-evidence" } as const;
               }
               const profile = yield* loadProfile(startedAt);
@@ -856,6 +860,7 @@ export function statusOf(input: {
     state: "learning",
     samples: Math.min(input.profile.sampleCount, USER_INSIGHTS_READY_SAMPLES),
     requiredSamples: USER_INSIGHTS_READY_SAMPLES,
+    pending: input.state.pendingEvidence,
   };
 }
 
