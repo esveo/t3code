@@ -61,12 +61,16 @@ jobs:
       green: ${{ steps.verdict.outputs.green }}
       bundled: ${{ steps.verdict.outputs.bundled }}
     steps:
+      # A plain anonymous clone (the repo is public), so no credential lands in
+      # .git/config. actions/checkout with persist-credentials: false would
+      # strip it again via `git submodule foreach`, which fails on upstream's
+      # gitlinks without a .gitmodules entry (.repos/alchemy-effect/submodules).
       - name: Checkout fork
-        uses: actions/checkout@v5
-        with:
-          ref: fork
-          fetch-depth: 0
-          persist-credentials: false
+        run: |
+          git init -q .
+          git remote add origin "https://github.com/$GITHUB_REPOSITORY.git"
+          git fetch --no-tags origin fork
+          git checkout -q -b fork FETCH_HEAD
 
       - name: Find the upstream commit
         id: upstream
