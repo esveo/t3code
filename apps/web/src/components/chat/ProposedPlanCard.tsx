@@ -1,4 +1,6 @@
-import { memo, useId, useState } from "react";
+import { proposedPlanTitle, stripDisplayedPlanMarkdown } from "@t3tools/shared/proposedPlanText";
+import { memo, useCallback, useState, useId } from "react";
+import { useFindRevealRef } from "./markdownFindContext";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -13,8 +15,6 @@ import {
   buildProposedPlanMarkdownFilename,
   downloadPlanAsTextFile,
   normalizePlanMarkdownForExport,
-  proposedPlanTitle,
-  stripDisplayedPlanMarkdown,
 } from "../../proposedPlan";
 import ChatMarkdown from "../ChatMarkdown";
 import { EllipsisIcon } from "lucide-react";
@@ -45,6 +45,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   cwd,
   workspaceRoot,
   revealed = false,
+  findActive = false,
 }: {
   planMarkdown: string;
   environmentId: EnvironmentId;
@@ -53,6 +54,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   workspaceRoot: string | undefined;
   /** A find match landed inside; expand the collapsed preview so it can be seen. */
   revealed?: boolean;
+  findActive?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   // A find match inside the clipped preview opens the plan for real, so the
@@ -85,11 +87,16 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   const title = proposedPlanTitle(planMarkdown) ?? "Proposed plan";
   const lineCount = planMarkdown.split("\n").length;
   const canCollapse = planMarkdown.length > 900 || lineCount > 20;
-  const isCollapsed = canCollapse && !expanded;
   const displayedPlanMarkdown = stripDisplayedPlanMarkdown(planMarkdown);
   const collapsedPreview = canCollapse
     ? buildCollapsedProposedPlanPreviewMarkdown(planMarkdown, { maxLines: 10 })
     : null;
+  const isCollapsed = canCollapse && !expanded;
+  // While finding, the full plan stays mounted but clipped, so a match past the
+  // preview can be counted and then opened only once it is selected.
+  const showPreview = isCollapsed && !findActive;
+  const revealForFind = useCallback(() => setExpanded(true), []);
+  const findRevealRef = useFindRevealRef(revealForFind);
   const downloadFilename = buildProposedPlanMarkdownFilename(planMarkdown);
   const saveContents = normalizePlanMarkdownForExport(planMarkdown);
 
@@ -170,7 +177,11 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
           <Badge variant="secondary">Plan</Badge>
           {/* Same heading level as the message author headings in the timeline,
               so a plan's own headings nest beneath it in the outline. */}
-          <h3 className="truncate text-sm font-medium text-foreground" data-chat-find-body="true">
+          <h3
+            className="truncate text-sm font-medium text-foreground"
+            data-chat-find-body="true"
+            data-thread-find-text="true"
+          >
             {title}
           </h3>
         </div>
@@ -196,10 +207,13 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
       </div>
       <div className="mt-4">
         <div
+          ref={findRevealRef}
           className={cn("relative", isCollapsed && "max-h-104 overflow-hidden")}
           data-chat-find-body="true"
+          data-thread-find-text="true"
+          data-thread-find-fold={isCollapsed ? "" : undefined}
         >
-          {isCollapsed ? (
+          {showPreview ? (
             <ChatMarkdown
               text={collapsedPreview ?? ""}
               cwd={cwd}
