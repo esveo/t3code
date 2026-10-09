@@ -39,6 +39,7 @@
     "@opencode/client": "2.0.18",
     "@opencode/protocol": "2.0.18",
     "@opencode/schema": "2.0.18",
+    "@vscode/tree-sitter-wasm": "0.3.1",
     "diff": "8.0.3",
     "effect": "catalog:",
     "jose": "catalog:",
@@ -46,6 +47,7 @@
     "proper-lockfile": "4.1.2",
     "stream-chain": "^4.2.5",
     "stream-json": "3.6.0",
+    "web-tree-sitter": "0.25.10",
     "yaml": "catalog:",
     "yauzl": "^3.4.0"
   },

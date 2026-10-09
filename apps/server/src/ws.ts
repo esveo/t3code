@@ -198,6 +198,7 @@ import * as ForkNotes from "./forkNotes/ForkNotes.ts";
 import * as ThreadCoordinators from "./threadOrchestration/ThreadCoordinators.ts";
 import * as VoiceInput from "./voiceInput/VoiceInput.ts";
 import * as ProviderSubagentControl from "./providerSubagentControl/ProviderSubagentControl.ts";
+import * as CodeNavigation from "./codeNavigation/CodeNavigation.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
@@ -3859,6 +3860,8 @@ const makeWsRpcLayer = (
             ProviderSubagentControl.stop(providerSubagentControlDeps, input),
             { "rpc.aggregate": "orchestration" },
           ),
+        // Fork: code navigation in the diff viewers.
+        ...CodeNavigation.rpcHandlers,
       });
       return handlers;
     }),

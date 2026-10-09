@@ -13,6 +13,7 @@ import {
   THREAD_DECISIONS_WS_METHODS,
   FORK_NOTES_WS_METHODS,
   VOICE_INPUT_WS_METHODS,
+  CODE_NAVIGATION_WS_METHODS,
   type AuthEnvironmentScope,
   EnvironmentAuthorizationError,
   RpcScopeAuthorization,
@@ -226,6 +227,10 @@ export const RPC_REQUIRED_SCOPES = {
   // Fork: provider subagent controls.
   [PROVIDER_SUBAGENT_CONTROL_WS_METHODS.target]: AuthOrchestrationReadScope,
   [PROVIDER_SUBAGENT_CONTROL_WS_METHODS.stop]: AuthOrchestrationOperateScope,
+  // Fork: code navigation in the diff viewers.
+  [CODE_NAVIGATION_WS_METHODS.resolveDefinition]: AuthOrchestrationReadScope,
+  [CODE_NAVIGATION_WS_METHODS.findReferences]: AuthOrchestrationReadScope,
+  [CODE_NAVIGATION_WS_METHODS.readFile]: AuthOrchestrationReadScope,
 } as const satisfies Readonly<Record<WsRpcMethod, AuthEnvironmentScope>>;
 
 export function requiredScopeForRpcMethod(method: string): AuthEnvironmentScope {

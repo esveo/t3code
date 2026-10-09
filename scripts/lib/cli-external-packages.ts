@@ -36,6 +36,9 @@ export const CLI_RUNTIME_EXTERNAL_PREFIXES = [
   "@clerk/electron-passkeys",
   // Fork: whisper.cpp for dictation, with its per-platform binary packages.
   "@fugood/",
+  // Fork: tree-sitter for code navigation; both load .wasm files beside their JS.
+  "web-tree-sitter",
+  "@vscode/tree-sitter-wasm",
   "node-gyp-build",
   "node-addon-api",
   // ws's optional accelerators. Nothing in this repo declares them, so they are

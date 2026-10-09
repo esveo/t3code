@@ -19,6 +19,11 @@ import {
 } from "./threadCoordinators.ts";
 import { WsVoiceInputPrepareRpc, WsVoiceInputTranscribeRpc } from "./voiceInput.ts";
 import {
+  WsCodeNavigationFindReferencesRpc,
+  WsCodeNavigationReadFileRpc,
+  WsCodeNavigationResolveDefinitionRpc,
+} from "./codeNavigation.ts";
+import {
   WsProviderSubagentStopRpc,
   WsProviderSubagentTargetRpc,
 } from "./providerSubagentControl.ts";
@@ -1920,4 +1925,8 @@ export const WsRpcGroup = RpcGroup.make(
   // Fork: stop and message a provider subagent from its thread.
   WsProviderSubagentTargetRpc,
   WsProviderSubagentStopRpc,
+  // Fork: go to definition and find references in the diff viewers.
+  WsCodeNavigationResolveDefinitionRpc,
+  WsCodeNavigationFindReferencesRpc,
+  WsCodeNavigationReadFileRpc,
 ).middleware(RpcScopeAuthorization);

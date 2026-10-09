@@ -84,6 +84,7 @@ import * as InheritedPullRequestRepair from "./threadOrchestration/InheritedPull
 import * as DelegatedAttachments from "./mcp/toolkits/threads/attachments.ts";
 import * as ThreadCoordinators from "./threadOrchestration/ThreadCoordinators.ts";
 import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
+import * as CodeNavigation from "./codeNavigation/CodeNavigation.ts";
 import * as ForkNotes from "./forkNotes/ForkNotes.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import { ProviderRegistryLive } from "./provider/Layers/ProviderRegistry.ts";
@@ -561,6 +562,8 @@ const RuntimeCoreDependenciesBaseLive = Layer.mergeAll(
   ThreadDecisions.layer,
   // Fork: notes and todos of the Notes tab.
   ForkNotes.layer,
+  // Fork: go to definition and find references in the diff viewers.
+  CodeNavigation.layer,
 ).pipe(
   // Core Services
   Layer.provideMerge(OrchestrationApplicationLayerLive),
