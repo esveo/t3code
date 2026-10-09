@@ -1,6 +1,7 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import type { OrchestrationV2DomainEvent } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -52,6 +53,8 @@ interface Harness {
   /** What the thread shell says; change `latestRunId` to start a new turn. */
   readonly shell: Ref.Ref<Record<string, unknown>>;
   readonly settings: ServerSettingsService["Service"];
+  /** A fresh instance on the same folder, as after a server restart. */
+  readonly restart: Effect.Effect<UserInsights.UserInsights["Service"]>;
 }
 
 const withInsights = <A, E>(
@@ -62,6 +65,8 @@ const withInsights = <A, E>(
     readonly suggestions?: boolean;
     readonly shell?: Record<string, unknown>;
     readonly messages?: ReadonlyArray<Record<string, unknown>>;
+    /** Stored messages by thread id, for importing past messages. */
+    readonly pastThreads?: Record<string, ReadonlyArray<Record<string, unknown>>>;
   },
   body: (harness: Harness) => Effect.Effect<A, E, FileSystem.FileSystem>,
 ) =>
@@ -88,8 +93,21 @@ const withInsights = <A, E>(
     });
     const management = Layer.mock(ThreadManagementService)({
       getThreadShell: () => Ref.get(shell) as never,
-      getThreadRecords: (() =>
-        Effect.succeed({ messages: options.messages ?? lastExchange })) as never,
+      getThreadRecords: ((threadId: string) =>
+        Effect.succeed({
+          messages: options.pastThreads?.[threadId] ?? options.messages ?? lastExchange,
+        })) as never,
+      getShellSnapshot: (() =>
+        Effect.succeed({
+          threads: Object.keys(options.pastThreads ?? {}).map((id) => ({
+            id,
+            projectId: "project-1",
+            lineage: { relationshipToParent: null },
+            latestUserMessageAt: DateTime.makeUnsafe(NOW),
+            updatedAt: DateTime.makeUnsafe(NOW),
+          })),
+          archivedThreads: [],
+        })) as never,
       streamDomainEvents: options.events ?? Stream.empty,
     });
     const config = ServerConfig.layerTest(process.cwd(), { prefix: "user-insights-" });
@@ -106,7 +124,9 @@ const withInsights = <A, E>(
       const insights = yield* UserInsights.UserInsights;
       const store = yield* makeUserInsightsStore((yield* ServerConfig).stateDir);
       const settings = yield* ServerSettingsService;
-      return yield* body({ insights, store, prompts, answers, shell, settings });
+      const context = yield* Effect.context<Layer.Success<typeof dependencies>>();
+      const restart = Effect.scoped(UserInsights.make).pipe(Effect.provideContext(context));
+      return yield* body({ insights, store, prompts, answers, shell, settings, restart });
     }).pipe(Effect.provide(UserInsights.layer.pipe(Layer.provideMerge(dependencies))));
   });
 
@@ -680,4 +700,195 @@ describe("summarizeUsage", () => {
     assert.strictEqual(summary.total.calls, 3);
     assert.closeTo(summary.total.costUsd, 0.13, 1e-9);
   });
+});
+
+/** A stored message `minutesAgo` before NOW; a user message typed on web unless overridden. */
+const pastMessage = (id: string, minutesAgo: number, overrides: Record<string, unknown> = {}) => {
+  const at = DateTime.makeUnsafe(NOW - minutesAgo * 60_000);
+  return {
+    id,
+    threadId: "past-thread",
+    runId: null,
+    nodeId: null,
+    role: "user",
+    createdBy: "user",
+    creationSource: "web",
+    text: `Bitte ${id} erledigen`,
+    attachments: [],
+    streaming: false,
+    createdAt: at,
+    updatedAt: at,
+    ...overrides,
+  };
+};
+
+/** `count` exchanges of an agent reply and the user's answer, `daysAgo` old. */
+const pastExchanges = (prefix: string, count: number, daysAgo: number) =>
+  Array.from({ length: count }, (_, index) => {
+    const minutesAgo = daysAgo * 24 * 60 + (count - index) * 2;
+    return [
+      pastMessage(`${prefix}-reply-${index}`, minutesAgo + 1, {
+        role: "assistant",
+        createdBy: "agent",
+        creationSource: "provider",
+        text: "Fertig. Soll ich die Tests laufen lassen?",
+      }),
+      pastMessage(`${prefix}-${index}`, minutesAgo),
+    ];
+  }).flat();
+
+const toneAdd = (costUsd = 0.01) =>
+  answer([{ traitId: "style.tone", op: "add", value: "Direct", count: 3, evidence: [1] }], costUsd);
+
+describe("UserInsights import of past messages", () => {
+  it.effect("learns in batches of 30, the older batch weighing less", () =>
+    withInsights(
+      {
+        enabled: true,
+        pastThreads: {
+          "past-thread": [
+            ...pastExchanges("old", 30, 20),
+            ...pastExchanges("new", 15, 1),
+            pastMessage("agent", 5, { createdBy: "agent" }),
+            pastMessage("scheduled", 4, { scheduledTaskId: "task-1" }),
+            pastMessage("slash", 3, { text: "/compact" }),
+            pastMessage("message-1", 2),
+          ],
+        },
+      },
+      ({ insights, store, prompts, answers }) =>
+        Effect.gen(function* () {
+          // Already observed live, so the import skips it.
+          yield* insights.observe(message(1));
+          const preview = yield* insights.act({ type: "import.preview" });
+          assert.deepEqual(preview.importPreview, {
+            messages: 45,
+            batches: 2,
+            estimatedCostUsd: 0.06,
+          });
+          yield* Ref.set(answers, [
+            // A second runner started meanwhile does nothing.
+            insights.runImport.pipe(
+              Effect.tap((nested) => Effect.sync(() => assert.strictEqual(nested, 0))),
+              Effect.andThen(toneAdd()),
+            ),
+            answer([]),
+          ]);
+          yield* insights.queueImport;
+          assert.strictEqual(yield* insights.runImport, 2);
+
+          const sent = yield* Ref.get(prompts);
+          assert.strictEqual(sent.length, 2);
+          assert.include(sent[0], "answering the agent's reply ending");
+          assert.include(sent[0], "old-29");
+          assert.notInclude(sent[0], "new-0");
+          const tone = (yield* store.readProfile)?.traits.find((t) => t.id === "style.tone");
+          assert.closeTo(tone?.support ?? 0, 3 * 0.5 ** (20 / 30), 0.01);
+          assert.strictEqual((yield* store.readProfile)?.sampleCount, 45);
+
+          const evidence = yield* store.readEvidence;
+          assert.strictEqual(evidence.length, 46);
+          // The live message stays last, pending for the next distill.
+          assert.strictEqual(evidence.at(-1)?.messageId, "message-1");
+          const state = yield* store.readState;
+          assert.strictEqual(state?.pendingEvidence, 1);
+          assert.strictEqual(state?.distillsToday, 0);
+          assert.closeTo(state?.costTodayUsd ?? 0, 0.02, 1e-9);
+          assert.deepEqual(
+            (yield* store.readUsage).map((record) => record.purpose),
+            ["import", "import"],
+          );
+          assert.deepEqual((yield* insights.snapshot).import, {
+            state: "done",
+            done: 45,
+            total: 45,
+          });
+          // Everything is known now.
+          const again = yield* insights.act({ type: "import.preview" });
+          assert.strictEqual(again.importPreview?.messages, 0);
+        }),
+    ),
+  );
+
+  it.effect("waits at the daily cost cap and resumes the next day, also after a restart", () =>
+    withInsights(
+      {
+        enabled: true,
+        pastThreads: { "past-thread": pastExchanges("past", 70, 2) },
+        answers: [toneAdd(0.6), answer([], 0.6), answer([], 0.01)],
+      },
+      ({ insights, store, prompts, restart }) =>
+        Effect.gen(function* () {
+          yield* insights.queueImport;
+          assert.strictEqual(yield* insights.runImport, 2);
+          assert.deepEqual((yield* insights.snapshot).import, {
+            state: "running",
+            done: 60,
+            total: 70,
+          });
+          const failedAgain = yield* insights.queueImport.pipe(
+            Effect.match({ onFailure: (error) => error.message, onSuccess: () => "started" }),
+          );
+          assert.strictEqual(failedAgain, "An import is already running.");
+
+          const restarted = yield* restart;
+          assert.strictEqual(yield* restarted.runImport, 0);
+          yield* TestClock.adjust("1 day");
+          assert.strictEqual(yield* restarted.runImport, 1);
+          assert.strictEqual((yield* Ref.get(prompts)).length, 3);
+          assert.deepEqual((yield* insights.snapshot).import, {
+            state: "done",
+            done: 70,
+            total: 70,
+          });
+          assert.isFalse(
+            yield* FileSystem.FileSystem.pipe(
+              Effect.flatMap((fs) => fs.exists(store.files.importQueue)),
+            ),
+          );
+        }),
+    ),
+  );
+
+  it.effect("cancel, reset and delete during a batch leave no learned trace", () =>
+    withInsights(
+      { enabled: true, pastThreads: { "past-thread": pastExchanges("past", 40, 1) } },
+      ({ insights, store, answers, settings }) =>
+        Effect.gen(function* () {
+          const fs = yield* FileSystem.FileSystem;
+
+          yield* Ref.set(answers, [
+            insights.act({ type: "import.cancel" }).pipe(Effect.orDie, Effect.andThen(toneAdd())),
+          ]);
+          yield* insights.queueImport;
+          assert.strictEqual(yield* insights.runImport, 0);
+          assert.isNull(yield* store.readProfile);
+          assert.strictEqual((yield* store.readEvidence).length, 0);
+          assert.deepEqual((yield* insights.snapshot).import, {
+            state: "cancelled",
+            done: 0,
+            total: 40,
+          });
+          assert.strictEqual((yield* store.readUsage).length, 1);
+
+          yield* Ref.set(answers, [insights.reset.pipe(Effect.orDie, Effect.andThen(toneAdd()))]);
+          yield* insights.queueImport;
+          assert.strictEqual(yield* insights.runImport, 0);
+          assert.isNull(yield* store.readProfile);
+          assert.isNull((yield* insights.snapshot).import ?? null);
+          assert.isFalse(yield* fs.exists(store.files.importQueue));
+
+          yield* Ref.set(answers, [
+            Effect.gen(function* () {
+              yield* settings.updateSettings({ enableUserInsights: false });
+              yield* store.deleteAll;
+              return yield* toneAdd();
+            }).pipe(Effect.orDie),
+          ]);
+          yield* insights.queueImport;
+          assert.strictEqual(yield* insights.runImport, 0);
+          assert.isFalse(yield* fs.exists(store.directory));
+        }),
+    ),
+  );
 });

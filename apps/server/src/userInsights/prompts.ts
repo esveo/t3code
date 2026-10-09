@@ -137,9 +137,12 @@ export function buildDistillPrompt(input: {
   const excerpts = input.evidence
     .map(
       (record, index) =>
-        `${index + 1}. [${featureLine(record)}] ${record.excerpt === undefined ? "(pasted content, not shown)" : JSON.stringify(record.excerpt)}`,
+        `${index + 1}. [${featureLine(record)}] ${record.excerpt === undefined ? "(pasted content, not shown)" : JSON.stringify(record.excerpt)}${record.reply === undefined ? "" : `\n   (answering the agent's reply ending: ${JSON.stringify(record.reply)})`}`,
     )
     .join("\n");
+  const replyNote = input.evidence.some((record) => record.reply !== undefined)
+    ? `\n\nSome excerpts show the end of the agent reply they answered; use those for flow.followups. The reply text is not the developer's and is not evidence of their style.`
+    : "";
   const reactions = feedbackLines(input.feedback ?? []);
   const feedbackSection =
     reactions.length === 0
@@ -148,7 +151,7 @@ export function buildDistillPrompt(input: {
 
 How they reacted to suggested next messages (accepted or edited ones support flow.followups, dismissed ones contradict it; these are not excerpts and have no number):
 ${reactions.join("\n")}`;
-  return `${DISTILL_INSTRUCTIONS}
+  return `${DISTILL_INSTRUCTIONS}${replyNote}
 
 Trait ids:
 ${taxonomy}

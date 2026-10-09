@@ -118,6 +118,25 @@ export const UserInsightsUsageSummary = Schema.Struct({
 });
 export type UserInsightsUsageSummary = typeof UserInsightsUsageSummary.Type;
 
+/** Where an import of past messages stands; it runs in the background, batch by batch. */
+export const UserInsightsImportProgress = Schema.Struct({
+  state: Schema.Literals(["running", "done", "cancelled"]),
+  /** Messages learned from so far. */
+  done: NonNegativeInt,
+  total: NonNegativeInt,
+});
+export type UserInsightsImportProgress = typeof UserInsightsImportProgress.Type;
+
+/** What an import of past messages would do, shown before it starts. */
+export const UserInsightsImportPreview = Schema.Struct({
+  messages: NonNegativeInt,
+  /** Profile updates, one model call each. */
+  batches: NonNegativeInt,
+  /** Equivalent API cost of all batches, estimated from earlier calls. */
+  estimatedCostUsd: Schema.Number,
+});
+export type UserInsightsImportPreview = typeof UserInsightsImportPreview.Type;
+
 export const UserInsightsSnapshot = Schema.Struct({
   status: UserInsightsStatus,
   traits: Schema.Array(UserInsightsTrait),
@@ -126,6 +145,8 @@ export const UserInsightsSnapshot = Schema.Struct({
   folderPath: Schema.String,
   /** The folder exists, also while insights are off, so it can still be deleted. */
   hasStoredData: Schema.Boolean,
+  /** The last import of past messages; absent when none ran or from older servers. */
+  import: Schema.optionalKey(Schema.NullOr(UserInsightsImportProgress)),
 });
 export type UserInsightsSnapshot = typeof UserInsightsSnapshot.Type;
 
@@ -205,8 +226,18 @@ export const UserInsightsAction = Schema.Union([
   Schema.Struct({ type: Schema.Literal("data.reset") }),
   /** Removes the whole folder. */
   Schema.Struct({ type: Schema.Literal("data.deleteAll") }),
+  /** Counts the past messages an import would learn from; answers with `importPreview`. */
+  Schema.Struct({ type: Schema.Literal("import.preview") }),
+  /** Starts learning from past messages in the background. */
+  Schema.Struct({ type: Schema.Literal("import.start") }),
+  Schema.Struct({ type: Schema.Literal("import.cancel") }),
 ]);
 export type UserInsightsAction = typeof UserInsightsAction.Type;
+
+export const UserInsightsActResult = Schema.Struct({
+  importPreview: Schema.optionalKey(UserInsightsImportPreview),
+});
+export type UserInsightsActResult = typeof UserInsightsActResult.Type;
 
 const UserInsightsRpcError = Schema.Union([UserInsightsError, EnvironmentAuthorizationError]);
 
@@ -218,7 +249,7 @@ export const WsUserInsightsReadRpc = Rpc.make(USER_INSIGHTS_WS_METHODS.read, {
 
 export const WsUserInsightsActRpc = Rpc.make(USER_INSIGHTS_WS_METHODS.act, {
   payload: UserInsightsAction,
-  success: Schema.Struct({}),
+  success: UserInsightsActResult,
   error: UserInsightsRpcError,
 });
 

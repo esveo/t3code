@@ -22,6 +22,19 @@ export const DISTILL_STALE_MS = 60 * 60 * 1000;
 export const BACKOFF_FIRST_MS = 15 * 60 * 1000;
 export const BACKOFF_REPEAT_MS = 60 * 60 * 1000;
 
+/**
+ * An import of past messages: the queued records sit in `import.jsonl`,
+ * `done` of them are learned from. Kept here so it resumes after a restart.
+ */
+export const ImportCursor = Schema.Struct({
+  id: Schema.String,
+  state: Schema.Literals(["running", "done", "cancelled"]),
+  done: Schema.Number,
+  total: Schema.Number,
+  startedAt: Schema.String,
+});
+export type ImportCursor = typeof ImportCursor.Type;
+
 export const UserInsightsState = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   /** Observed messages not yet distilled. */
@@ -45,6 +58,8 @@ export const UserInsightsState = Schema.Struct({
   acceptanceResetAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
   /** Turns that passed every suggestion gate, for "every third turn" throttling. */
   eligibleSuggests: Schema.optionalKey(Schema.Number),
+  /** The last import of past messages. */
+  import: Schema.optionalKey(Schema.NullOr(ImportCursor)),
 });
 export type UserInsightsState = typeof UserInsightsState.Type;
 
@@ -117,10 +132,10 @@ export function distillDecision(
   return { kind: "skip", reason: "waiting" };
 }
 
-/** Counts one model call against today's caps. */
+/** Counts one model call against today's caps; an import batch counts its cost only. */
 export function recordCall(
   state: UserInsightsState,
-  call: { readonly purpose: "distill" | "suggest"; readonly costUsd: number },
+  call: { readonly purpose: "distill" | "suggest" | "import"; readonly costUsd: number },
 ): UserInsightsState {
   return {
     ...state,

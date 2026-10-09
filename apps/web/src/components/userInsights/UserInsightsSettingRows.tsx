@@ -51,6 +51,7 @@ import {
   statusText,
   traitLabel,
 } from "./userInsightsFormat";
+import { UserInsightsImport } from "./UserInsightsImport";
 import { userInsightsEnvironment } from "./userInsightsState";
 
 function reportFailure(title: string, result: AtomCommandResult<unknown, unknown>) {
@@ -321,6 +322,12 @@ function UserInsightsDetails(props: {
             )}
           </section>
           <UsageSection snapshot={snapshot} />
+          <UserInsightsImport
+            environmentId={environmentId}
+            snapshot={snapshot}
+            canOperate={canOperate}
+            refresh={refresh}
+          />
         </>
       ) : (
         <p>User insights are off. What was learned before is still stored on this server.</p>
@@ -354,7 +361,7 @@ function UserInsightsDetails(props: {
             </AlertDialogTitle>
             <AlertDialogDescription>
               {confirm === "reset"
-                ? "Forgets the profile, the collected messages and the suggestion history. Learning starts over from your next message. The usage history stays."
+                ? "Forgets the profile, the collected messages, the suggestion history and any import of past messages. Learning starts over from your next message. The usage history stays."
                 : "Removes the whole folder, usage history included, and turns user insights off."}
             </AlertDialogDescription>
           </AlertDialogHeader>

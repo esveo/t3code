@@ -12,8 +12,15 @@ mobile apps. Messages from agents, scheduled tasks and other threads are left ou
 ## Turning it on
 
 Open **Settings** > **General** and turn on **User insights**. Learning starts with your next
-message; older threads are not read. Suggestions start once about 40 messages are learned and the
-profile is confident enough. The settings section shows how far learning is.
+message. Suggestions start once about 40 messages are learned and the profile is confident enough.
+The settings section shows how far learning is.
+
+To get there sooner, **Import past messages** learns from what you typed in this server's threads
+during the last 30 days, the newest 300 messages at most, together with the end of the agent reply
+each one answered. Before it starts, it shows how many messages it found, how many updates that
+takes and their estimated cost, since every update is a Claude call. The import runs in the
+background, older messages count less, and it pauses at the daily cap and continues the next day.
+You can cancel it while it runs.
 
 **Prompt suggestions** turns the suggestions off without stopping learning. **Not for this
 thread** in the suggestion list stops them for one thread. When few suggestions get used,

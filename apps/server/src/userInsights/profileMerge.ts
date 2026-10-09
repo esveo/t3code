@@ -156,6 +156,7 @@ const opCount = (op: DistillOp) =>
  * Applies validated operations. `evidenceIds[i]` is the message id of the
  * excerpt the model saw as number `i + 1`. Counts of touched traits decay
  * by the time since they were last seen before the new evidence is added.
+ * `weight` scales the new counts, so older evidence (an import) counts less.
  */
 export function applyOps(
   profile: UserInsightsProfile,
@@ -164,13 +165,15 @@ export function applyOps(
     readonly now: number;
     readonly evidenceIds: ReadonlyArray<string>;
     readonly newSamples: number;
+    readonly weight?: number;
   },
 ): UserInsightsProfile {
   const nowIso = toIso(input.now);
+  const weight = Math.min(1, Math.max(0, input.weight ?? 1));
   const traits = new Map(profile.traits.map((trait) => [trait.id as string, trait]));
   for (const op of ops) {
     if (op.op === "noop" || !isTraitId(op.traitId)) continue;
-    const count = opCount(op);
+    const count = opCount(op) * weight;
     const examples = op.evidence.flatMap((index) => {
       const id = input.evidenceIds[index - 1];
       return id === undefined ? [] : [id];

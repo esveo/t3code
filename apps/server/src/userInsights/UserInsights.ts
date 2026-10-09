@@ -17,6 +17,10 @@
  * a finished turn. One set per thread and turn: a second window on the same
  * turn shares the first one's call. The user's next message in that thread
  * tells whether the set was taken, which feeds throttling and the next distill.
+ *
+ * An import learns from messages typed before insights were on: it queues
+ * them in `import.jsonl` and works through them in batches of 30 on a
+ * background fiber, one model call per batch and never alongside a distill.
  */
 import {
   USER_INSIGHTS_DAILY_COST_CAP_USD,
@@ -26,7 +30,9 @@ import {
   type OrchestrationV2DomainEvent,
   type ThreadId,
   type UserInsightsAction,
+  type UserInsightsActResult,
   UserInsightsError,
+  type UserInsightsImportPreview,
   type UserInsightsProfile,
   type UserInsightsSnapshot,
   type UserInsightsStatus,
@@ -37,6 +43,7 @@ import {
 } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -53,6 +60,9 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import {
   distillDecision,
   emptyState,
+  type ImportCursor,
+  isBackingOff,
+  isOverBudget,
   MAX_DISTILLS_PER_DAY,
   MAX_SUGGESTS_PER_DAY,
   pauseReason,
@@ -65,6 +75,15 @@ import {
 } from "./distillPolicy.ts";
 import { isObservableUserMessage, makeSeenIds, toEvidence } from "./evidence.ts";
 import { emptyUsage, type ModelUsage, UserInsightsModel } from "./HaikuCli.ts";
+import {
+  batchCount,
+  batchWeight,
+  estimateImportCost,
+  IMPORT_BATCH_SIZE,
+  IMPORT_MAX_AGE_DAYS,
+  type PastThread,
+  selectPastMessages,
+} from "./importPast.ts";
 import {
   applyOps,
   deleteTrait as deleteProfileTrait,
@@ -126,8 +145,14 @@ export class UserInsights extends Context.Service<
      * one model call per turn. Empty with a reason when none are due.
      */
     readonly suggest: (threadId: ThreadId) => Effect.Effect<UserInsightsSuggestResult>;
-    /** One user action from a client: suggestion feedback, mute, and profile control. */
-    readonly act: (action: UserInsightsAction) => Effect.Effect<void, UserInsightsError>;
+    /** One user action from a client: suggestion feedback, mute, profile control and import. */
+    readonly act: (
+      action: UserInsightsAction,
+    ) => Effect.Effect<UserInsightsActResult, UserInsightsError>;
+    /** Queues the past messages an import learns from, without running it. */
+    readonly queueImport: Effect.Effect<UserInsightsImportPreview, UserInsightsError>;
+    /** Works through the queued import batch by batch until it is done or has to wait; returns the batches learned from. */
+    readonly runImport: Effect.Effect<number>;
   }
 >()("t3/userInsights/UserInsights") {}
 
@@ -183,6 +208,8 @@ export function summarizeUsage(
 const failure = (message: string) => new UserInsightsError({ message });
 
 export const make = Effect.gen(function* () {
+  /** Owns the import fiber, so it ends with the service. */
+  const serviceScope = yield* Effect.scope;
   const threads = yield* ThreadManagementService;
   const settingsService = yield* ServerSettingsService;
   const config = yield* ServerConfig;
@@ -434,6 +461,264 @@ export const make = Effect.gen(function* () {
   const tick = distill(false);
   const distillNow = distill(true);
 
+  /** Every thread's messages from the last 30 days; a thread that cannot be read is skipped. */
+  const readPastThreads = (now: number) =>
+    Effect.gen(function* () {
+      const cutoff = now - IMPORT_MAX_AGE_DAYS * DAY_MS;
+      const snapshot = yield* threads
+        .getShellSnapshot()
+        .pipe(Effect.mapError(() => failure("Could not read the past threads.")));
+      const recent = [...snapshot.threads, ...snapshot.archivedThreads].filter((shell) => {
+        if (shell.lineage.relationshipToParent === "subagent") return false;
+        const lastActive = shell.latestUserMessageAt ?? shell.updatedAt;
+        return DateTime.toEpochMillis(lastActive) >= cutoff;
+      });
+      return yield* Effect.forEach(
+        recent,
+        (shell) =>
+          threads
+            .getThreadRecords(shell.id, ["messages"], { messageRoles: ["user", "assistant"] })
+            .pipe(
+              Effect.map(({ messages }): PastThread => ({ projectId: shell.projectId, messages })),
+              Effect.orElseSucceed((): PastThread => ({
+                projectId: shell.projectId,
+                messages: [],
+              })),
+            ),
+        { concurrency: 4 },
+      );
+    });
+
+  const selectImport = (now: number) =>
+    Effect.gen(function* () {
+      const past = yield* readPastThreads(now);
+      const { evidence, usage } = yield* locked(
+        Effect.all({ evidence: store.readEvidence, usage: store.readUsage }),
+      );
+      const records = selectPastMessages(past, {
+        now,
+        knownIds: new Set(evidence.map((record) => record.messageId)),
+      });
+      const batches = batchCount(records.length);
+      return {
+        records,
+        preview: {
+          messages: records.length,
+          batches,
+          estimatedCostUsd: estimateImportCost(usage, batches),
+        } satisfies UserInsightsImportPreview,
+      };
+    });
+
+  const requireEnabled = enabled.pipe(
+    Effect.flatMap((on) =>
+      on ? Effect.void : Effect.fail(failure("Turn on user insights first.")),
+    ),
+  );
+
+  const previewImport = requireEnabled.pipe(
+    Effect.andThen(Clock.currentTimeMillis),
+    Effect.flatMap(selectImport),
+    Effect.map((selected) => selected.preview),
+  );
+
+  const queueImport: UserInsights["Service"]["queueImport"] = Effect.gen(function* () {
+    yield* requireEnabled;
+    const now = yield* Clock.currentTimeMillis;
+    const { records, preview } = yield* selectImport(now);
+    if (records.length === 0) return yield* failure("There are no past messages to import.");
+    yield* locked(
+      Effect.gen(function* () {
+        const state = yield* loadState(now);
+        if (state.import?.state === "running") {
+          return yield* failure("An import is already running.");
+        }
+        yield* store.writeImportQueue(records);
+        yield* store.writeState({
+          ...state,
+          import: {
+            id: `import-${now}`,
+            state: "running",
+            done: 0,
+            total: records.length,
+            startedAt: toIso(now),
+          },
+        });
+      }),
+    );
+    return preview;
+  });
+
+  /**
+   * One import batch: the next 30 queued records, one model call, merged with
+   * their age weight and moved into the evidence, so a later import skips
+   * them. Waits (returns "stop") at the cost cap, in backoff, or while off;
+   * the tick resumes it. Cancel, reset and delete during the call drop it.
+   */
+  const importBatch: Effect.Effect<"learned" | "finished" | "stop"> = distilling
+    .withPermits(1)(
+      Effect.gen(function* () {
+        if (!(yield* enabled)) return "stop" as const;
+        const startedAt = yield* Clock.currentTimeMillis;
+        const prepared = yield* locked(
+          Effect.gen(function* () {
+            const state = yield* loadState(startedAt);
+            const cursor = state.import;
+            if (cursor?.state !== "running") return null;
+            if (isOverBudget(state) || isBackingOff(state, startedAt)) return null;
+            const batch = (yield* store.readImportQueue).slice(
+              cursor.done,
+              cursor.done + IMPORT_BATCH_SIZE,
+            );
+            if (batch.length === 0) {
+              // The queue is gone (deleted by hand); end the import where it is.
+              yield* store.writeState({ ...state, import: { ...cursor, state: "done" } });
+              yield* store.removeImportQueue;
+              return null;
+            }
+            // Shown newest first, like a distill.
+            const shown = batch.toReversed();
+            return {
+              cursor,
+              batch,
+              shown,
+              prompt: buildDistillPrompt({
+                profile: yield* loadProfile(startedAt),
+                evidence: shown,
+              }),
+            };
+          }),
+        );
+        if (prepared === null) return "stop" as const;
+
+        const startGeneration = generation;
+        const outcome = yield* model
+          .run({ prompt: prepared.prompt, outputSchema: DistillOutput })
+          .pipe(
+            Effect.map((result) => ({ ok: true, ...result }) as const),
+            Effect.catch((error) => Effect.succeed({ ok: false, error } as const)),
+          );
+        const endedAt = yield* Clock.currentTimeMillis;
+        if (!outcome.ok && outcome.error.reason === "unavailable") return "stop" as const;
+        const reported = outcome.ok ? outcome.usage : (outcome.error.usage ?? emptyUsage());
+        const usage =
+          reported.durationMs > 0 ? reported : { ...reported, durationMs: endedAt - startedAt };
+
+        return yield* locked(
+          Effect.gen(function* () {
+            const allowed = yield* afterCall(startGeneration);
+            if (allowed === "nothing") return "stop" as const;
+            const state = recordCall(yield* loadState(endedAt), {
+              purpose: "import",
+              costUsd: usage.costUsd,
+            });
+            yield* store.appendUsage(
+              usageRecord({
+                purpose: "import",
+                now: endedAt,
+                usage,
+                ok: outcome.ok,
+                ...(outcome.ok ? {} : { error: outcome.error.message }),
+              }),
+            );
+            if (!outcome.ok) {
+              yield* store.writeState(recordFailure(state, endedAt));
+              yield* Effect.logWarning("user-insights.import-failed", {
+                message: outcome.error.message,
+              });
+              return "stop" as const;
+            }
+            const cursor = state.import;
+            const current =
+              allowed === "everything" &&
+              cursor?.id === prepared.cursor.id &&
+              cursor.state === "running" &&
+              cursor.done === prepared.cursor.done;
+            if (!current) {
+              // Cancelled or reset during the call: only the cost counts.
+              yield* store.writeState(state);
+              return "stop" as const;
+            }
+            const profile = yield* loadProfile(endedAt);
+            const { accepted } = validateOps(outcome.output.ops, {
+              profile,
+              excerptCount: prepared.shown.length,
+            });
+            yield* store.writeProfile(
+              applyOps(profile, accepted, {
+                now: endedAt,
+                evidenceIds: prepared.shown.map((record) => record.messageId),
+                newSamples: prepared.batch.length,
+                weight: batchWeight(prepared.batch, endedAt),
+              }),
+            );
+            // Before the pending tail, which the next distill takes from the end.
+            const evidence = yield* store.readEvidence;
+            const at = Math.max(0, evidence.length - state.pendingEvidence);
+            yield* store.writeEvidence([
+              ...evidence.slice(0, at),
+              ...prepared.batch,
+              ...evidence.slice(at),
+            ]);
+            const done = cursor.done + prepared.batch.length;
+            const finished = done >= cursor.total;
+            yield* store.writeState({
+              ...state,
+              failures: 0,
+              backoffUntil: null,
+              import: { ...cursor, done, state: finished ? "done" : "running" },
+            });
+            if (finished) yield* store.removeImportQueue;
+            yield* store.trim(endedAt);
+            return finished ? ("finished" as const) : ("learned" as const);
+          }),
+        );
+      }),
+    )
+    .pipe(
+      Effect.catchCause((cause) =>
+        Effect.logWarning("user-insights.import-error", { cause }).pipe(Effect.as("stop" as const)),
+      ),
+    );
+
+  /** Set while a fiber works through the import, so there is only ever one. */
+  let importing = false;
+  const runImport: UserInsights["Service"]["runImport"] = Effect.suspend(() => {
+    if (importing) return Effect.succeed(0);
+    importing = true;
+    return Effect.gen(function* () {
+      let batches = 0;
+      let result = yield* importBatch;
+      while (result !== "stop") {
+        batches += 1;
+        if (result === "finished") break;
+        result = yield* importBatch;
+      }
+      return batches;
+    }).pipe(Effect.ensuring(Effect.sync(() => (importing = false))));
+  });
+  const forkImport = Effect.forkIn(runImport, serviceScope).pipe(Effect.asVoid);
+
+  /** On the tick: picks a waiting import back up (after a restart, the cap or a backoff). */
+  const resumeImport = Effect.gen(function* () {
+    if (importing || !(yield* enabled)) return;
+    const now = yield* Clock.currentTimeMillis;
+    const state = yield* locked(loadState(now));
+    if (state.import?.state === "running") yield* forkImport;
+  });
+
+  const cancelImport = Effect.gen(function* () {
+    const now = yield* Clock.currentTimeMillis;
+    yield* locked(
+      Effect.gen(function* () {
+        const state = yield* loadState(now);
+        if (state.import?.state !== "running") return;
+        yield* store.writeState({ ...state, import: { ...state.import, state: "cancelled" } });
+        yield* store.removeImportQueue;
+      }),
+    );
+  });
+
   const snapshot: UserInsights["Service"]["snapshot"] = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     const current = yield* settings;
@@ -468,6 +753,7 @@ export const make = Effect.gen(function* () {
       usage: summarizeUsage(usage, { now, lastDistillAt: state.lastDistillAt }),
       folderPath: store.directory,
       hasStoredData: yield* locked(store.exists),
+      import: importProgress(state.import),
     } satisfies UserInsightsSnapshot;
   });
 
@@ -515,7 +801,10 @@ export const make = Effect.gen(function* () {
           ),
         );
         yield* Effect.forkScoped(followSuggestionsToggle);
-        yield* tick.pipe(Effect.repeat(Schedule.spaced(TICK_INTERVAL)));
+        yield* tick.pipe(
+          Effect.andThen(resumeImport),
+          Effect.repeat(Schedule.spaced(TICK_INTERVAL)),
+        );
       }),
     );
 
@@ -768,6 +1057,24 @@ export const make = Effect.gen(function* () {
 
   const act: UserInsights["Service"]["act"] = (action) => {
     switch (action.type) {
+      case "import.preview":
+        return previewImport.pipe(Effect.map((importPreview) => ({ importPreview })));
+      case "import.start":
+        return queueImport.pipe(Effect.andThen(forkImport), Effect.as({}));
+      case "import.cancel":
+        return cancelImport.pipe(Effect.as({}));
+      default:
+        return actOnProfile(action).pipe(Effect.as({}));
+    }
+  };
+
+  const actOnProfile = (
+    action: Exclude<
+      UserInsightsAction,
+      { readonly type: "import.preview" | "import.start" | "import.cancel" }
+    >,
+  ): Effect.Effect<void, UserInsightsError> => {
+    switch (action.type) {
       case "suggestion.fill":
         return Effect.sync(() => {
           const open = openSets.get(action.threadId);
@@ -840,8 +1147,15 @@ export const make = Effect.gen(function* () {
     deleteAll: locked(store.deleteAll).pipe(Effect.andThen(forgetLearned)),
     suggest,
     act,
+    queueImport,
+    runImport,
   });
 });
+
+const importProgress = (cursor: ImportCursor | null | undefined) =>
+  cursor === null || cursor === undefined
+    ? null
+    : { state: cursor.state, done: cursor.done, total: cursor.total };
 
 /** Off is decided by the caller; this covers an enabled server. */
 export function statusOf(input: {
@@ -889,7 +1203,7 @@ export const withService = <A>(
 export const readRpc = () => withService((insights) => insights.snapshot);
 
 export const actRpc = (action: UserInsightsAction) =>
-  withService((insights) => insights.act(action)).pipe(Effect.as({}));
+  withService((insights) => insights.act(action));
 
 export const suggestRpc = (input: { readonly threadId: ThreadId }) =>
   withService((insights) => insights.suggest(input.threadId));

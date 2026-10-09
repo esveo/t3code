@@ -30,6 +30,8 @@ export const EvidenceRecord = Schema.Struct({
   endsWithQuestion: Schema.Boolean,
   /** The redacted start of the message; absent for mostly pasted content. */
   excerpt: Schema.optionalKey(Schema.String),
+  /** Imported messages only: the redacted end of the agent reply the message answered. */
+  reply: Schema.optionalKey(Schema.String),
 });
 export type EvidenceRecord = typeof EvidenceRecord.Type;
 
@@ -47,8 +49,11 @@ export type ObservableUserMessageEvent = Extract<
 export function isObservableUserMessage(
   event: OrchestrationV2DomainEvent,
 ): event is ObservableUserMessageEvent {
-  if (event.type !== "message.updated") return false;
-  const message = event.payload;
+  return event.type === "message.updated" && isTypedUserMessage(event.payload);
+}
+
+/** The same test on a stored message, for importing past ones. */
+export function isTypedUserMessage(message: OrchestrationV2ConversationMessage): boolean {
   return (
     message.role === "user" &&
     message.createdBy === "user" &&

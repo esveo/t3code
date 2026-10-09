@@ -21,7 +21,7 @@ export const LEDGER_MAX_AGE_DAYS = 90;
 
 export const UsageRecord = Schema.Struct({
   ts: Schema.String,
-  purpose: Schema.Literals(["distill", "suggest"]),
+  purpose: Schema.Literals(["distill", "suggest", "import"]),
   model: Schema.String,
   inputTokens: Schema.Number,
   outputTokens: Schema.Number,
@@ -62,6 +62,8 @@ export const makeUserInsightsStore = Effect.fn("makeUserInsightsStore")(function
     usage: path.join(directory, "usage.jsonl"),
     feedback: path.join(directory, "feedback.jsonl"),
     state: path.join(directory, "state.json"),
+    /** The records an import of past messages still works through. */
+    importQueue: path.join(directory, "import.jsonl"),
   };
 
   const readText = (file: string) =>
@@ -204,6 +206,12 @@ export const makeUserInsightsStore = Effect.fn("makeUserInsightsStore")(function
     writeState: (state: UserInsightsState) => writeJson(files.state, UserInsightsState, state),
     readEvidence: readJsonl(files.evidence, EvidenceRecord),
     appendEvidence: (record: EvidenceRecord) => append(files.evidence, EvidenceRecord, record),
+    writeEvidence: (records: ReadonlyArray<EvidenceRecord>) =>
+      ensureDirectory.pipe(Effect.andThen(writeJsonl(files.evidence, EvidenceRecord, records))),
+    readImportQueue: readJsonl(files.importQueue, EvidenceRecord),
+    writeImportQueue: (records: ReadonlyArray<EvidenceRecord>) =>
+      ensureDirectory.pipe(Effect.andThen(writeJsonl(files.importQueue, EvidenceRecord, records))),
+    removeImportQueue: remove(files.importQueue),
     readUsage: readJsonl(files.usage, UsageRecord),
     appendUsage: (record: UsageRecord) => append(files.usage, UsageRecord, record),
     readFeedback: readJsonl(files.feedback, FeedbackRecord),
@@ -234,7 +242,14 @@ export const makeUserInsightsStore = Effect.fn("makeUserInsightsStore")(function
       }),
     /** Forgets everything learned; the usage ledger stays. */
     reset: Effect.forEach(
-      [files.evidence, files.profile, files.profilePrev, files.feedback, files.state],
+      [
+        files.evidence,
+        files.profile,
+        files.profilePrev,
+        files.feedback,
+        files.state,
+        files.importQueue,
+      ],
       remove,
       { discard: true },
     ),

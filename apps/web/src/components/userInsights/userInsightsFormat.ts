@@ -1,4 +1,6 @@
 import type {
+  UserInsightsImportPreview,
+  UserInsightsImportProgress,
   UserInsightsStatus,
   UserInsightsTraitId,
   UserInsightsUsageSummary,
@@ -88,4 +90,28 @@ export function formatUsageTotals(totals: UserInsightsUsageTotals): string {
 
 export function capsText(usage: UserInsightsUsageSummary): string {
   return `Daily caps: ${formatCostUsd(usage.dailyCapUsd)} equivalent API cost, ${usage.maxDistillsPerDay} learning runs, ${usage.maxSuggestsPerDay} suggestion sets.`;
+}
+
+const messagesText = (count: number) => (count === 1 ? "1 message" : `${count} messages`);
+
+/** The line under the import button; null while no import ran. */
+export function importProgressText(progress: UserInsightsImportProgress | null | undefined) {
+  if (progress === null || progress === undefined) return null;
+  switch (progress.state) {
+    case "running":
+      return `Importing: ${progress.done} of ${progress.total}`;
+    case "done":
+      return `Imported ${messagesText(progress.total)} from before.`;
+    case "cancelled":
+      return `Import cancelled after ${progress.done} of ${progress.total} messages.`;
+  }
+}
+
+/** What the confirmation says before an import starts. */
+export function importPreviewText(preview: UserInsightsImportPreview, dailyCapUsd: number) {
+  if (preview.messages === 0) {
+    return "There are no past messages from the last 30 days that were not learned from yet.";
+  }
+  const updates = preview.batches === 1 ? "1 update" : `${preview.batches} updates`;
+  return `Found ${messagesText(preview.messages)} you typed in the last 30 days. Learning from them takes ${updates}, about ${formatCostUsd(preview.estimatedCostUsd)} equivalent API cost on your Claude subscription. It runs in the background and pauses at the daily cap of ${formatCostUsd(dailyCapUsd)} until the next day.`;
 }

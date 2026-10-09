@@ -5,6 +5,8 @@ import {
   formatCostUsd,
   formatTokens,
   formatUsageTotals,
+  importPreviewText,
+  importProgressText,
   statusText,
 } from "./userInsightsFormat";
 
@@ -50,5 +52,21 @@ describe("user insights format", () => {
     expect(
       formatUsageTotals({ calls: 3, inputTokens: 12_300, outputTokens: 900, costUsd: 0.021 }),
     ).toBe("3 calls, 12k in / 900 out tokens, $0.02");
+  });
+
+  it("words the import progress and its preview", () => {
+    expect(importProgressText(null)).toBeNull();
+    expect(importProgressText({ state: "running", done: 30, total: 45 })).toBe(
+      "Importing: 30 of 45",
+    );
+    expect(importProgressText({ state: "done", done: 1, total: 1 })).toBe(
+      "Imported 1 message from before.",
+    );
+    expect(importPreviewText({ messages: 45, batches: 2, estimatedCostUsd: 0.06 }, 1)).toContain(
+      "Found 45 messages you typed in the last 30 days. Learning from them takes 2 updates, about $0.06",
+    );
+    expect(importPreviewText({ messages: 0, batches: 0, estimatedCostUsd: 0 }, 1)).toContain(
+      "no past messages",
+    );
   });
 });
