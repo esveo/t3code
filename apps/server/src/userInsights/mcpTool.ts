@@ -40,7 +40,6 @@ export type UserInsightsReadResult = typeof UserInsightsReadResult.Type;
 const UserInsightsReadTool = Tool.make("user_insights_read", {
   description:
     "Read what this environment learned about how its user writes and works with coding agents: language, message style, stack, how they verify work and what they usually ask next. Only confident traits are returned. Use it to match the user's style; it is empty while user insights are off or still learning. Read-only.",
-  parameters: Schema.Struct({}),
   success: UserInsightsReadResult,
   failure: OrchestratorMcpFailure,
   dependencies: [McpInvocationContext.McpInvocationContext],

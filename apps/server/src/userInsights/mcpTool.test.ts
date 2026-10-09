@@ -9,6 +9,7 @@ import {
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
+import * as Tool from "effect/ai/Tool";
 
 import * as McpInvocationContext from "../mcp/McpInvocationContext.ts";
 import * as McpToolAccess from "../mcp/McpToolAccess.ts";
@@ -90,6 +91,14 @@ const read = (options: {
 };
 
 describe("user_insights_read", () => {
+  it("takes an object input schema, as MCP clients require", () => {
+    // An explicit empty Schema.Struct({}) serializes to `anyOf: [object, array]`,
+    // and clients then reject the whole MCP server, not just this tool.
+    for (const tool of Object.values(UserInsightsToolkit.tools)) {
+      expect(Tool.getJsonSchema(tool).type).toBe("object");
+    }
+  });
+
   it.effect("returns only confident traits", () =>
     Effect.gen(function* () {
       const result = yield* read({ insights: snapshot({ state: "ready" }) });
