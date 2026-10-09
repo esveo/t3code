@@ -24,6 +24,7 @@
  */
 import {
   USER_INSIGHTS_DAILY_COST_CAP_USD,
+  USER_INSIGHTS_DEFAULT_MODEL,
   USER_INSIGHTS_MAX_TRAIT_VALUE_LENGTH,
   USER_INSIGHTS_READY_SAMPLES,
   USER_INSIGHTS_TRAIT_IDS,
@@ -495,6 +496,12 @@ export const make = Effect.gen(function* () {
       const { evidence, usage } = yield* locked(
         Effect.all({ evidence: store.readEvidence, usage: store.readUsage }),
       );
+      const model = (yield* settings).pipe(
+        Option.match({
+          onNone: () => USER_INSIGHTS_DEFAULT_MODEL,
+          onSome: (value) => value.userInsightsModel,
+        }),
+      );
       const records = selectPastMessages(past, {
         now,
         knownIds: new Set(evidence.map((record) => record.messageId)),
@@ -505,7 +512,7 @@ export const make = Effect.gen(function* () {
         preview: {
           messages: records.length,
           batches,
-          estimatedCostUsd: estimateImportCost(usage, batches),
+          estimatedCostUsd: estimateImportCost(usage, batches, model),
         } satisfies UserInsightsImportPreview,
       };
     });

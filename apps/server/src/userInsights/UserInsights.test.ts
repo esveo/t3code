@@ -19,6 +19,8 @@ import {
   UserInsightsModel,
   UserInsightsModelError,
 } from "./HaikuCli.ts";
+import { IMPORT_FALLBACK_CALL_TOKENS } from "./importPast.ts";
+import { priceTokens } from "./modelPricing.ts";
 import { emptyState } from "./distillPolicy.ts";
 import type { DistillOutput, SuggestOutput } from "./prompts.ts";
 import { makeUserInsightsStore } from "./store.ts";
@@ -764,7 +766,7 @@ describe("UserInsights import of past messages", () => {
           assert.deepEqual(preview.importPreview, {
             messages: 45,
             batches: 2,
-            estimatedCostUsd: 0.06,
+            estimatedCostUsd: 2 * priceTokens("claude-haiku-5-5", IMPORT_FALLBACK_CALL_TOKENS),
           });
           yield* Ref.set(answers, [
             // A second runner started meanwhile does nothing.

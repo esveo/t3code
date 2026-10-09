@@ -29,11 +29,13 @@ suggestions** off and on again starts over.
 
 ## What it costs
 
-Learning and suggestions run in the background on Claude Haiku through the Claude provider, so
-they count against your Claude subscription. Claude has to be turned on in **Settings** >
-**Providers**; a Claude instance you added yourself is not used. Each call is logged with its
-tokens and the cost the same call would have on the API. The settings section shows today, the
-last 7 days and the last 90 days, and the daily caps that stop further calls until the next day.
+Learning and suggestions run in the background on Claude Haiku 5.5 through the Claude provider,
+so they count against your Claude subscription. **User insights model** switches to Haiku 4.5 or
+Sonnet 5.5; Sonnet may read you more precisely but costs about 20 times as much per update.
+Claude has to be turned on in **Settings** > **Providers**; a Claude instance you added yourself
+is not used. Each call is logged with its tokens and the cost the same call would have on the
+API. The settings section shows today, the last 7 days and the last 90 days, and the daily caps
+that stop further calls until the next day.
 
 ## Seeing and changing what it learned
 

@@ -1,6 +1,6 @@
 /**
- * Fork: user insights. Runs one structured Claude Haiku call through the
- * Claude CLI and reports what it cost. A fork-owned runner instead of a new
+ * Fork: user insights. Runs one structured call on the chosen small Claude
+ * model through the Claude CLI and reports what it cost. A fork-owned runner instead of a new
  * `TextGeneration` operation: upstream's runner drops the usage the ledger
  * needs, and adding an operation would touch every provider.
  *
@@ -19,24 +19,19 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
+import { USER_INSIGHTS_DEFAULT_MODEL, type UserInsightsModelId } from "@t3tools/contracts";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
 
 import { makeClaudeEnvironment } from "../provider/Drivers/ClaudeHome.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { toJsonSchemaObject } from "../textGeneration/TextGenerationUtils.ts";
+import { MODEL_PRICING, priceTokens } from "./modelPricing.ts";
 
 /** The whole system prompt of a user insights call; the task is in the prompt. */
 const USER_INSIGHTS_SYSTEM_PROMPT =
   "You analyze messages for a local tool and answer only with JSON that matches the given schema.";
 
-export const USER_INSIGHTS_MODEL = "claude-haiku-4-5";
-export const MAX_BUDGET_PER_CALL_USD = 0.05;
 export const CALL_TIMEOUT_MS = 180_000;
-/** Haiku 4.5 list prices per token, for when the CLI reports no cost. */
-const INPUT_USD_PER_TOKEN = 1 / 1_000_000;
-const OUTPUT_USD_PER_TOKEN = 5 / 1_000_000;
-const CACHE_READ_USD_PER_TOKEN = 0.1 / 1_000_000;
-const CACHE_WRITE_USD_PER_TOKEN = 1.25 / 1_000_000;
 
 export interface ModelUsage {
   readonly model: string;
@@ -49,8 +44,11 @@ export interface ModelUsage {
   readonly durationMs: number;
 }
 
-export const emptyUsage = (durationMs = 0): ModelUsage => ({
-  model: USER_INSIGHTS_MODEL,
+export const emptyUsage = (
+  durationMs = 0,
+  model: UserInsightsModelId = USER_INSIGHTS_DEFAULT_MODEL,
+): ModelUsage => ({
+  model,
   inputTokens: 0,
   outputTokens: 0,
   cacheReadTokens: 0,
@@ -84,6 +82,9 @@ const ResultEntry = Schema.Struct({
   total_cost_usd: Schema.optionalKey(Schema.Number),
   duration_ms: Schema.optionalKey(Schema.Number),
   usage: Schema.optionalKey(Usage),
+  modelUsage: Schema.optionalKey(
+    Schema.Record(Schema.String, Schema.Struct({ costBasis: Schema.optionalKey(Schema.String) })),
+  ),
 });
 const decodeEnvelope = Schema.decodeOption(
   Schema.fromJsonString(Schema.Union([ResultEntry, Schema.Array(ResultEntry)])),
@@ -99,9 +100,14 @@ export interface ParsedClaudeResult {
 /**
  * Reads the `--output-format json` envelope: an object, or an array whose
  * last `type: "result"` entry counts. Usage fields are optional; a missing
- * cost is estimated from the tokens. Null when stdout is not an envelope.
+ * cost, or one the CLI made up for a model it does not know yet, is
+ * estimated from the tokens at `model`'s prices. Null when stdout is not an
+ * envelope.
  */
-export function parseClaudeResult(stdout: string): ParsedClaudeResult | null {
+export function parseClaudeResult(
+  stdout: string,
+  model: UserInsightsModelId = USER_INSIGHTS_DEFAULT_MODEL,
+): ParsedClaudeResult | null {
   const decoded = decodeEnvelope(stdout.trim());
   if (Option.isNone(decoded)) return null;
   const envelope = Array.isArray(decoded.value)
@@ -113,13 +119,14 @@ export function parseClaudeResult(stdout: string): ParsedClaudeResult | null {
   const outputTokens = usage.output_tokens ?? 0;
   const cacheReadTokens = usage.cache_read_input_tokens ?? 0;
   const cacheCreationTokens = usage.cache_creation_input_tokens ?? 0;
-  const reportedCost = envelope.total_cost_usd;
+  const modelUsage = envelope.modelUsage ?? {};
+  const unknownToCli = Object.keys(modelUsage).some(
+    (key) => modelUsage[key]?.costBasis === "unknown",
+  );
+  const reportedCost = unknownToCli ? undefined : envelope.total_cost_usd;
   const costUsd =
     reportedCost ??
-    inputTokens * INPUT_USD_PER_TOKEN +
-      outputTokens * OUTPUT_USD_PER_TOKEN +
-      cacheReadTokens * CACHE_READ_USD_PER_TOKEN +
-      cacheCreationTokens * CACHE_WRITE_USD_PER_TOKEN;
+    priceTokens(model, { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens });
   const isError = envelope.is_error === true || envelope.subtype?.startsWith("error") === true;
   return {
     structuredOutput: envelope.structured_output,
@@ -130,7 +137,7 @@ export function parseClaudeResult(stdout: string): ParsedClaudeResult | null {
         : (envelope.subtype ?? "error")
       : null,
     usage: {
-      model: USER_INSIGHTS_MODEL,
+      model,
       inputTokens,
       outputTokens,
       cacheReadTokens,
@@ -188,6 +195,7 @@ export const make = Effect.gen(function* () {
         Effect.mapError(() => failed("Could not read the settings.")),
       );
       const claude = settings.providers.claudeAgent;
+      const model = settings.userInsightsModel;
       if (!claude.enabled) {
         return yield* new UserInsightsModelError({
           reason: "unavailable",
@@ -214,7 +222,7 @@ export const make = Effect.gen(function* () {
             "--json-schema",
             schemaJson,
             "--model",
-            USER_INSIGHTS_MODEL,
+            model,
             "--tools",
             "",
             "--disable-slash-commands",
@@ -223,7 +231,7 @@ export const make = Effect.gen(function* () {
             "dontAsk",
             "--no-session-persistence",
             "--max-budget-usd",
-            String(MAX_BUDGET_PER_CALL_USD),
+            String(MODEL_PRICING[model].maxBudgetUsd),
             "--settings",
             '{"disableAllHooks":true}',
             // No user, project or local settings (CLAUDE.md, memory) and no
@@ -256,7 +264,7 @@ export const make = Effect.gen(function* () {
           { concurrency: "unbounded" },
         );
         if (exitCode !== 0) {
-          const parsed = parseClaudeResult(out);
+          const parsed = parseClaudeResult(out, model);
           const detail = parsed?.errorText ?? (err.trim() || out.trim());
           return yield* failed(
             detail.length > 0
@@ -271,12 +279,12 @@ export const make = Effect.gen(function* () {
         Effect.timeoutOption(CALL_TIMEOUT_MS),
         Effect.flatMap(
           Option.match({
-            onNone: () => Effect.fail(failed("The Claude CLI timed out.")),
+            onNone: () => Effect.fail(failed("The Claude CLI timed out.", emptyUsage(0, model))),
             onSome: Effect.succeed,
           }),
         ),
       );
-      const parsed = parseClaudeResult(stdout);
+      const parsed = parseClaudeResult(stdout, model);
       if (parsed === null) return yield* failed("The Claude CLI returned unexpected output.");
       if (parsed.isError) {
         return yield* failed(`Claude reported an error: ${parsed.errorText}`, parsed.usage);

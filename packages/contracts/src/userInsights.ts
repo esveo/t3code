@@ -24,6 +24,14 @@ export const USER_INSIGHTS_READY_TRAITS = 4;
 export const USER_INSIGHTS_READY_CONFIDENCE = 0.7;
 /** Daily ceiling of Haiku spend, in equivalent API cost as reported by the Claude CLI. */
 export const USER_INSIGHTS_DAILY_COST_CAP_USD = 1;
+/** The models user insights can run on, as the Claude CLI names them. */
+export const UserInsightsModelId = Schema.Literals([
+  "claude-haiku-5-5",
+  "claude-haiku-4-5",
+  "claude-sonnet-5-5",
+]);
+export type UserInsightsModelId = typeof UserInsightsModelId.Type;
+export const USER_INSIGHTS_DEFAULT_MODEL: UserInsightsModelId = "claude-haiku-5-5";
 /** Longest trait value Haiku or the user may store. */
 export const USER_INSIGHTS_MAX_TRAIT_VALUE_LENGTH = 160;
 

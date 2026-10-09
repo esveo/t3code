@@ -24,7 +24,7 @@ describe("parseClaudeResult", () => {
       isError: false,
       errorText: null,
       usage: {
-        model: "claude-haiku-4-5",
+        model: "claude-haiku-5-5",
         inputTokens: 1000,
         outputTokens: 200,
         cacheReadTokens: 5000,
@@ -45,13 +45,28 @@ describe("parseClaudeResult", () => {
 
   it("estimates the cost when usage or cost is missing", () => {
     const { total_cost_usd: _cost, ...withoutCost } = result;
-    const estimated = parseClaudeResult(JSON.stringify(withoutCost));
+    const estimated = parseClaudeResult(JSON.stringify(withoutCost), "claude-haiku-4-5");
     expect(estimated?.usage.costEstimated).toBe(true);
     expect(estimated?.usage.costUsd).toBeCloseTo(
       1000 / 1e6 + (200 * 5) / 1e6 + (5000 * 0.1) / 1e6 + (300 * 1.25) / 1e6,
     );
     const bare = parseClaudeResult(JSON.stringify({ type: "result", structured_output: {} }));
     expect(bare?.usage).toMatchObject({ inputTokens: 0, costUsd: 0, costEstimated: true });
+  });
+
+  it("prices a model the CLI does not know yet itself, at the chosen model's prices", () => {
+    const parsed = parseClaudeResult(
+      JSON.stringify({
+        ...result,
+        total_cost_usd: 0.0054,
+        modelUsage: { "claude-haiku-5-5": { costBasis: "unknown" } },
+      }),
+      "claude-haiku-5-5",
+    );
+    expect(parsed?.usage).toMatchObject({ model: "claude-haiku-5-5", costEstimated: true });
+    expect(parsed?.usage.costUsd).toBeCloseTo(
+      (1000 * 0.1 + 200 * 0.5 + 5000 * 0.01 + 300 * 0.125) / 1e6,
+    );
   });
 
   it("reports errors with their text", () => {

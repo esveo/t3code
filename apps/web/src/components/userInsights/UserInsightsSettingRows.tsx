@@ -10,6 +10,7 @@ import {
   type EnvironmentId,
   USER_INSIGHTS_MAX_TRAIT_VALUE_LENGTH,
   type UserInsightsAction,
+  UserInsightsModelId,
   type UserInsightsSnapshot,
   type UserInsightsTrait,
 } from "@t3tools/contracts";
@@ -36,6 +37,13 @@ import {
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
 import { toastManager } from "~/components/ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { useOpenInPreferredEditor } from "~/editorPreferences";
@@ -53,6 +61,13 @@ import {
 } from "./userInsightsFormat";
 import { UserInsightsImport } from "./UserInsightsImport";
 import { userInsightsEnvironment } from "./userInsightsState";
+
+/** Names and relative cost, by list price per token, of the models to choose from. */
+const MODEL_LABELS: Record<UserInsightsModelId, string> = {
+  "claude-haiku-5-5": "Haiku 5.5",
+  "claude-haiku-4-5": "Haiku 4.5 (10x the cost)",
+  "claude-sonnet-5-5": "Sonnet 5.5 (20x the cost)",
+};
 
 function reportFailure(title: string, result: AtomCommandResult<unknown, unknown>) {
   if (result._tag !== "Failure" || isAtomCommandInterrupted(result)) return;
@@ -89,7 +104,7 @@ export function UserInsightsSettingRows() {
         {...esveoSearchableSetting("user-insights")}
         serverScoped
         settingKeys={["enableUserInsights"]}
-        description="Learn how you write and work from the messages you type, to suggest your next message. Everything stays in a folder on this server. Learning runs in the background on Claude Haiku and counts against your Claude usage."
+        description="Learn how you write and work from the messages you type, to suggest your next message. Everything stays in a folder on this server. Learning runs in the background on a small Claude model and counts against your Claude usage."
         resetAction={
           on !== DEFAULT_UNIFIED_SETTINGS.enableUserInsights ? (
             <SettingResetButton
@@ -138,6 +153,45 @@ export function UserInsightsSettingRows() {
               }
               aria-label="Prompt suggestions"
             />
+          }
+        />
+      ) : null}
+      {on ? (
+        <SettingsRow
+          {...esveoSearchableSetting("user-insights-model")}
+          serverScoped
+          settingKeys={["userInsightsModel"]}
+          description="The Claude model that learns and writes suggestions. Haiku 5.5 is the fastest and cheapest. Sonnet 5.5 may read you more precisely but costs more per update."
+          resetAction={
+            settings.userInsightsModel !== DEFAULT_UNIFIED_SETTINGS.userInsightsModel ? (
+              <SettingResetButton
+                label="user insights model"
+                onClick={() =>
+                  updateSettings({ userInsightsModel: DEFAULT_UNIFIED_SETTINGS.userInsightsModel })
+                }
+              />
+            ) : null
+          }
+          control={
+            <Select
+              value={settings.userInsightsModel}
+              onValueChange={(value) => {
+                if (UserInsightsModelId.literals.includes(value as UserInsightsModelId)) {
+                  updateSettings({ userInsightsModel: value as UserInsightsModelId });
+                }
+              }}
+            >
+              <SelectTrigger size="sm" aria-label="User insights model">
+                <SelectValue>{(value: UserInsightsModelId) => MODEL_LABELS[value]}</SelectValue>
+              </SelectTrigger>
+              <SelectPopup align="end" alignItemWithTrigger={false}>
+                {UserInsightsModelId.literals.map((model) => (
+                  <SelectItem key={model} value={model}>
+                    {MODEL_LABELS[model]}
+                  </SelectItem>
+                ))}
+              </SelectPopup>
+            </Select>
           }
         />
       ) : null}

@@ -5,6 +5,7 @@ import {
   IdleAutoCompactAfterMinutes,
   IdleAutoCompactMinContextTokens,
 } from "./idleAutoCompact.ts"; // Fork
+import { USER_INSIGHTS_DEFAULT_MODEL, UserInsightsModelId } from "./userInsights.ts"; // Fork
 import {
   AuthSettingsWriteScope,
   AuthProvidersManageScope,
@@ -1375,6 +1376,9 @@ export const ServerSettings = Schema.Struct({
   enableUserInsightsSuggestions: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(true)),
   ),
+  userInsightsModel: UserInsightsModelId.pipe(
+    Schema.withDecodingDefault(Effect.succeed(USER_INSIGHTS_DEFAULT_MODEL)),
+  ),
   /**
    * Whether this server may install and run T3's device helper processes.
    * Kept separate from agent access so enabling the user's Device panel does
@@ -1756,6 +1760,7 @@ export const ServerSettingsPatch = Schema.Struct({
   // Fork: user insights.
   enableUserInsights: Schema.optionalKey(Schema.Boolean),
   enableUserInsightsSuggestions: Schema.optionalKey(Schema.Boolean),
+  userInsightsModel: Schema.optionalKey(UserInsightsModelId),
   enableDeviceSupport: Schema.optionalKey(Schema.Boolean),
   deviceOnboardingCompleted: Schema.optionalKey(Schema.Boolean),
   deviceHosts: Schema.optionalKey(SshDeviceHostConfigs),

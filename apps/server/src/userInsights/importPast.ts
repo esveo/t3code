@@ -4,10 +4,11 @@
  * how much an older batch counts, and what the whole import should cost.
  * Pure; the service reads the threads and runs the batches.
  */
-import type { OrchestrationV2ConversationMessage } from "@t3tools/contracts";
+import type { OrchestrationV2ConversationMessage, UserInsightsModelId } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
 
 import { type EvidenceRecord, isTypedUserMessage, toEvidence } from "./evidence.ts";
+import { priceTokens, type TokenCounts } from "./modelPricing.ts";
 import { decay } from "./profileMerge.ts";
 import { DISTILL_MAX_EXCERPTS } from "./prompts.ts";
 import { redact } from "./redaction.ts";
@@ -20,8 +21,13 @@ export const IMPORT_BATCH_SIZE = DISTILL_MAX_EXCERPTS;
 export const IMPORT_MAX_BATCHES = 10;
 export const IMPORT_MAX_MESSAGES = IMPORT_BATCH_SIZE * IMPORT_MAX_BATCHES;
 export const REPLY_EXCERPT_MAX_CHARS = 200;
-/** Cost assumed for one batch while the ledger has no successful learning call yet. */
-export const IMPORT_FALLBACK_CALL_COST_USD = 0.03;
+/** Tokens assumed for one batch while the ledger has no successful learning call yet. */
+export const IMPORT_FALLBACK_CALL_TOKENS: TokenCounts = {
+  inputTokens: 0,
+  outputTokens: 2500,
+  cacheReadTokens: 0,
+  cacheCreationTokens: 5000,
+};
 
 export interface PastThread {
   readonly projectId: string | null;
@@ -92,14 +98,28 @@ export function batchWeight(batch: ReadonlyArray<{ readonly ts: string }>, now: 
   return decay(1, now - median);
 }
 
-/** Batches times the average cost of the successful learning calls in the ledger. */
-export function estimateImportCost(usage: ReadonlyArray<UsageRecord>, batches: number): number {
+/**
+ * Batches times the average tokens of the successful learning calls in the
+ * ledger, priced for `model`, so switching models changes the estimate.
+ */
+export function estimateImportCost(
+  usage: ReadonlyArray<UsageRecord>,
+  batches: number,
+  model: UserInsightsModelId,
+): number {
   const learning = usage.filter(
     (record) => record.ok && (record.purpose === "distill" || record.purpose === "import"),
   );
-  const average =
+  const average = (pick: (record: UsageRecord) => number) =>
+    learning.reduce((sum, record) => sum + pick(record), 0) / learning.length;
+  const tokens: TokenCounts =
     learning.length === 0
-      ? IMPORT_FALLBACK_CALL_COST_USD
-      : learning.reduce((sum, record) => sum + record.costUsd, 0) / learning.length;
-  return batches * average;
+      ? IMPORT_FALLBACK_CALL_TOKENS
+      : {
+          inputTokens: average((record) => record.inputTokens),
+          outputTokens: average((record) => record.outputTokens),
+          cacheReadTokens: average((record) => record.cacheReadTokens),
+          cacheCreationTokens: average((record) => record.cacheCreationTokens),
+        };
+  return batches * priceTokens(model, tokens);
 }

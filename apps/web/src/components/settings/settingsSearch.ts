@@ -549,6 +549,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["suggest next message follow-up composer user insights"],
   },
   {
+    id: "user-insights-model",
+    title: "User insights model",
+    to: "/settings/general",
+    fork: true,
+    searchTerms: ["haiku sonnet model cost user insights learning"],
+  },
+  {
     id: "continue-threads-after-server-update",
     title: "Continue threads after restarts",
     to: "/settings/general",

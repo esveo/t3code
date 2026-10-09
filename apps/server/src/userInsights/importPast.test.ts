@@ -6,11 +6,12 @@ import {
   batchCount,
   batchWeight,
   estimateImportCost,
-  IMPORT_FALLBACK_CALL_COST_USD,
+  IMPORT_FALLBACK_CALL_TOKENS,
   IMPORT_MAX_MESSAGES,
   REPLY_EXCERPT_MAX_CHARS,
   selectPastMessages,
 } from "./importPast.ts";
+import { priceTokens } from "./modelPricing.ts";
 import type { UsageRecord } from "./store.ts";
 import { DAY_MS, toIso } from "./time.ts";
 
@@ -40,15 +41,19 @@ const msg = (
 const reply = (id: string, minutesAgo: number, text: string) =>
   msg(id, minutesAgo, { role: "assistant", createdBy: "agent", creationSource: "provider", text });
 
-const usageRecord = (purpose: UsageRecord["purpose"], costUsd: number, ok = true): UsageRecord => ({
+const usageRecord = (
+  purpose: UsageRecord["purpose"],
+  outputTokens: number,
+  ok = true,
+): UsageRecord => ({
   ts: toIso(NOW),
   purpose,
   model: "claude-haiku-4-5",
   inputTokens: 0,
-  outputTokens: 0,
+  outputTokens,
   cacheReadTokens: 0,
   cacheCreationTokens: 0,
-  costUsd,
+  costUsd: 0,
   costEstimated: false,
   durationMs: 1000,
   ok,
@@ -140,22 +145,22 @@ describe("batchWeight", () => {
 });
 
 describe("estimateImportCost", () => {
-  it("multiplies the batches by the average successful learning call", () => {
+  it("prices the average successful learning call for the chosen model", () => {
     assert.strictEqual(batchCount(0), 0);
     assert.strictEqual(batchCount(31), 2);
-    assert.closeTo(estimateImportCost([], 2), 2 * IMPORT_FALLBACK_CALL_COST_USD, 1e-9);
     assert.closeTo(
-      estimateImportCost(
-        [
-          usageRecord("distill", 0.02),
-          usageRecord("import", 0.04),
-          usageRecord("suggest", 0.5),
-          usageRecord("distill", 0.9, false),
-        ],
-        10,
-      ),
-      0.3,
-      1e-9,
+      estimateImportCost([], 2, "claude-haiku-5-5"),
+      2 * priceTokens("claude-haiku-5-5", IMPORT_FALLBACK_CALL_TOKENS),
+      1e-12,
     );
+    const ledger = [
+      usageRecord("distill", 2000),
+      usageRecord("import", 4000),
+      usageRecord("suggest", 100_000),
+      usageRecord("distill", 100_000, false),
+    ];
+    // 3000 output tokens on average, at $0.50 and $5 per million.
+    assert.closeTo(estimateImportCost(ledger, 10, "claude-haiku-5-5"), 0.015, 1e-12);
+    assert.closeTo(estimateImportCost(ledger, 10, "claude-haiku-4-5"), 0.15, 1e-12);
   });
 });
