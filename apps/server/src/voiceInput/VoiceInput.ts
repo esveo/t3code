@@ -19,7 +19,7 @@ import {
   type VoiceInputPrepareProgress,
   type VoiceInputTranscribeInput,
 } from "@t3tools/contracts";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import { HostProcessPlatform } from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
