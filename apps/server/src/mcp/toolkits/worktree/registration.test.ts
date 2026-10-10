@@ -23,6 +23,13 @@ import * as SecretRequests from "../../../secrets/SecretRequests.ts";
 import * as ServerSettings from "../../../serverSettings.ts";
 import * as TerminalManager from "../../../terminal/Manager.ts";
 import * as VcsStatusBroadcaster from "../../../vcs/VcsStatusBroadcaster.ts";
+import * as ServerSecretStore from "../../../auth/ServerSecretStore.ts";
+import * as ManagedProjectFolders from "../../../project/ManagedProjectFolders.ts";
+import * as ThreadLaunchService from "../../../orchestration-v2/ThreadLaunchService.ts";
+import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
+import * as PreviewManager from "../../../preview/Manager.ts";
+import * as SourceControlRepositoryService from "../../../sourceControl/SourceControlRepositoryService.ts";
+import * as GitVcsDriver from "../../../vcs/GitVcsDriver.ts";
 import * as McpHttpServer from "../../McpHttpServer.ts";
 import * as McpSessionRegistry from "../../McpSessionRegistry.ts";
 import * as PreviewAutomationBroker from "../../PreviewAutomationBroker.ts";
@@ -44,6 +51,13 @@ const layerStubServices = Layer.mergeAll(
   Layer.mock(VcsStatusBroadcaster.VcsStatusBroadcaster)({}),
   // Fork: the read-only terminal tools.
   Layer.mock(TerminalManager.TerminalManager)({}),
+  Layer.mock(GitVcsDriver.GitVcsDriver)({}),
+  Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({ namedProjectsRoot: "/unused" }),
+  Layer.mock(PreviewManager.PreviewManager)({}),
+  Layer.mock(ServerSecretStore.ServerSecretStore)({}),
+  Layer.mock(SourceControlRepositoryService.SourceControlRepositoryService)({}),
+  Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+  Layer.mock(ThreadSearch.ThreadSearch)({}),
 );
 
 const ToolsListPayload = Schema.fromJsonString(
