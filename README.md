@@ -96,7 +96,7 @@ _esveo_ and _esveo Midnight_, each in light and dark.
 ### And more
 
 - A Notes tab in the right panel for notes and todos per thread, per project and globally: capture with <kbd>⌥</kbd><kbd>⌘</kbd><kbd>K</kbd>, drag to sort or tick off, and insert a note into the composer in one click.
-- Runs on upstream's Orchestrator V2 ahead of upstream's own release: fork a thread from any answer, switch provider mid-thread, attach threads as context, scheduled tasks, and usage limits that resume by themselves. Your chats are backed up before the one-time move to it.
+- Fork a thread from any answer, switch provider mid-thread, attach threads as context, run scheduled tasks, and resume automatically after usage limits.
 - Threads, subagents and workflows survive a server restart.
 - Two-line thread cards, grouped by project.
 - Prompts lost to an early interrupt carry over to the next turn.

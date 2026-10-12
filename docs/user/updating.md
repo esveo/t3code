@@ -20,6 +20,9 @@ was offline or has a different value, use **Apply to all** in Settings after it
 connects. T3 Code must start again on that machine; the setting does not enable
 automatic startup. Terminal commands may still be interrupted, and threads
 without saved provider resume state need a new message.
+A thread is not resumed while it waits for your approval, answer, or secret, or
+while it is archived, snoozed, or settled. After three automatic resumes in a row,
+the thread waits for your next message.
 
 Updates from the previous orchestration system preserve conversation transcripts but cannot carry
 every kind of runtime history forward. Read [Threads from older T3 Code versions](./thread-migration.md)
