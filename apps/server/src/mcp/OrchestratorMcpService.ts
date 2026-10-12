@@ -1136,11 +1136,24 @@ const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const { parent } = yield* loadCaller(scope);
       if (parent !== undefined) {
+        // Fork: the thread detail needs the shell too, whichever way the target loaded.
+        const loadShell = threadManagement.getThreadShell(threadId).pipe(
+          Effect.mapError(threadManagementFailure),
+          Effect.flatMap((shell) =>
+            shell === null || shell.deletedAt !== null
+              ? Effect.fail(
+                  failure("thread_not_found", `Thread ${threadId} is no longer available.`),
+                )
+              : Effect.succeed(shell),
+          ),
+        );
         const loadTarget = () =>
           threadManagement
             .getThreadRecords(threadId, ["runs", "runtimeRequests", "contextTransfers"])
             .pipe(Effect.mapError(threadManagementFailure));
-        if (threadId === parent.thread.id) return { parent, target: yield* loadTarget() } as const;
+        if (threadId === parent.thread.id) {
+          return { parent, target: yield* loadTarget(), shell: yield* loadShell } as const;
+        }
         const target = yield* threadProjectId(
           threadManagement,
           threadId,
@@ -1164,7 +1177,7 @@ const make = Effect.gen(function* () {
         if (target.thread.deletedAt !== null) {
           return yield* failure("thread_not_found", `Thread ${threadId} is no longer available.`);
         }
-        return { parent, target } as const;
+        return { parent, target, shell: yield* loadShell } as const;
       }
       const shell = yield* threadManagement
         .getThreadShell(threadId)

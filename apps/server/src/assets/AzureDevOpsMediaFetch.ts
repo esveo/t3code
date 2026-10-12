@@ -18,7 +18,7 @@ import * as Redacted from "effect/Redacted";
 import { FetchHttpClient, HttpClient, HttpClientRequest, HttpServerResponse } from "effect/http";
 import * as Mime from "effect/http/Mime";
 
-import * as AzureDevOpsCli from "../sourceControl/AzureDevOpsCli.ts";
+import * as AzureDevOpsCli from "@t3tools/source-control-azure-devops/server/AzureDevOpsCli";
 
 /** Azure DevOps' application id, the resource every Azure DevOps access token is minted for. */
 const AZURE_DEVOPS_RESOURCE = "499b84ac-1321-427f-aa17-267ca6975798";

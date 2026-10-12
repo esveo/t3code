@@ -10,7 +10,7 @@
  */
 import type { UsagePricing, UsageProviderKind, UsageTokenTotals } from "@t3tools/contracts";
 
-import type { UsageRecord } from "./usageTranscripts.ts";
+import type { UsageRecord } from "@t3tools/provider-core/server/usage";
 import { cacheSavingsUsd, priceUsage, type RateTable } from "./usagePricing.ts";
 
 /** Drivers whose transcripts the usage scanner reads. The rest report nothing. */
@@ -42,6 +42,9 @@ const SESSION_KEY_BY_PROVIDER: Readonly<Record<UsageProviderKind, string>> = {
   cursor: "sessionId",
   grok: "sessionId",
   opencode: "sessionId",
+  // Pi resumes from the thread's native ref, not a cursor, and is not in
+  // PROVIDER_BY_DRIVER, so this key is never read.
+  pi: "sessionId",
 };
 
 /** The provider session a resume cursor names, or nothing when it names none. */

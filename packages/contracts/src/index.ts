@@ -70,5 +70,6 @@ export * from "./forkNotes.ts";
 export * from "./threadCoordinators.ts";
 export * from "./voiceInput.ts";
 export * from "./providerSubagentControl.ts";
+export * from "./forkWsRpc.ts";
 export * from "./secretRequest.ts";
 export * from "./clientRpcPermissions.ts";

@@ -1,5 +1,4 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import type { OrchestrationProjectShell } from "@t3tools/contracts";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -18,7 +17,6 @@ function layer(input: {
   readonly workspaceRoot: string;
   readonly baseDir: string;
   readonly detectCalls?: Array<{ readonly cwd: string }>;
-  readonly projectRoots?: ReadonlyArray<string>;
   readonly worktreesDirectory?: string;
   readonly previousWorktreesDirectories?: ReadonlyArray<string>;
   readonly projectRoots?: ReadonlyArray<string> | "unavailable";
@@ -57,16 +55,6 @@ function layer(input: {
       }),
     ),
     Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
-    Layer.provide(
-      Layer.mock(ProjectStore.ProjectStoreV2)({
-        listShells: () =>
-          Effect.succeed(
-            (input.projectRoots ?? []).map(
-              (workspaceRoot) => ({ workspaceRoot }) as OrchestrationProjectShell,
-            ),
-          ),
-      }),
-    ),
     Layer.provide(
       ServerSettings.ServerSettingsService.layerTest({
         worktreesDirectory: input.worktreesDirectory ?? "",

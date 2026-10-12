@@ -924,7 +924,7 @@ export const make = Effect.gen(function* () {
     const retentionCutoffMs = startedAtMs - CACHE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
     const windowStartMs = Math.max(0, input.sinceMs - MTIME_SLACK_MS);
     const [, scannedDirs] = yield* Effect.all(
-      [ensureRates(false), collectDirs(windowStartMs, settings, retentionCutoffMs)],
+      [ensureRates(false), collectDirs(windowStartMs, settings, retentionCutoffMs, false)],
       { concurrency: 2 },
     );
 
@@ -934,7 +934,7 @@ export const make = Effect.gen(function* () {
       if (scanned.provider !== input.provider || scanned.files === null) continue;
       for (const file of scanned.files) records.push(...file.records);
     }
-    yield* persistScanCache();
+    yield* schedulePersist;
 
     const summary = summarizeSessionRecords({
       records,

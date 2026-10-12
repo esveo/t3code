@@ -20,6 +20,7 @@ import * as McpHttpServer from "./McpHttpServer.ts";
 import * as McpOrchestrationTools from "./McpOrchestrationTools.ts";
 import * as McpSessionRegistry from "./McpSessionRegistry.ts";
 import * as McpToolAccess from "./McpToolAccess.ts";
+import * as McpToolAccessTestkit from "./McpToolAccess.testkit.ts";
 import { ThreadsToolkit } from "./toolkits/threads/tools.ts";
 
 /** Test settings that announce every update, as the real service does. */
@@ -59,6 +60,7 @@ const ThreadsToolkitStubLive = McpHttpServer.toolkitRegistration(
 const TestLayer = Layer.mergeAll(ThreadsToolkitStubLive).pipe(
   Layer.provideMerge(McpHttpServer.layerMcpTransport),
   Layer.provideMerge(McpSessionRegistry.layer),
+  Layer.provide(McpToolAccessTestkit.liveThreadsLayer),
   Layer.provide(
     Layer.succeed(ServerEnvironment.ServerEnvironment, {
       getEnvironmentId: Effect.succeed(EnvironmentId.make("environment-1")),

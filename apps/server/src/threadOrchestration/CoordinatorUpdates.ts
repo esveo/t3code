@@ -47,7 +47,7 @@ import * as Stream from "effect/Stream";
 import {
   delegatedTaskProgress,
   subagentResultForRun,
-} from "../orchestration-v2/SubagentProjection.ts";
+} from "@t3tools/provider-core/server/subagentProjection";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
 import { forkParked } from "../serverActivation.ts";
 import { ThreadCoordinators } from "./ThreadCoordinators.ts";

@@ -40,7 +40,6 @@ import * as McpInvocationContext from "./McpInvocationContext.ts";
 import type { McpInvocationScope } from "./McpInvocationContext.ts";
 import { idleThreadProjection, liveThreadShell } from "./McpToolAccess.testkit.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
-import * as ServerSettings from "../serverSettings.ts";
 import { readThread } from "./threadAccess.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 
@@ -2321,8 +2320,12 @@ describe("fork: OrchestratorMcpService across projects", () => {
     }).pipe(
       Effect.provide(
         Layer.mergeAll(
-          OrchestratorMcpService.layer.pipe(Layer.provideMerge(dependencies)),
-          ServerSettings.layerTest({ enableCrossProjectThreads: crossProjectThreads }),
+          OrchestratorMcpService.layer.pipe(
+            Layer.provideMerge(dependencies),
+            Layer.provideMerge(
+              ServerSettings.layerTest({ enableCrossProjectThreads: crossProjectThreads }),
+            ),
+          ),
           Layer.succeed(McpInvocationContext.McpInvocationContext, scope),
         ),
       ),

@@ -388,8 +388,6 @@ export interface ClaudeAgentSdkQuerySession {
   readonly stopTask: (taskId: string) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
   readonly interrupt: Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
   readonly close: Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
-  /** Fork: stops one running task (a subagent) of this query. */
-  readonly stopTask?: (taskId: string) => Effect.Effect<void, ClaudeAgentSdkQueryRunnerError>;
 }
 
 type ClaudeQueryStreamExit = Exit.Exit<void, ClaudeAgentSdkQueryRunnerError>;
@@ -862,12 +860,6 @@ export const layerQueryRunner: Layer.Layer<
               }),
             ),
           ),
-          // Fork: stops a subagent from its thread.
-          stopTask: (taskId) =>
-            Effect.tryPromise({
-              try: () => queryRuntime.stopTask(taskId),
-              catch: (cause) => queryRunnerError(cause, "stopTask"),
-            }),
           close: Queue.shutdown(promptQueue).pipe(
             Effect.andThen(closeClaudeQuery(queryRuntime)),
             Effect.tap(() =>
@@ -8616,15 +8608,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               // Counted only here, so a turn that failed to start does not age reports.
               yield* startUserTurnForWakeReports(nativeThreadId);
               yield* querySession.query.offer(
-                // Fork: carries prompts an early interrupt dropped.
-                forkUndeliveredPrompts.begin({
-                  nativeThreadId,
-                  providerTurnId,
-                  promptUuid: yield* claudePromptUuid(turnInput.attemptId).pipe(
-                    Effect.provideService(Crypto.Crypto, crypto),
-                  ),
-                  message: userMessage,
-                }),
+                // Fork: carries prompts an early interrupt dropped. A user
+                // message always has its prompt uuid.
+                promptUuid === null
+                  ? userMessage
+                  : forkUndeliveredPrompts.begin({
+                      nativeThreadId,
+                      providerTurnId,
+                      promptUuid,
+                      message: userMessage,
+                    }),
               );
               return;
             }

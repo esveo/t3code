@@ -8,6 +8,7 @@ import * as Base64 from "effect/encoding/Base64";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
+import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
@@ -68,6 +69,8 @@ import {
   FORK_NOTES_WS_METHODS,
   VOICE_INPUT_WS_METHODS,
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS,
+  ForkWsRpcGroup,
+  FORK_WS_RPC_TAGS,
   type ProjectEntriesFailure,
   type ProjectFileFailure,
   type ProjectFileOperation,
@@ -553,6 +556,8 @@ const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 
 // Middleware added later wraps middleware added earlier, so instrumentation wraps authorization.
 const ServerWsRpcGroup = WsRpcGroup.middleware(RpcInstrumentation);
+// Fork: upstream's handlers and esveo code's are two maps (see ForkWsRpcGroup).
+const UpstreamServerWsRpcGroup = ServerWsRpcGroup.omit(...FORK_WS_RPC_TAGS);
 // When a resuming client's cursor is more than this many events behind the
 // current head, skip the per-event catch-up replay and send a fresh shell
 // snapshot instead. Replaying each intervening event costs a shell refetch;
@@ -1200,7 +1205,7 @@ const layerWsRpc = (
   previewAutomationBroker: PreviewAutomationBroker.PreviewAutomationBroker["Service"],
   serverBrowser: ServerBrowser.ServerBrowser["Service"],
 ) =>
-  ServerWsRpcGroup.toLayer(
+  Layer.effectContext(
     Effect.gen(function* () {
       const currentSessionId = currentSession.sessionId;
       const sql = yield* SqlClient.SqlClient;
@@ -1833,7 +1838,7 @@ const layerWsRpc = (
         return result;
       });
 
-      const handlers = ServerWsRpcGroup.of({
+      const handlers = UpstreamServerWsRpcGroup.of({
         [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: (command) =>
           Effect.annotateCurrentSpan({
             "orchestration_v2.command_id": command.commandId,
@@ -3156,25 +3161,31 @@ const layerWsRpc = (
               Stream.concat(Stream.make(latest), changes),
             ),
           ),
-        // Fork: decisions a coordinator asks the user for.
+      });
+      // Fork: esveo code's own methods.
+      const forkHandlers = ForkWsRpcGroup.of({
+        // decisions a coordinator asks the user for.
         [THREAD_DECISIONS_WS_METHODS.subscribe]: (input) => ThreadDecisions.subscribeRpc(input),
         [THREAD_DECISIONS_WS_METHODS.act]: (input) => ThreadDecisions.actRpc(input),
-        // Fork: notes and todos of the Notes tab.
+        // notes and todos of the Notes tab.
         [FORK_NOTES_WS_METHODS.subscribe]: (input) => ForkNotes.subscribeRpc(input),
         [FORK_NOTES_WS_METHODS.act]: (input) => ForkNotes.actRpc(input),
-        // Fork: which coordinator a thread reports to.
+        // which coordinator a thread reports to.
         [THREAD_COORDINATORS_WS_METHODS.subscribe]: (_input) => ThreadCoordinators.subscribeRpc(),
         [THREAD_COORDINATORS_WS_METHODS.set]: (input) => ThreadCoordinators.setRpc(input),
-        // Fork: dictation in the composer.
+        // dictation in the composer.
         [VOICE_INPUT_WS_METHODS.prepare]: (input) => VoiceInput.prepareRpc(input),
         [VOICE_INPUT_WS_METHODS.transcribe]: (input) => VoiceInput.transcribeRpc(input),
-        // Fork: stop and message a provider subagent from its thread.
+        // stop and message a provider subagent from its thread.
         [PROVIDER_SUBAGENT_CONTROL_WS_METHODS.target]: (input) =>
           ProviderSubagentControl.target(providerSubagentControlDeps, input),
         [PROVIDER_SUBAGENT_CONTROL_WS_METHODS.stop]: (input) =>
           ProviderSubagentControl.stop(providerSubagentControlDeps, input),
       });
-      return handlers;
+      return Context.merge(
+        yield* UpstreamServerWsRpcGroup.toHandlers(handlers),
+        yield* ForkWsRpcGroup.toHandlers(forkHandlers),
+      );
     }),
   );
 

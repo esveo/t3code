@@ -6,7 +6,7 @@ import {
   summarizeSessionRecords,
   usageProviderForDriver,
 } from "./threadSessionUsage.ts";
-import type { UsageRecord } from "./usageTranscripts.ts";
+import type { UsageRecord } from "@t3tools/provider-core/server/usage";
 
 const rates = parseRateTable({
   "claude-sonnet-4": {

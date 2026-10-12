@@ -26,17 +26,7 @@ import * as Rpc from "effect/rpc/Rpc";
 import * as RpcGroup from "effect/rpc/RpcGroup";
 import * as RpcMiddleware from "effect/rpc/RpcMiddleware";
 import { NonNegativeInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
-import { WsThreadDecisionsActRpc, WsThreadDecisionsSubscribeRpc } from "./threadDecisions.ts";
-import { WsForkNotesActRpc, WsForkNotesSubscribeRpc } from "./forkNotes.ts";
-import {
-  WsThreadCoordinatorsSetRpc,
-  WsThreadCoordinatorsSubscribeRpc,
-} from "./threadCoordinators.ts";
-import { WsVoiceInputPrepareRpc, WsVoiceInputTranscribeRpc } from "./voiceInput.ts";
-import {
-  WsProviderSubagentStopRpc,
-  WsProviderSubagentTargetRpc,
-} from "./providerSubagentControl.ts";
+import { ForkWsRpcGroup } from "./forkWsRpc.ts";
 import {
   CodexAuthCallbackInput,
   CodexAuthCallbackState,
@@ -2100,19 +2090,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationV2SubscribeArchivedShellRpc,
   WsOrchestrationV2SubscribeShellRpc,
   WsOrchestrationV2SubscribeThreadRpc,
-  // Fork: decisions a coordinator asks the user for.
-  WsThreadDecisionsSubscribeRpc,
-  WsThreadDecisionsActRpc,
-  // Fork: notes and todos in the Notes tab.
-  WsForkNotesSubscribeRpc,
-  WsForkNotesActRpc,
-  // Fork: which coordinator a thread reports to.
-  WsThreadCoordinatorsSubscribeRpc,
-  WsThreadCoordinatorsSetRpc,
-  // Fork: dictation in the composer.
-  WsVoiceInputPrepareRpc,
-  WsVoiceInputTranscribeRpc,
-  // Fork: stop and message a provider subagent from its thread.
-  WsProviderSubagentTargetRpc,
-  WsProviderSubagentStopRpc,
-).middleware(RpcScopeAuthorization);
+)
+  // Fork: esveo code's own methods.
+  .merge(ForkWsRpcGroup)
+  .middleware(RpcScopeAuthorization);

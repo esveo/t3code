@@ -4768,7 +4768,11 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         );
         assert.isFalse(harness.events.some((event) => event.type === "subagent.updated"));
         assert.isTrue(yield* harness.hasPendingBackgroundWork);
-      }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
     ),
   );
 
@@ -4832,7 +4836,11 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         assert.deepEqual(rosters.at(-1), [
           { taskId: "watch-task", kind: "monitor", description: "Watch the deploy" },
         ]);
-      }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
     ),
   );
 
@@ -6894,6 +6902,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             attachments: [],
           }),
         );
+        yield* awaitUntil(() => harness.offeredMessages.length === 1, "first prompt offered");
         if (replied) {
           yield* harness.offerAndWait(
             claudeSdkFrame({
@@ -6902,7 +6911,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               parent_tool_use_id: null,
               session_id: WAKE_NATIVE_SESSION,
               uuid: "00000000-0000-4000-8000-000000000401",
-              user_message_uuid: yield* ClaudeAdapterV2.claudePromptUuid(firstAttempt),
+              user_message_uuid: harness.offeredMessages[0]?.uuid,
             }),
           );
         }
@@ -6942,7 +6951,11 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           "[Current message:]",
           "Ultrathink:\n10. no deployment",
         ]);
-      }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
     ),
   );
 
@@ -8238,7 +8251,11 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           ["Running Launch the app", "running"],
         ]);
         assert.equal(harness.continuationRequests.length, 0);
-      }).pipe(Effect.provide(Layer.merge(IdAllocator.layer, NodeServices.layer))),
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
     ),
   );
 
