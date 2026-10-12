@@ -10,6 +10,10 @@ export const ESVEO_THEME: ThemeDefinition = {
   label: "esveo",
   appearance: "light",
   colors: {
+    searchMatchBackground: "#ffde8b",
+    searchMatchForeground: "#21180a",
+    searchMatchActiveBackground: "#eea52b",
+    searchMatchActiveForeground: "#21180a",
     canvas: "oklch(0.988648 0.002638 286.351)",
     chrome: "oklch(0.988648 0.002638 286.351)",
     toolbar: "oklch(0.988648 0.002638 286.351)",
@@ -70,6 +74,10 @@ export const ESVEO_THEME: ThemeDefinition = {
   },
   variants: {
     dark: {
+      searchMatchBackground: "#8c6c1f",
+      searchMatchForeground: "#f5f5f5",
+      searchMatchActiveBackground: "#eea52b",
+      searchMatchActiveForeground: "#21180a",
       canvas: "oklch(0.229734 0.050177 276.718)",
       chrome: "oklch(0.229734 0.050177 276.718)",
       toolbar: "oklch(0.229734 0.050177 276.718)",
@@ -145,6 +153,10 @@ export const ESVEO_MIDNIGHT_THEME: ThemeDefinition = {
   colors: ESVEO_THEME.colors,
   variants: {
     dark: {
+      searchMatchBackground: "#8c6c1f",
+      searchMatchForeground: "#f5f5f5",
+      searchMatchActiveBackground: "#eea52b",
+      searchMatchActiveForeground: "#21180a",
       canvas: "oklch(0.185 0.034 272)",
       chrome: "oklch(0.185 0.034 272)",
       toolbar: "oklch(0.185 0.034 272)",
