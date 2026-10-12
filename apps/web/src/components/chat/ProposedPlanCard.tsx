@@ -89,7 +89,6 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   const collapsedPreview = canCollapse
     ? buildCollapsedProposedPlanPreviewMarkdown(planMarkdown, { maxLines: 10 })
     : null;
-  const isCollapsed = canCollapse && !expanded;
   // While finding, the full plan stays mounted but clipped, so a match past the
   // preview can be counted and then opened only once it is selected.
   const showPreview = isCollapsed && !findActive;

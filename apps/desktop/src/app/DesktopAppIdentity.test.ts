@@ -218,7 +218,7 @@ describe("DesktopAppIdentity", () => {
         yield* identity.configure;
 
         assert.deepEqual(calls.setName, ["esveo code Alpha"]);
-        assert.equal(calls.setAboutPanelOptions[0]?.applicationName, "esveo code (Alpha)");
+        assert.equal(calls.setAboutPanelOptions[0]?.applicationName, "esveo code");
         assert.equal(calls.setAboutPanelOptions[0]?.applicationVersion, "1.2.3");
         assert.equal(calls.setAboutPanelOptions[0]?.version, "0123456789ab");
         // Packaged: the bundle's own icon stands, so a custom one the user
@@ -264,7 +264,10 @@ describe("DesktopAppIdentity", () => {
         assert.equal(runtimeName, `esveo code ${stage}`);
         // RFC 9110's token grammar, after Electron removes ASCII spaces.
         assert.match(runtimeName.replaceAll(" ", ""), /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/);
-        assert.equal(calls.setAboutPanelOptions[0]?.applicationName, `esveo code (${stage})`);
+        assert.equal(
+          calls.setAboutPanelOptions[0]?.applicationName,
+          stage === "Alpha" ? "esveo code" : `esveo code (${stage})`,
+        );
       }),
       { calls, environment },
     );
