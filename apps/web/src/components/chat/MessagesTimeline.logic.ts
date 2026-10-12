@@ -712,8 +712,7 @@ export function resolveAssistantMessageCopyState({
   };
 }
 
-// Fork: exported for find in thread (chatFind/chatFindScope.ts).
-export function deriveTerminalAssistantMessageIds(timelineEntries: ReadonlyArray<TimelineEntry>) {
+function deriveTerminalAssistantMessageIds(timelineEntries: ReadonlyArray<TimelineEntry>) {
   const lastAssistantMessageIdByResponseKey = new Map<string, string>();
   let nullTurnResponseIndex = 0;
 

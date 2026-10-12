@@ -6,7 +6,6 @@ import { WorkLogBlock, WorkLogButton, WorkLogDetails, WorkLogList, WorkLogRow } 
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import type { WorktreeSetupSnapshot } from "@t3tools/contracts";
 import { ReadOnlySourcePreview } from "../files/AttachmentFilePreview";
-import { useChatFindStore } from "~/chatFindStore";
 import { useRightPanelStore } from "~/rightPanelStore";
 import {
   getQuestionAnswerPreview,
@@ -208,13 +207,7 @@ import {
   type AssistantCitationRequest,
   type AssistantCitationTarget,
 } from "./AssistantCitationSource";
-import { ChatFindBar } from "./ChatFindBar";
 import { useAssistantCitationTarget, type CitationHistoryPage } from "./useAssistantCitationTarget";
-import { useChatFind } from "./useChatFind";
-import type { ChatFindMatch } from "./ChatFind.logic";
-import { ChatPaneContext } from "../split/chatPane";
-import { ChatFindResults } from "../chatFind/ChatFindResults";
-import { chatFindSearchableEntries } from "../chatFind/chatFindScope";
 import {
   computeStableMessagesTimelineRows,
   deriveMessagesTimelineRowsWithState,
@@ -381,8 +374,6 @@ interface TimelineRowSharedState {
   openPullRequest: (event: MouseEvent<HTMLElement>, url: string) => void;
   onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
   onToggleWorkEntry: (anchorKey: string, collapsed: boolean) => void;
-  /** Entry holding the active find match; clipped bodies expand to show it. */
-  chatFindRevealEntryId: string | null;
   onCancelWorktreeSetup: (() => void) | null;
   retryableWorkspacePreparationRunIds: ReadonlySet<RunId>;
   onRetryWorkspacePreparation: ((runId: RunId) => void) | null;
@@ -710,20 +701,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const openPullRequest = useOpenPrLink(citationThreadRef ?? undefined);
   const expandCitedRun = useCallback((runId: RunId) => {
     setExpandedRunIds((current) => (current.has(runId) ? current : new Set([...current, runId])));
-  }, []);
-  // Fork: replaces upstream's `expandCitedTurn` for find (pingdotgg/t3code#12959).
-  // V2 hides matches behind a folded run or a superseded retry attempt; keep
-  // unfolding both when resolving a conflict with upstream's version.
-  const expandFindMatch = useCallback((match: ChatFindMatch) => {
-    const { runId, attemptId } = match;
-    if (runId !== null) {
-      setExpandedRunIds((current) => (current.has(runId) ? current : new Set([...current, runId])));
-    }
-    if (attemptId !== null) {
-      setExpandedAttemptIds((current) =>
-        current.has(attemptId) ? current : new Set([...current, attemptId]),
-      );
-    }
   }, []);
   // Nested tool state shares the bounded thread-position cache.
   const workGroupViewState = useMemo<WorkGroupViewState>(
@@ -1143,46 +1120,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     onExpandTurn: expandCitedRun,
     onManualNavigation,
   });
-  const chatPaneId = use(ChatPaneContext);
-  // Fork: the bar opens only in the pane it was requested for, not in every
-  // split pane. Upstream reads `store.open` alone; keep the pane check.
-  const findStoreOpen = useChatFindStore((store) => store.open && store.paneId === chatPaneId);
-  const findFocusRequestId = useChatFindStore((store) => store.focusRequestId);
-  const hideFind = useChatFindStore((store) => store.hide);
-  // Find binds to the thread that had rows on screen when it was requested.
-  // A request that predates this mount, or arrives while nothing is rendered,
-  // is consumed without opening, so a remounted timeline never brings the bar
-  // back or steals focus; switching threads in place closes it in the same
-  // render rather than one effect later.
-  const [findScope, setFindScope] = useState<{ requestId: number; threadKey: string | null }>(
-    () => ({ requestId: findFocusRequestId, threadKey: null }),
-  );
-  if (findScope.requestId !== findFocusRequestId) {
-    setFindScope({
-      requestId: findFocusRequestId,
-      threadKey: rows.length > 0 ? listIdentityKey : null,
-    });
-  }
-  const findOpen = findStoreOpen && findScope.threadKey === listIdentityKey;
-  useEffect(() => {
-    if (findStoreOpen && !findOpen) hideFind();
-  }, [findOpen, findStoreOpen, hideFind]);
-  // Fork: find skips the agent's commentary and searches only its answers.
-  const findEntries = useMemo(
-    () => (findOpen ? chatFindSearchableEntries(timelineEntries) : timelineEntries),
-    [findOpen, timelineEntries],
-  );
-  const chatFind = useChatFind({
-    enabled: findOpen,
-    entries: findEntries,
-    rows,
-    listRef,
-    viewport: timelineViewportElement,
-    cwd: markdownCwd,
-    bottomInset: contentInsetEndAdjustment,
-    onExpandMatch: expandFindMatch,
-    onManualNavigation,
-  });
   const [findListReady, setFindListReady] = useState(false);
   const handleListLoad = useCallback(() => {
     onCitationListLoad();
@@ -1201,7 +1138,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     const indices = restoringAlwaysRender?.indices ?? [];
     const keys = [
       ...(citationAlwaysRender?.keys ?? []),
-      ...(chatFind.alwaysRender?.keys ?? []),
       ...(fullscreenAppRowId === null ? [] : [fullscreenAppRowId]),
     ];
     if (indices.length === 0 && keys.length === 0) return undefined;
@@ -1209,8 +1145,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
       ...(indices.length === 0 ? {} : { indices }),
       ...(keys.length === 0 ? {} : { keys }),
     };
-  }, [citationAlwaysRender, chatFind.alwaysRender, restoringAlwaysRender, fullscreenAppRowId]);
-  const chatFindRevealEntryId = findOpen ? chatFind.activeEntryId : null;
+  }, [citationAlwaysRender, restoringAlwaysRender, fullscreenAppRowId]);
   const [minimapHitStripWidth, setMinimapHitStripWidth] = useState(0);
   const [minimapCurrentIndex, setMinimapCurrentIndex] = useState<number | null>(null);
   // Tracked by id, not index: a thread switch swaps the rows before the next
@@ -1486,7 +1421,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
       onToggleAttemptFold,
       onToggleWorkGroup,
       onToggleWorkEntry: suspendEndScrollMaintenanceForDisclosure,
-      chatFindRevealEntryId,
       onCancelWorktreeSetup: onCancelWorktreeSetup ?? null,
       retryableWorkspacePreparationRunIds,
       onRetryWorkspacePreparation: onRetryWorkspacePreparation ?? null,
@@ -1525,7 +1459,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
       onToggleAttemptFold,
       onToggleWorkGroup,
       suspendEndScrollMaintenanceForDisclosure,
-      chatFindRevealEntryId,
       onCancelWorktreeSetup,
       retryableWorkspacePreparationRunIds,
       onRetryWorkspacePreparation,
@@ -1753,30 +1686,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
                 viewport={timelineViewportElement}
                 threadRef={citationThreadRef}
                 onCite={onCiteAssistantText}
-              />
-            ) : null}
-            {findOpen ? (
-              <ChatFindBar
-                query={chatFind.query}
-                onQueryChange={chatFind.setQuery}
-                matchCount={chatFind.matches.length}
-                activeIndex={chatFind.activeIndex}
-                onStep={chatFind.step}
-                onClose={hideFind}
-                focusRequestId={findFocusRequestId}
-                loadEarlier={loadEarlier}
-              />
-            ) : null}
-            {/* Fork: the matches as a clickable list under the find bar. */}
-            {findOpen ? (
-              <ChatFindResults
-                query={chatFind.query}
-                entries={findEntries}
-                matches={chatFind.matches}
-                activeIndex={chatFind.activeIndex}
-                cwd={markdownCwd}
-                timestampFormat={timestampFormat}
-                onSelect={chatFind.select}
               />
             ) : null}
             <LegendList<MessagesTimelineRow>
@@ -2771,7 +2680,6 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
             renderContextReference={renderContextReference}
             skills={ctx.skills}
             markdownCwd={ctx.markdownCwd}
-            revealed={ctx.chatFindRevealEntryId === row.id}
           />
         </div>
       </div>
@@ -3217,7 +3125,6 @@ function ProposedPlanTimelineRow({
         threadRef={ctx.threadRef ?? undefined}
         cwd={ctx.markdownCwd}
         workspaceRoot={ctx.workspaceRoot}
-        revealed={ctx.chatFindRevealEntryId === row.id}
         findActive={ctx.findActive}
       />
     </div>
@@ -5004,17 +4911,8 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
   skills: ReadonlyArray<Pick<ServerProviderSkill, "name" | "displayName">>;
   markdownCwd: string | undefined;
   footer?: ReactNode;
-  /** A find match landed inside; expand the clipped body so it can be seen. */
-  revealed?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
-  // A find match inside the clipped body expands it for real, so the collapse
-  // button keeps working and the text stays once find closes.
-  const [revealedSeen, setRevealedSeen] = useState(props.revealed === true);
-  if ((props.revealed === true) !== revealedSeen) {
-    setRevealedSeen(props.revealed === true);
-    if (props.revealed) setExpanded(true);
-  }
   // Find opens the body only when it selects a match in the clipped part.
   const revealForFind = useCallback(() => setExpanded(true), []);
   const findRevealRef = useFindRevealRef(revealForFind);
@@ -5065,12 +4963,12 @@ const CollapsibleUserMessageBody = memo(function CollapsibleUserMessageBody(prop
               type="button"
               size="xs"
               variant="ghost-muted"
-              aria-expanded={!isCollapsed}
+              aria-expanded={expanded}
               data-scroll-anchor-ignore
-              onClick={() => setExpanded(isCollapsed)}
+              onClick={() => setExpanded((value) => !value)}
               className="-ml-1"
             >
-              {isCollapsed ? "Show full message" : "Show less"}
+              {expanded ? "Show less" : "Show full message"}
             </Button>
           ) : null}
           {props.footer ? (
