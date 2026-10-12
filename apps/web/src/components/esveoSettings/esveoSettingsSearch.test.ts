@@ -12,7 +12,6 @@ describe("esveo settings search", () => {
     ).toEqual(
       [
         "agent-stage",
-        "bitbucket-credentials",
         "context-window-control",
         "cross-project-threads",
         "easter-eggs",

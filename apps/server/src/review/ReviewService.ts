@@ -21,6 +21,7 @@ import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { isFilesystemRoot, managedWorktreesDirectories } from "../worktreesDirectory.ts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 
 export class ReviewService extends Context.Service<
   ReviewService,
@@ -41,8 +42,8 @@ export const make = Effect.gen(function* () {
   const path = yield* Path.Path;
   const vcsRegistry = yield* VcsDriverRegistry.VcsDriverRegistry;
   const git = yield* GitVcsDriver.GitVcsDriver;
-  const projects = yield* ProjectStore.ProjectStoreV2;
   const settings = yield* ServerSettings.ServerSettingsService;
+  const projectStore = yield* ProjectStore.ProjectStoreV2;
 
   const canonicalizePath = (value: string) => {
     const resolvedPath = path.resolve(value);
@@ -75,13 +76,14 @@ export const make = Effect.gen(function* () {
     const worktreesDirectories = yield* settings.getSettings.pipe(
       Effect.orElseSucceed(() => ({ worktreesDirectory: "", previousWorktreesDirectories: [] })),
     );
+    const home = yield* HostProcess.HomeDirectory;
     const [candidate, workspaceRoot, worktreesRoots] = yield* Effect.all([
       canonicalizePath(cwd),
       canonicalizePath(config.cwd),
       // A managed root that cannot be resolved, or resolves to a filesystem
       // root through a symlink, is skipped rather than failing every review.
       Effect.forEach(
-        managedWorktreesDirectories(worktreesDirectories, config.worktreesDir, path),
+        managedWorktreesDirectories(worktreesDirectories, config.worktreesDir, path, home),
         (directory) => canonicalizePath(directory).pipe(Effect.orElseSucceed(() => null)),
       ).pipe(
         Effect.map((roots) =>
@@ -97,16 +99,17 @@ export const make = Effect.gen(function* () {
       return;
     }
 
-    // esveo fork: projects live anywhere on disk, not only below the server's cwd
-    // (the Windows desktop app runs its backend from the app folder).
-    const projectRoots = yield* projects.listShells().pipe(
-      Effect.flatMap((shells) =>
-        Effect.forEach(shells, (shell) => canonicalizePath(shell.workspaceRoot)),
-      ),
-      Effect.orElseSucceed((): ReadonlyArray<string> => []),
-    );
-    if (projectRoots.some((root) => isWithinRoot(candidate, root))) {
-      return;
+    // Registered projects can live outside the server cwd, which is the home
+    // directory in packaged desktop builds, e.g. a repository on another
+    // Windows drive. Unreadable or unresolvable project roots grant nothing.
+    const projects = yield* projectStore.listShells().pipe(Effect.orElseSucceed(() => []));
+    for (const project of projects) {
+      const root = yield* canonicalizePath(project.workspaceRoot).pipe(
+        Effect.orElseSucceed(() => null),
+      );
+      if (root !== null && isWithinRoot(candidate, root)) {
+        return;
+      }
     }
 
     return yield* new VcsRepositoryDetectionError({
