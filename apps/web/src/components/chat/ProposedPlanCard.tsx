@@ -45,6 +45,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   cwd,
   workspaceRoot,
   findActive = false,
+  revealed = false,
 }: {
   planMarkdown: string;
   environmentId: EnvironmentId;
@@ -52,6 +53,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   cwd: string | undefined;
   workspaceRoot: string | undefined;
   findActive?: boolean;
+  revealed?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   // A find match inside the clipped preview opens the plan for real, so the

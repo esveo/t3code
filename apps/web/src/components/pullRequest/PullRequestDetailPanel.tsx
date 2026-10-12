@@ -3010,7 +3010,7 @@ export function PullRequestDetailPanel({
                     fixFindingLabel={handoffLabels.fixFinding}
                     {...(canFixFindings ? { onFixFinding: startFixFinding } : {})}
                     onRefresh={refreshDetail}
-                    refreshToken={codeRefreshToken}
+                    refreshToken={refreshToken}
                     revealRequest={codeRevealRequest}
                   />
                 </Suspense>

@@ -1,6 +1,7 @@
 import { renderCodexDirectivesForCopy } from "@t3tools/shared/codexMarkdownDirectives";
 import type { RunAttemptId, RunId } from "@t3tools/contracts";
 import { replaceComposerContextReferences } from "@t3tools/shared/composerContextReferences";
+import { proposedPlanTitle, stripDisplayedPlanMarkdown } from "@t3tools/shared/proposedPlanText";
 
 import { resolveUserMessageContext } from "../../lib/composerContextRecords";
 import {
@@ -8,7 +9,6 @@ import {
   resolveMarkdownFileLinkMeta,
   type MarkdownFileLinkMeta,
 } from "../../markdown-links";
-import { proposedPlanTitle, stripDisplayedPlanMarkdown } from "../../proposedPlan";
 import type { TimelineEntry } from "../../session-logic";
 
 export interface ChatFindMatch {

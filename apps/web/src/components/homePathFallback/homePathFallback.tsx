@@ -1,6 +1,6 @@
 import type { EnvironmentId, ProjectReadFileError } from "@t3tools/contracts";
-
-import { isAbsolutePath, resolvePathLinkTarget } from "~/terminal-links";
+import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
+import { isAbsolutePath } from "@t3tools/shared/path";
 
 import { useProjectFileQuery } from "../files/projectFilesQueryState";
 

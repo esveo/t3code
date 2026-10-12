@@ -667,6 +667,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   loadEarlier = null,
 }: MessagesTimelineProps) {
   const listIdentityKey = displayThreadKey ?? routeThreadKey;
+  const chatFindRevealEntryId = activeFindMatch?.entryId ?? null;
   const rememberedPosition = useMemo(
     () => readTimelinePosition(listIdentityKey),
     [listIdentityKey],
@@ -3114,6 +3115,7 @@ function ProposedPlanTimelineRow({
         cwd={ctx.markdownCwd}
         workspaceRoot={ctx.workspaceRoot}
         findActive={ctx.findActive}
+        revealed={ctx.chatFindRevealEntryId === row.id}
       />
     </div>
   );
