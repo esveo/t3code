@@ -8225,7 +8225,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
         for (const [index, progress] of [
           { description: "Running Wait for emulator boot" },
           { description: "Running Wait for emulator boot", summary: "Installing the APK" },
-          // A repeated line is not re-sent.
+          // The settled turn carries each frame, a repeated line included.
           { description: "Running Wait for emulator boot", summary: "Installing the APK" },
           { description: "Running Launch the app" },
         ].entries()) {
@@ -8243,10 +8243,11 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             }),
           );
         }
-        yield* awaitUntil(() => progressLines().length === 3, "idle progress published");
+        yield* awaitUntil(() => progressLines().length === 4, "idle progress published");
 
         assert.deepEqual(progressLines(), [
           ["Running Wait for emulator boot", "running"],
+          ["Installing the APK", "running"],
           ["Installing the APK", "running"],
           ["Running Launch the app", "running"],
         ]);

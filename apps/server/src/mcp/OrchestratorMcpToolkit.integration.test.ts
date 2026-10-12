@@ -689,7 +689,8 @@ describe("orchestrator MCP toolkit", () => {
             Layer.provideMerge(layerOrchestration),
             Layer.provide(layerRegistry),
             Layer.provide(layerProviderRegistry),
-            Layer.provide(ServerSettings.layerTest()),
+            // Fork: targets reach other projects only with Cross-project threads on.
+            Layer.provideMerge(ServerSettings.layerTest({ enableCrossProjectThreads: true })),
             Layer.provide(layerScheduledTaskStub),
             Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
             Layer.provide(
@@ -708,8 +709,6 @@ describe("orchestrator MCP toolkit", () => {
                 Layer.provide(layerOrchestration),
               ),
             ),
-            // Fork: targets reach other projects only with Cross-project threads on.
-            Layer.provideMerge(ServerSettings.layerTest({ enableCrossProjectThreads: true })),
             Layer.provide(NodeServices.layer),
           );
 
