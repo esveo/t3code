@@ -19,7 +19,7 @@ import {
   type VoiceInputPrepareProgress,
   type VoiceInputTranscribeInput,
 } from "@t3tools/contracts";
-import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
@@ -125,7 +125,7 @@ export const prepareRpc = (input: VoiceInputPrepareInput) =>
   Stream.unwrap(
     Effect.gen(function* () {
       const whisper = yield* getTranscriber;
-      const platform = yield* HostProcessPlatform;
+      const platform = yield* HostProcess.Platform;
       const m4a = yield* Effect.promise(() => canConvertM4a(platform));
       return Stream.callback<VoiceInputPrepareProgress, VoiceInputError>((queue) =>
         Effect.tryPromise({
@@ -156,7 +156,7 @@ export const transcribeRpc = Effect.fn("voiceInput.transcribe")(function* (
     return yield* new VoiceInputError({ message: "The recording is empty or not 16-bit PCM." });
   }
   const whisper = yield* getTranscriber;
-  const platform = yield* HostProcessPlatform;
+  const platform = yield* HostProcess.Platform;
   const recorded = isM4a
     ? yield* Effect.tryPromise({
         try: () => convertM4aToPcm16(audio, platform),

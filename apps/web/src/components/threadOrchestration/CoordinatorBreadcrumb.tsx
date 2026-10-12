@@ -17,7 +17,12 @@ import { useOpenThread } from "./useOpenThread";
  * Fork: in a thread a coordinator follows, the coordinator sits in the header
  * breadcrumb before the title, the way back to where the work was planned.
  */
-export function CoordinatorBreadcrumb(props: { environmentId: EnvironmentId; threadId: ThreadId }) {
+export function CoordinatorBreadcrumb(props: {
+  environmentId: EnvironmentId;
+  threadId: ThreadId;
+  /** A parent the header already links to (upstream's subagent parent). */
+  exceptThreadId?: ThreadId | null;
+}) {
   const { environmentId, threadId } = props;
   const threadRef = useMemo(
     () => scopeThreadRef(environmentId, threadId),
@@ -30,7 +35,9 @@ export function CoordinatorBreadcrumb(props: { environmentId: EnvironmentId; thr
   );
   const parent = useThreadShell(parentRef);
   const openThread = useOpenThread();
-  if (parentRef === null || parent === null) return null;
+  if (parentRef === null || parent === null || parentThreadId === props.exceptThreadId) {
+    return null;
+  }
   return (
     <>
       <WorkspaceBreadcrumbItem className="shrink">

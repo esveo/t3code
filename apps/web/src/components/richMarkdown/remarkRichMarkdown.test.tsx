@@ -1,22 +1,15 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import ReactMarkdown from "react-markdown";
-import rehypeRaw from "rehype-raw";
-import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
-import remarkGfm from "remark-gfm";
 import { describe, expect, it } from "vite-plus/test";
 
-import {
-  isDollarAmountNotMath,
-  isFenceClosed,
-  RICH_MARKDOWN_REMARK_PLUGINS,
-  withRichMarkdownSanitizeSchema,
-} from "./remarkRichMarkdown";
+import { CHAT_MARKDOWN_REHYPE_PLUGINS, CHAT_MARKDOWN_REMARK_PLUGINS } from "./chatMarkdownPipeline";
+import { isDollarAmountNotMath, isFenceClosed } from "./remarkRichMarkdown";
 
 function renderMarkdown(markdown: string): string {
   return renderToStaticMarkup(
     <ReactMarkdown
-      remarkPlugins={[remarkGfm, ...RICH_MARKDOWN_REMARK_PLUGINS]}
-      rehypePlugins={[rehypeRaw, [rehypeSanitize, withRichMarkdownSanitizeSchema(defaultSchema)]]}
+      remarkPlugins={CHAT_MARKDOWN_REMARK_PLUGINS}
+      rehypePlugins={CHAT_MARKDOWN_REHYPE_PLUGINS}
     >
       {markdown}
     </ReactMarkdown>,

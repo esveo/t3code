@@ -30,7 +30,7 @@ export function useProviderEntryLookup(): (
         (environment.environmentId === primaryEnvironmentId ? primaryProviders : []);
       const derived = deriveProviderInstanceEntries(providers);
       const resolved = serverConfig
-        ? applyProviderInstanceSettings(derived, serverConfig.settings)
+        ? applyProviderInstanceSettings(derived, serverConfig.settings, null)
         : derived;
       for (const entry of resolved)
         map.set(`${environment.environmentId}:${entry.instanceId}`, entry);
