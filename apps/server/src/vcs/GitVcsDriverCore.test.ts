@@ -114,6 +114,8 @@ const makeReviewDiffFileContentsInput = (
   ...overrides,
 });
 
+const gitConfigCount = Number(process.env.GIT_CONFIG_COUNT ?? "0");
+
 const git = (
   cwd: string,
   args: ReadonlyArray<string>,
@@ -125,10 +127,11 @@ const git = (
       operation: "GitVcsDriver.test.git",
       cwd,
       args,
+      // Fork: appended after the suite's pinned config (gitConfig.setup.ts), not in its place.
       env: {
-        GIT_CONFIG_COUNT: "1",
-        GIT_CONFIG_KEY_0: "safe.bareRepository",
-        GIT_CONFIG_VALUE_0: "all",
+        GIT_CONFIG_COUNT: String(gitConfigCount + 1),
+        [`GIT_CONFIG_KEY_${gitConfigCount}`]: "safe.bareRepository",
+        [`GIT_CONFIG_VALUE_${gitConfigCount}`]: "all",
         ...env,
       },
       timeoutMs: 10_000,

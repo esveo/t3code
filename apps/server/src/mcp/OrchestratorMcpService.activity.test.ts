@@ -523,9 +523,10 @@ it("readThread and sendToThread reach threads in other projects", async () => {
       .pipe(Effect.flip);
     expect(staleDelete.code).toBe("parent_not_active");
   }).pipe(
-    Effect.provide(layer),
     // Fork: other projects' threads are reachable only with Cross-project threads on.
-    Effect.provide(ServerSettings.layerTest({ enableCrossProjectThreads: true })),
+    Effect.provide(
+      layer.pipe(Layer.provideMerge(ServerSettings.layerTest({ enableCrossProjectThreads: true }))),
+    ),
     Effect.runPromise,
   );
 });

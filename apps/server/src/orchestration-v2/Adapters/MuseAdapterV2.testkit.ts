@@ -117,6 +117,10 @@ function replayValueMatches(expected: unknown, actual: unknown): boolean {
     const keys = new Set([...Object.keys(expected), ...Object.keys(actual)]);
     return [...keys].every((key) => replayValueMatches(expected[key], actual[key]));
   }
+  // Fork: the recorded prompts say T3 Code where esveo code names itself (runtimeInstructions.ts).
+  if (typeof actual === "string" && actual.includes("running in esveo code")) {
+    return Object.is(expected, actual.replaceAll("running in esveo code", "running in T3 Code"));
+  }
   return Object.is(expected, actual);
 }
 
