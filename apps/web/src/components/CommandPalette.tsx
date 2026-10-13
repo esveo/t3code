@@ -79,11 +79,9 @@ import {
   SettingsIcon,
   SquarePenIcon,
   SunIcon,
-  SearchIcon,
   TextSearchIcon,
 } from "lucide-react";
 import { requestThreadFindOpen } from "./chat/threadFindActionBus";
-import { UPSTREAM_THREAD_FIND_ENABLED } from "./chatFind/upstreamThreadFind";
 import {
   useCallback,
   useDeferredValue,
@@ -156,7 +154,6 @@ import {
   onOpenCommandPalette,
   takePendingProjectPick,
 } from "../commandPaletteBus";
-import { useChatFindStore } from "../chatFindStore";
 import { isPreviewFocused } from "../lib/previewFocus";
 import { isTerminalFocused } from "../lib/terminalFocus";
 import {
@@ -243,7 +240,6 @@ import {
 import { resolveShortcutCommand, threadJumpIndexFromCommand } from "../keybindings";
 import { CommandDialog, CommandDialogPopup, CommandFooterAction } from "./ui/command";
 import { revealThreadInSplit } from "./split/splitPanes";
-import { activeChatPaneId } from "./split/chatPane";
 import { Button } from "./ui/button";
 import { Kbd, KbdGroup } from "./ui/kbd";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "./ui/select";
@@ -1100,7 +1096,6 @@ function OpenCommandPaletteDialog(props: {
     [activeThread, navigate],
   );
   const supportsThreadFind =
-    UPSTREAM_THREAD_FIND_ENABLED &&
     environments.find((environment) => environment.environmentId === activeThread?.environmentId)
       ?.serverConfig?.threadFind === true;
   const currentProjectEnvironmentId =
@@ -2031,21 +2026,6 @@ function OpenCommandPaletteDialog(props: {
       icon: <LinkIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "thread.copyReference",
       run: copyActiveThreadReference,
-    });
-  }
-
-  if (activeThread !== null) {
-    actionItems.push({
-      kind: "action",
-      value: "action:find-in-thread",
-      searchTerms: ["find", "search", "thread", "conversation", "messages", "text", "ctrl+f"],
-      title: "Find in thread",
-      icon: <SearchIcon className={ITEM_ICON_CLASS} />,
-      shortcutCommand: "chat.find",
-      run: async () => {
-        // Fork: find opens in the active split pane; upstream calls `show()`.
-        useChatFindStore.getState().show(activeChatPaneId());
-      },
     });
   }
 
@@ -3264,8 +3244,7 @@ function OpenCommandPaletteDialog(props: {
       event.preventDefault();
       event.stopPropagation();
       setOpen(false);
-      if (UPSTREAM_THREAD_FIND_ENABLED) requestThreadFindOpen();
-      else useChatFindStore.getState().show(activeChatPaneId());
+      requestThreadFindOpen();
       return;
     }
 

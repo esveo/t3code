@@ -14,7 +14,8 @@ import {
   type ThreadFindStart,
   stepThreadFindIndex,
 } from "./threadFind";
-import { subscribeThreadFindOpen } from "./threadFindActionBus";
+// Fork: the open bus reaches only the active split pane.
+import { useActivePaneThreadFindOpen } from "../chatFind/useActivePaneThreadFindOpen";
 import { toastManager } from "../ui/toast";
 
 const EMPTY_SKILLS: readonly InlineSkill[] = [];
@@ -92,7 +93,7 @@ export function useThreadFind({
     });
   }, [enabled, state.query, state.threadKey, threadKey]);
   const close = useCallback(() => setState(CLOSED_FIND), []);
-  useEffect(() => subscribeThreadFindOpen(open), [open]);
+  useActivePaneThreadFindOpen(open);
 
   const remote = useServerResults(
     isOpen ? thread : null,

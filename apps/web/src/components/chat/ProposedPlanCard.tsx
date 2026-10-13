@@ -44,7 +44,6 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   threadRef,
   cwd,
   workspaceRoot,
-  revealed = false,
   findActive = false,
 }: {
   planMarkdown: string;
@@ -52,18 +51,9 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   threadRef?: ScopedThreadRef | undefined;
   cwd: string | undefined;
   workspaceRoot: string | undefined;
-  /** A find match landed inside; expand the collapsed preview so it can be seen. */
-  revealed?: boolean;
   findActive?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
-  // A find match inside the clipped preview opens the plan for real, so the
-  // collapse button keeps working and the text stays once find closes.
-  const [revealedSeen, setRevealedSeen] = useState(revealed);
-  if (revealed !== revealedSeen) {
-    setRevealedSeen(revealed);
-    if (revealed) setExpanded(true);
-  }
   const canWriteFiles = useEnvironmentScope(environmentId, AuthFilesystemWriteScope);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
   const [savePath, setSavePath] = useState("");
@@ -87,11 +77,11 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
   const title = proposedPlanTitle(planMarkdown) ?? "Proposed plan";
   const lineCount = planMarkdown.split("\n").length;
   const canCollapse = planMarkdown.length > 900 || lineCount > 20;
-  const isCollapsed = canCollapse && !expanded;
   const displayedPlanMarkdown = stripDisplayedPlanMarkdown(planMarkdown);
   const collapsedPreview = canCollapse
     ? buildCollapsedProposedPlanPreviewMarkdown(planMarkdown, { maxLines: 10 })
     : null;
+  const isCollapsed = canCollapse && !expanded;
   // While finding, the full plan stays mounted but clipped, so a match past the
   // preview can be counted and then opened only once it is selected.
   const showPreview = isCollapsed && !findActive;
@@ -177,11 +167,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
           <Badge variant="secondary">Plan</Badge>
           {/* Same heading level as the message author headings in the timeline,
               so a plan's own headings nest beneath it in the outline. */}
-          <h3
-            data-chat-find-body="true"
-            data-thread-find-text="true"
-            className="truncate text-sm font-medium text-foreground"
-          >
+          <h3 data-thread-find-text="true" className="truncate text-sm font-medium text-foreground">
             {title}
           </h3>
         </div>
@@ -209,7 +195,6 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
         <div
           ref={findRevealRef}
           className={cn("relative", isCollapsed && "max-h-104 overflow-hidden")}
-          data-chat-find-body="true"
           data-thread-find-text="true"
           data-thread-find-fold={isCollapsed ? "" : undefined}
         >
@@ -242,9 +227,9 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
               size="sm"
               variant="outline"
               data-scroll-anchor-ignore
-              onClick={() => setExpanded(isCollapsed)}
+              onClick={() => setExpanded((value) => !value)}
             >
-              {isCollapsed ? "Expand plan" : "Collapse plan"}
+              {expanded ? "Collapse plan" : "Expand plan"}
             </Button>
           </div>
         ) : null}
