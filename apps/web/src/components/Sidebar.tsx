@@ -2266,67 +2266,65 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                 </span>
               ) : null}
             </div>
-            <div
-              className={cn(
-                "mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs",
-                cardLayout.thirdLine,
-              )}
-            >
-              {/* Always the branch. The plan step used to take this slot while
-                  working, but it truncated to a half-sentence and dropped the
-                  branch, so the row lost its most stable identifier. */}
-              {thread.branch ? (
-                <>
-                  <ThreadWorktreeIndicator thread={thread} />
-                  <span className="flex min-w-0 flex-1 text-muted-foreground/40">
-                    <MiddleTruncate value={thread.branch} showTitle={false} />
-                  </span>
-                </>
-              ) : showsScratchMachine ? (
-                <>
-                  <EnvironmentMachineIcon
-                    aria-hidden
-                    kind={props.environmentMachine}
-                    className="size-3 shrink-0 text-muted-foreground/40"
-                  />
-                  <span className="min-w-0 flex-1 truncate text-muted-foreground/40">
-                    {props.scratchMachineLabel}
-                  </span>
-                </>
-              ) : (
-                <span className="flex-1" />
-              )}
-              {terminalStatusIcon}
-              {prBadge}
-              {diff ? (
-                <span className="shrink-0 font-mono">
-                  <span className="text-diff-addition-foreground">
-                    +{formatDiffCount(diff.insertions)}
-                  </span>{" "}
-                  <span className="text-diff-deletion-foreground">
-                    −{formatDiffCount(diff.deletions)}
-                  </span>
-                </span>
-              ) : null}
-              <span
-                aria-hidden
-                className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
-              >
-                {isRemote && !showsScratchMachine ? (
-                  <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
+            {/* Fork: two-line cards leave the third line out. */}
+            {twoLineThreadCards ? null : (
+              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
+                {/* Always the branch. The plan step used to take this slot while
+                    working, but it truncated to a half-sentence and dropped the
+                    branch, so the row lost its most stable identifier. */}
+                {thread.branch ? (
+                  <>
+                    <ThreadWorktreeIndicator thread={thread} />
+                    <span className="flex min-w-0 flex-1 text-muted-foreground/40">
+                      <MiddleTruncate value={thread.branch} showTitle={false} />
+                    </span>
+                  </>
+                ) : showsScratchMachine ? (
+                  <>
                     <EnvironmentMachineIcon
                       aria-hidden
                       kind={props.environmentMachine}
-                      className="size-3.5"
+                      className="size-3 shrink-0 text-muted-foreground/40"
                     />
+                    <span className="min-w-0 flex-1 truncate text-muted-foreground/40">
+                      {props.scratchMachineLabel}
+                    </span>
+                  </>
+                ) : (
+                  <span className="flex-1" />
+                )}
+                {terminalStatusIcon}
+                {prBadge}
+                {diff ? (
+                  <span className="shrink-0 font-mono">
+                    <span className="text-diff-addition-foreground">
+                      +{formatDiffCount(diff.insertions)}
+                    </span>{" "}
+                    <span className="text-diff-deletion-foreground">
+                      −{formatDiffCount(diff.deletions)}
+                    </span>
                   </span>
                 ) : null}
-                <SidebarProviderStack
-                  thread={thread}
-                  providerEntryByInstanceId={props.providerEntryByInstanceId}
-                />
-              </span>
-            </div>
+                <span
+                  aria-hidden
+                  className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
+                >
+                  {isRemote && !showsScratchMachine ? (
+                    <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
+                      <EnvironmentMachineIcon
+                        aria-hidden
+                        kind={props.environmentMachine}
+                        className="size-3.5"
+                      />
+                    </span>
+                  ) : null}
+                  <SidebarProviderStack
+                    thread={thread}
+                    providerEntryByInstanceId={props.providerEntryByInstanceId}
+                  />
+                </span>
+              </div>
+            )}
           </div>
           {props.jumpLabel ? <JumpHintBadge label={props.jumpLabel} /> : null}
         </TooltipTrigger>
