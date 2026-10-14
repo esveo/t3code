@@ -300,15 +300,7 @@ import { DeviceSetup } from "./device/DeviceSetup";
 import { Dialog } from "./ui/dialog";
 import { WizardPopup } from "./ui/wizard";
 import { BranchToolbar, type BranchToolbarHandle } from "./BranchToolbar";
-import { nextGitGraphPanelStep } from "./gitGraph/gitGraphPanelLadder";
-import { AgentStagePanel } from "./agentStage/AgentStagePanel";
-import { ThreadOverviewPanel } from "./threadOrchestration/ThreadOverviewPanel";
-import { useThreadOverviewSurface } from "./threadOrchestration/useThreadOverviewSurface";
-import { ThreadInboxPanel } from "./threadInbox/ThreadInboxPanel";
-import { useThreadInboxSurface } from "./threadInbox/useThreadInboxSurface";
-import { ForkNotesPanel } from "./forkNotes/ForkNotesPanel";
-import { useForkNotesSurface } from "./forkNotes/useForkNotesSurface";
-import { useAgentStageEnabled } from "./agentStage/agentStageStore";
+import { useForkRightPanelSurfaces } from "./forkChatView/useForkRightPanelSurfaces";
 import { playEasterEggFor } from "./easterEggs/easterEggs";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { isEditableFocused } from "../lib/editableFocus";
@@ -722,9 +714,6 @@ const PreviewPanel = lazy(() =>
   import("./preview/PreviewPanel").then((module) => ({ default: module.PreviewPanel })),
 );
 const DiffPanel = lazy(() => import("./DiffPanel"));
-const GitGraphView = lazy(() =>
-  import("./gitGraph/GitGraphView").then((module) => ({ default: module.GitGraphView })),
-);
 const selectAutoShowFloatingPreview = (settings: { browserAutoShowFloatingPreview: boolean }) =>
   settings.browserAutoShowFloatingPreview;
 const DevicePanel = lazy(() =>
@@ -5521,19 +5510,6 @@ export default function ChatView(props: ChatViewProps) {
     useRightPanelStore.getState().open(activeThreadRef, "diff");
     onDiffPanelOpen?.();
   }, [activeThreadRef, isGitRepo, isServerThread, onDiffPanelOpen]);
-  // The graph reads the repository the thread runs in: its worktree when it has
-  // one, the project's workspace root otherwise. Older servers reject
-  // `vcs.listCommitGraph` as unknown, so the surface stays unavailable rather
-  // than opening a pane that can only fail.
-  const gitGraphCwd = activeWorkspaceRoot ?? null;
-  const gitGraphSurfaceAvailable =
-    isGitRepo &&
-    gitGraphCwd !== null &&
-    serverConfig?.environment.capabilities.commitGraph === true;
-  const addGitGraphSurface = useCallback(() => {
-    if (!activeThreadRef || !gitGraphSurfaceAvailable) return;
-    useRightPanelStore.getState().open(activeThreadRef, "git-graph");
-  }, [activeThreadRef, gitGraphSurfaceAvailable]);
   const openChangesFromThreadPanel = useCallback(() => {
     addDiffSurface();
   }, [addDiffSurface]);
@@ -5541,15 +5517,6 @@ export default function ChatView(props: ChatViewProps) {
     if (!activeThreadRef || !activeProject) return;
     useRightPanelStore.getState().open(activeThreadRef, "files");
   }, [activeProject, activeThreadRef]);
-  const agentStageEnabled = useAgentStageEnabled();
-  // Fork: the threads this one started.
-  const threadOverview = useThreadOverviewSurface(activeThreadRef);
-  const threadInbox = useThreadInboxSurface(activeThreadRef);
-  const forkNotes = useForkNotesSurface(activeThreadRef);
-  const addAgentStageSurface = useCallback(() => {
-    if (!activeThreadRef || !agentStageEnabled) return;
-    useRightPanelStore.getState().open(activeThreadRef, "agent-stage");
-  }, [activeThreadRef, agentStageEnabled]);
   const supportsThreadPullRequests =
     serverConfig?.environment.capabilities.threadPullRequests === true;
   const visiblePullRequests = visibleThreadPullRequests(
@@ -6297,34 +6264,29 @@ export default function ChatView(props: ChatViewProps) {
       finishRightPanelSurfaceClose,
     ],
   );
-  const cycleGitGraphSurface = useCallback(() => {
-    if (!activeThreadRef) return;
-    const showing = rightPanelOpen && activeRightPanelSurface?.kind === "git-graph";
-    const step = nextGitGraphPanelStep({
-      showing,
+  // Fork: agent stage, thread overview, inbox, notes and Git graph surfaces.
+  const forkSurfaces = useForkRightPanelSurfaces({
+    threadRef: activeThreadRef,
+    environmentId: activeThread?.environmentId,
+    workspaceRoot: activeWorkspaceRoot,
+    projectTitle: activeProject?.title,
+    composerDraftTarget,
+    isGitRepo,
+    commitGraphSupported: serverConfig?.environment.capabilities.commitGraph === true,
+    rightPanel: {
+      open: rightPanelOpen,
+      activeSurface: activeRightPanelSurface,
       canMaximize: canMaximizeRightPanel,
       maximized: rightPanelMaximized,
-    });
-    if (step === "open") {
-      addGitGraphSurface();
-      return;
-    }
-    if (step === "maximize") {
-      toggleRightPanelMaximized();
-      return;
-    }
-    if (rightPanelMaximized) toggleRightPanelMaximized();
-    if (activeRightPanelSurface) closeRightPanelSurface(activeRightPanelSurface);
-  }, [
-    activeRightPanelSurface,
-    activeThreadRef,
+      toggleMaximized: toggleRightPanelMaximized,
+      closeSurface: closeRightPanelSurface,
+    },
+  });
+  const {
+    gitGraphAvailable: gitGraphSurfaceAvailable,
     addGitGraphSurface,
-    canMaximizeRightPanel,
-    closeRightPanelSurface,
-    rightPanelMaximized,
-    rightPanelOpen,
-    toggleRightPanelMaximized,
-  ]);
+    cycleGitGraphSurface,
+  } = forkSurfaces;
   const closeOtherRightPanelSurfaces = useCallback(
     (surface: RightPanelSurface) => {
       if (!activeThreadRef) return;
@@ -11261,6 +11223,7 @@ export default function ChatView(props: ChatViewProps) {
     return <NoActiveThreadState />;
   }
 
+  const forkSurfacePanel = forkSurfaces.renderSurface(renderedRightPanelSurface); // Fork
   const rightPanelContent = activeThreadRef ? (
     renderedRightPanelSurface?.kind === "preview" ? (
       <Suspense fallback={null}>
@@ -11294,14 +11257,8 @@ export default function ChatView(props: ChatViewProps) {
         newShortcutLabel={newTerminalShortcutLabel ?? undefined}
         closeShortcutLabel={closeTerminalShortcutLabel ?? undefined}
       />
-    ) : renderedRightPanelSurface?.kind === "agent-stage" ? (
-      <AgentStagePanel threadRef={activeThreadRef} workspaceRoot={activeWorkspaceRoot} />
-    ) : renderedRightPanelSurface?.kind === "thread-overview" ? (
-      <ThreadOverviewPanel threadRef={activeThreadRef} />
-    ) : renderedRightPanelSurface?.kind === "thread-inbox" ? (
-      <ThreadInboxPanel threadRef={activeThreadRef} cwd={activeWorkspaceRoot} />
-    ) : renderedRightPanelSurface?.kind === "notes" ? (
-      <ForkNotesPanel threadRef={activeThreadRef} composerDraftTarget={composerDraftTarget} />
+    ) : forkSurfacePanel !== undefined ? (
+      forkSurfacePanel
     ) : renderedRightPanelSurface?.kind === "diff" ? (
       <Suspense fallback={null}>
         <DiffPanel
@@ -11309,17 +11266,6 @@ export default function ChatView(props: ChatViewProps) {
           mode="embedded"
           composerDraftTarget={composerDraftTarget}
           workspaceMutationId={workspaceMutationId}
-        />
-      </Suspense>
-    ) : renderedRightPanelSurface?.kind === "git-graph" && gitGraphCwd !== null ? (
-      <Suspense fallback={null}>
-        {/* No onClose: the surface tab's own X owns closing here. */}
-        <GitGraphView
-          key={`${activeThread.environmentId}:${gitGraphCwd}`}
-          mode="embedded"
-          environmentId={activeThread.environmentId}
-          cwd={gitGraphCwd}
-          title={activeProject?.title ?? gitGraphCwd}
         />
       </Suspense>
     ) : renderedRightPanelSurface?.kind === "pull-request" && !pullRequestsCapabilityKnown ? (
@@ -12300,25 +12246,17 @@ export default function ChatView(props: ChatViewProps) {
           onAddBrowserInProfile={createBrowserSurface}
           onAddTerminal={addTerminalSurface}
           onAddDiff={addDiffSurface}
-          onAddGitGraph={addGitGraphSurface}
           onAddFiles={addFilesSurface}
           onAddPullRequest={addPullRequestSurface}
           onAddPullRequests={addPullRequestsSurface}
-          onAddAgentStage={addAgentStageSurface}
-          onAddThreadOverview={threadOverview.open}
           onAddDevice={addDeviceSurface}
           browserAvailable={canOperatePreview && browserAvailable}
           terminalAvailable={activeProject !== null && canOperateTerminal}
           diffAvailable={isServerThread && isGitRepo}
-          gitGraphAvailable={gitGraphSurfaceAvailable}
           filesAvailable={activeProject !== null}
           pullRequestAvailable={pullRequestSurfaceAvailable}
           pullRequestsAvailable={pullRequestsSurfaceAvailable}
-          agentStageAvailable={agentStageEnabled}
-          threadOverviewAvailable={threadOverview.available}
-          threadsWaitingCount={threadOverview.waitingCount}
-          threadInbox={threadInbox}
-          notes={forkNotes}
+          {...forkSurfaces.tabProps}
           deviceAvailable={activeThreadRef !== null}
         >
           {rightPanelContent}
@@ -12368,25 +12306,17 @@ export default function ChatView(props: ChatViewProps) {
             onAddBrowserInProfile={createBrowserSurface}
             onAddTerminal={addTerminalSurface}
             onAddDiff={addDiffSurface}
-            onAddGitGraph={addGitGraphSurface}
             onAddFiles={addFilesSurface}
             onAddPullRequest={addPullRequestSurface}
             onAddPullRequests={addPullRequestsSurface}
-            onAddAgentStage={addAgentStageSurface}
-            onAddThreadOverview={threadOverview.open}
             onAddDevice={addDeviceSurface}
             browserAvailable={canOperatePreview && browserAvailable}
             terminalAvailable={activeProject !== null && canOperateTerminal}
             diffAvailable={isServerThread && isGitRepo}
-            gitGraphAvailable={gitGraphSurfaceAvailable}
             filesAvailable={activeProject !== null}
             pullRequestAvailable={pullRequestSurfaceAvailable}
             pullRequestsAvailable={pullRequestsSurfaceAvailable}
-            agentStageAvailable={agentStageEnabled}
-            threadOverviewAvailable={threadOverview.available}
-            threadsWaitingCount={threadOverview.waitingCount}
-            threadInbox={threadInbox}
-            notes={forkNotes}
+            {...forkSurfaces.tabProps}
             deviceAvailable={activeThreadRef !== null}
           >
             {rightPanelContent}
