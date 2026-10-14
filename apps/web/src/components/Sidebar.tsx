@@ -265,18 +265,12 @@ import {
 import { resolveSnoozePresets, snoozeWakeLabel, type SnoozePreset } from "./Sidebar.snooze";
 import { ProjectFavicon, type ProjectFaviconProject } from "./ProjectFavicon";
 // Fork: per-project runs in the thread list.
-import { SidebarChildThreads } from "./threadOrchestration/SidebarChildThreads";
-import { useChildThreadGroups } from "./threadOrchestration/coordinatorLinks";
 import {
   ThreadParentDialogHost,
   useThreadParentActions,
 } from "./threadOrchestration/ThreadParentActions";
-import {
-  CROSS_PROJECT_RUN_KEY,
-  crossProjectCoordinatorKeys,
-  sidebarRowsWithCoordinators,
-} from "./threadOrchestration/childThreads.logic";
-import { SidebarProjectRunHeader } from "./sidebarProjectRuns/SidebarProjectRunHeader";
+import { sidebarRowsWithCoordinators } from "./threadOrchestration/childThreads.logic";
+import { forkSidebarList, useForkSidebarGroups } from "./sidebarProjectRuns/forkSidebarList";
 import {
   SidebarCoordinatorIcon,
   SidebarProjectRunRowLead,
@@ -287,10 +281,10 @@ import {
 } from "./sidebarProjectRuns/sidebarProjectRunAccent";
 import {
   sidebarRowLead,
-  type SidebarProjectRunHeader as SidebarProjectRunHeaderInfo,
   type SidebarProjectRunPlacement,
 } from "./sidebarProjectRuns/sidebarProjectRuns.logic";
 import { useSidebarProjectRuns } from "./sidebarProjectRuns/useSidebarProjectRuns";
+import { threadCardLayout } from "./sidebarThreadCards/threadCardLayout";
 import { ThreadSearchMatchExcerpt } from "./ThreadSearchMatch";
 import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
 import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
@@ -960,8 +954,8 @@ const SidebarDraftRow = memo(function SidebarDraftRow(props: {
         <span className="sr-only">{preview}</span>
         <div
           className={cn(
-            "relative z-10 px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]",
-            twoLineThreadCards ? "h-[3.75rem]" : "h-[4.875rem]",
+            "relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)",
+            threadCardLayout({ twoLineThreadCards, inProjectRun: false }).content,
           )}
         >
           <div className="flex h-5 min-w-0 items-center gap-1.5">
@@ -2027,29 +2021,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
 
   const diff = latestRunDiff(thread);
 
-  // Fork: shared by both card layouts — trailing the title on a two-line card,
-  // closing the third line otherwise.
-  const trailingIcons = (
-    <span
-      aria-hidden
-      className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
-    >
-      {/* The third line shows the machine of a scratch thread; two-line cards have none. */}
-      {isRemote && (twoLineThreadCards || !showsScratchMachine) ? (
-        <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
-          <EnvironmentMachineIcon
-            aria-hidden
-            kind={props.environmentMachine}
-            className="size-3.5"
-          />
-        </span>
-      ) : null}
-      <SidebarProviderStack
-        thread={thread}
-        providerEntryByInstanceId={props.providerEntryByInstanceId}
-      />
-    </span>
-  );
+  // Fork: two-line cards and project runs reshape upstream's card.
+  const cardLayout = threadCardLayout({
+    twoLineThreadCards,
+    inProjectRun: projectRunPlacement !== null,
+  });
 
   return (
     <li
@@ -2057,13 +2033,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       {...sortableRootProps}
       {...(fileDropHandlers ?? {})}
       className={cn(
-        // Matches the content box; the py-0.5 padding is added on top.
-        "list-none py-0.5 [content-visibility:auto]",
-        twoLineThreadCards
-          ? projectRunPlacement === null
-            ? "[contain-intrinsic-size:auto_64px]"
-            : "[contain-intrinsic-size:auto_56px]"
-          : "[contain-intrinsic-size:auto_78px]",
+        // Matches the h-[4.875rem] content box; the py-0.5 padding is added on top.
+        "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
+        cardLayout.item,
         projectRunClassName,
         sortable?.isDragging && "relative z-20",
       )}
@@ -2090,21 +2062,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           {accessibleTitle}
           <div
             className={cn(
-              "relative z-10 px-[var(--sidebar-row-content-inset)] py-[var(--sidebar-content-inset)]",
-              twoLineThreadCards ? "h-[3.75rem]" : "h-[4.875rem]",
-              // Fork: inside a run the project line is gone, so the card gives
-              // back the height and padding that line used to justify.
-              projectRunPlacement !== null &&
-                twoLineThreadCards &&
-                "h-[3.25rem] py-[calc(var(--sidebar-content-inset)-0.125rem)]",
+              "relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)",
+              cardLayout.content,
             )}
           >
-            <div
-              className={cn(
-                "flex min-w-0 items-center gap-1.5",
-                projectRunPlacement === null || !twoLineThreadCards ? "h-5" : "h-4",
-              )}
-            >
+            <div className={cn("flex h-5 min-w-0 items-center gap-1.5", cardLayout.firstLine)}>
               {draftIndicator}
               {/* Fork: a run's rows hand this line to the branch — their
                   project sits in the run header above them. */}
@@ -2275,23 +2237,36 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                   release click still fires and is consumed. */}
               {props.sweepAction !== null ? dragDestination : null}
             </div>
-            {/* Fork: with two-line cards the environment and provider icons
-                trail the title, and the third line below goes with them. */}
-            <div
-              className={cn(
-                "flex min-w-0",
-                twoLineThreadCards && "items-center gap-1.5",
-                projectRunPlacement !== null && twoLineThreadCards ? "mt-0.5" : "mt-1",
-              )}
-            >
+            <div className={cn("mt-1 flex min-w-0", cardLayout.titleLine)}>
               {title}
               {isRegeneratingTitle ? (
                 <span role="status" className="sr-only">
                   Regenerating title
                 </span>
               ) : null}
-              {twoLineThreadCards ? trailingIcons : null}
+              {/* Fork: two-line cards hide the third line, so its icons trail the title. */}
+              {twoLineThreadCards ? (
+                <span
+                  aria-hidden
+                  className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
+                >
+                  {isRemote ? (
+                    <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
+                      <EnvironmentMachineIcon
+                        aria-hidden
+                        kind={props.environmentMachine}
+                        className="size-3.5"
+                      />
+                    </span>
+                  ) : null}
+                  <SidebarProviderStack
+                    thread={thread}
+                    providerEntryByInstanceId={props.providerEntryByInstanceId}
+                  />
+                </span>
+              ) : null}
             </div>
+            {/* Fork: two-line cards leave the third line out. */}
             {twoLineThreadCards ? null : (
               <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
                 {/* Always the branch. The plan step used to take this slot while
@@ -2330,7 +2305,24 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                     </span>
                   </span>
                 ) : null}
-                {trailingIcons}
+                <span
+                  aria-hidden
+                  className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
+                >
+                  {isRemote && !showsScratchMachine ? (
+                    <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
+                      <EnvironmentMachineIcon
+                        aria-hidden
+                        kind={props.environmentMachine}
+                        className="size-3.5"
+                      />
+                    </span>
+                  ) : null}
+                  <SidebarProviderStack
+                    thread={thread}
+                    providerEntryByInstanceId={props.providerEntryByInstanceId}
+                  />
+                </span>
               </div>
             )}
           </div>
@@ -2540,19 +2532,7 @@ export default function Sidebar() {
   const projects = useProjects();
   const projectOrder = useUiStateStore((store) => store.projectOrder);
   const threads = useThreadShells();
-  // Fork: threads a coordinator started render under it, not as rows of their own.
-  const childThreadGroups = useChildThreadGroups(threads);
-  const threadParentActions = useThreadParentActions();
-  // Fork: coordinators whose work spans projects gather under "Cross-project".
-  const crossProjectRunKeys = useMemo(
-    () =>
-      new Map(
-        [...crossProjectCoordinatorKeys({ threads, groups: childThreadGroups })].map(
-          (key) => [key, CROSS_PROJECT_RUN_KEY] as const,
-        ),
-      ),
-    [childThreadGroups, threads],
-  );
+  const threadParentActions = useThreadParentActions(); // Fork: thread orchestration
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -2731,18 +2711,9 @@ export default function Sidebar() {
     () => new Map(projects.map((project) => [`${project.environmentId}:${project.id}`, project])),
     [projects],
   );
-  // Fork: the logical project group behind each thread, for the run headers.
-  const projectGroupByThreadProjectKey = useMemo(
-    () =>
-      new Map(
-        projectGroups.flatMap((group) =>
-          group.memberProjects.map(
-            (project) => [`${project.environmentId}:${project.id}`, group] as const,
-          ),
-        ),
-      ),
-    [projectGroups],
-  );
+  // Fork: project runs and coordinators' child threads.
+  const { childThreadGroups, crossProjectRunKeys, projectGroupByThreadProjectKey } =
+    useForkSidebarGroups({ threads, projectGroups });
   const projectDisplayNameByKey = useMemo(
     () =>
       new Map(
@@ -5257,6 +5228,17 @@ export default function Sidebar() {
     },
     [isMobile, setOpenMobile],
   );
+  // Fork: run headers and child threads around upstream's rows.
+  const forkList = forkSidebarList({
+    activeRuns,
+    settledRuns,
+    childThreadGroups,
+    crossProjectRunKeys,
+    projectGroupByThreadProjectKey,
+    threadByKey,
+    routeThreadKey,
+    onRunHeaderNewThread: handleRunHeaderNewThread,
+  });
 
   // The button mirrors chat.new: in multi-project setups both route through
   // the command palette's "New thread in..." picker, and in single-project
@@ -5285,141 +5267,138 @@ export default function Sidebar() {
             <SidebarThreadHeader
               searchFieldRef={headerSearchRef}
               hasProjects={projectGroups.length > 0}
+              forkLeadingActions={<AutoArrangeButton threads={autoArrangeThreads} />}
               projectScope={
-                <>
-                  <AutoArrangeButton threads={autoArrangeThreads} />
-                  <Combobox
-                    items={projectScopeItems}
-                    filteredItems={filteredProjectScopeItems}
-                    autoHighlight
-                    itemToStringLabel={(item) => item.label}
-                    isItemEqualToValue={(a, b) => a.value === b.value}
-                    open={projectScopeMenuState.open}
-                    onOpenChange={(open) => {
-                      if (open) suppressNextScopeChangeRef.current = false;
-                      dispatchProjectScopeMenu({ type: "open-changed", open });
-                    }}
-                    onItemHighlighted={(item) => {
-                      highlightedProjectScopeKeyRef.current = item?.value ?? null;
-                    }}
-                    value={selectedProjectScopeItem}
-                    onValueChange={(item) => {
-                      if (suppressNextScopeChangeRef.current) {
-                        suppressNextScopeChangeRef.current = false;
-                        return;
-                      }
-                      if (!item) return;
-                      setProjectScopeKey(item.value === "all" ? null : item.value);
-                    }}
-                  >
-                    <ComboboxTrigger
-                      render={
-                        <SidebarHeaderIconButton
-                          label={
-                            scopedProjectGroup
-                              ? `Filter threads by project: ${scopedProjectGroup.displayName}`
-                              : "Filter threads by project"
-                          }
-                        />
-                      }
-                    >
-                      {scopedProjectGroup ? (
-                        // Wrapped so the button's direct-child svg color rule cannot override
-                        // a project's own icon color.
-                        <span className="flex shrink-0">
-                          <ProjectFavicon project={scopedProjectGroup} className="size-4" />
-                        </span>
-                      ) : (
-                        <ListFilterIcon className="size-4" />
-                      )}
-                    </ComboboxTrigger>
-                    <ComboboxPopup
-                      align="start"
-                      // Anchored to the search field, not the 28px trigger: the
-                      // popup opens under the field, is at least as wide as it,
-                      // and grows to fit project names up to a cap, past which
-                      // the rows truncate.
-                      anchor={headerSearchRef}
-                      className="max-w-[min(18rem,var(--available-width))] overflow-hidden"
-                    >
-                      <ComboboxSearchInput
-                        aria-label="Search projects"
-                        placeholder="Search projects..."
-                        value={projectScopeMenuState.query}
-                        onKeyDown={(event) => {
-                          if (
-                            event.defaultPrevented ||
-                            event.nativeEvent.isComposing ||
-                            event.ctrlKey ||
-                            event.altKey ||
-                            event.metaKey ||
-                            (event.key !== "ContextMenu" &&
-                              !(event.shiftKey && event.key === "F10"))
-                          ) {
-                            return;
-                          }
-                          // Combobox items use virtual focus: keyboard events
-                          // stay on this input, not on the highlighted option.
-                          const scopeKey = highlightedProjectScopeKeyRef.current;
-                          const project = scopeKey ? projectGroupByScopeKey.get(scopeKey) : null;
-                          if (project) handleProjectSettings(event, project);
-                        }}
-                        onChange={(event) =>
-                          dispatchProjectScopeMenu({
-                            type: "query-changed",
-                            query: event.target.value,
-                          })
+                <Combobox
+                  items={projectScopeItems}
+                  filteredItems={filteredProjectScopeItems}
+                  autoHighlight
+                  itemToStringLabel={(item) => item.label}
+                  isItemEqualToValue={(a, b) => a.value === b.value}
+                  open={projectScopeMenuState.open}
+                  onOpenChange={(open) => {
+                    if (open) suppressNextScopeChangeRef.current = false;
+                    dispatchProjectScopeMenu({ type: "open-changed", open });
+                  }}
+                  onItemHighlighted={(item) => {
+                    highlightedProjectScopeKeyRef.current = item?.value ?? null;
+                  }}
+                  value={selectedProjectScopeItem}
+                  onValueChange={(item) => {
+                    if (suppressNextScopeChangeRef.current) {
+                      suppressNextScopeChangeRef.current = false;
+                      return;
+                    }
+                    if (!item) return;
+                    setProjectScopeKey(item.value === "all" ? null : item.value);
+                  }}
+                >
+                  <ComboboxTrigger
+                    render={
+                      <SidebarHeaderIconButton
+                        label={
+                          scopedProjectGroup
+                            ? `Filter threads by project: ${scopedProjectGroup.displayName}`
+                            : "Filter threads by project"
                         }
                       />
-                      <ComboboxEmpty>No matching projects.</ComboboxEmpty>
-                      <ComboboxList>
-                        {(item: (typeof projectScopeItems)[number]) => {
-                          const project = projectGroupByScopeKey.get(item.value) ?? null;
-                          return (
-                            <ComboboxItem
-                              key={item.value}
-                              hideIndicator
-                              value={item}
-                              onContextMenu={(event) => {
-                                if (project) handleProjectSettings(event, project);
-                              }}
-                            >
-                              {project ? (
-                                <ProjectFavicon project={project} className="size-4 shrink-0" />
-                              ) : (
-                                <FolderIcon className="size-4 shrink-0" />
-                              )}
-                              <span className="min-w-0 flex-1 truncate text-sm">{item.label}</span>
-                              {project && showProjectEnvironments ? (
-                                <ProjectEnvironmentBadge
-                                  group={project}
-                                  primaryEnvironmentId={primaryEnvironmentId}
-                                  machineByEnvironmentId={environmentMachineById}
-                                />
-                              ) : null}
-                              {project ? (
-                                <Button
-                                  size="icon-xs"
-                                  variant="ghost-muted"
-                                  tabIndex={-1}
-                                  aria-hidden="true"
-                                  title={`Project settings for ${project.displayName}`}
-                                  className="ml-auto"
-                                  onPointerDown={(event) => event.stopPropagation()}
-                                  onClick={(event) => {
-                                    void handleProjectSettings(event, project);
-                                  }}
-                                >
-                                  <SettingsIcon className="size-3.5" />
-                                </Button>
-                              ) : null}
-                            </ComboboxItem>
-                          );
-                        }}
-                      </ComboboxList>
-                    </ComboboxPopup>
-                  </Combobox>
-                </>
+                    }
+                  >
+                    {scopedProjectGroup ? (
+                      // Wrapped so the button's direct-child svg color rule cannot override
+                      // a project's own icon color.
+                      <span className="flex shrink-0">
+                        <ProjectFavicon project={scopedProjectGroup} className="size-4" />
+                      </span>
+                    ) : (
+                      <ListFilterIcon className="size-4" />
+                    )}
+                  </ComboboxTrigger>
+                  <ComboboxPopup
+                    align="start"
+                    // Anchored to the search field, not the 28px trigger: the
+                    // popup opens under the field, is at least as wide as it,
+                    // and grows to fit project names up to a cap, past which
+                    // the rows truncate.
+                    anchor={headerSearchRef}
+                    className="max-w-[min(18rem,var(--available-width))] overflow-hidden"
+                  >
+                    <ComboboxSearchInput
+                      aria-label="Search projects"
+                      placeholder="Search projects..."
+                      value={projectScopeMenuState.query}
+                      onKeyDown={(event) => {
+                        if (
+                          event.defaultPrevented ||
+                          event.nativeEvent.isComposing ||
+                          event.ctrlKey ||
+                          event.altKey ||
+                          event.metaKey ||
+                          (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10"))
+                        ) {
+                          return;
+                        }
+                        // Combobox items use virtual focus: keyboard events
+                        // stay on this input, not on the highlighted option.
+                        const scopeKey = highlightedProjectScopeKeyRef.current;
+                        const project = scopeKey ? projectGroupByScopeKey.get(scopeKey) : null;
+                        if (project) handleProjectSettings(event, project);
+                      }}
+                      onChange={(event) =>
+                        dispatchProjectScopeMenu({
+                          type: "query-changed",
+                          query: event.target.value,
+                        })
+                      }
+                    />
+                    <ComboboxEmpty>No matching projects.</ComboboxEmpty>
+                    <ComboboxList>
+                      {(item: (typeof projectScopeItems)[number]) => {
+                        const project = projectGroupByScopeKey.get(item.value) ?? null;
+                        return (
+                          <ComboboxItem
+                            key={item.value}
+                            hideIndicator
+                            value={item}
+                            onContextMenu={(event) => {
+                              if (project) handleProjectSettings(event, project);
+                            }}
+                          >
+                            {project ? (
+                              <ProjectFavicon project={project} className="size-4 shrink-0" />
+                            ) : (
+                              <FolderIcon className="size-4 shrink-0" />
+                            )}
+                            <span className="min-w-0 flex-1 truncate text-sm">{item.label}</span>
+                            {project && showProjectEnvironments ? (
+                              <ProjectEnvironmentBadge
+                                group={project}
+                                primaryEnvironmentId={primaryEnvironmentId}
+                                machineByEnvironmentId={environmentMachineById}
+                              />
+                            ) : null}
+                            {project ? (
+                              <Button
+                                size="icon-xs"
+                                variant="ghost-muted"
+                                tabIndex={-1}
+                                aria-hidden="true"
+                                title={`Project settings for ${project.displayName}`}
+                                className="ml-auto"
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                  void handleProjectSettings(event, project);
+                                }}
+                              >
+                                <SettingsIcon className="size-3.5" />
+                              </Button>
+                            ) : null}
+                          </ComboboxItem>
+                        );
+                      }}
+                    </ComboboxList>
+                  </ComboboxPopup>
+                </Combobox>
               }
               onNewProject={openAddProjectCommandPalette}
               onNewThread={handleNewThreadClick}
@@ -5662,15 +5641,7 @@ export default function Sidebar() {
                             onUnpin={attemptUnpin}
                             onAcknowledgeWoke={acknowledgeWoke}
                             onFileDropThreads={handleThreadFileDrop}
-                            crossProjectCoordinator={crossProjectRunKeys.has(threadKey)}
-                            projectRunPlacement={
-                              (section === "active"
-                                ? activeRuns
-                                : section === "settled"
-                                  ? settledRuns
-                                  : null
-                              )?.plan.placementByThreadKey.get(threadKey) ?? null
-                            }
+                            {...forkList.rowProps(threadKey, section)}
                             changeRequestSnapshot={
                               changeRequestSnapshotByKey.get(threadKey) ?? null
                             }
@@ -5702,32 +5673,6 @@ export default function Sidebar() {
                           </SortableThreadRow>
                         );
                       };
-                      // Fork: the header above each project run.
-                      const pushRunHeaders = (
-                        section: "active" | "settled",
-                        headers: readonly SidebarProjectRunHeaderInfo[],
-                      ) => {
-                        const runs = section === "active" ? activeRuns : settledRuns;
-                        for (const header of headers) {
-                          items.push(
-                            <SidebarProjectRunHeader
-                              key={`run-header:${section}:${header.projectKey}`}
-                              header={header}
-                              project={runs.projectByRunKey.get(header.projectKey) ?? null}
-                              onToggle={runs.toggleRun}
-                              onNewThread={handleRunHeaderNewThread}
-                            />,
-                          );
-                        }
-                      };
-                      // Runs folded away at the end of the active section have
-                      // no row left to hang their header on.
-                      let activeTrailingFlushed = false;
-                      const flushActiveTrailingRunHeaders = () => {
-                        if (activeTrailingFlushed) return;
-                        activeTrailingFlushed = true;
-                        pushRunHeaders("active", activeRuns.plan.trailingHeaders);
-                      };
                       const from = isContextDrag ? null : (dragState?.activeSection ?? null);
                       const items: ReactNode[] = [
                         <SidebarDraftBlock
@@ -5742,56 +5687,17 @@ export default function Sidebar() {
                       ];
                       for (const item of sidebarListItems) {
                         if (item.kind === "thread") {
-                          if (item.section === "active" || item.section === "settled") {
-                            const runs = item.section === "active" ? activeRuns : settledRuns;
-                            pushRunHeaders(
-                              item.section,
-                              runs.plan.headersBeforeThreadKey.get(item.key) ?? [],
-                            );
-                          }
+                          items.push(...forkList.beforeThread(item.key, item.section));
                           items.push(renderThreadRow(threadByKey.get(item.key)!, item.section));
-                          // Fork: the threads this one coordinates, under its row.
-                          const childThreads = childThreadGroups.childrenByParentKey.get(item.key);
-                          if (childThreads) {
-                            const section = item.section;
-                            // A folded run keeps the open coordinator visible;
-                            // its children fold with the run.
-                            const coordinator = threadByKey.get(item.key)!;
-                            const runs =
-                              section === "active"
-                                ? activeRuns
-                                : section === "settled"
-                                  ? settledRuns
-                                  : null;
-                            const runKey =
-                              crossProjectRunKeys.get(item.key) ??
-                              projectGroupByThreadProjectKey.get(
-                                `${coordinator.environmentId}:${coordinator.projectId}`,
-                              )?.projectKey;
-                            const runFolded =
-                              runs !== null &&
-                              runKey !== undefined &&
-                              runs.plan.runs.some(
-                                (run) => run.projectKey === runKey && run.collapsed,
-                              );
-                            items.push(
-                              <SidebarChildThreads
-                                key={`child-threads:${item.key}`}
-                                parentKey={item.key}
-                                children={childThreads}
-                                openThreadKey={routeThreadKey}
-                                {...(runFolded && runs && runKey
-                                  ? { onUnfoldRun: () => runs.toggleRun(runKey) }
-                                  : {})}
-                                renderRow={(child) => renderThreadRowInner(child, section)}
-                              />,
-                            );
-                          }
+                          const section = item.section;
+                          items.push(
+                            forkList.afterThread(item.key, section, (child) =>
+                              renderThreadRowInner(child, section),
+                            ),
+                          );
                           continue;
                         }
-                        if (item.marker === "snoozed-header" || item.marker === "settled-header") {
-                          flushActiveTrailingRunHeaders();
-                        }
+                        items.push(...forkList.beforeMarker(item.marker));
                         switch (item.marker) {
                           case "pinned-header":
                             items.push(
@@ -5911,8 +5817,7 @@ export default function Sidebar() {
                             break;
                         }
                       }
-                      flushActiveTrailingRunHeaders();
-                      pushRunHeaders("settled", settledRuns.plan.trailingHeaders);
+                      items.push(...forkList.atEnd());
                       return items;
                     })()}
                     {settledShelfExpanded && hiddenSettledCount > 0 ? (

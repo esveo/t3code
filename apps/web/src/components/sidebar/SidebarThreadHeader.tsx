@@ -31,6 +31,8 @@ export interface SidebarThreadHeaderProps {
   hasProjects: boolean;
   /** The project scope combobox, rendered as the first icon of the group. */
   projectScope: ReactNode;
+  /** Fork: icons in front of the project scope, such as split view's auto arrange. */
+  forkLeadingActions?: ReactNode;
   onNewProject: () => void;
   /** Receives the click so Shift+click can skip the project picker. */
   onNewThread: (event: ReactMouseEvent) => void;
@@ -53,6 +55,7 @@ export function SidebarThreadHeader({
   searchFieldRef,
   hasProjects,
   projectScope,
+  forkLeadingActions,
   onNewProject,
   onNewThread,
   newThreadDisabled,
@@ -126,6 +129,7 @@ export function SidebarThreadHeader({
       <div className="flex shrink-0 items-center">
         {hasProjects ? (
           <>
+            {forkLeadingActions}
             {projectScope}
             <SidebarHeaderIconButton label="Add project" onClick={onNewProject}>
               <FolderPlusIcon />
