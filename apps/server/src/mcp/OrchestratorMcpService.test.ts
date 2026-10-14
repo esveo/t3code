@@ -2310,6 +2310,8 @@ describe("fork: OrchestratorMcpService across projects", () => {
       Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({
         list: () => Effect.succeed([]),
       }),
+      Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
+      Layer.mock(GitVcsDriver.GitVcsDriver)({}),
       Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       Layer.mock(ProjectService.ProjectService)({}),
       Layer.mock(SecretRequests.SecretRequests)({}),
