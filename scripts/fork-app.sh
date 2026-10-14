@@ -84,6 +84,16 @@ use_node() {
   fi
 }
 
+# T3 Connect's public cloud config, as app.t3.codes ships it. Vite bakes it into
+# the web bundle at build time; without all three the app hides sign-in and the
+# account avatar. `watch` builds without a shell environment or `.env`, so the
+# build sets them itself. Values the caller exports still win.
+use_cloud_config() {
+  export T3CODE_RELAY_URL="${T3CODE_RELAY_URL:-https://relay.t3.codes}"
+  export T3CODE_CLERK_PUBLISHABLE_KEY="${T3CODE_CLERK_PUBLISHABLE_KEY:-pk_live_Y2xlcmsudDMuY29kZXMk}"
+  export T3CODE_CLERK_JWT_TEMPLATE="${T3CODE_CLERK_JWT_TEMPLATE:-t3-relay}"
+}
+
 # mkdir-based lock; waits while another holder is alive, steals a dead one.
 acquire_lock() {
   local lock="$ROOT/.$1.lock"
@@ -337,6 +347,7 @@ build_app() {
   acquire_lock prepare
   trap 'release_lock prepare' EXIT
   use_node
+  use_cloud_config
 
   local staging="$ROOT/staging"
   mkdir -p "$staging"
@@ -436,6 +447,7 @@ prepare_server() {
   acquire_lock prepare-server
   trap 'release_lock prepare-server' EXIT
   use_node
+  use_cloud_config
   [[ -f "$SERVICE_STATE" ]] || { echo "No t3 service state at $SERVICE_STATE." >&2; return 1; }
 
   local branch slug sha commit changes

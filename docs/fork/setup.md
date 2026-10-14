@@ -176,6 +176,12 @@ service is enough; no rebuild is needed. They are public values that ship in
 every release, so take them from your own installed release binary rather than
 copying them from anywhere else.
 
+The app's web bundle needs the same config plus the Clerk JWT template, and
+reads none of it at runtime: Vite bakes it in when the app is built. Without
+it the app hides T3 Connect's sign-in and account avatar, again without an
+error. `scripts/fork-app.sh` sets app.t3.codes' values for every `prepare` and
+`watch` build, so nothing needs doing on this side.
+
 ### Doing both
 
 `FORK` is the version `prepare-server` just built for your branch (replace
