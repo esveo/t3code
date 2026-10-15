@@ -170,24 +170,22 @@ const make = Effect.gen(function* () {
     const projectId =
       scope.thread === undefined || scope.thread.threadId === threadId
         ? shell.projectId
-        : yield* threadManagement
-            .getThreadShell(scope.thread.threadId)
-            .pipe(
-              Effect.mapError(() =>
-                failure("orchestration_error", "Unable to locate the calling thread."),
-              ),
-              Effect.flatMap((caller) =>
-                caller === null || caller.deletedAt !== null
-                  ? Effect.fail(failure("thread_not_found", "The calling thread was not found."))
-                  : threadProjectId(threadManagement, threadId, caller.projectId),
-              ),
-            );
+        : yield* threadManagement.getThreadShell(scope.thread.threadId).pipe(
+            Effect.mapError(() =>
+              failure("orchestration_error", "Unable to locate the calling thread."),
+            ),
+            Effect.flatMap((caller) =>
+              caller === null || caller.deletedAt !== null
+                ? Effect.fail(failure("thread_not_found", "The calling thread was not found."))
+                : threadProjectId(threadManagement, threadId, caller.projectId),
+            ),
+          );
     const target = yield* threadManagement
       .getProjectThreadRecords({ projectId, threadId }, [])
       .pipe(Effect.mapError(threadLookupFailure));
     const requestKey =
       input.clientRequestId === undefined
-        ? yield* crypto.randomUUIDv4.pipe(Effect.orDie)
+        ? yield* crypto.randomUUIDv4().pipe(Effect.orDie)
         : input.clientRequestId;
     const updateCommandId = commandId({
       scope,
