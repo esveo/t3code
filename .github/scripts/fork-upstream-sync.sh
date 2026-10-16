@@ -5,23 +5,30 @@
 # the merge or the agent writes into the checkout changes what it checks.
 #
 # Env: FORK_SHA (fork before the merge), TARGET (upstream commit to merge),
-# SYNC_DIR (reports and outputs). Run from the repository root.
+# SYNC_DIR (reports and outputs), optionally PREV (head of an earlier sync
+# attempt that stayed red, to continue from). Run from the repository root.
 #
 #   merge     merge TARGET into the checked-out FORK_SHA, rerere on; lists the
-#             files left unmerged in $SYNC_DIR/conflicts.txt, exits 1 if any
+#             files left unmerged in $SYNC_DIR/conflicts.txt, exits 1 if any.
+#             With PREV it merges FORK_SHA and TARGET into PREV instead, so the
+#             earlier attempt's resolutions and fixes carry over; writes
+#             $SYNC_DIR/continued when it did
+#   fold      with PREV: once the merge is committed, rewrites the history to
+#             FORK_SHA + one merge commit of TARGET holding the same tree
 #   checks    install, typecheck, and the tests related to the files both
 #             sides changed or the agent touched; report in checks.md
 #   guards    hard rules the result must meet; report in guards.md
 #   audit     lines the fork added that the result lost; audit.md. Fails above
 #             AUDIT_MAX_LOST (default 50): a careful merge loses a few to
 #             upstream rewrites, taking upstream's side of a conflict hundreds
-#   verify    checks, guards and audit in one go
+#   verify    fold, then checks, guards and audit in one go
 #   workflows every .github file the sync changed equals upstream's version
 set -uo pipefail
 
 : "${FORK_SHA:?}" "${TARGET:?}" "${SYNC_DIR:?}"
 mkdir -p "$SYNC_DIR"
 BASE=$(git merge-base "$FORK_SHA" "$TARGET")
+MSG="chore: merge upstream/main ($(git rev-parse --short "$TARGET"))"
 
 # The sync's merge commit: first commit on HEAD's first-parent chain after FORK_SHA.
 merge_commit() { git rev-list --first-parent --reverse "$FORK_SHA..HEAD" | head -1; }
@@ -31,7 +38,21 @@ changed() { git diff --name-only --no-renames "$@"; }
 cmd_merge() {
   git config rerere.enabled true
   git config rerere.autoUpdate true
-  git merge --no-ff --no-edit -m "chore: merge upstream/main ($(git rev-parse --short "$TARGET"))" "$TARGET" >/dev/null 2>&1
+  rm -f "$SYNC_DIR/continued"
+  if [ -n "${PREV:-}" ]; then
+    # fork's own new commits rarely conflict with the earlier attempt; if they
+    # do, start fresh from fork rather than hand the agent two merges at once.
+    git checkout -q --detach "$PREV"
+    if git merge --no-edit -m "chore: merge fork into the previous upstream sync" "$FORK_SHA" >/dev/null 2>&1; then
+      echo "$PREV" > "$SYNC_DIR/continued"
+      echo "Continuing the earlier sync attempt $PREV."
+    else
+      git merge --abort
+      git checkout -q "$FORK_SHA"
+      echo "fork's new commits conflict with the earlier sync attempt; starting fresh from fork."
+    fi
+  fi
+  git merge --no-ff --no-edit -m "$MSG" "$TARGET" >/dev/null 2>&1
   # rerere may have resolved every conflict; `ls-files -u` is the truth, not the exit code.
   git ls-files -u | cut -f2 | sort -u > "$SYNC_DIR/conflicts.txt"
   if [ -s "$SYNC_DIR/conflicts.txt" ]; then
@@ -42,12 +63,30 @@ cmd_merge() {
   echo "Merged without conflicts."
 }
 
-# Files where both sides meet, plus whatever came after the merge commit.
+cmd_fold() {
+  [ -s "$SYNC_DIR/continued" ] || return 0
+  git rev-parse -q --verify MERGE_HEAD >/dev/null && return 0
+  [ -n "$(git ls-files -u)" ] && return 0
+  local m
+  m=$(merge_commit)
+  if [ -n "$m" ] && [ "$(git rev-parse "$m^1")" = "$FORK_SHA" ] &&
+    [ "$(git rev-parse "$m^2" 2>/dev/null)" = "$(git rev-parse "$TARGET")" ]; then
+    return 0
+  fi
+  # Only content that really came through merges of both sides gets folded.
+  git merge-base --is-ancestor "$FORK_SHA" HEAD && git merge-base --is-ancestor "$TARGET" HEAD || return 0
+  git reset -q --soft "$(git commit-tree "HEAD^{tree}" -p "$FORK_SHA" -p "$TARGET" -m "$MSG")"
+  echo "Folded the continued sync into one merge commit of fork and upstream."
+}
+
+# Files where both sides meet, files the result takes from neither side, and
+# whatever came after the merge commit.
 touched_files() {
   local m
   m=$(merge_commit)
   {
     comm -12 <(changed "$BASE" "$FORK_SHA" | sort) <(changed "$BASE" "$TARGET" | sort)
+    comm -12 <(changed "$FORK_SHA" HEAD | sort) <(changed "$TARGET" HEAD | sort)
     [ -n "$m" ] && changed "$m" HEAD
   } | sort -u | while read -r f; do
     [ -n "$(git ls-tree HEAD -- "$f")" ] && printf '%s\n' "$f"
@@ -82,9 +121,10 @@ cmd_checks() {
     case "$extra" in "vp test run"*) extra=${extra#vp test run} ;; *) continue ;; esac
     extra=${extra//--passWithNoTests/}
     rel=$(printf '%s\n' "$files" | grep "^$pkg/" | sed "s|^$pkg/||")
+    # One retry, so a flaky test does not leave the sync for the maintainer.
     # shellcheck disable=SC2086
     step "tests related to $(echo "$rel" | wc -l | tr -d ' ') changed files in $pkg" \
-      bash -c 'cd "$1" && shift && vp test related --run --passWithNoTests "$@"' _ "$pkg" $extra $rel
+      bash -c 'cd "$1" && shift && vp test related --run --passWithNoTests --retry 1 "$@"' _ "$pkg" $extra $rel
   done
   return $failed
 }
@@ -163,6 +203,7 @@ cmd_audit() {
 
 cmd_verify() {
   local failed=0
+  cmd_fold
   cmd_checks || failed=1
   cmd_guards || failed=1
   cmd_audit || failed=1

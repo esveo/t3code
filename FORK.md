@@ -62,10 +62,14 @@ disturbing the build people work in all day.
   `fork-upstream-sync.yml` merges upstream (see below), lets the Copilot CLI
   resolve conflicts and fix what broke, and lands the result as a PR it merges
   itself once typecheck, the related tests and its checks against dropped fork
-  code are green. Otherwise the PR stays open as a draft that mentions Paul,
-  the maintainer. Run it by hand from the Actions tab; an older upstream commit
-  as `upstream_ref` merges a large backlog in stages. Rebase feature branches
-  onto `fork` to pick upstream up.
+  code are green. Copilot gets up to three sessions, each starting from the
+  red checks of the one before. A sync still red after that stays open as a
+  draft that mentions Paul, the maintainer, and the next morning's run
+  continues from that PR's branch instead of starting over, then closes it:
+  fixes pushed to a red sync PR carry over. Run it by hand from the Actions
+  tab (`fresh` ignores an open sync PR, `dry_run` opens no PR); an older
+  upstream commit as `upstream_ref` merges a large backlog in stages. Rebase
+  feature branches onto `fork` to pick upstream up.
 - The fork runs upstream's Orchestrator V2 (`orchestration-v2/`). Build fork
   features on it; the V1 orchestration is gone.
 
