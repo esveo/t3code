@@ -20,8 +20,6 @@ import {
 import { ESVEO_MIDNIGHT_THEME, ESVEO_THEME } from "@t3tools/shared/themePalettes";
 
 const THEME_STORAGE_KEY = "t3code:theme";
-// A custom theme that omits chrome falls back to the runtime default, so the
-// boot copy of that default stays derived from the real palette.
 const DEFAULT_DARK_CHROME = getDefaultThemeColors("dark").chrome;
 
 const bootScript = (() => {
@@ -102,7 +100,6 @@ function runBootScript(options: {
   };
 }
 
-/** Mirrors getStored + readAppearanceModePreference + resolveThemeAppearance from the runtime. */
 function runtimeResolvedAppearance(
   storage: Record<string, string>,
   prefersDark: boolean,
@@ -339,9 +336,6 @@ describe("index.html boot script", () => {
     expect(boot.backgroundColor).toBe(colors.chrome);
   });
 
-  // Asserting against the real palette definitions (not literals) turns the
-  // boot script's hand-maintained copy into a CI-enforced contract: any
-  // palette change breaks this test until the copy in index.html is updated.
   it("keeps every built-in boot splash in sync with the real palettes", () => {
     for (const theme of [
       T3_CHAT_THEME,
@@ -352,7 +346,6 @@ describe("index.html boot script", () => {
       ESVEO_THEME,
       ESVEO_MIDNIGHT_THEME,
     ]) {
-      // The boot script resolves every built-in from a light base appearance.
       expect(theme.appearance).toBe("light");
       for (const mode of ["light", "dark"] as const) {
         const colors = getThemeColorsForMode(theme, mode);
