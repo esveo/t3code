@@ -51,6 +51,7 @@ import {
   launchScheduledSubthread,
   resolveSpawnAsSubthread,
   spawnsAsSubthread,
+  validateThreadBinding,
 } from "./forkSubthreadRun.ts";
 import { ThreadCoordinators } from "../threadOrchestration/ThreadCoordinators.ts";
 import {
@@ -1130,6 +1131,7 @@ export const layer = Layer.effect(
           runCount: existingTask?.runCount ?? 0,
           ...(resolveSpawnAsSubthread(input, existingTask) ? { spawnAsSubthread: true } : {}), // Fork
         };
+        yield* validateThreadBinding(threadManagement, task, existingTask); // Fork
         yield* saveTask(task, input.requireExisting === true, webhook);
         yield* notifyChanged;
         return { task: (yield* findTask(id)) ?? task };

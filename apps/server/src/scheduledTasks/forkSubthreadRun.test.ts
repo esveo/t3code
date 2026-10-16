@@ -20,6 +20,9 @@ import * as ScheduledTaskService from "./ScheduledTaskService.ts";
 
 const projectId = ProjectId.make("project:test");
 const boundThreadId = ThreadId.make("thread:coordinator");
+const foreignThreadId = ThreadId.make("thread:other-project");
+/** Threads the mock reports as deleted. */
+const deletedThreads = new Set<ThreadId>();
 
 const taskInput = (
   overrides: Partial<ScheduledTaskUpsertInput> = {},
@@ -71,6 +74,20 @@ const withService = <A, E>(
             },
           } as never),
         sendToThread: (input) => Effect.sync(() => sends.push(input)).pipe(Effect.as({} as never)),
+        getThreadShell: (threadId) =>
+          Effect.succeed(
+            deletedThreads.has(threadId)
+              ? null
+              : threadId === boundThreadId
+                ? ({ id: threadId, projectId, title: "Coordinator" } as never)
+                : threadId === foreignThreadId
+                  ? ({
+                      id: threadId,
+                      projectId: ProjectId.make("project:other"),
+                      title: "Elsewhere",
+                    } as never)
+                  : null,
+          ),
       }),
       Layer.mock(SecretRequests.SecretRequests)({}),
       Layer.mock(ThreadCoordinators)({
@@ -140,6 +157,27 @@ it.effect("keeps the setting on saves that omit it and drops it when unbound", (
         taskInput({ id: task.id, threadId: null, spawnAsSubthread: true }),
       );
       assert.isUndefined(unbound.spawnAsSubthread);
+    }),
+  ),
+);
+
+it.effect("refuses binding to a thread of another project or one that does not exist", () =>
+  withService(({ service }) =>
+    Effect.gen(function* () {
+      const foreign = yield* Effect.flip(service.upsert(taskInput({ threadId: foreignThreadId })));
+      assert.include(foreign.message, "another project");
+      const missing = yield* Effect.flip(
+        service.upsert(taskInput({ threadId: ThreadId.make("thread:missing") })),
+      );
+      assert.include(missing.message, "does not exist");
+
+      // A saved binding is not rechecked, so a task whose thread is gone stays editable.
+      const { task } = yield* service.upsert(taskInput());
+      deletedThreads.add(boundThreadId);
+      const { task: renamed } = yield* service
+        .upsert(taskInput({ id: task.id, title: "Renamed" }))
+        .pipe(Effect.ensuring(Effect.sync(() => deletedThreads.delete(boundThreadId))));
+      assert.equal(renamed.title, "Renamed");
     }),
   ),
 );

@@ -43,6 +43,39 @@ export function resolveSpawnAsSubthread(
   return input.spawnAsSubthread ?? existing?.spawnAsSubthread ?? false;
 }
 
+/**
+ * Refuses binding a task to a thread outside its project. Only a new or
+ * changed binding is checked, so a task whose thread was deleted later can
+ * still be edited (its runs fail and say why).
+ */
+export const validateThreadBinding = (
+  threadManagement: Pick<
+    ThreadManagementService.ThreadManagementService["Service"],
+    "getThreadShell"
+  >,
+  input: {
+    readonly id: ScheduledTask["id"];
+    readonly projectId: ScheduledTask["projectId"];
+    readonly threadId: string | null;
+  },
+  existing: Pick<ScheduledTask, "projectId" | "threadId"> | null,
+) =>
+  Effect.gen(function* () {
+    if (input.threadId === null) return;
+    if (existing?.threadId === input.threadId && existing.projectId === input.projectId) return;
+    const shell = yield* threadManagement
+      .getThreadShell(ThreadId.make(input.threadId))
+      .pipe(Effect.orElseSucceed(() => null));
+    if (shell?.projectId === input.projectId) return;
+    return yield* new ScheduledTaskError({
+      message:
+        shell === null
+          ? `Thread '${input.threadId}' does not exist.`
+          : `'${shell.title}' belongs to another project.`,
+      taskId: input.id,
+    });
+  });
+
 export const launchScheduledSubthread = (
   services: {
     readonly threadLaunch: ThreadLaunchService.ThreadLaunchService["Service"];

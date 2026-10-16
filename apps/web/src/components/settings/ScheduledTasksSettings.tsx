@@ -63,7 +63,8 @@ import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
 import { readEnvironmentScope } from "~/state/session";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { CatchUpMissedRunsField } from "../scheduledTaskCatchUp/CatchUpMissedRunsField";
-import { SpawnAsSubthreadField } from "../scheduledTaskSubthread/SpawnAsSubthreadField";
+import { ScheduledTaskLocationField } from "../scheduledTaskLocation/ScheduledTaskLocationField";
+import { withScheduledTaskProject } from "../scheduledTaskLocation/scheduledTaskLocation.logic";
 import {
   WEBHOOK_SIGNATURE_DEFAULTS,
   matchesScheduledTaskScope,
@@ -147,13 +148,17 @@ function Field({
   label,
   hint,
   htmlFor,
+  hidden,
   children,
 }: {
   label: string;
   hint?: string;
   htmlFor?: string;
+  /** Fork (esveo) */
+  hidden?: boolean;
   children: ReactNode;
 }) {
+  if (hidden) return null; // Fork
   return (
     <div className="space-y-1.5">
       <Label className="flex items-baseline justify-between" htmlFor={htmlFor}>
@@ -1000,6 +1005,8 @@ function ScheduledTaskEditorDialog({
                   setDraft((current) => ({
                     ...current,
                     projectId: "",
+                    threadId: "", // Fork
+                    spawnAsSubthread: false, // Fork
                     modelKey: "",
                     baseModelSelection: null,
                     baseRef: "main",
@@ -1057,8 +1064,9 @@ function ScheduledTaskEditorDialog({
               <Field label="Project" htmlFor="scheduled-task-project">
                 <Select
                   value={selectedProjectId}
+                  // Fork (esveo): a thread binding belongs to the project.
                   onValueChange={(projectId) =>
-                    setDraft((current) => ({ ...current, projectId: projectId ?? "" }))
+                    setDraft((current) => withScheduledTaskProject(current, projectId ?? ""))
                   }
                 >
                   <SelectTrigger size="sm" id="scheduled-task-project">
@@ -1076,7 +1084,12 @@ function ScheduledTaskEditorDialog({
                 </Select>
               </Field>
 
-              <Field label="Workspace" htmlFor="scheduled-task-workspace">
+              {/* Fork (esveo): a run in an existing thread uses that thread's checkout. */}
+              <Field
+                label="Workspace"
+                htmlFor="scheduled-task-workspace"
+                hidden={draft.threadId !== ""}
+              >
                 <Select
                   value={draft.workspaceMode}
                   onValueChange={(value) =>
@@ -1095,7 +1108,14 @@ function ScheduledTaskEditorDialog({
               </Field>
             </div>
 
-            {draft.workspaceMode === "worktree" ? (
+            <ScheduledTaskLocationField
+              environmentId={environmentId}
+              projectId={selectedProjectId}
+              draft={draft}
+              onDraftChange={setDraft}
+            />
+
+            {draft.workspaceMode === "worktree" && !draft.threadId ? (
               <Field label="Base branch" htmlFor="scheduled-task-base-ref">
                 <WorktreeBaseBranchPicker
                   key={`${environmentId}:${selectedProjectId}`}
@@ -1112,7 +1132,7 @@ function ScheduledTaskEditorDialog({
                 />
               </Field>
             ) : null}
-            {draft.workspaceMode === "existing_worktree" ? (
+            {draft.workspaceMode === "existing_worktree" && !draft.threadId ? (
               <Field label="Checkout path" htmlFor="scheduled-task-checkout">
                 <Input
                   id="scheduled-task-checkout"
@@ -1365,16 +1385,6 @@ function ScheduledTaskEditorDialog({
                 checked={draft.catchUpMissedRuns}
                 onCheckedChange={(catchUpMissedRuns) =>
                   setDraft((current) => ({ ...current, catchUpMissedRuns }))
-                }
-              />
-            ) : null}
-
-            {/* Fork (esveo): only a task bound to a thread can run as its subthread. */}
-            {draft.threadId ? (
-              <SpawnAsSubthreadField
-                checked={draft.spawnAsSubthread}
-                onCheckedChange={(spawnAsSubthread) =>
-                  setDraft((current) => ({ ...current, spawnAsSubthread }))
                 }
               />
             ) : null}
