@@ -81,7 +81,7 @@ export type DesktopUpdateStatus =
 export type DesktopRuntimeArch = "arm64" | "x64" | "other";
 export type DesktopTheme = "light" | "dark" | "system";
 export type DesktopUpdateChannel = "latest" | "nightly";
-export type DesktopAppStageLabel = "Alpha" | "Dev" | "Nightly";
+export type DesktopAppStageLabel = "Alpha" | "Beta" | "Dev" | "Nightly";
 
 export const DesktopUpdateStatusSchema = Schema.Literals([
   "disabled",
@@ -96,7 +96,7 @@ export const DesktopUpdateStatusSchema = Schema.Literals([
 export const DesktopRuntimeArchSchema = Schema.Literals(["arm64", "x64", "other"]);
 export const DesktopThemeSchema = Schema.Literals(["light", "dark", "system"]);
 export const DesktopUpdateChannelSchema = Schema.Literals(["latest", "nightly"]);
-export const DesktopAppStageLabelSchema = Schema.Literals(["Alpha", "Dev", "Nightly"]);
+export const DesktopAppStageLabelSchema = Schema.Literals(["Alpha", "Beta", "Dev", "Nightly"]);
 
 export interface DesktopAppBranding {
   baseName: string;
@@ -288,6 +288,12 @@ export interface DesktopUpdateState {
   forkService?: DesktopForkServiceState | undefined;
   /** Fork: the newest prepared build of each branch, waiting to be switched to. */
   forkBuilds?: ReadonlyArray<DesktopForkBuild> | undefined;
+  /**
+   * The version the last install handed to the OS installer that did not
+   * apply: the app came back on its old version. Server-triggered updates do
+   * not install it again; the user can retry it from the update button.
+   */
+  notAppliedVersion?: string;
 }
 
 export interface DesktopForkServiceState {
@@ -376,6 +382,7 @@ export const DesktopUpdateStateSchema = Schema.Struct({
   canRetry: Schema.Boolean,
   forkService: Schema.optional(DesktopForkServiceStateSchema),
   forkBuilds: Schema.optional(Schema.Array(DesktopForkBuildSchema)),
+  notAppliedVersion: Schema.optionalKey(Schema.String),
 });
 
 /** The desktop app's `t3` command on PATH, managed from Settings. */

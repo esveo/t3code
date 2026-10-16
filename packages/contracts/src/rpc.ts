@@ -215,6 +215,7 @@ import {
   OrchestrationV2StopWorkflowError,
   OrchestrationV2DispatchCommandError,
   OrchestrationV2GetShellSnapshotError,
+  OrchestrationV2CommandOutputError,
   OrchestrationV2GetThreadProjectionError,
   OrchestrationV2RpcSchemas,
   OrchestrationV2ThreadLaunchError,
@@ -330,6 +331,7 @@ import { UsagePricing, UsageReadError, UsageSummary, UsageSummaryInput } from ".
 import { ThreadUsageInput, ThreadUsageSummary } from "./threadUsage.ts";
 import {
   StorageCleanupReport,
+  DatabaseStorageStatus,
   ServerSettings,
   ServerSettingsError,
   ServerSettingsPatch,
@@ -488,6 +490,7 @@ export const WS_METHODS = {
   serverRemoveKeybinding: "server.removeKeybinding",
   serverRunStorageCleanup: "server.runStorageCleanup",
   serverGetStorageCleanupReport: "server.getStorageCleanupReport",
+  serverGetDatabaseStorage: "server.getDatabaseStorage",
   serverGetSettings: "server.getSettings",
   serverUpdateSettings: "server.updateSettings",
   serverDiscoverSourceControl: "server.discoverSourceControl",
@@ -763,6 +766,13 @@ const WsServerRunStorageCleanupRpc = Rpc.make(WS_METHODS.serverRunStorageCleanup
 const WsServerGetStorageCleanupReportRpc = Rpc.make(WS_METHODS.serverGetStorageCleanupReport, {
   payload: Schema.Struct({}),
   success: Schema.NullOr(StorageCleanupReport),
+  stream: true,
+  error: EnvironmentAuthorizationError,
+});
+
+const WsServerGetDatabaseStorageRpc = Rpc.make(WS_METHODS.serverGetDatabaseStorage, {
+  payload: Schema.Struct({}),
+  success: Schema.NullOr(DatabaseStorageStatus),
   stream: true,
   error: EnvironmentAuthorizationError,
 });
@@ -1748,6 +1758,16 @@ const WsOrchestrationV2SubscribeThreadRpc = Rpc.make(ORCHESTRATION_V2_WS_METHODS
   stream: true,
 });
 
+const WsOrchestrationV2SubscribeCommandOutputRpc = Rpc.make(
+  ORCHESTRATION_V2_WS_METHODS.subscribeCommandOutput,
+  {
+    payload: OrchestrationV2RpcSchemas.subscribeCommandOutput.input,
+    success: OrchestrationV2RpcSchemas.subscribeCommandOutput.output,
+    error: Schema.Union([OrchestrationV2CommandOutputError, EnvironmentAuthorizationError]),
+    stream: true,
+  },
+);
+
 const WsSubscribeTerminalEventsRpc = Rpc.make(WS_METHODS.subscribeTerminalEvents, {
   payload: Schema.Struct({}),
   success: TerminalEvent,
@@ -1921,6 +1941,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsServerRemoveKeybindingRpc,
   WsServerRunStorageCleanupRpc,
   WsServerGetStorageCleanupReportRpc,
+  WsServerGetDatabaseStorageRpc,
   WsServerGetSettingsRpc,
   WsServerUpdateSettingsRpc,
   WsServerDiscoverSourceControlRpc,
@@ -2090,6 +2111,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsOrchestrationV2SubscribeArchivedShellRpc,
   WsOrchestrationV2SubscribeShellRpc,
   WsOrchestrationV2SubscribeThreadRpc,
+  WsOrchestrationV2SubscribeCommandOutputRpc,
 )
   // Fork: esveo code's own methods.
   .merge(ForkWsRpcGroup)
