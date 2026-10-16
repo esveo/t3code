@@ -23,8 +23,8 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
-import * as SqlClient from "effect/sql/SqlClient";
 
+import * as ServerConfig from "../config.ts";
 import {
   BACKGROUND_WAIT_CAP_MS,
   CATEGORY_COUNT,
@@ -33,6 +33,7 @@ import {
   type AgentTimeRun,
 } from "./agentTimeAttribution.ts";
 import { dayEdges, enumerateWindowDays, hourEdges, isoInstant } from "./agentTimeBuckets.ts";
+import { openAgentTimeReader } from "./agentTimeReader.ts";
 
 /** Only Claude threads are attributed for now. */
 const PROVIDER = "claudeAgent";
@@ -40,6 +41,8 @@ const MAX_DAYS = 120;
 /** A day is final, and cached, once it ended this long ago. */
 const FINAL_AFTER_MS = 24 * 60 * 60 * 1000;
 const MAX_CACHED_DAYS = 2_000;
+/** Attribution hands the thread back after about this many items (~20 ms). */
+const ITEMS_PER_SLICE = 3_000;
 const ACTIVE_RUN_STATUSES = new Set(["queued", "preparing", "starting", "running", "waiting"]);
 const ITEM_TYPES = [
   "command_execution",
@@ -102,8 +105,49 @@ function isValidTimeZone(timeZone: string): boolean {
   }
 }
 
-const make = Effect.gen(function* () {
-  const sql = yield* SqlClient.SqlClient;
+// Parameters: provider, query end, query start.
+const RUNS_SQL = `
+  SELECT run.run_id AS "runId", run.thread_id AS "threadId", thread.project_id AS "projectId",
+    run.status AS "status", run.requested_at AS "requestedAt", run.completed_at AS "completedAt"
+  FROM orchestration_v2_projection_runs AS run
+  JOIN orchestration_v2_projection_threads AS thread ON thread.thread_id = run.thread_id
+  WHERE run.provider = ?
+    AND run.requested_at < ?
+    AND (run.completed_at IS NULL OR run.completed_at >= ?)
+`;
+
+// Parameters: provider, query end, query start.
+const ITEMS_SQL = `
+  SELECT item.thread_id AS "threadId", item.run_id AS "runId", item.type AS "type",
+    json_extract(item.payload_json, '$.startedAt') AS "startedAt",
+    json_extract(item.payload_json, '$.completedAt') AS "completedAt",
+    CASE WHEN item.type = 'dynamic_tool' THEN json_extract(item.payload_json, '$.toolName') END AS "toolName",
+    CASE WHEN item.type = 'command_execution' THEN substr(json_extract(item.payload_json, '$.input'), 1, 2000) END AS "command",
+    CASE WHEN item.type = 'command_execution' THEN substr(json_extract(item.payload_json, '$.output'), 1, 80) END AS "outputHead",
+    CASE WHEN item.type = 'dynamic_tool' THEN json_extract(item.payload_json, '$.input.task_id') END AS "taskId",
+    CASE WHEN item.type = 'notification' THEN json_extract(item.payload_json, '$.source.kind') END AS "notificationKind",
+    CASE WHEN item.type = 'notification' THEN json_extract(item.payload_json, '$.outcome') END AS "notificationOutcome",
+    CASE WHEN item.type = 'notification' THEN json_extract(item.payload_json, '$.summary') END AS "notificationSummary"
+  FROM orchestration_v2_projection_turn_items AS item
+  WHERE item.run_id IN (
+      SELECT run.run_id FROM orchestration_v2_projection_runs AS run
+      WHERE run.provider = ?
+        AND run.requested_at < ?
+        AND (run.completed_at IS NULL OR run.completed_at >= ?)
+    )
+    AND item.type IN (${ITEM_TYPES.map((type) => `'${type}'`).join(", ")})
+`;
+
+const PROJECTS_SQL = `SELECT project_id AS "projectId", title AS "title" FROM projection_projects`;
+
+const make = Effect.fn("AgentTime.make")(function* (dbPath: string) {
+  // node:sqlite blocks its thread, so the long reads run on a worker.
+  const reader = yield* Effect.acquireRelease(
+    Effect.sync(() => openAgentTimeReader(dbPath)),
+    (opened) => Effect.promise(() => opened.close()),
+  );
+  const read = <Row>(sql: string, params: ReadonlyArray<string | number> = []) =>
+    Effect.tryPromise({ try: () => reader.all<Row>(sql, params), catch: readFailed });
   // `${timeZone}|${day}` -> seconds per category for each project.
   const dayCache = new Map<string, ProjectTotals>();
 
@@ -114,38 +158,12 @@ const make = Effect.gen(function* () {
     const bucketCount = edges.length - 1;
     const queryStart = isoInstant(edges[0]! - BACKGROUND_WAIT_CAP_MS);
     const queryEnd = isoInstant(edges[bucketCount]! + BACKGROUND_WAIT_CAP_MS);
-    const runRows = yield* sql<RunRow>`
-      SELECT run.run_id AS "runId", run.thread_id AS "threadId", thread.project_id AS "projectId",
-        run.status AS "status", run.requested_at AS "requestedAt", run.completed_at AS "completedAt"
-      FROM orchestration_v2_projection_runs AS run
-      JOIN orchestration_v2_projection_threads AS thread ON thread.thread_id = run.thread_id
-      WHERE run.provider = ${PROVIDER}
-        AND run.requested_at < ${queryEnd}
-        AND (run.completed_at IS NULL OR run.completed_at >= ${queryStart})
-    `;
+    const window = [PROVIDER, queryEnd, queryStart];
+    const runRows = yield* read<RunRow>(RUNS_SQL, window);
     const totals: ProjectTotals = new Map();
     if (runRows.length === 0) return totals;
 
-    const itemRows = yield* sql<ItemRow>`
-      SELECT item.thread_id AS "threadId", item.run_id AS "runId", item.type AS "type",
-        json_extract(item.payload_json, '$.startedAt') AS "startedAt",
-        json_extract(item.payload_json, '$.completedAt') AS "completedAt",
-        CASE WHEN item.type = 'dynamic_tool' THEN json_extract(item.payload_json, '$.toolName') END AS "toolName",
-        CASE WHEN item.type = 'command_execution' THEN substr(json_extract(item.payload_json, '$.input'), 1, 2000) END AS "command",
-        CASE WHEN item.type = 'command_execution' THEN substr(json_extract(item.payload_json, '$.output'), 1, 80) END AS "outputHead",
-        CASE WHEN item.type = 'dynamic_tool' THEN json_extract(item.payload_json, '$.input.task_id') END AS "taskId",
-        CASE WHEN item.type = 'notification' THEN json_extract(item.payload_json, '$.source.kind') END AS "notificationKind",
-        CASE WHEN item.type = 'notification' THEN json_extract(item.payload_json, '$.outcome') END AS "notificationOutcome",
-        CASE WHEN item.type = 'notification' THEN json_extract(item.payload_json, '$.summary') END AS "notificationSummary"
-      FROM orchestration_v2_projection_turn_items AS item
-      WHERE item.run_id IN (
-          SELECT run.run_id FROM orchestration_v2_projection_runs AS run
-          WHERE run.provider = ${PROVIDER}
-            AND run.requested_at < ${queryEnd}
-            AND (run.completed_at IS NULL OR run.completed_at >= ${queryStart})
-        )
-        AND item.type IN ${sql.in(ITEM_TYPES)}
-    `;
+    const itemRows = yield* read<ItemRow>(ITEMS_SQL, window);
 
     const lastItemEndByRun = new Map<string, number>();
     for (const row of itemRows) {
@@ -204,6 +222,7 @@ const make = Effect.gen(function* () {
       });
     }
 
+    let itemsSinceYield = 0;
     for (const thread of threads.values()) {
       thread.items.sort((left, right) => left.startMs - right.startMs);
       let projectTotals = totals.get(thread.projectId);
@@ -212,9 +231,15 @@ const make = Effect.gen(function* () {
         totals.set(thread.projectId, projectTotals);
       }
       attributeThread(thread, edges, projectTotals);
+      // The server's thread is shared with every request and running agent.
+      itemsSinceYield += thread.items.length;
+      if (itemsSinceYield >= ITEMS_PER_SLICE) {
+        itemsSinceYield = 0;
+        yield* Effect.yieldNow;
+      }
     }
     return totals;
-  }, Effect.mapError(readFailed));
+  });
 
   /** Daily totals, reusing the cached final days. Returns one entry per day. */
   const dailyTotals = Effect.fn("AgentTime.dailyTotals")(function* (
@@ -256,9 +281,7 @@ const make = Effect.gen(function* () {
     return perDay;
   });
 
-  const projectTitles = sql<{ readonly projectId: string; readonly title: string }>`
-    SELECT project_id AS "projectId", title AS "title" FROM projection_projects
-  `.pipe(Effect.mapError(readFailed));
+  const projectTitles = read<{ readonly projectId: string; readonly title: string }>(PROJECTS_SQL);
 
   const summary: AgentTime["Service"]["summary"] = Effect.fn("AgentTime.summary")(
     function* (input) {
@@ -352,7 +375,16 @@ const make = Effect.gen(function* () {
   return AgentTime.of({ summary });
 });
 
-export const layer = Layer.effect(AgentTime, make);
+/** Agent time read from the database file at `dbPath`. */
+export const layerFromDbPath = (dbPath: string) => Layer.effect(AgentTime, make(dbPath));
+
+export const layer = Layer.effect(
+  AgentTime,
+  Effect.gen(function* () {
+    const config = yield* ServerConfig.ServerConfig;
+    return yield* make(config.dbPath);
+  }),
+);
 
 /**
  * The RPC side reads the service optionally, so it does not join the
