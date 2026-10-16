@@ -2,6 +2,7 @@
 
 Every feature and fix this fork adds on top of [T3 Code](https://github.com/pingdotgg/t3code), each with the commits that made it.
 
+- Fix: switching the service to a new server also repoints the `t3` command, so `t3 pair` no longer falls back to an old install that mints links without today's permissions ([a845247](https://github.com/esveo/t3code/commit/a845247c8c62423064a3ca7ff5c977242b5e2d4c)).
 - Fix: Settings shows T3 Connect's sign-in and account avatar again, because fork builds now bake in its cloud config ([dda68e7](https://github.com/esveo/t3code/commit/dda68e715ea51224785ee96e711aaa76a71b94cd)).
 - Git graph columns can be resized by dragging the edges in the new header row; double-click an edge to reset it, and the widths are remembered ([34a9ebf](https://github.com/esveo/t3code/commit/34a9ebf0f6cdd4a4b85b88cb65c57fb816bcd90f), [ff7cb0f](https://github.com/esveo/t3code/commit/ff7cb0ffa50e626a704d77d3fbb7c1af595a5dc4)).
 - Fix: a file path an agent names relative to a repository nested in the workspace, such as `.devops/delivery-pipeline.yml` for `proda/.devops/delivery-pipeline.yml`, opens from that folder even when the outer repository ignores it ([f384122](https://github.com/esveo/t3code/commit/f384122d54fb43b186b6955b5da2ea0072b8fa7f)).
