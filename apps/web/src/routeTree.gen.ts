@@ -30,6 +30,8 @@ import { Route as SettingsAppearanceRouteImport } from './routes/settings.appear
 import { Route as ProjectsProjectKeyRouteImport } from './routes/projects.$projectKey'
 import { Route as ChatPullRequestsRouteImport } from './routes/_chat.pull-requests'
 import { Route as ChatNewRouteImport } from './routes/_chat.new'
+import { Route as ChatGitGraphRouteImport } from './routes/_chat.git-graph'
+import { Route as PopoutEnvironmentIdThreadIdRouteImport } from './routes/popout.$environmentId.$threadId'
 import { Route as ChatDraftDraftIdRouteImport } from './routes/_chat.draft.$draftId'
 import { Route as ChatEnvironmentIdThreadIdRouteImport } from './routes/_chat.$environmentId.$threadId'
 
@@ -158,6 +160,17 @@ const ChatNewRoute = ChatNewRouteImport.update({
   path: '/new',
   getParentRoute: () => ChatRoute,
 } as any)
+const ChatGitGraphRoute = ChatGitGraphRouteImport.update({
+  id: '/git-graph',
+  path: '/git-graph',
+  getParentRoute: () => ChatRoute,
+} as any)
+const PopoutEnvironmentIdThreadIdRoute =
+  PopoutEnvironmentIdThreadIdRouteImport.update({
+    id: '/popout/$environmentId/$threadId',
+    path: '/popout/$environmentId/$threadId',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ChatDraftDraftIdRoute = ChatDraftDraftIdRouteImport.update({
   id: '/draft/$draftId',
   path: '/draft/$draftId',
@@ -178,6 +191,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
   '/welcome': typeof WelcomeRoute
+  '/git-graph': typeof ChatGitGraphRoute
   '/new': typeof ChatNewRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
@@ -197,6 +211,7 @@ export interface FileRoutesByFullPath {
   '/settings/storage': typeof SettingsStorageRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/popout/$environmentId/$threadId': typeof PopoutEnvironmentIdThreadIdRoute
 }
 export interface FileRoutesByTo {
   '/connect': typeof ConnectRoute
@@ -205,6 +220,7 @@ export interface FileRoutesByTo {
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
   '/welcome': typeof WelcomeRoute
+  '/git-graph': typeof ChatGitGraphRoute
   '/new': typeof ChatNewRoute
   '/pull-requests': typeof ChatPullRequestsRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
@@ -225,6 +241,7 @@ export interface FileRoutesByTo {
   '/': typeof ChatIndexRoute
   '/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/popout/$environmentId/$threadId': typeof PopoutEnvironmentIdThreadIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -235,6 +252,7 @@ export interface FileRoutesById {
   '/settings': typeof SettingsRouteWithChildren
   '/usage': typeof UsageRoute
   '/welcome': typeof WelcomeRoute
+  '/_chat/git-graph': typeof ChatGitGraphRoute
   '/_chat/new': typeof ChatNewRoute
   '/_chat/pull-requests': typeof ChatPullRequestsRoute
   '/projects/$projectKey': typeof ProjectsProjectKeyRoute
@@ -255,6 +273,7 @@ export interface FileRoutesById {
   '/_chat/': typeof ChatIndexRoute
   '/_chat/$environmentId/$threadId': typeof ChatEnvironmentIdThreadIdRoute
   '/_chat/draft/$draftId': typeof ChatDraftDraftIdRoute
+  '/popout/$environmentId/$threadId': typeof PopoutEnvironmentIdThreadIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -266,6 +285,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/usage'
     | '/welcome'
+    | '/git-graph'
     | '/new'
     | '/pull-requests'
     | '/projects/$projectKey'
@@ -285,6 +305,7 @@ export interface FileRouteTypes {
     | '/settings/storage'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
+    | '/popout/$environmentId/$threadId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/connect'
@@ -293,6 +314,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/usage'
     | '/welcome'
+    | '/git-graph'
     | '/new'
     | '/pull-requests'
     | '/projects/$projectKey'
@@ -313,6 +335,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$environmentId/$threadId'
     | '/draft/$draftId'
+    | '/popout/$environmentId/$threadId'
   id:
     | '__root__'
     | '/_chat'
@@ -322,6 +345,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/usage'
     | '/welcome'
+    | '/_chat/git-graph'
     | '/_chat/new'
     | '/_chat/pull-requests'
     | '/projects/$projectKey'
@@ -342,6 +366,7 @@ export interface FileRouteTypes {
     | '/_chat/'
     | '/_chat/$environmentId/$threadId'
     | '/_chat/draft/$draftId'
+    | '/popout/$environmentId/$threadId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -353,6 +378,7 @@ export interface RootRouteChildren {
   UsageRoute: typeof UsageRoute
   WelcomeRoute: typeof WelcomeRoute
   ProjectsProjectKeyRoute: typeof ProjectsProjectKeyRoute
+  PopoutEnvironmentIdThreadIdRoute: typeof PopoutEnvironmentIdThreadIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -532,6 +558,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatNewRouteImport
       parentRoute: typeof ChatRoute
     }
+    '/_chat/git-graph': {
+      id: '/_chat/git-graph'
+      path: '/git-graph'
+      fullPath: '/git-graph'
+      preLoaderRoute: typeof ChatGitGraphRouteImport
+      parentRoute: typeof ChatRoute
+    }
+    '/popout/$environmentId/$threadId': {
+      id: '/popout/$environmentId/$threadId'
+      path: '/popout/$environmentId/$threadId'
+      fullPath: '/popout/$environmentId/$threadId'
+      preLoaderRoute: typeof PopoutEnvironmentIdThreadIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_chat/draft/$draftId': {
       id: '/_chat/draft/$draftId'
       path: '/draft/$draftId'
@@ -550,6 +590,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface ChatRouteChildren {
+  ChatGitGraphRoute: typeof ChatGitGraphRoute
   ChatNewRoute: typeof ChatNewRoute
   ChatPullRequestsRoute: typeof ChatPullRequestsRoute
   ChatIndexRoute: typeof ChatIndexRoute
@@ -558,6 +599,7 @@ interface ChatRouteChildren {
 }
 
 const ChatRouteChildren: ChatRouteChildren = {
+  ChatGitGraphRoute: ChatGitGraphRoute,
   ChatNewRoute: ChatNewRoute,
   ChatPullRequestsRoute: ChatPullRequestsRoute,
   ChatIndexRoute: ChatIndexRoute,
@@ -614,6 +656,7 @@ const rootRouteChildren: RootRouteChildren = {
   UsageRoute: UsageRoute,
   WelcomeRoute: WelcomeRoute,
   ProjectsProjectKeyRoute: ProjectsProjectKeyRoute,
+  PopoutEnvironmentIdThreadIdRoute: PopoutEnvironmentIdThreadIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
