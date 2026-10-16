@@ -631,6 +631,20 @@ prune_server_versions() {
   done
 }
 
+# Points the install script's `t3` launcher at the given version, as `t3 update`
+# does: only a symlink into our versions dir (dangling too), never a `t3` the
+# user put there. Otherwise pruning the old version leaves it dangling, and the
+# shell falls through to whatever older `t3` is next on PATH.
+repoint_launcher() {
+  local link="${T3CODE_INSTALL_BIN_DIR:-$HOME/.local/bin}/t3" target
+  [[ -L "$link" ]] || return 0
+  target="$(readlink "$link")"
+  [[ "$target" == /* ]] || target="${link:h}/$target"
+  [[ "${target:a}" == "${RUNTIME_DIR:a}/versions/"* ]] || return 0
+  ln -sfn "$RUNTIME_DIR/versions/$1/t3" "$link.fork-tmp"
+  mv -f "$link.fork-tmp" "$link"
+}
+
 # Switches the service to an installed fork server and restarts it. Running
 # threads continue; only the user starts this, from the app's update menu.
 restart_service() {
@@ -644,6 +658,7 @@ restart_service() {
     node -e "const fs=require('fs');const s='$SERVICE_STATE';const j=JSON.parse(fs.readFileSync(s,'utf8'));j.activeVersion='$version';fs.writeFileSync(s+'.fork-tmp',JSON.stringify(j,null,2)+'\n');fs.renameSync(s+'.fork-tmp',s)"
     printf '%s\n' "$previous" > "$RUNTIME_DIR/.fork-previous-version"
   fi
+  repoint_launcher "$version"
   # Stays behind if the restart fails, so the app keeps offering it.
   printf '%s\n' "$version" > "$RESTART_PENDING"
   echo "Restarting the t3 service on $version (was $previous) …"
