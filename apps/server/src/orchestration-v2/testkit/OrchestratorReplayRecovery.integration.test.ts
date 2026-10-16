@@ -1,4 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import { restartCancelledBackgroundWorkNote } from "../RestartBackgroundNote.ts";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -130,8 +131,14 @@ const readClaudeCancelledSubagentResumeTranscript = Effect.fn(
             message: {
               ...frame.message.message,
               content: [
-                "Note: the T3 server restarted, and this background work was cancelled before it finished. It will not report back:",
-                "- subagent: Audit src/math.ts",
+                // Fork: the note carries the native id and resume guidance.
+                restartCancelledBackgroundWorkNote([
+                  {
+                    kind: "subagent",
+                    label: "Audit src/math.ts (id a44c0ed810da9e4f3)",
+                    id: "a44c0ed810da9e4f3",
+                  },
+                ]),
                 "",
                 "User message:",
                 frame.message.message.content,

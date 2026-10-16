@@ -354,7 +354,8 @@ it.effect("preserves initialized capabilities when optional usage times out", ()
       decodeClaudeSettings({ binaryPath: "claude" }),
     ).pipe(Effect.forkChild);
     yield* Deferred.await(usageStarted);
-    yield* TestClock.adjust("15 seconds");
+    // Fork: the usage timeout is 45s (ClaudeProvider.ts).
+    yield* TestClock.adjust("45 seconds");
     const capabilities = yield* Fiber.join(probe);
     assert.equal(capabilities?.email, "dev@example.com");
     assert.equal(capabilities?.subscriptionType, "pro");
