@@ -18,7 +18,8 @@
 #   checks    install, typecheck, and the tests related to the files both
 #             sides changed or the agent touched; report in checks.md
 #   guards    hard rules the result must meet; report in guards.md
-#   audit     lines the fork added that the result lost; audit.md. Fails above
+#   audit     lines the fork added that the result lost; audit.md, the lines
+#             themselves in audit-lines.txt. Fails above
 #             AUDIT_MAX_LOST (default 50): a careful merge loses a few to
 #             upstream rewrites, taking upstream's side of a conflict hundreds
 #   verify    fold, then checks, guards and audit in one go
@@ -109,9 +110,31 @@ cmd_checks() {
     echo "::endgroup::"
   }
   step "vp install" vp install --no-frozen-lockfile
+  # Nothing after a failed install means anything (it once fell back to fork's
+  # lockfile after a hand-merged patches/ file), so it is the one thing to fix.
+  if [ "$failed" = 1 ]; then
+    {
+      echo
+      echo "**vp install failed; fix that first (see the ERR_PNPM lines in checks.log). Nothing else was checked.**"
+    } >> "$report"
+    return 1
+  fi
   step "pnpm-lock.yaml committed" git diff --quiet HEAD -- pnpm-lock.yaml
   step "electron runtime" vp run --filter @t3tools/desktop ensure:electron
-  step "typecheck" vpr typecheck
+  # Every package, not `vpr typecheck`, which stops at the first red one.
+  local dir red=""
+  for dir in $(git ls-files -- 'apps/*/package.json' 'packages/*/package.json' | xargs dirname); do
+    node -e "process.exit(require('./$dir/package.json').scripts?.typecheck ? 0 : 1)" 2>/dev/null || continue
+    echo "::group::typecheck $dir"; echo "== typecheck $dir" >> "$log"
+    (cd "$dir" && vp run typecheck) 2>&1 | tee -a "$log" || red+=" $dir"
+    echo "::endgroup::"
+  done
+  if [ -n "$red" ]; then
+    echo "- ❌ typecheck:$red" >> "$report"
+    failed=1
+  else
+    echo "- ✅ typecheck" >> "$report"
+  fi
 
   # vitest runs per package with the package's own `test` script flags.
   local files pkg rel extra
@@ -174,15 +197,19 @@ cmd_guards() {
 }
 
 cmd_audit() {
-  local report="$SYNC_DIR/audit.md" f lost total=0 rows=""
+  local report="$SYNC_DIR/audit.md" f lines lost total=0 rows=""
+  # The lines themselves, for the agent's next round.
+  : > "$SYNC_DIR/audit-lines.txt"
   for f in $(changed --diff-filter=AM "$BASE" "$FORK_SHA" -- . ':!pnpm-lock.yaml'); do
     [ -z "$(git ls-tree HEAD -- "$f")" ] && continue
-    lost=$(git diff -U0 "$BASE" "$FORK_SHA" -- "$f" | grep -a '^+[^+]' | cut -c2- |
+    lines=$(git diff -U0 "$BASE" "$FORK_SHA" -- "$f" | grep -a '^+[^+]' | cut -c2- |
       awk 'length($0) - gsub(/[[:space:]]/, "&") >= 4' | sort -u |
-      grep -a -vxFf <(git show "HEAD:$f") | wc -l | tr -d ' ')
+      grep -a -vxFf <(git show "HEAD:$f"))
+    lost=$(printf '%s' "$lines" | grep -c '' || true)
     if [ "$lost" -gt 0 ]; then
       total=$((total + lost))
       rows+="| \`$f\` | $lost |"$'\n'
+      { echo "== $f"; printf '%s\n' "$lines" | head -15; } >> "$SYNC_DIR/audit-lines.txt"
     fi
   done
   {

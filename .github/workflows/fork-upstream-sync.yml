@@ -226,9 +226,27 @@ jobs:
           \`cd <package> && vp test run <files>\`), and run verify at most once, at
           the end, with its output redirected to a file. The workflow runs verify
           after your session anyway and, while it is red, starts another session
-          with its reports (this is round $1 of $ROUNDS). audit.md lists lines the
-          fork added that the result lost; restore every one that belongs to a
-          fork feature, adapted to upstream's new code where upstream rewrote it.
+          with its reports (this is round $1 of $ROUNDS).
+
+          Fix every red check across the whole repository, not only the files that
+          conflicted: fork code that merged cleanly still breaks when upstream moves
+          an import, changes an Effect API, removes a component or renames something
+          the fork relies on (such as the release stage behind the "esveo code"
+          branding). If \`vp install\` fails, fix that first; nothing after it means
+          anything. Never hand-merge a file under patches/: regenerate it against the
+          pristine package (\`pnpm patch <pkg>@<version>\`, apply the fork's change,
+          \`pnpm patch-commit\`), or drop it if upstream's version of the package no
+          longer needs it. Generated files (such as routeTree.gen.ts, which must keep
+          the fork's routes like git-graph and popout, or the mobile
+          generated-uniwind-themes.css) are regenerated with their generator, never
+          resolved by picking a side.
+
+          audit.md lists lines the fork added that the result lost, and
+          audit-lines.txt the lines themselves. Fork features have been lost this
+          way before, silently. Account for every file in it: restore the fork
+          feature, adapted to upstream's new code where upstream rewrote it, or say
+          in summary.md why the lines are gone (for example upstream rewrote the
+          code and the feature still works another way).
 
           When done or stuck, and early enough to still have budget, write
           $SYNC_DIR/summary.md: the conflicts and how you resolved each, the fixes
@@ -259,6 +277,9 @@ jobs:
               cat "$SYNC_DIR/checks.md" "$SYNC_DIR/guards.md" 2>/dev/null || true
               echo
               head -c 3000 "$SYNC_DIR/audit.md" 2>/dev/null || true
+              echo
+              echo "The lost fork lines (account for each file, see the rules below):"
+              head -c 6000 "$SYNC_DIR/audit-lines.txt" 2>/dev/null || true
               echo
               echo "Failing lines from $SYNC_DIR/checks.log (read the log for context):"
               sed 's/\x1b\[[0-9;]*m//g' "$SYNC_DIR/checks.log" 2>/dev/null |
