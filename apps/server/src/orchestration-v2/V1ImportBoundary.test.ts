@@ -12,6 +12,10 @@ const legacyTable =
 const legacyReaders = ["orchestration-v2/legacy/", "persistence/Migrations/"] as const;
 const legacyReaderFiles: Record<string, string> = {
   "serverSettings.ts": "one-time provider history for settings migration",
+  // Fork: one-time import of V1 coordinator links, and the creation time of threads
+  // that only exist in V1 for usage attribution.
+  "threadOrchestration/forkSchema.ts": "one-time V1 coordinator link import",
+  "usage/ThreadUsageQuery.ts": "creation time of V1-only threads",
 };
 const retiredPaths = [
   "orchestration",

@@ -225,7 +225,11 @@ describe("thread notifications", () => {
     await render();
     expect(state.add).toHaveBeenCalledTimes(1);
     expect(state.add).toHaveBeenLastCalledWith(
-      expect.objectContaining({ title: "Approval needed", description: "Fix the login form" }),
+      // Fork: toasts carry the thread as title and the event with the project below.
+      expect.objectContaining({
+        title: "Fix the login form",
+        description: "Approval needed · Webshop",
+      }),
     );
   });
 
