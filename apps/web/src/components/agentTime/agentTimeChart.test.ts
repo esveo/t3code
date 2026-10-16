@@ -1,7 +1,12 @@
 import { AGENT_TIME_CATEGORIES, type AgentTimeSummary } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import { buildAgentTimeChart, durationScale, formatDuration } from "./agentTimeChart";
+import {
+  buildAgentTimeChart,
+  categoriesByDuration,
+  durationScale,
+  formatDuration,
+} from "./agentTimeChart";
 
 const summary = (buckets: AgentTimeSummary["buckets"]): AgentTimeSummary => ({
   readAt: "2026-10-16T00:00:00.000Z",
@@ -39,6 +44,13 @@ describe("buildAgentTimeChart", () => {
     expect(chart.columns[1]!.seconds.every((seconds) => seconds === 0)).toBe(true);
     expect(chart.totals[idle]).toBe(300);
     expect(chart.activeTotal).toBe(660);
+  });
+});
+
+describe("categoriesByDuration", () => {
+  it("lists the shown categories with time, longest first", () => {
+    // Category 3 is hidden, category 2 has no time.
+    expect(categoriesByDuration([60, 300, 0, 900, 120], [0, 1, 2, 4])).toEqual([1, 4, 0]);
   });
 });
 

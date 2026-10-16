@@ -28,6 +28,7 @@ import { Switch } from "../ui/switch";
 import {
   CATEGORY_PRESENTATION,
   buildAgentTimeChart,
+  categoriesByDuration,
   durationScale,
   formatDuration,
   type AgentTimeChartData,
@@ -353,34 +354,31 @@ function AgentTimeChart({
               }}
             >
               <div className="mb-1 text-muted-foreground">{formatPeriod(hoveredColumn.period)}</div>
-              {visible
-                .filter((categoryIndex) => hoveredColumn.seconds[categoryIndex]! > 0)
-                .toReversed()
-                .map((categoryIndex) => {
-                  const category = AGENT_TIME_CATEGORIES[categoryIndex]!;
-                  return (
-                    <div
-                      key={category}
-                      className={cn(
-                        "flex items-center justify-between gap-3",
-                        hover.category === categoryIndex
-                          ? "text-foreground"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      <span className="flex items-center gap-1.5">
-                        <span
-                          className="size-2 shrink-0 rounded-sm"
-                          style={{ backgroundColor: CATEGORY_PRESENTATION[category].color }}
-                        />
-                        {CATEGORY_PRESENTATION[category].label}
-                      </span>
-                      <span className="tabular-nums">
-                        {formatDuration(hoveredColumn.seconds[categoryIndex]!)}
-                      </span>
-                    </div>
-                  );
-                })}
+              {categoriesByDuration(hoveredColumn.seconds, visible).map((categoryIndex) => {
+                const category = AGENT_TIME_CATEGORIES[categoryIndex]!;
+                return (
+                  <div
+                    key={category}
+                    className={cn(
+                      "flex items-center justify-between gap-3",
+                      hover.category === categoryIndex
+                        ? "text-foreground"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        className="size-2 shrink-0 rounded-sm"
+                        style={{ backgroundColor: CATEGORY_PRESENTATION[category].color }}
+                      />
+                      {CATEGORY_PRESENTATION[category].label}
+                    </span>
+                    <span className="tabular-nums">
+                      {formatDuration(hoveredColumn.seconds[categoryIndex]!)}
+                    </span>
+                  </div>
+                );
+              })}
               <div className="mt-1 flex items-center justify-between gap-3 border-t border-border pt-1">
                 <span className="text-muted-foreground">Total</span>
                 <span className="text-foreground tabular-nums">

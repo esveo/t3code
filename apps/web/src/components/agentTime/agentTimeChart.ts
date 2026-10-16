@@ -78,6 +78,19 @@ export function buildAgentTimeChart(
   };
 }
 
+/**
+ * The shown categories of one column that have time, longest first. The bars
+ * keep a fixed stacking order; the tooltip lists by duration.
+ */
+export function categoriesByDuration(
+  seconds: readonly number[],
+  shown: readonly number[],
+): readonly number[] {
+  return shown
+    .filter((categoryIndex) => (seconds[categoryIndex] ?? 0) > 0)
+    .toSorted((left, right) => seconds[right]! - seconds[left]!);
+}
+
 const MINUTE = 60;
 const HOUR = 60 * MINUTE;
 const AXIS_STEPS = [
