@@ -94,9 +94,9 @@ export const make = Effect.gen(function* () {
     // Electron removes spaces from this name to build the native User-Agent
     // product token, but leaves parentheses intact. Keep the runtime name valid
     // without rewriting preview sessions (which breaks Turnstile, #7110).
-    // Fork: the Alpha app is plain "esveo code", like its display name.
+    // Fork: the Beta (stable) app is plain "esveo code", like its display name.
     yield* electronApp.setName(
-      environment.branding.stageLabel === "Alpha"
+      environment.branding.stageLabel === "Beta"
         ? environment.branding.baseName
         : `${environment.branding.baseName} ${environment.branding.stageLabel}`,
     );

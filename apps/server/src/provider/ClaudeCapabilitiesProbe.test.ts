@@ -41,6 +41,7 @@ it("isolates Claude capability probes without dropping workspace setting sources
       FORCE_CODE_TERMINAL: "1",
     },
     cwd: "/workspace/project",
+    managedMcpConfig: false,
   });
 
   assert.deepEqual(options.mcpServers, {});
@@ -57,6 +58,21 @@ it("isolates Claude capability probes without dropping workspace setting sources
   assert.equal(options.env?.FORCE_CODE_TERMINAL, undefined);
   assert.equal(options.env?.CLAUDE_CODE_AUTO_CONNECT_IDE, "0");
   assert.equal(options.env?.CLAUDE_CODE_IDE_SKIP_AUTO_INSTALL, "1");
+});
+
+it("drops strict MCP mode, and only that, next to an administrator's managed-mcp.json", () => {
+  const options = buildClaudeCapabilitiesProbeQueryOptions({
+    executablePath: "/usr/bin/claude",
+    abortController: new AbortController(),
+    environment: { HOME: "/home/user" },
+    cwd: undefined,
+    managedMcpConfig: true,
+  });
+
+  // Claude exits before initializing when handed --strict-mcp-config here.
+  assert.equal(options.strictMcpConfig, undefined);
+  assert.deepEqual(options.mcpServers, {});
+  assert.equal(options.env?.ENABLE_CLAUDEAI_MCP_SERVERS, "false");
 });
 
 it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
@@ -252,8 +268,6 @@ it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
       const workspaceCwd = yield* fs.makeTempDirectory({ prefix: "t3-claude-probe-cwd-" });
       // Node's own retry rather than an Effect schedule: it.effect runs on a
       // TestClock, so a scheduled retry would wait for time nobody advances.
-      // If the child still holds the directory after that, an empty temp
-      // directory is left behind rather than failing the test for it.
       yield* Effect.addFinalizer(() =>
         Effect.promise(() =>
           NodeFSP.rm(workspaceCwd, {
@@ -340,7 +354,8 @@ it.effect("preserves initialized capabilities when optional usage times out", ()
       decodeClaudeSettings({ binaryPath: "claude" }),
     ).pipe(Effect.forkChild);
     yield* Deferred.await(usageStarted);
-    yield* TestClock.adjust("15 seconds");
+    // Fork: the usage timeout is 45s (ClaudeProvider.ts).
+    yield* TestClock.adjust("45 seconds");
     const capabilities = yield* Fiber.join(probe);
     assert.equal(capabilities?.email, "dev@example.com");
     assert.equal(capabilities?.subscriptionType, "pro");

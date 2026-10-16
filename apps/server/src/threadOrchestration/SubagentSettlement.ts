@@ -72,7 +72,7 @@ const make = Effect.gen(function* () {
 
   const settle = (threadId: ThreadId) =>
     Effect.gen(function* () {
-      const uuid = yield* crypto.randomUUIDv4;
+      const uuid = yield* crypto.randomUUIDv4();
       yield* threads.dispatch({
         type: "thread.settle",
         commandId: CommandId.make(`fork:settle-with-parent:${threadId}:${uuid}`),

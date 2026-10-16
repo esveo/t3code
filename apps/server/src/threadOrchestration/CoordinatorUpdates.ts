@@ -139,7 +139,7 @@ export const make = Effect.gen(function* () {
   const coordinators = yield* ThreadCoordinators;
   const crypto = yield* Crypto.Crypto;
   const serial = yield* Semaphore.make(1);
-  const uuid = crypto.randomUUIDv4.pipe(Effect.orDie);
+  const uuid = crypto.randomUUIDv4().pipe(Effect.orDie);
 
   /** Appends to the coordinator's waiting update message, or queues a new one. */
   const deliver = Effect.fn("CoordinatorUpdates.deliver")(function* (

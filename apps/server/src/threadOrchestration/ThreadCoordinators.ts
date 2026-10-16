@@ -244,7 +244,7 @@ export const make = Effect.gen(function* () {
         yield* threads.dispatch({
           type: "delegated_task.completion-delivery.dispose",
           commandId: CommandId.make(
-            `fork:coordinator-move:${thread.id}:${yield* crypto.randomUUIDv4}`,
+            `fork:coordinator-move:${thread.id}:${yield* crypto.randomUUIDv4()}`,
           ),
           parentThreadId,
           taskId: task.id,
