@@ -86,6 +86,7 @@ import * as DelegatedAttachments from "./mcp/toolkits/threads/attachments.ts";
 import * as ThreadCoordinators from "./threadOrchestration/ThreadCoordinators.ts";
 import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
 import * as ForkNotes from "./forkNotes/ForkNotes.ts";
+import * as AgentTime from "./agentTime/AgentTime.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import * as ServerSettings from "./serverSettings.ts";
 import * as ProjectEnrichmentService from "./project/ProjectEnrichmentService.ts";
@@ -601,6 +602,8 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   ThreadDecisions.layer,
   // Fork: notes and todos of the Notes tab.
   ForkNotes.layer,
+  // Fork: agent time on the Usage page.
+  AgentTime.layer,
   // Catches overrides left behind by a project deleted before this cleanup
   // existed, or by a cleanup write that failed. See ProjectService.delete
   // for the normal (on-delete) path.
