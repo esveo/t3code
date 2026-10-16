@@ -57,7 +57,7 @@ const make = Effect.gen(function* () {
 
   const unlink = (link: InheritedPullRequestLink) =>
     Effect.gen(function* () {
-      const uuid = yield* crypto.randomUUIDv4;
+      const uuid = yield* crypto.randomUUIDv4();
       yield* threads.dispatch({
         type: "thread.pull-request.unlink",
         commandId: CommandId.make(`fork:inherited-pr-unlink:${link.threadId}:${uuid}`),

@@ -154,7 +154,7 @@ export const make = Effect.gen(function* () {
             if (Option.isSome(taken)) return yield* failure("A note with this id already exists.");
           }
           const note: ForkNote = {
-            id: action.id ?? (yield* crypto.randomUUIDv4.pipe(Effect.orDie)),
+            id: action.id ?? (yield* crypto.randomUUIDv4().pipe(Effect.orDie)),
             scope: action.scope,
             scopeId: action.scopeId,
             text: action.text,
