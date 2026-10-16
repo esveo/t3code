@@ -36,6 +36,7 @@ import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { isModelPickerOpen } from "../../modelPickerVisibility";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { useUsage, type EnvironmentUsageStatus } from "../../state/usage";
+import { AgentTimeSection } from "../agentTime/AgentTimeSection";
 import { useAtomCommand } from "../../state/use-atom-command";
 import {
   enumerateDays,
@@ -973,6 +974,8 @@ export function UsagePage() {
                     </table>
                   )}
                 </section>
+                {/* Fork: where agents spend their time. */}
+                <AgentTimeSection environments={selectedEnvironments} window={window} />
               </div>
             )}
           </WorkspacePageContainer>

@@ -69,6 +69,7 @@ import {
   FORK_NOTES_WS_METHODS,
   VOICE_INPUT_WS_METHODS,
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS,
+  AGENT_TIME_WS_METHODS,
   ForkWsRpcGroup,
   FORK_WS_RPC_TAGS,
   type ProjectEntriesFailure,
@@ -211,6 +212,7 @@ import * as ForkNotes from "./forkNotes/ForkNotes.ts";
 import * as ThreadCoordinators from "./threadOrchestration/ThreadCoordinators.ts";
 import * as VoiceInput from "./voiceInput/VoiceInput.ts";
 import * as ProviderSubagentControl from "./providerSubagentControl/ProviderSubagentControl.ts";
+import * as AgentTime from "./agentTime/AgentTime.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
@@ -3207,6 +3209,8 @@ const layerWsRpc = (
           ProviderSubagentControl.target(providerSubagentControlDeps, input),
         [PROVIDER_SUBAGENT_CONTROL_WS_METHODS.stop]: (input) =>
           ProviderSubagentControl.stop(providerSubagentControlDeps, input),
+        // where agents spend their time (Usage page).
+        [AGENT_TIME_WS_METHODS.summary]: (input) => AgentTime.summaryRpc(input),
       });
       return Context.merge(
         yield* UpstreamServerWsRpcGroup.toHandlers(handlers),

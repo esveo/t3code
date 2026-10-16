@@ -102,6 +102,19 @@ export const ensureForkSchema = Effect.gen(function* () {
   yield* sql`
     CREATE INDEX IF NOT EXISTS fork_notes_scope ON fork_notes (scope, scope_id)
   `;
+  // Automations: run each trigger as a subthread of the bound thread
+  // (scheduledTasks/forkSubthreadRun.ts).
+  const scheduledTaskColumns = yield* sql<{ readonly name: string }>`
+    PRAGMA table_info(scheduled_tasks)
+  `;
+  if (
+    scheduledTaskColumns.length > 0 &&
+    !scheduledTaskColumns.some((column) => column.name === "spawn_as_subthread")
+  ) {
+    yield* sql`
+      ALTER TABLE scheduled_tasks ADD COLUMN spawn_as_subthread INTEGER NOT NULL DEFAULT 0
+    `;
+  }
   const imported = yield* importLegacyCoordinatorLinks;
   if (imported > 0) {
     yield* Effect.logInfo("Imported V1 coordinator links", { links: imported });

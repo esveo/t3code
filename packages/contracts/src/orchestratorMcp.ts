@@ -616,6 +616,13 @@ export const OrchestratorMcpScheduleTaskInput = Schema.Struct({
         "True (default) posts each run into this thread; false creates a fresh top-level thread per run.",
     }),
   ),
+  // Fork (esveo): run each trigger as a subthread of the bound thread.
+  spawnAsSubthread: Schema.optional(
+    Schema.Boolean.annotate({
+      description:
+        "Only with bindToCurrentThread: each run starts a new thread under this thread that works on the prompt and reports back to you when done, instead of posting the prompt here. Defaults to false.",
+    }),
+  ),
   clientRequestId: Schema.optional(OrchestratorMcpClientRequestId),
 });
 export type OrchestratorMcpScheduleTaskInput = typeof OrchestratorMcpScheduleTaskInput.Type;
@@ -638,6 +645,10 @@ export const OrchestratorMcpScheduledTask = Schema.Struct({
   }),
   webhookSignature: Schema.optional(Schema.Literals(["none", "set"])).annotate({
     description: "Whether requests must carry a valid signature.",
+  }),
+  // Fork (esveo)
+  spawnAsSubthread: Schema.optional(Schema.Boolean).annotate({
+    description: "Whether each run starts a subthread of the bound thread.",
   }),
 });
 export type OrchestratorMcpScheduledTask = typeof OrchestratorMcpScheduledTask.Type;
@@ -669,6 +680,13 @@ export const OrchestratorMcpUpdateScheduledTaskInput = Schema.Struct({
   schedule: Schema.optional(OrchestratorMcpSchedule),
   enabled: Schema.optional(Schema.Boolean),
   bindToCurrentThread: Schema.optional(Schema.Boolean),
+  // Fork (esveo): run each trigger as a subthread of the bound thread.
+  spawnAsSubthread: Schema.optional(
+    Schema.Boolean.annotate({
+      description:
+        "Only with bindToCurrentThread: each run starts a new thread under this thread that works on the prompt and reports back to you when done, instead of posting the prompt here. Omit to keep the current setting.",
+    }),
+  ),
 });
 export type OrchestratorMcpUpdateScheduledTaskInput =
   typeof OrchestratorMcpUpdateScheduledTaskInput.Type;

@@ -48,6 +48,13 @@ import * as Scheduler from "../scheduling/Scheduler.ts";
 import { isMissedFixedTimeRun, isSameSchedule, nextScheduledRunAt } from "./Schedule.ts";
 import { catchesUpMissedRuns, catchUpMissedRun } from "./CatchUpMissedRuns.ts";
 import {
+  launchScheduledSubthread,
+  resolveSpawnAsSubthread,
+  spawnsAsSubthread,
+  validateThreadBinding,
+} from "./forkSubthreadRun.ts";
+import { ThreadCoordinators } from "../threadOrchestration/ThreadCoordinators.ts";
+import {
   redactHeaders,
   redactQuery,
   renderWebhookPrompt,
@@ -198,6 +205,7 @@ interface ScheduledTaskRow {
   readonly run_count: number;
   readonly webhook_token: string | null;
   readonly webhook_secret: string | null;
+  readonly spawn_as_subthread: number; // Fork
 }
 
 interface WebhookDeliveryRow {
@@ -339,6 +347,7 @@ const decodeRow = (row: ScheduledTaskRow, origin: WebhookOrigin | null = null) =
       lastRunError: row.last_run_error,
       runCount: row.run_count,
       ...(webhook === undefined ? {} : { webhook }),
+      ...(row.spawn_as_subthread === 1 ? { spawnAsSubthread: true } : {}), // Fork
     });
   }).pipe(
     Effect.mapError((cause) => {
@@ -398,6 +407,7 @@ export const layer = Layer.effect(
     const secretRequests = yield* SecretRequests.SecretRequests;
     const scheduler = yield* Scheduler.Scheduler;
     const readWebhookOrigin = yield* ScheduledTaskWebhookOrigin;
+    const forkCoordinators = yield* Effect.serviceOption(ThreadCoordinators);
     // Webhook deliveries for one task dispatch in arrival order rather than
     // being dropped while an earlier delivery is still dispatching.
     const webhookPermits = yield* Ref.make<ReadonlyMap<ScheduledTaskId, Semaphore.Semaphore>>(
@@ -437,7 +447,8 @@ export const layer = Layer.effect(
         last_run_error,
         run_count,
         webhook_token,
-        webhook_secret
+        webhook_secret,
+        spawn_as_subthread
       FROM scheduled_tasks
       ORDER BY updated_at DESC, task_id ASC
     `;
@@ -472,7 +483,8 @@ export const layer = Layer.effect(
         last_run_error,
         run_count,
         webhook_token,
-        webhook_secret
+        webhook_secret,
+        spawn_as_subthread
       FROM scheduled_tasks
       WHERE task_id = ${id}
     `;
@@ -552,7 +564,8 @@ export const layer = Layer.effect(
           last_run_error,
           run_count,
           webhook_token,
-          webhook_secret
+          webhook_secret,
+          spawn_as_subthread
         )
         SELECT
           ${task.id},
@@ -576,7 +589,8 @@ export const layer = Layer.effect(
           ${task.lastRunError},
           ${task.runCount},
           ${webhook.token},
-          ${webhook.secret}
+          ${webhook.secret},
+          ${task.spawnAsSubthread === true ? 1 : 0}
         WHERE ${requireExisting ? 0 : 1} = 1
            OR EXISTS (SELECT 1 FROM scheduled_tasks WHERE task_id = ${task.id})
         ON CONFLICT (task_id)
@@ -591,6 +605,7 @@ export const layer = Layer.effect(
           model_selection_json = excluded.model_selection_json,
           runtime_mode = excluded.runtime_mode,
           interaction_mode = excluded.interaction_mode,
+          spawn_as_subthread = excluded.spawn_as_subthread,
           creation_source = excluded.creation_source,
           updated_at = excluded.updated_at,
           next_run_at = excluded.next_run_at,
@@ -789,6 +804,16 @@ export const layer = Layer.effect(
         // after the poll read are honoured. A webhook prompt was rendered
         // from the row when the request arrived.
         const prompt = webhook?.prompt ?? active.prompt;
+        // Fork: a task set to spawnAsSubthread starts a subthread of the bound
+        // thread instead of posting there (forkSubthreadRun.ts).
+        const sendToBoundThread = (input: ThreadManagementService.ThreadManagementSendInput) =>
+          Effect.gen(function* () {
+            if (!spawnsAsSubthread(active)) return yield* threadManagement.sendToThread(input);
+            return yield* launchScheduledSubthread(
+              { threadLaunch, threadManagement, coordinators: forkCoordinators },
+              { task: active, threadId: input.threadId, commandId, messageId, prompt },
+            );
+          });
 
         // Effect.exit (not Effect.result) so defects and interruptions in the
         // dispatch are also captured and recorded as a failed run instead of
@@ -815,7 +840,7 @@ export const layer = Layer.effect(
                 }),
               )
             : yield* Effect.exit(
-                threadManagement.sendToThread({
+                sendToBoundThread({
                   projectId: active.projectId,
                   commandId,
                   threadId: ThreadId.make(active.threadId),
@@ -1106,7 +1131,9 @@ export const layer = Layer.effect(
           lastRunStatus: existingTask?.lastRunStatus ?? "never",
           lastRunError: existingTask?.lastRunError ?? null,
           runCount: existingTask?.runCount ?? 0,
+          ...(resolveSpawnAsSubthread(input, existingTask) ? { spawnAsSubthread: true } : {}), // Fork
         };
+        yield* validateThreadBinding(threadManagement, task, existingTask); // Fork
         yield* saveTask(task, input.requireExisting === true, webhook);
         yield* notifyChanged;
         return { task: (yield* findTask(id)) ?? task };

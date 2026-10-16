@@ -1,5 +1,6 @@
 import * as RpcGroup from "effect/rpc/RpcGroup";
 
+import { AGENT_TIME_WS_METHODS, WsAgentTimeSummaryRpc } from "./agentTime.ts";
 import { FORK_NOTES_WS_METHODS, WsForkNotesActRpc, WsForkNotesSubscribeRpc } from "./forkNotes.ts";
 import {
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS,
@@ -43,6 +44,8 @@ export const ForkWsRpcGroup = RpcGroup.make(
   // Stop and message a provider subagent from its thread.
   WsProviderSubagentTargetRpc,
   WsProviderSubagentStopRpc,
+  // Where agents spend their time (Usage page).
+  WsAgentTimeSummaryRpc,
 );
 
 /** The methods of `ForkWsRpcGroup`, for leaving them out of upstream's handler map. */
@@ -57,4 +60,5 @@ export const FORK_WS_RPC_TAGS = [
   VOICE_INPUT_WS_METHODS.transcribe,
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS.target,
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS.stop,
+  AGENT_TIME_WS_METHODS.summary,
 ] as const;
