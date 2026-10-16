@@ -63,6 +63,8 @@ import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
 import { readEnvironmentScope } from "~/state/session";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { CatchUpMissedRunsField } from "../scheduledTaskCatchUp/CatchUpMissedRunsField";
+import { ScheduledTaskLocationField } from "../scheduledTaskLocation/ScheduledTaskLocationField";
+import { withScheduledTaskProject } from "../scheduledTaskLocation/scheduledTaskLocation.logic";
 import {
   WEBHOOK_SIGNATURE_DEFAULTS,
   matchesScheduledTaskScope,
@@ -124,6 +126,7 @@ const EMPTY_DRAFT: DraftState = {
   timeOfDay: "09:00",
   weekdays: new Set([1, 2, 3, 4, 5]),
   catchUpMissedRuns: false,
+  spawnAsSubthread: false,
   projectId: "",
   threadId: "",
   workspaceMode: "worktree",
@@ -145,13 +148,17 @@ function Field({
   label,
   hint,
   htmlFor,
+  hidden,
   children,
 }: {
   label: string;
   hint?: string;
   htmlFor?: string;
+  /** Fork (esveo) */
+  hidden?: boolean;
   children: ReactNode;
 }) {
+  if (hidden) return null; // Fork
   return (
     <div className="space-y-1.5">
       <Label className="flex items-baseline justify-between" htmlFor={htmlFor}>
@@ -944,6 +951,7 @@ function ScheduledTaskEditorDialog({
       schedule,
       projectId: selectedProjectId as ProjectId,
       threadId: draft.threadId ? (draft.threadId as ThreadId) : null,
+      ...(draft.threadId ? { spawnAsSubthread: draft.spawnAsSubthread } : {}), // Fork
       workspaceStrategy,
       modelSelection,
       runtimeMode: draft.runtimeMode,
@@ -997,6 +1005,8 @@ function ScheduledTaskEditorDialog({
                   setDraft((current) => ({
                     ...current,
                     projectId: "",
+                    threadId: "", // Fork
+                    spawnAsSubthread: false, // Fork
                     modelKey: "",
                     baseModelSelection: null,
                     baseRef: "main",
@@ -1054,8 +1064,9 @@ function ScheduledTaskEditorDialog({
               <Field label="Project" htmlFor="scheduled-task-project">
                 <Select
                   value={selectedProjectId}
+                  // Fork (esveo): a thread binding belongs to the project.
                   onValueChange={(projectId) =>
-                    setDraft((current) => ({ ...current, projectId: projectId ?? "" }))
+                    setDraft((current) => withScheduledTaskProject(current, projectId ?? ""))
                   }
                 >
                   <SelectTrigger size="sm" id="scheduled-task-project">
@@ -1073,7 +1084,12 @@ function ScheduledTaskEditorDialog({
                 </Select>
               </Field>
 
-              <Field label="Workspace" htmlFor="scheduled-task-workspace">
+              {/* Fork (esveo): a run in an existing thread uses that thread's checkout. */}
+              <Field
+                label="Workspace"
+                htmlFor="scheduled-task-workspace"
+                hidden={draft.threadId !== ""}
+              >
                 <Select
                   value={draft.workspaceMode}
                   onValueChange={(value) =>
@@ -1092,7 +1108,14 @@ function ScheduledTaskEditorDialog({
               </Field>
             </div>
 
-            {draft.workspaceMode === "worktree" ? (
+            <ScheduledTaskLocationField
+              environmentId={environmentId}
+              projectId={selectedProjectId}
+              draft={draft}
+              onDraftChange={setDraft}
+            />
+
+            {draft.workspaceMode === "worktree" && !draft.threadId ? (
               <Field label="Base branch" htmlFor="scheduled-task-base-ref">
                 <WorktreeBaseBranchPicker
                   key={`${environmentId}:${selectedProjectId}`}
@@ -1109,7 +1132,7 @@ function ScheduledTaskEditorDialog({
                 />
               </Field>
             ) : null}
-            {draft.workspaceMode === "existing_worktree" ? (
+            {draft.workspaceMode === "existing_worktree" && !draft.threadId ? (
               <Field label="Checkout path" htmlFor="scheduled-task-checkout">
                 <Input
                   id="scheduled-task-checkout"

@@ -251,6 +251,10 @@ function scheduledTaskWorkspaceStrategy(
  * run it: a webhook's URL carries the secret that starts the task's runs, so
  * only such a caller sees it.
  */
+// Fork: see scheduledTasks/forkSubthreadRun.ts.
+const SPAWN_AS_SUBTHREAD_NEEDS_BINDING =
+  "spawnAsSubthread runs each trigger under the bound thread, so it needs bindToCurrentThread.";
+
 function scheduledTaskSummary(task: ScheduledTask, mayRun: boolean): OrchestratorMcpScheduledTask {
   return {
     scheduledTaskId: task.id,
@@ -267,6 +271,7 @@ function scheduledTaskSummary(task: ScheduledTask, mayRun: boolean): Orchestrato
     ...(task.webhook === undefined
       ? {}
       : { webhookSignature: task.webhook.hasSecret ? "set" : "none" }),
+    ...(task.spawnAsSubthread === true ? { spawnAsSubthread: true } : {}), // Fork
   };
 }
 
@@ -1711,6 +1716,9 @@ const make = Effect.gen(function* () {
               : "bindToCurrentThread binds to this thread, which belongs to a different project.",
           );
         }
+        if (input.spawnAsSubthread === true && !bindToCurrentThread) {
+          return yield* failure("invalid_request", SPAWN_AS_SUBTHREAD_NEEDS_BINDING); // Fork
+        }
         const modelSelection =
           parent?.thread.modelSelection ?? (yield* projectDefaultModelSelection(project));
         const derivedTitle = input.prompt.split("\n")[0]?.trim() ?? "";
@@ -1727,6 +1735,9 @@ const make = Effect.gen(function* () {
           modelSelection,
           runtimeMode: limits.runtimeMode,
           interactionMode: limits.interactionMode,
+          ...(input.spawnAsSubthread === undefined
+            ? {}
+            : { spawnAsSubthread: input.spawnAsSubthread }), // Fork
           createdBy: "agent",
           creationSource: "mcp",
           // Scope the idempotency key by provider session so two callers
@@ -1790,6 +1801,9 @@ const make = Effect.gen(function* () {
             : input.bindToCurrentThread && parent !== undefined
               ? parent.thread.id
               : null;
+        if (input.spawnAsSubthread === true && threadId === null) {
+          return yield* failure("invalid_request", SPAWN_AS_SUBTHREAD_NEEDS_BINDING); // Fork
+        }
         // Rebinding changes where runs execute, so the workspace strategy must
         // follow: unbinding a root-strategy task would otherwise run loose
         // prompts in the shared project checkout.
@@ -1809,6 +1823,9 @@ const make = Effect.gen(function* () {
           modelSelection: existing.modelSelection,
           runtimeMode: existing.runtimeMode,
           interactionMode: existing.interactionMode,
+          ...(input.spawnAsSubthread === undefined
+            ? {}
+            : { spawnAsSubthread: input.spawnAsSubthread }), // Fork
           createdBy: existing.createdBy,
           creationSource: existing.creationSource,
         };

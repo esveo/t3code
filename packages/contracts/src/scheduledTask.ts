@@ -199,6 +199,13 @@ export const ScheduledTask = Schema.Struct({
   lastRunError: Schema.NullOr(Schema.String),
   runCount: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
   webhook: Schema.optional(ScheduledTaskWebhookEndpoint),
+  // Fork (esveo): run each trigger as a subthread of the bound thread.
+  spawnAsSubthread: Schema.optional(
+    Schema.Boolean.annotate({
+      description:
+        "Only with threadId: each run starts a new thread under the bound thread, which coordinates it and gets its result when it finishes, instead of posting the prompt into the bound thread. Defaults to false.",
+    }),
+  ),
 });
 export type ScheduledTask = typeof ScheduledTask.Type;
 
@@ -225,6 +232,13 @@ export const ScheduledTaskUpsertInput = Schema.Struct({
   projectId: ProjectId,
   threadId: Schema.optional(Schema.NullOr(ThreadId)),
   workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy,
+  // Fork (esveo): run each trigger as a subthread of the bound thread.
+  spawnAsSubthread: Schema.optional(
+    Schema.Boolean.annotate({
+      description:
+        "Only with threadId: each run starts a new thread under the bound thread, which coordinates it and gets its result when it finishes, instead of posting the prompt into the bound thread. Omit to keep the stored setting; a new task defaults to false.",
+    }),
+  ),
   modelSelection: ModelSelection,
   runtimeMode: RuntimeMode,
   interactionMode: ProviderInteractionMode,
