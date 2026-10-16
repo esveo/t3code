@@ -1,4 +1,5 @@
 import {
+  AGENT_TIME_WS_METHODS,
   FORK_NOTES_WS_METHODS,
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS,
   THREAD_COORDINATORS_WS_METHODS,
@@ -21,4 +22,5 @@ export const FORK_RPC_AGGREGATES = {
   [VOICE_INPUT_WS_METHODS.transcribe]: "server",
   [PROVIDER_SUBAGENT_CONTROL_WS_METHODS.target]: "orchestration",
   [PROVIDER_SUBAGENT_CONTROL_WS_METHODS.stop]: "orchestration",
+  [AGENT_TIME_WS_METHODS.summary]: "server",
 } as const;
