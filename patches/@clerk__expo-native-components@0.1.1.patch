@@ -1,8 +1,25 @@
+diff --git a/android/build.gradle b/android/build.gradle
+index 0946d68..1926024 100644
+--- a/android/build.gradle
++++ b/android/build.gradle
+@@ -147,6 +147,12 @@ dependencies {
+   implementation "androidx.activity:activity-compose:$activityComposeVersion"
+   implementation "androidx.lifecycle:lifecycle-runtime-compose:$lifecycleVersion"
+   implementation "androidx.lifecycle:lifecycle-viewmodel-compose:$lifecycleVersion"
++  // ClerkComposeNativeViewHost imports LocalSavedStateRegistryOwner and
++  // LocalLifecycleOwner from these artifacts. Earlier SDKs leaked them onto
++  // the compile classpath through clerk-android-ui's navigation3 runtime
++  // dependency; AGP 9 resolves the compile classpath on its own.
++  implementation "androidx.savedstate:savedstate-compose:1.4.0"
++  implementation "androidx.lifecycle:lifecycle-runtime-compose:2.10.0"
+ 
+   testImplementation "junit:junit:4.13.2"
+ }
 diff --git a/android/src/main/java/expo/modules/clerk/ClerkExpoModule.kt b/android/src/main/java/expo/modules/clerk/ClerkExpoModule.kt
-index b0f0255db044e3cb36135f17035114587dd3be4d..ada85e4d63767eaf21a0f7f1d017f1bef319fd0e 100644
+index e6b7938..995a1bc 100644
 --- a/android/src/main/java/expo/modules/clerk/ClerkExpoModule.kt
 +++ b/android/src/main/java/expo/modules/clerk/ClerkExpoModule.kt
-@@ -405,6 +405,23 @@ class ClerkExpoModule : Module() {
+@@ -468,6 +468,23 @@ class ClerkExpoModule : Module() {
  
      // MARK: - configure
  
@@ -26,7 +43,7 @@ index b0f0255db044e3cb36135f17035114587dd3be4d..ada85e4d63767eaf21a0f7f1d017f1be
      private fun configure(pubKey: String, bearerToken: String?, proxyUrl: String?, promise: Promise) {
          val context = reactContext ?: run {
              promise.reject("E_INIT_FAILED", "React context is not available", null)
-@@ -426,6 +443,7 @@ class ClerkExpoModule : Module() {
+@@ -490,6 +507,7 @@ class ClerkExpoModule : Module() {
                      }
  
                      Clerk.initialize(context, pubKey, clerkConfigurationOptions(normalizedProxyUrl))
@@ -34,32 +51,20 @@ index b0f0255db044e3cb36135f17035114587dd3be4d..ada85e4d63767eaf21a0f7f1d017f1be
                      startClientStateObserver()
                      // clerk-android registers ActivityLifecycleCallbacks during
                      // initialize(), but in React Native MainActivity has already passed
-@@ -547,1 +565,2 @@ class ClerkExpoModule : Module() {
+@@ -545,6 +563,7 @@ class ClerkExpoModule : Module() {
+                 val activeProxyUrl = configuredProxyUrl ?: Clerk.proxyUrl
+                 if (activePublishableKey != null && (activePublishableKey != pubKey || activeProxyUrl != normalizedProxyUrl)) {
                      Clerk.switchConfiguration(context, pubKey, clerkConfigurationOptions(normalizedProxyUrl))
 +                    applyApplicationIdOverride(context)
-diff --git a/android/build.gradle b/android/build.gradle
-index 0946d68..1926024 100644
---- a/android/build.gradle
-+++ b/android/build.gradle
-@@ -147,6 +147,12 @@ dependencies {
-   implementation "androidx.activity:activity-compose:$activityComposeVersion"
-   implementation "androidx.lifecycle:lifecycle-runtime-compose:$lifecycleVersion"
-   implementation "androidx.lifecycle:lifecycle-viewmodel-compose:$lifecycleVersion"
-+  // ClerkComposeNativeViewHost imports LocalSavedStateRegistryOwner and
-+  // LocalLifecycleOwner from these artifacts. Earlier SDKs leaked them onto
-+  // the compile classpath through clerk-android-ui's navigation3 runtime
-+  // dependency; AGP 9 resolves the compile classpath on its own.
-+  implementation "androidx.savedstate:savedstate-compose:1.4.0"
-+  implementation "androidx.lifecycle:lifecycle-runtime-compose:2.10.0"
-
-   testImplementation "junit:junit:4.13.2"
- }
+                     startClientStateObserver()
+                     appContext.currentActivity?.let { Clerk.attachActivity(it) }
+                     loadThemeFromAssets(context)
 diff --git a/ios/ClerkAuthNativeView.swift b/ios/ClerkAuthNativeView.swift
 index 5f8d2ba..b170304 100644
 --- a/ios/ClerkAuthNativeView.swift
 +++ b/ios/ClerkAuthNativeView.swift
 @@ -111,7 +111,12 @@ public class ClerkAuthNativeView: ClerkNativeViewHost {
-
+ 
    override func makeHostedController() -> UIViewController? {
      let hostBackAction: (() -> Void)? = currentHostBackButton
 -      ? { [weak self] in self?.onHostBack([:]) }
@@ -70,7 +75,7 @@ index 5f8d2ba..b170304 100644
 +          }
 +      }
        : nil
-
+ 
      return ClerkNativeBridge.shared.makeAuthViewController(
 diff --git a/ios/ClerkNativeBridge.swift b/ios/ClerkNativeBridge.swift
 index e9527c6..a59ee3b 100644
@@ -78,7 +83,7 @@ index e9527c6..a59ee3b 100644
 +++ b/ios/ClerkNativeBridge.swift
 @@ -1557,6 +1557,8 @@ private struct ClerkReactEmbeddedUserProfileCustomPage: View {
  }
-
+ 
  private struct ClerkReactUserProfileCustomPageContent: View {
 +  @Environment(\.clerkTheme) private var theme
 +
@@ -98,7 +103,7 @@ index e9527c6..a59ee3b 100644
 +    .background(theme.colors.background)
    }
  }
-
+ 
 diff --git a/ios/ClerkNativeViewHost.swift b/ios/ClerkNativeViewHost.swift
 index 4e6540a..6897350 100644
 --- a/ios/ClerkNativeViewHost.swift
@@ -108,21 +113,21 @@ index 4e6540a..6897350 100644
    private var hasInitialized: Bool = false
    private var configuredObserver: NSObjectProtocol?
 +  private var isPoppingHostRoute = false
-
+ 
    public required init(appContext: AppContext? = nil) {
      super.init(appContext: appContext)
 @@ -23,6 +24,7 @@ public class ClerkNativeViewHost: ExpoView {
      super.didMoveToWindow()
-
+ 
      guard window != nil else {
 +      isPoppingHostRoute = false
        if hasInitialized {
          hostedViewDidDetachFromWindow()
        }
 @@ -58,6 +60,37 @@ public class ClerkNativeViewHost: ExpoView {
-
+ 
    func hostedViewDidDetachFromWindow() {}
-
+ 
 +  /// Pops the React Navigation route that contains this view without waiting for
 +  /// the JavaScript event loop. React Native Screens reports the native dismissal
 +  /// back to React Navigation so its state remains synchronized.
@@ -156,13 +161,13 @@ index 4e6540a..6897350 100644
 +
    private func addConfiguredObserver() {
      guard configuredObserver == nil else { return }
-
+ 
 diff --git a/ios/ClerkUserProfileNativeView.swift b/ios/ClerkUserProfileNativeView.swift
 index f2ca604..46f406d 100644
 --- a/ios/ClerkUserProfileNativeView.swift
 +++ b/ios/ClerkUserProfileNativeView.swift
 @@ -47,7 +47,12 @@ public class ClerkUserProfileNativeView: ClerkUserProfileCustomPageHost {
-
+ 
    override func makeHostedController() -> UIViewController? {
      let hostBackAction: (() -> Void)? = currentHostBackButton
 -      ? { [weak self] in self?.onHostBack([:]) }
@@ -173,5 +178,5 @@ index f2ca604..46f406d 100644
 +          }
 +      }
        : nil
-
+ 
      return ClerkNativeBridge.shared.makeUserProfileViewController(
