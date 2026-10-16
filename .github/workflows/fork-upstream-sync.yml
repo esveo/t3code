@@ -3,7 +3,13 @@
 #
 # `merge` runs upstream's code and the Copilot CLI, so it holds no token that
 # can write: it merges, lets Copilot resolve conflicts and fix what broke, and
-# hands the result on as a git bundle. `publish` never runs that code: it checks
+# hands the result on as a git bundle. Copilot works in rounds: after each
+# session the fixed verify runs, and while it is red the next session starts
+# with its reports. A sync that stays red is not redone from scratch: the
+# next run continues from its open PR, merging fork's and upstream's new
+# commits into it, and closes it in favour of the new one. Such a run is
+# dispatched right away (up to MAX_ATTEMPTS runs per sync), since one job
+# cannot run longer than 6 hours. `publish` never runs that code: it checks
 # the bundle, pushes it as a PR and merges the PR when every check was green,
 # otherwise leaves it as a draft for the maintainer. The fixed checks live in
 # .github/scripts/fork-upstream-sync.sh and always run from the fork commit the
@@ -17,23 +23,34 @@ name: Fork upstream sync
 
 on:
   schedule:
-    # 06:00 in Germany during summer time, 05:00 in winter (cron runs in UTC).
-    - cron: "0 4 * * *"
+    # Mondays, 06:00 in Germany during summer time, 05:00 in winter (cron runs
+    # in UTC).
+    - cron: "0 4 * * 1"
   workflow_dispatch:
     inputs:
       upstream_ref:
         description: Upstream branch or commit to merge (an older commit merges a backlog in stages)
         default: main
       dry_run:
-        description: Leave the PR as a draft even when everything is green
+        description: Open no PR and close none; the result is only the run's sync artifact
+        type: boolean
+        default: false
+      fresh:
+        description: Start from fork, ignoring an open sync PR
         type: boolean
         default: false
       max_ai_credits:
-        description: Copilot's budget for this run in AI credits (1 credit = $0.01); a large backlog needs more
-        default: "300"
+        description: Copilot's budget per session in AI credits (1 credit = $0.01)
+        default: "1500"
+      rounds:
+        description: Copilot sessions per run at most, each one fixing what the previous one's verify found red
+        default: "3"
       model:
-        description: Copilot model for this run
-        default: gpt-5.6-sol
+        description: Copilot model for this run (falls back to FALLBACK_MODEL when the org does not offer it)
+        default: gpt-6.1-sol
+      attempt:
+        description: Which run of this sync this is; a red run dispatches the next one up to MAX_ATTEMPTS
+        default: "1"
 
 concurrency:
   group: fork-upstream-sync
@@ -45,19 +62,24 @@ env:
   MAINTAINER: Pawl-Patrol
   DEFAULT_UPSTREAM_REF: main
   SCRIPT: .github/scripts/fork-upstream-sync.sh
+  FALLBACK_MODEL: gpt-5.6-sol
+  MAX_ATTEMPTS: 3
 
 jobs:
   merge:
     if: github.repository == 'esveo/t3code'
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    # GitHub-hosted jobs end after 360 minutes.
+    timeout-minutes: 355
     permissions:
       contents: read
+      pull-requests: read
       copilot-requests: write
     outputs:
       behind: ${{ steps.upstream.outputs.behind }}
       fork_sha: ${{ steps.upstream.outputs.fork_sha }}
       target: ${{ steps.upstream.outputs.target }}
+      prev_pr: ${{ steps.merge.outputs.prev_pr }}
       green: ${{ steps.verdict.outputs.green }}
       bundled: ${{ steps.verdict.outputs.bundled }}
     steps:
@@ -94,6 +116,26 @@ jobs:
             echo "target=$target"
           } >> "$GITHUB_OUTPUT"
 
+      # The newest open sync PR is an earlier attempt that stayed red (green ones
+      # merge themselves); continue from it instead of redoing its work.
+      - name: Find an earlier attempt
+        if: steps.upstream.outputs.behind != '0' && inputs.fresh != true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prev=$(gh pr list --repo "$GITHUB_REPOSITORY" --base fork --state open --json number,headRefName,createdAt \
+            --jq '[.[] | select(.headRefName | startswith("sync/upstream-"))] | sort_by(.createdAt) | last // empty | "\(.number) \(.headRefName)"')
+          [ -n "$prev" ] || { echo "No open sync PR; starting from fork."; exit 0; }
+          read -r number branch <<< "$prev"
+          mkdir -p "$SYNC_DIR"
+          git fetch --no-tags origin "refs/heads/$branch"
+          gh pr view "$number" --repo "$GITHUB_REPOSITORY" --json body --jq .body > "$SYNC_DIR/previous-pr.md"
+          echo "Continuing #$number ($branch)."
+          {
+            echo "PREV=$(git rev-parse FETCH_HEAD)"
+            echo "PREV_PR=$number"
+          } >> "$GITHUB_ENV"
+
       - name: Restore conflict resolutions
         if: steps.upstream.outputs.behind != '0'
         uses: actions/cache/restore@v4
@@ -121,6 +163,11 @@ jobs:
           else
             echo "conflicts=true" >> "$GITHUB_OUTPUT"
           fi
+          if [ -s "$SYNC_DIR/continued" ]; then
+            echo "prev_pr=$PREV_PR" >> "$GITHUB_OUTPUT"
+          else
+            echo "PREV=" >> "$GITHUB_ENV"
+          fi
 
       - name: Verify the plain merge
         id: plain
@@ -145,70 +192,168 @@ jobs:
         id: agent
         if: steps.merge.outputs.conflicts == 'true' || steps.plain.outcome == 'failure'
         continue-on-error: true
-        timeout-minutes: 90
+        timeout-minutes: 330
         env:
           COPILOT_GITHUB_TOKEN: ${{ github.token }}
-          MAX_AI_CREDITS: ${{ inputs.max_ai_credits || '300' }}
-          MODEL: ${{ inputs.model || 'gpt-5.6-sol' }}
+          MAX_AI_CREDITS: ${{ inputs.max_ai_credits || '1500' }}
+          ROUNDS: ${{ inputs.rounds || '3' }}
+          MODEL: ${{ inputs.model || 'gpt-6.1-sol' }}
+          UPSTREAM_REF: ${{ inputs.upstream_ref || env.DEFAULT_UPSTREAM_REF }}
+          # How long the CLI waits for a command it moved to the background
+          # before it ends the session (default 600 s). verify takes 20+ minutes,
+          # and the default ended every session that ran it.
+          COPILOT_TASK_WAIT_TIMEOUT_SECONDS: "3600"
         run: |
           npm install -g @github/copilot
-          cat > "$RUNNER_TEMP/prompt.md" <<EOF
-          You maintain esveo/t3code, a fork of T3 Code (pingdotgg/t3code). Upstream's
-          ${{ inputs.upstream_ref || env.DEFAULT_UPSTREAM_REF }} is being merged into the fork's branch \`fork\`, and your job is to
-          finish that merge so that every fork feature keeps working on top of
-          upstream. Read FORK.md (rules of this fork) and README.md (its features) first.
-
-          State: HEAD is \`fork\` ($FORK_SHA) merging upstream $TARGET.
-          $(if [ -s "$SYNC_DIR/conflicts.txt" ]; then
-              echo "The merge stopped with conflicts in:"
-              sed 's/^/- /' "$SYNC_DIR/conflicts.txt"
-            else
-              echo "The merge is committed but its checks failed; see $SYNC_DIR/*.md and $SYNC_DIR/checks.log."
-            fi)
-
-          1. Resolve every conflict. Take upstream's change and keep the fork's
-             feature working on top of it. Read both sides and the commits behind
-             them (\`git log $FORK_SHA -- <file>\`, \`git log $FORK_SHA..$TARGET -- <file>\`).
-             Do not hand-merge pnpm-lock.yaml: resolve the package.json files, take
-             the fork's lockfile (\`git checkout --ours pnpm-lock.yaml\`), regenerate
-             it with \`vp install --no-frozen-lockfile\` and commit it.
-          2. Commit the merge with \`git commit --no-edit\`. It must stay a merge
-             commit of $FORK_SHA and $TARGET: never rebase, reset, squash or amend
-             past it. Commit every later fix as a separate commit on top.
-          3. Verify with \`bash <(git show $FORK_SHA:$SCRIPT) verify\`. It installs,
-             typechecks, runs the tests related to the files both sides changed and
-             checks the merge's shape. Its reports land in $SYNC_DIR: checks.md,
-             checks.log, guards.md and audit.md. audit.md lists lines the fork added
-             that the result lost; restore every one that belongs to a fork feature,
-             and adapt it to upstream's new code where upstream rewrote it.
-             Fix what fails and verify again until it passes.
-
+          if [ -s "$SYNC_DIR/models.txt" ] && ! grep -q "^$MODEL	enabled" "$SYNC_DIR/models.txt"; then
+            echo "::warning::The org does not offer $MODEL; using $FALLBACK_MODEL."
+            MODEL=$FALLBACK_MODEL
+          fi
+          rules() {
+            cat <<EOF
           Rules: do not change anything under .github (the sync is refused if you
           do); do not delete, skip or weaken tests or fork features to get green;
-          do not push, and do not use gh. Your budget is $MAX_AI_CREDITS AI credits
-          and the session ends without warning when it runs out, so commit as you
-          go. When done or stuck, and early enough to still have budget, write
+          do not push, and do not use gh. Commit the merge with \`git commit --no-edit\`
+          and every later fix as a separate commit on top; never rebase, reset,
+          squash or amend. Your budget is $MAX_AI_CREDITS AI credits and the session
+          ends without warning when it runs out, so commit as you go.
+
+          Checking: \`bash <(git show $FORK_SHA:$SCRIPT) verify\` installs,
+          typechecks, runs the tests related to the files both sides changed and
+          checks the merge's shape; its reports land in $SYNC_DIR (checks.md,
+          checks.log, guards.md, audit.md). It takes 20 to 30 minutes, so while you
+          fix, run targeted checks instead (\`vp run --filter <package> typecheck\`,
+          \`cd <package> && vp test run <files>\`), and run verify at most once, at
+          the end, with its output redirected to a file. The workflow runs verify
+          after your session anyway and, while it is red, starts another session
+          with its reports (this is round $1 of $ROUNDS).
+
+          Fix every red check across the whole repository, not only the files that
+          conflicted: fork code that merged cleanly still breaks when upstream moves
+          an import, changes an Effect API, removes a component or renames something
+          the fork relies on (such as the release stage behind the "esveo code"
+          branding). If \`vp install\` fails, fix that first; nothing after it means
+          anything. Never hand-merge a file under patches/: regenerate it against the
+          pristine package (\`pnpm patch <pkg>@<version>\`, apply the fork's change,
+          \`pnpm patch-commit\`), or drop it if upstream's version of the package no
+          longer needs it. Generated files (such as routeTree.gen.ts, which must keep
+          the fork's routes like git-graph and popout, or the mobile
+          generated-uniwind-themes.css) are regenerated with their generator, never
+          resolved by picking a side.
+
+          audit.md lists lines the fork added that the result lost, and
+          audit-lines.txt the lines themselves. Fork features have been lost this
+          way before, silently. Account for every file in it: restore the fork
+          feature, adapted to upstream's new code where upstream rewrote it, or say
+          in summary.md why the lines are gone (for example upstream rewrote the
+          code and the feature still works another way).
+
+          When done or stuck, and early enough to still have budget, write
           $SYNC_DIR/summary.md: the conflicts and how you resolved each, the fixes
-          you made, what remains open and the options you see. If you cannot
-          finish with confidence (for example upstream rebuilt the code a fork
-          feature depends on) or verify stays red after honest attempts, write
-          "blocked" to $SYNC_DIR/status and commit what you have, conflict
-          markers included, so the maintainer can pick it up from there.
+          you made, what remains open and the options you see (later rounds update
+          it). Only if you cannot finish with confidence (for example upstream
+          rebuilt the code a fork feature depends on) write "blocked" to
+          $SYNC_DIR/status: that ends the rounds and leaves the sync to the
+          maintainer. Commit what you have either way, conflict markers included.
 
           The runner has limited memory: run typecheck, tests, installs and builds
           one at a time, never in parallel with each other, and never from several
           sub-agents at once.
           EOF
+          }
+          prompt() {
+            cat <<EOF
+          You maintain esveo/t3code, a fork of T3 Code (pingdotgg/t3code). Upstream's
+          $UPSTREAM_REF ($TARGET) is being merged into the fork's branch \`fork\`
+          ($FORK_SHA), and your job is to finish that merge so that every fork
+          feature keeps working on top of upstream. Read FORK.md (rules of this
+          fork) and README.md (its features) first.
+
+          EOF
+            if [ "$1" -gt 1 ]; then
+              echo "An earlier session already worked on this merge; its notes are in $SYNC_DIR/summary.md if it wrote any."
+              echo "The workflow's verify of the result is still red. Fix what fails. Its reports:"
+              echo
+              cat "$SYNC_DIR/checks.md" "$SYNC_DIR/guards.md" 2>/dev/null || true
+              echo
+              head -c 3000 "$SYNC_DIR/audit.md" 2>/dev/null || true
+              echo
+              echo "The lost fork lines (account for each file, see the rules below):"
+              head -c 6000 "$SYNC_DIR/audit-lines.txt" 2>/dev/null || true
+              echo
+              echo "Failing lines from $SYNC_DIR/checks.log (read the log for context):"
+              sed 's/\x1b\[[0-9;]*m//g' "$SYNC_DIR/checks.log" 2>/dev/null |
+                grep -E '^ *FAIL |error TS[0-9]|ERR_PNPM_|^error: ' | sort -u | head -80 || true
+              echo
+            else
+              if [ -n "${PREV:-}" ]; then
+                echo "This run continues an earlier sync attempt that stayed red (PR #$PREV_PR):"
+                echo "HEAD is that attempt with fork's newer commits merged in. Build on its work"
+                echo "instead of redoing it; its description, with that session's summary and red"
+                echo "checks, is in $SYNC_DIR/previous-pr.md. verify folds the history into one"
+                echo "merge commit of fork and upstream by itself."
+                echo
+              fi
+              if [ -s "$SYNC_DIR/conflicts.txt" ]; then
+                echo "The merge of upstream stopped with conflicts in:"
+                sed 's/^/- /' "$SYNC_DIR/conflicts.txt"
+                echo
+                echo "Resolve every conflict. Take upstream's change and keep the fork's"
+                echo "feature working on top of it. Read both sides and the commits behind"
+                echo "them (\`git log $FORK_SHA -- <file>\`, \`git log $FORK_SHA..$TARGET -- <file>\`)."
+                echo "Do not hand-merge pnpm-lock.yaml: resolve the package.json files, take"
+                echo "the fork's lockfile (\`git checkout --ours pnpm-lock.yaml\`), regenerate"
+                echo "it with \`vp install --no-frozen-lockfile\` and commit it."
+              else
+                echo "The merge is committed but its checks failed; see $SYNC_DIR/checks.md,"
+                echo "guards.md, audit.md and checks.log. Fix what fails."
+              fi
+              echo
+            fi
+            rules "$1"
+          }
           git rev-parse HEAD > "$SYNC_DIR/head-before"
           git status --porcelain > "$SYNC_DIR/status-before"
-          copilot -p "$(cat "$RUNNER_TEMP/prompt.md")" \
-            --model "$MODEL" \
-            --no-ask-user --allow-all-tools --allow-all-paths \
-            --deny-tool 'shell(git push)' --deny-tool 'shell(gh)' \
-            --secret-env-vars=COPILOT_GITHUB_TOKEN \
-            --max-ai-credits "$MAX_AI_CREDITS" \
-            --share "$SYNC_DIR/transcript.md" \
-            --usage-output-file "$SYNC_DIR/usage.json"
+          # A round is a session of up to 80 minutes plus a verify of up to 30;
+          # one that cannot finish before the step's timeout is not started.
+          round_secs=$((110 * 60)) step_secs=$((330 * 60))
+          round=1
+          while :; do
+            prompt "$round" > "$RUNNER_TEMP/prompt-$round.md"
+            timeout 80m copilot -p "$(cat "$RUNNER_TEMP/prompt-$round.md")" \
+              --model "$MODEL" \
+              --no-ask-user --allow-all-tools --allow-all-paths \
+              --deny-tool 'shell(git push)' --deny-tool 'shell(gh)' \
+              --secret-env-vars=COPILOT_GITHUB_TOKEN \
+              --max-ai-credits "$MAX_AI_CREDITS" \
+              --share "$SYNC_DIR/transcript-$round.md" \
+              --usage-output-file "$SYNC_DIR/usage-$round.json" ||
+              echo "::warning::Copilot session $round ended with exit code $?"
+            # A Copilot that never started (model not enabled, auth refused) leaves
+            # only the conflicted merge; "Check that Copilot ran" fails the run.
+            if [ "$round" = 1 ] && [ "$(git rev-parse HEAD)" = "$(cat "$SYNC_DIR/head-before")" ] &&
+              [ "$(git status --porcelain)" = "$(cat "$SYNC_DIR/status-before")" ]; then
+              exit 1
+            fi
+            # Unresolved conflicts go in with their markers, for the next round.
+            rm -f .git/index.lock
+            if git rev-parse -q --verify MERGE_HEAD >/dev/null; then
+              git add -A && git commit -q --no-verify --no-edit
+            elif [ -n "$(git status --porcelain)" ]; then
+              git add -A && git commit -q --no-verify -m "chore: changes the upstream sync left uncommitted"
+            fi
+            if bash <(git show "$FORK_SHA:$SCRIPT") verify; then
+              echo "$(git rev-parse HEAD) green" > "$SYNC_DIR/verified"
+              break
+            fi
+            echo "$(git rev-parse HEAD) red" > "$SYNC_DIR/verified"
+            [ "$(cat "$SYNC_DIR/status" 2>/dev/null)" != blocked ] && [ "$round" -lt "$ROUNDS" ] || break
+            if [ $((SECONDS + round_secs)) -gt "$step_secs" ]; then
+              echo "No time left in this job for round $((round + 1)); the next run continues."
+              break
+            fi
+            round=$((round + 1))
+          done
 
       # Everything below runs even when the runner cancelled the Copilot step (as
       # it did once after 8 minutes, without a manual cancel), so the work done
@@ -241,11 +386,19 @@ jobs:
             git commit -m "chore: changes the upstream sync left uncommitted"
           fi
 
+      # Reuses the rounds' last verify when nothing changed since.
       - name: Verify the agent's result
         id: fixed
         if: "!cancelled() && steps.agent.outcome != 'skipped' && steps.ran.outcome != 'failure'"
         continue-on-error: true
-        run: bash <(git show "$FORK_SHA:$SCRIPT") verify
+        run: |
+          read -r sha verdict 2>/dev/null < "$SYNC_DIR/verified" || true
+          if [ "${sha:-}" = "$(git rev-parse HEAD)" ]; then
+            echo "Verified in the rounds above: $verdict"
+            [ "$verdict" = green ]
+          else
+            bash <(git show "$FORK_SHA:$SCRIPT") verify
+          fi
 
       - name: Verdict
         id: verdict
@@ -277,7 +430,7 @@ jobs:
   publish:
     needs: merge
     # Also after a failed merge job, as long as it bundled a result.
-    if: "!cancelled() && needs.merge.outputs.bundled == 'true'"
+    if: "!cancelled() && needs.merge.outputs.bundled == 'true' && inputs.dry_run != true"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -286,7 +439,7 @@ jobs:
       FORK_SHA: ${{ needs.merge.outputs.fork_sha }}
       TARGET: ${{ needs.merge.outputs.target }}
       GREEN: ${{ needs.merge.outputs.green }}
-      DRY_RUN: ${{ inputs.dry_run }}
+      PREV_PR: ${{ needs.merge.outputs.prev_pr }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Checkout fork
@@ -329,11 +482,12 @@ jobs:
           [ "$GREEN" = true ] && [ "$CHECK_OK" = true ] && ready=true
           {
             echo "Merges upstream's ${{ inputs.upstream_ref || env.DEFAULT_UPSTREAM_REF }} up to [\`$short\`](https://github.com/pingdotgg/t3code/commit/$TARGET) into \`fork\` ($(git rev-list --count "$FORK_SHA..$TARGET") new commits). [Sync run]($RUN_URL)"
+            [ -n "$PREV_PR" ] && echo "Continues #$PREV_PR, which stayed red."
             echo
             if [ "$ready" = true ]; then
               echo "Everything is green; the sync merges this itself."
             else
-              echo "@$MAINTAINER this sync needs you: see the red items below and the run's \`sync\` artifact (Copilot's transcript)."
+              echo "@$MAINTAINER this sync needs you: see the red items below and the run's \`sync\` artifact (Copilot's transcripts). Fixes pushed to this branch carry over: the next sync continues from it."
             fi
             if [ -s "$SYNC_DIR/conflicts.txt" ]; then
               echo
@@ -345,25 +499,29 @@ jobs:
               echo "## Copilot's summary"
               echo
               cat "$SYNC_DIR/summary.md"
-            elif [ -s "$SYNC_DIR/transcript.md" ]; then
+            elif transcript=$(ls "$SYNC_DIR"/transcript-*.md 2>/dev/null | sort -V | tail -1) && [ -s "$transcript" ]; then
               echo
               echo "## Copilot's last words"
               echo
-              echo "Copilot wrote no summary, most likely because its budget ran out. The end of its transcript:"
+              echo "Copilot wrote no summary, most likely because its budget ran out. The end of its last transcript:"
               echo
               awk '/^### Copilot$/ { buf = ""; keep = 1; next } /^### / { keep = 0 } keep { buf = buf $0 "\n" } END { printf "%s", buf }' \
-                "$SYNC_DIR/transcript.md" | sed '/^---$/,$d' | sed 's/^/> /'
+                "$transcript" | sed '/^---$/,$d' | sed 's/^/> /'
             fi
             for f in checks guards audit; do
               [ -s "$SYNC_DIR/$f.md" ] && { echo; cat "$SYNC_DIR/$f.md"; }
             done
           } | head -c 60000 > "$RUNNER_TEMP/body.md"
           draft=()
-          [ "$ready" = true ] && [ "$DRY_RUN" != true ] || draft=(--draft)
+          [ "$ready" = true ] || draft=(--draft)
           url=$(gh pr create --base fork --head "$branch" "${draft[@]}" \
             --title "chore: merge upstream/${{ inputs.upstream_ref || env.DEFAULT_UPSTREAM_REF }} ($short)" --body-file "$RUNNER_TEMP/body.md")
           echo "url=$url" >> "$GITHUB_OUTPUT"
           echo "ready=$ready" >> "$GITHUB_OUTPUT"
+          # The attempt this run continued from lives on in this one.
+          if [ -n "$PREV_PR" ]; then
+            gh pr close "$PREV_PR" --delete-branch --comment "Continued in $url"
+          fi
           # A green sync supersedes older ones; a red one leaves them for comparison.
           [ "$ready" = true ] || exit 0
           for old in $(gh pr list --base fork --state open --json number,headRefName \
@@ -372,14 +530,34 @@ jobs:
           done
 
       - name: Merge the pull request
-        if: steps.pr.outputs.ready == 'true' && inputs.dry_run != true
+        if: steps.pr.outputs.ready == 'true'
         env:
           GH_TOKEN: ${{ secrets.SYNC_MERGE_TOKEN }}
         run: gh pr merge "${{ steps.pr.outputs.url }}" --merge --delete-branch
 
+      # A red sync that Copilot did not give up on goes on in a new run (a job
+      # cannot outlast 6 hours), continuing from the PR this run just opened.
+      - name: Continue in another run
+        if: steps.pr.outputs.ready != 'true' && fromJSON(inputs.attempt || '1') < fromJSON(env.MAX_ATTEMPTS)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ATTEMPT: ${{ inputs.attempt || '1' }}
+          UPSTREAM_REF: ${{ inputs.upstream_ref || env.DEFAULT_UPSTREAM_REF }}
+          MAX_AI_CREDITS: ${{ inputs.max_ai_credits || '1500' }}
+          ROUNDS: ${{ inputs.rounds || '3' }}
+          MODEL: ${{ inputs.model || 'gpt-6.1-sol' }}
+        run: |
+          if [ "$(cat "$SYNC_DIR/status" 2>/dev/null)" = blocked ]; then
+            echo "Copilot marked the sync blocked; leaving it to the maintainer."
+            exit 0
+          fi
+          gh workflow run fork-upstream-sync.yml --repo "$GITHUB_REPOSITORY" --ref fork \
+            -f upstream_ref="$UPSTREAM_REF" -f max_ai_credits="$MAX_AI_CREDITS" \
+            -f rounds="$ROUNDS" -f model="$MODEL" -f attempt="$((ATTEMPT + 1))"
+
       # The fork runs none of upstream's workflows; switch off any the merge added.
       - name: Disable workflows upstream added
-        if: steps.pr.outputs.ready == 'true' && inputs.dry_run != true
+        if: steps.pr.outputs.ready == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
