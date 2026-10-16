@@ -84,7 +84,7 @@ export const make = Effect.gen(function* () {
   );
 
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
-  const uuid = crypto.randomUUIDv4.pipe(Effect.orDie);
+  const uuid = crypto.randomUUIDv4().pipe(Effect.orDie);
   const storeFailed = (detail: string) => () => failure(`Could not ${detail} the decisions.`);
 
   const list = (coordinatorId: ThreadId) =>

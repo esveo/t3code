@@ -14,8 +14,8 @@ import { formatModelSlugName } from "@t3tools/shared/model";
 import type { ReactNode } from "react";
 import { View } from "react-native";
 
-import { SymbolView } from "../../components/AppSymbol";
-import { AppText as Text } from "../../components/AppText";
+import { SymbolView } from "../../components/ui/AppSymbol";
+import { AppText as Text } from "../../components/ui/AppText";
 import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { ProviderInstanceIcon } from "../../components/ProviderIcon";
 import { cn } from "../../lib/cn";

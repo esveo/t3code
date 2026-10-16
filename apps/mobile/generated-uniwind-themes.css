@@ -1938,7 +1938,7 @@
       --color-sheet: rgba(251, 251, 253, 0.98);
       --color-sheet-solid: #fbfbfd;
       --color-card: #fbfbfd;
-      --color-grouped-card: #fbfbfd;
+      --color-grouped-card: #f1f2f7;
       --color-card-alt: #f3f4f8;
       --color-card-translucent: rgba(251, 251, 253, 0.8);
       --color-thread-canvas: #fbfbfd;
@@ -1948,8 +1948,8 @@
       --color-thread-hover: #e8eaf2;
       --color-row-hover: #e3e6ef;
       --color-composer-panel: rgba(251, 251, 253, 0.88);
-      --color-composer-surface: rgba(251, 251, 253, 0.94);
-      --color-composer-border: rgba(225, 227, 236, 0.54);
+      --color-composer-surface: rgba(241, 242, 247, 0.94);
+      --color-composer-border: rgba(225, 227, 236, 0.8);
       --color-foreground: #171a34;
       --color-foreground-secondary: #565b7e;
       --color-foreground-muted: #565b7e;
@@ -1964,8 +1964,10 @@
       --color-inline-skill-border: rgba(0, 117, 179, 0.42);
       --color-inline-skill-foreground: #171a34;
       --color-primary: #0075b3;
+      --color-prominent-action: #0075b3;
+      --color-prominent-action-foreground: #ffffff;
       --color-primary-foreground: #ffffff;
-      --color-primary-text: #0075b3;
+      --color-primary-text: #0073b1;
       --color-primary-shadow: #000000;
       --color-secondary: #eef0f5;
       --color-secondary-foreground: #171a34;
@@ -1985,7 +1987,7 @@
       --color-input: #fbfbfd;
       --color-input-border: #c7cad9;
       --color-sidebar-search: #e3e6ef;
-      --color-placeholder: #6a6e8b;
+      --color-placeholder: #686c88;
       --color-icon: #171a34;
       --color-icon-muted: #7d82a3;
       --color-icon-subtle: #565b7e;
@@ -1993,7 +1995,7 @@
       --color-header-foreground: #171a34;
       --color-header-border: #e6e7ee;
       --color-glass-surface: rgba(236, 238, 244, 0.74);
-      --color-glass-fallback: rgba(251, 251, 253, 0.94);
+      --color-glass-fallback: rgba(241, 242, 247, 0.94);
       --color-glass-tint: rgba(236, 238, 244, 0.22);
       --color-status-bar: #fbfbfd;
       --color-md-body: #171a34;
@@ -2097,7 +2099,7 @@
       --color-sheet: rgba(23, 26, 52, 0.98);
       --color-sheet-solid: #171a34;
       --color-card: #171a34;
-      --color-grouped-card: #171a34;
+      --color-grouped-card: #1f2344;
       --color-card-alt: #1f2344;
       --color-card-translucent: rgba(23, 26, 52, 0.8);
       --color-thread-canvas: #171a34;
@@ -2107,8 +2109,8 @@
       --color-thread-hover: #1f2344;
       --color-row-hover: #2e3466;
       --color-composer-panel: rgba(23, 26, 52, 0.92);
-      --color-composer-surface: rgba(23, 26, 52, 0.9);
-      --color-composer-border: rgba(47, 53, 99, 0.46);
+      --color-composer-surface: rgba(31, 35, 68, 0.9);
+      --color-composer-border: rgba(47, 53, 99, 0.8);
       --color-foreground: #f4f5fa;
       --color-foreground-secondary: #a9aec9;
       --color-foreground-muted: #a9aec9;
@@ -2123,6 +2125,8 @@
       --color-inline-skill-border: rgba(3, 168, 255, 0.42);
       --color-inline-skill-foreground: #f4f5fa;
       --color-primary: #03a8ff;
+      --color-prominent-action: #03a8ff;
+      --color-prominent-action-foreground: #0b1026;
       --color-primary-foreground: #0b1026;
       --color-primary-text: #03a8ff;
       --color-primary-shadow: #000000;
@@ -2144,7 +2148,7 @@
       --color-input: #171a34;
       --color-input-border: #3a4175;
       --color-sidebar-search: #242952;
-      --color-placeholder: #8a8fae;
+      --color-placeholder: #8d92b0;
       --color-icon: #f4f5fa;
       --color-icon-muted: #8a8fae;
       --color-icon-subtle: #a9aec9;
@@ -2152,7 +2156,7 @@
       --color-header-foreground: #f4f5fa;
       --color-header-border: #2c3160;
       --color-glass-surface: rgba(40, 46, 91, 0.74);
-      --color-glass-fallback: rgba(23, 26, 52, 0.9);
+      --color-glass-fallback: rgba(31, 35, 68, 0.9);
       --color-glass-tint: rgba(40, 46, 91, 0.22);
       --color-status-bar: #171a34;
       --color-md-body: #f4f5fa;
@@ -2256,7 +2260,7 @@
       --color-sheet: rgba(251, 251, 253, 0.98);
       --color-sheet-solid: #fbfbfd;
       --color-card: #fbfbfd;
-      --color-grouped-card: #fbfbfd;
+      --color-grouped-card: #f1f2f7;
       --color-card-alt: #f3f4f8;
       --color-card-translucent: rgba(251, 251, 253, 0.8);
       --color-thread-canvas: #fbfbfd;
@@ -2266,8 +2270,8 @@
       --color-thread-hover: #e8eaf2;
       --color-row-hover: #e3e6ef;
       --color-composer-panel: rgba(251, 251, 253, 0.88);
-      --color-composer-surface: rgba(251, 251, 253, 0.94);
-      --color-composer-border: rgba(225, 227, 236, 0.54);
+      --color-composer-surface: rgba(241, 242, 247, 0.94);
+      --color-composer-border: rgba(225, 227, 236, 0.8);
       --color-foreground: #171a34;
       --color-foreground-secondary: #565b7e;
       --color-foreground-muted: #565b7e;
@@ -2282,8 +2286,10 @@
       --color-inline-skill-border: rgba(0, 117, 179, 0.42);
       --color-inline-skill-foreground: #171a34;
       --color-primary: #0075b3;
+      --color-prominent-action: #0075b3;
+      --color-prominent-action-foreground: #ffffff;
       --color-primary-foreground: #ffffff;
-      --color-primary-text: #0075b3;
+      --color-primary-text: #0073b1;
       --color-primary-shadow: #000000;
       --color-secondary: #eef0f5;
       --color-secondary-foreground: #171a34;
@@ -2303,7 +2309,7 @@
       --color-input: #fbfbfd;
       --color-input-border: #c7cad9;
       --color-sidebar-search: #e3e6ef;
-      --color-placeholder: #6a6e8b;
+      --color-placeholder: #686c88;
       --color-icon: #171a34;
       --color-icon-muted: #7d82a3;
       --color-icon-subtle: #565b7e;
@@ -2311,7 +2317,7 @@
       --color-header-foreground: #171a34;
       --color-header-border: #e6e7ee;
       --color-glass-surface: rgba(236, 238, 244, 0.74);
-      --color-glass-fallback: rgba(251, 251, 253, 0.94);
+      --color-glass-fallback: rgba(241, 242, 247, 0.94);
       --color-glass-tint: rgba(236, 238, 244, 0.22);
       --color-status-bar: #fbfbfd;
       --color-md-body: #171a34;
@@ -2415,7 +2421,7 @@
       --color-sheet: rgba(13, 17, 34, 0.98);
       --color-sheet-solid: #0d1122;
       --color-card: #0d1122;
-      --color-grouped-card: #0d1122;
+      --color-grouped-card: #15192b;
       --color-card-alt: #1c2235;
       --color-card-translucent: rgba(13, 17, 34, 0.8);
       --color-thread-canvas: #0d1122;
@@ -2425,8 +2431,8 @@
       --color-thread-hover: #121627;
       --color-row-hover: #23293f;
       --color-composer-panel: rgba(13, 17, 34, 0.92);
-      --color-composer-surface: rgba(13, 17, 34, 0.9);
-      --color-composer-border: rgba(33, 38, 58, 0.46);
+      --color-composer-surface: rgba(21, 25, 43, 0.9);
+      --color-composer-border: rgba(33, 38, 58, 0.8);
       --color-foreground: #eff0f4;
       --color-foreground-secondary: #b5b9c4;
       --color-foreground-muted: #b5b9c4;
@@ -2441,6 +2447,8 @@
       --color-inline-skill-border: rgba(57, 191, 255, 0.42);
       --color-inline-skill-foreground: #eff0f4;
       --color-primary: #39bfff;
+      --color-prominent-action: #39bfff;
+      --color-prominent-action-foreground: #0d1523;
       --color-primary-foreground: #0d1523;
       --color-primary-text: #39bfff;
       --color-primary-shadow: #000000;
@@ -2470,7 +2478,7 @@
       --color-header-foreground: #eff0f4;
       --color-header-border: #1e2336;
       --color-glass-surface: rgba(35, 41, 63, 0.74);
-      --color-glass-fallback: rgba(13, 17, 34, 0.9);
+      --color-glass-fallback: rgba(21, 25, 43, 0.9);
       --color-glass-tint: rgba(35, 41, 63, 0.22);
       --color-status-bar: #0d1122;
       --color-md-body: #eff0f4;
