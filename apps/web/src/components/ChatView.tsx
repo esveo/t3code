@@ -4658,9 +4658,9 @@ export default function ChatView(props: ChatViewProps) {
   );
 
   const focusComposer = () => {
-  // Only the pane the user is working in may pull the caret. A background pane
-  // that remounts, finishes a turn, or closes its terminal would otherwise take
-  // the keyboard mid-sentence and the next keystrokes land in the wrong thread.
+    // Only the pane the user is working in may pull the caret. A background pane
+    // that remounts, finishes a turn, or closes its terminal would otherwise take
+    // the keyboard mid-sentence and the next keystrokes land in the wrong thread.
     if (!isActivePaneRef.current) return;
     composerRef.current?.focusAtEnd();
   };
@@ -8511,8 +8511,7 @@ export default function ChatView(props: ChatViewProps) {
         promptRef.current = nextPrompt;
         composerRef.current?.resetCursorState({ prompt: nextPrompt, cursor: nextPrompt.length });
         requestAnimationFrame(() => {
-          if (currentRouteThreadKeyRef.current === routeThreadKey)
-            composerRef.current?.focusAtEnd();
+          if (currentRouteThreadKeyRef.current === routeThreadKey) focusComposerStable();
         });
       }
     } catch (error) {

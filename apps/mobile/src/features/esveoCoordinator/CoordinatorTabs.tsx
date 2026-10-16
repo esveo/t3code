@@ -18,7 +18,7 @@ import { StackActions } from "@react-navigation/native";
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 
-import { AppText as Text } from "../../components/AppText";
+import { AppText as Text } from "../../components/ui/AppText";
 import { cn } from "../../lib/cn";
 import { relativeTime } from "../../lib/time";
 import { useThreadShells } from "../../state/entities";

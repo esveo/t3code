@@ -38,6 +38,11 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { openLinkPullRequestDialog } from "./LinkPullRequestDialog";
 import { pullRequestListLines, type PullRequestListLine } from "./pullRequestListLines";
 import {
+  PullRequestStatusHeader,
+  type PullRequestStatusListItem,
+  usePullRequestStatusListItems,
+} from "../pullRequestStatusGroups/PullRequestStatusSections";
+import {
   PULL_REQUEST_ROW_CLASS,
   PULL_REQUEST_ROW_NUMBER_CLASS,
   PullRequestRowAuthor,
@@ -354,6 +359,9 @@ const LinkRow = memo(LinkRowImpl);
 
 const lineKey = (line: PullRequestListLine) =>
   `${line.link.host}/${line.link.repository}#${line.link.number}`;
+// Fork: the list also holds the status sections' headers.
+const itemKey = (item: PullRequestStatusListItem) =>
+  item.kind === "header" ? `section:${item.group.id}` : lineKey(item.line);
 
 export function ThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThreadRef }) {
   const configs = useServerConfigs();
@@ -390,6 +398,7 @@ function EnabledThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThread
   const supportsWatch = capabilities?.threadPullRequestWatch === true;
   const links = useMemo(() => visibleThreadPullRequests(thread?.pullRequests ?? []), [thread]);
   const lines = useMemo(() => pullRequestListLines(resolveThreadPullRequestChains(links)), [links]);
+  const { items: statusItems, toggle: toggleStatusSection } = usePullRequestStatusListItems(lines);
   const handleUnlink = useCallback(
     (link: ThreadPullRequestLink) => {
       void unlink({
@@ -460,26 +469,38 @@ function EnabledThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThread
     <div className="flex h-full min-h-0 flex-col">
       {/* Threads that run a stack or a sweep link hundreds of pull requests; only the rows in
           view are mounted. */}
-      <LegendList<PullRequestListLine>
-        data={lines}
-        keyExtractor={lineKey}
+      <LegendList<PullRequestStatusListItem>
+        data={statusItems}
+        keyExtractor={itemKey}
         extraData={rowInputs}
-        renderItem={({ item: line }) => (
-          <LinkRow
-            line={line}
-            threadRef={threadRef}
-            projectId={
-              capabilities?.pullRequests === true
-                ? (findProjectForChangeRequest(environmentProjects, line.link)?.id ??
-                  thread?.projectId ??
-                  null)
-                : null
-            }
-            speedMode={speedMode}
-            onUnlink={handleUnlink}
-            onSetWatching={supportsWatch ? handleSetWatching : null}
-          />
-        )}
+        renderItem={({ item }) => {
+          if (item.kind === "header") {
+            return (
+              <PullRequestStatusHeader
+                group={item.group}
+                open={item.open}
+                onToggle={toggleStatusSection}
+              />
+            );
+          }
+          const { line } = item;
+          return (
+            <LinkRow
+              line={line}
+              threadRef={threadRef}
+              projectId={
+                capabilities?.pullRequests === true
+                  ? (findProjectForChangeRequest(environmentProjects, line.link)?.id ??
+                    thread?.projectId ??
+                    null)
+                  : null
+              }
+              speedMode={speedMode}
+              onUnlink={handleUnlink}
+              onSetWatching={supportsWatch ? handleSetWatching : null}
+            />
+          );
+        }}
         estimatedItemSize={44}
         drawDistance={440}
         className="min-h-0 flex-1 overscroll-contain p-1.5"

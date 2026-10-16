@@ -261,13 +261,13 @@ describe("DesktopAppIdentity", () => {
 
         const runtimeName = calls.setName[0];
         assert.isDefined(runtimeName);
-        // Fork: the Alpha app is plain "esveo code".
-        assert.equal(runtimeName, stage === "Alpha" ? "esveo code" : `esveo code ${stage}`);
+        // Fork: the Beta (stable) app is plain "esveo code".
+        assert.equal(runtimeName, stage === "Beta" ? "esveo code" : `esveo code ${stage}`);
         // RFC 9110's token grammar, after Electron removes ASCII spaces.
         assert.match(runtimeName.replaceAll(" ", ""), /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/);
         assert.equal(
           calls.setAboutPanelOptions[0]?.applicationName,
-          stage === "Alpha" ? "esveo code" : `esveo code (${stage})`,
+          stage === "Beta" ? "esveo code" : `esveo code (${stage})`,
         );
       }),
       { calls, environment },
