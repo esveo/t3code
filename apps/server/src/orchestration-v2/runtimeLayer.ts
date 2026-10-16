@@ -52,6 +52,7 @@ import * as ThreadForkService from "./ThreadForkService.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
+import * as ThreadCoordinators from "../threadOrchestration/ThreadCoordinators.ts"; // Fork
 
 /** The shared application event log and its command receipts. */
 export const layerEventInfrastructure = Layer.mergeAll(
@@ -280,6 +281,9 @@ const layerScheduledTaskProvided = ScheduledTaskService.layer.pipe(
       layerThreadLaunchProvided,
       layerThreadManagementProvided,
       layerSecretRequestsProvided,
+      // Fork: subthread runs (scheduledTasks/forkSubthreadRun.ts). The same
+      // layer value as server.ts's, so both share one instance.
+      ThreadCoordinators.layer.pipe(Layer.provide(layerThreadManagementProvided)),
     ),
   ),
 );

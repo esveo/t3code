@@ -59,6 +59,8 @@ export interface DraftState {
   readonly weekdays: ReadonlySet<number>;
   /** Fork (esveo): see `CatchUpMissedRunsField`. */
   readonly catchUpMissedRuns: boolean;
+  /** Fork (esveo): see `SpawnAsSubthreadField`. */
+  readonly spawnAsSubthread: boolean;
   readonly projectId: string;
   readonly threadId: string;
   readonly workspaceMode: WorkspaceMode;
@@ -141,6 +143,7 @@ export function taskToDraft(task: ScheduledTask): DraftState {
     timeOfDay: schedule.type === "fixed_time" ? schedule.timeOfDay : "09:00",
     weekdays,
     catchUpMissedRuns: schedule.type === "fixed_time" && schedule.catchUpMissedRuns === true,
+    spawnAsSubthread: task.spawnAsSubthread === true,
     projectId: task.projectId,
     threadId: task.threadId ?? "",
     workspaceMode: task.workspaceStrategy.type,

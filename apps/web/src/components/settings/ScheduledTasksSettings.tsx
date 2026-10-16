@@ -63,6 +63,7 @@ import { AuthOrchestrationOperateScope } from "@t3tools/contracts";
 import { readEnvironmentScope } from "~/state/session";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { CatchUpMissedRunsField } from "../scheduledTaskCatchUp/CatchUpMissedRunsField";
+import { SpawnAsSubthreadField } from "../scheduledTaskSubthread/SpawnAsSubthreadField";
 import {
   WEBHOOK_SIGNATURE_DEFAULTS,
   matchesScheduledTaskScope,
@@ -124,6 +125,7 @@ const EMPTY_DRAFT: DraftState = {
   timeOfDay: "09:00",
   weekdays: new Set([1, 2, 3, 4, 5]),
   catchUpMissedRuns: false,
+  spawnAsSubthread: false,
   projectId: "",
   threadId: "",
   workspaceMode: "worktree",
@@ -944,6 +946,7 @@ function ScheduledTaskEditorDialog({
       schedule,
       projectId: selectedProjectId as ProjectId,
       threadId: draft.threadId ? (draft.threadId as ThreadId) : null,
+      ...(draft.threadId ? { spawnAsSubthread: draft.spawnAsSubthread } : {}), // Fork
       workspaceStrategy,
       modelSelection,
       runtimeMode: draft.runtimeMode,
@@ -1362,6 +1365,16 @@ function ScheduledTaskEditorDialog({
                 checked={draft.catchUpMissedRuns}
                 onCheckedChange={(catchUpMissedRuns) =>
                   setDraft((current) => ({ ...current, catchUpMissedRuns }))
+                }
+              />
+            ) : null}
+
+            {/* Fork (esveo): only a task bound to a thread can run as its subthread. */}
+            {draft.threadId ? (
+              <SpawnAsSubthreadField
+                checked={draft.spawnAsSubthread}
+                onCheckedChange={(spawnAsSubthread) =>
+                  setDraft((current) => ({ ...current, spawnAsSubthread }))
                 }
               />
             ) : null}
