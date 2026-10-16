@@ -4,7 +4,7 @@
 `pingdotgg/t3code`.** Everyone at esveo can use it and work on it; Paul
 maintains it. It adds the features esveo wants (for example the agent stage in
 `apps/web/src/components/agentStage/`) on top of upstream, which is merged in
-every day. `AGENTS.md` is upstream's guide for its maintainers; follow it for
+every week. `AGENTS.md` is upstream's guide for its maintainers; follow it for
 code and architecture, but these rules win wherever they differ.
 
 **The app this fork builds is called "esveo code".** Use that name in replies,
@@ -58,18 +58,19 @@ disturbing the build people work in all day.
   the record of what everyone has been running.
 - Only merge a feature the user asked to go live. Ask when in doubt — an
   unfinished branch in `fork` is a broken app for everyone at esveo.
-- Upstream reaches `fork` by itself: every morning at 06:00
+- Upstream reaches `fork` by itself: every Monday at 06:00
   `fork-upstream-sync.yml` merges upstream (see below), lets the Copilot CLI
   resolve conflicts and fix what broke, and lands the result as a PR it merges
   itself once typecheck, the related tests and its checks against dropped fork
-  code are green. Copilot gets up to three sessions, each starting from the
-  red checks of the one before. A sync still red after that stays open as a
-  draft that mentions Paul, the maintainer, and the next morning's run
-  continues from that PR's branch instead of starting over, then closes it:
-  fixes pushed to a red sync PR carry over. Run it by hand from the Actions
-  tab (`fresh` ignores an open sync PR, `dry_run` opens no PR); an older
-  upstream commit as `upstream_ref` merges a large backlog in stages. Rebase
-  feature branches onto `fork` to pick upstream up.
+  code are green. Copilot gets up to three sessions per run, each starting
+  from the red checks of the one before. A sync still red after that stays
+  open as a draft that mentions Paul, the maintainer, and a new run starts
+  right away that continues from that PR's branch instead of starting over,
+  then closes it, up to three runs per sync: fixes pushed to a red sync PR
+  carry over, and the next Monday's run continues it too. Run it by hand from
+  the Actions tab (`fresh` ignores an open sync PR, `dry_run` opens no PR); an
+  older upstream commit as `upstream_ref` merges a large backlog in stages.
+  Rebase feature branches onto `fork` to pick upstream up.
 - The fork runs upstream's Orchestrator V2 (`orchestration-v2/`). Build fork
   features on it; the V1 orchestration is gone.
 

@@ -5,9 +5,11 @@
 # can write: it merges, lets Copilot resolve conflicts and fix what broke, and
 # hands the result on as a git bundle. Copilot works in rounds: after each
 # session the fixed verify runs, and while it is red the next session starts
-# with its reports. A sync that stays red is not redone from scratch the next
-# day: the next run continues from its open PR, merging fork's and upstream's
-# new commits into it, and closes it in favour of the new one. `publish` never runs that code: it checks
+# with its reports. A sync that stays red is not redone from scratch: the
+# next run continues from its open PR, merging fork's and upstream's new
+# commits into it, and closes it in favour of the new one. Such a run is
+# dispatched right away (up to MAX_ATTEMPTS runs per sync), since one job
+# cannot run longer than 6 hours. `publish` never runs that code: it checks
 # the bundle, pushes it as a PR and merges the PR when every check was green,
 # otherwise leaves it as a draft for the maintainer. The fixed checks live in
 # .github/scripts/fork-upstream-sync.sh and always run from the fork commit the
@@ -21,8 +23,9 @@ name: Fork upstream sync
 
 on:
   schedule:
-    # 06:00 in Germany during summer time, 05:00 in winter (cron runs in UTC).
-    - cron: "0 4 * * *"
+    # Mondays, 06:00 in Germany during summer time, 05:00 in winter (cron runs
+    # in UTC).
+    - cron: "0 4 * * 1"
   workflow_dispatch:
     inputs:
       upstream_ref:
@@ -38,13 +41,16 @@ on:
         default: false
       max_ai_credits:
         description: Copilot's budget per session in AI credits (1 credit = $0.01)
-        default: "600"
+        default: "1500"
       rounds:
-        description: Copilot sessions at most, each one fixing what the previous one's verify found red
+        description: Copilot sessions per run at most, each one fixing what the previous one's verify found red
         default: "3"
       model:
-        description: Copilot model for this run
-        default: gpt-5.6-sol
+        description: Copilot model for this run (falls back to FALLBACK_MODEL when the org does not offer it)
+        default: gpt-6.1-sol
+      attempt:
+        description: Which run of this sync this is; a red run dispatches the next one up to MAX_ATTEMPTS
+        default: "1"
 
 concurrency:
   group: fork-upstream-sync
@@ -56,12 +62,15 @@ env:
   MAINTAINER: Pawl-Patrol
   DEFAULT_UPSTREAM_REF: main
   SCRIPT: .github/scripts/fork-upstream-sync.sh
+  FALLBACK_MODEL: gpt-5.6-sol
+  MAX_ATTEMPTS: 3
 
 jobs:
   merge:
     if: github.repository == 'esveo/t3code'
     runs-on: ubuntu-latest
-    timeout-minutes: 345
+    # GitHub-hosted jobs end after 360 minutes.
+    timeout-minutes: 355
     permissions:
       contents: read
       pull-requests: read
@@ -183,12 +192,12 @@ jobs:
         id: agent
         if: steps.merge.outputs.conflicts == 'true' || steps.plain.outcome == 'failure'
         continue-on-error: true
-        timeout-minutes: 300
+        timeout-minutes: 330
         env:
           COPILOT_GITHUB_TOKEN: ${{ github.token }}
-          MAX_AI_CREDITS: ${{ inputs.max_ai_credits || '600' }}
+          MAX_AI_CREDITS: ${{ inputs.max_ai_credits || '1500' }}
           ROUNDS: ${{ inputs.rounds || '3' }}
-          MODEL: ${{ inputs.model || 'gpt-5.6-sol' }}
+          MODEL: ${{ inputs.model || 'gpt-6.1-sol' }}
           UPSTREAM_REF: ${{ inputs.upstream_ref || env.DEFAULT_UPSTREAM_REF }}
           # How long the CLI waits for a command it moved to the background
           # before it ends the session (default 600 s). verify takes 20+ minutes,
@@ -196,6 +205,10 @@ jobs:
           COPILOT_TASK_WAIT_TIMEOUT_SECONDS: "3600"
         run: |
           npm install -g @github/copilot
+          if [ -s "$SYNC_DIR/models.txt" ] && ! grep -q "^$MODEL	enabled" "$SYNC_DIR/models.txt"; then
+            echo "::warning::The org does not offer $MODEL; using $FALLBACK_MODEL."
+            MODEL=$FALLBACK_MODEL
+          fi
           rules() {
             cat <<EOF
           Rules: do not change anything under .github (the sync is refused if you
@@ -280,10 +293,13 @@ jobs:
           }
           git rev-parse HEAD > "$SYNC_DIR/head-before"
           git status --porcelain > "$SYNC_DIR/status-before"
+          # A round is a session of up to 80 minutes plus a verify of up to 30;
+          # one that cannot finish before the step's timeout is not started.
+          round_secs=$((110 * 60)) step_secs=$((330 * 60))
           round=1
           while :; do
             prompt "$round" > "$RUNNER_TEMP/prompt-$round.md"
-            timeout 70m copilot -p "$(cat "$RUNNER_TEMP/prompt-$round.md")" \
+            timeout 80m copilot -p "$(cat "$RUNNER_TEMP/prompt-$round.md")" \
               --model "$MODEL" \
               --no-ask-user --allow-all-tools --allow-all-paths \
               --deny-tool 'shell(git push)' --deny-tool 'shell(gh)' \
@@ -311,6 +327,10 @@ jobs:
             fi
             echo "$(git rev-parse HEAD) red" > "$SYNC_DIR/verified"
             [ "$(cat "$SYNC_DIR/status" 2>/dev/null)" != blocked ] && [ "$round" -lt "$ROUNDS" ] || break
+            if [ $((SECONDS + round_secs)) -gt "$step_secs" ]; then
+              echo "No time left in this job for round $((round + 1)); the next run continues."
+              break
+            fi
             round=$((round + 1))
           done
 
@@ -446,7 +466,7 @@ jobs:
             if [ "$ready" = true ]; then
               echo "Everything is green; the sync merges this itself."
             else
-              echo "@$MAINTAINER this sync needs you: see the red items below and the run's \`sync\` artifact (Copilot's transcripts). Fixes pushed to this branch carry over: tomorrow's sync continues from it."
+              echo "@$MAINTAINER this sync needs you: see the red items below and the run's \`sync\` artifact (Copilot's transcripts). Fixes pushed to this branch carry over: the next sync continues from it."
             fi
             if [ -s "$SYNC_DIR/conflicts.txt" ]; then
               echo
@@ -493,6 +513,26 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.SYNC_MERGE_TOKEN }}
         run: gh pr merge "${{ steps.pr.outputs.url }}" --merge --delete-branch
+
+      # A red sync that Copilot did not give up on goes on in a new run (a job
+      # cannot outlast 6 hours), continuing from the PR this run just opened.
+      - name: Continue in another run
+        if: steps.pr.outputs.ready != 'true' && fromJSON(inputs.attempt || '1') < fromJSON(env.MAX_ATTEMPTS)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ATTEMPT: ${{ inputs.attempt || '1' }}
+          UPSTREAM_REF: ${{ inputs.upstream_ref || env.DEFAULT_UPSTREAM_REF }}
+          MAX_AI_CREDITS: ${{ inputs.max_ai_credits || '1500' }}
+          ROUNDS: ${{ inputs.rounds || '3' }}
+          MODEL: ${{ inputs.model || 'gpt-6.1-sol' }}
+        run: |
+          if [ "$(cat "$SYNC_DIR/status" 2>/dev/null)" = blocked ]; then
+            echo "Copilot marked the sync blocked; leaving it to the maintainer."
+            exit 0
+          fi
+          gh workflow run fork-upstream-sync.yml --repo "$GITHUB_REPOSITORY" --ref fork \
+            -f upstream_ref="$UPSTREAM_REF" -f max_ai_credits="$MAX_AI_CREDITS" \
+            -f rounds="$ROUNDS" -f model="$MODEL" -f attempt="$((ATTEMPT + 1))"
 
       # The fork runs none of upstream's workflows; switch off any the merge added.
       - name: Disable workflows upstream added
