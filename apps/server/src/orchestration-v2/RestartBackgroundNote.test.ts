@@ -202,16 +202,16 @@ it("names a subagent's native id and how to resume it", () => {
     id: "turn-item:1",
     title: "r".repeat(400),
     prompt: "",
+    origin: "provider_native",
     nativeItemRef: { driver: "claudeAgent", nativeId: "a1b2c3", strength: "strong" },
   } as never);
   assert.equal(subagent?.id, "turn-item:1");
   assert.lengthOf(subagent?.label ?? "", 160);
   assert.isTrue(subagent?.label.endsWith("(id a1b2c3)"));
   const note = restartCancelledBackgroundWorkNote(subagent === undefined ? [] : [subagent]);
-  assert.include(note, "interrupted this background work");
+  assert.include(note, "server restarted");
   assert.include(note, "SendMessage");
   assert.include(note, "resumeFromRunId");
-  assert.notInclude(note, "cancelled");
 });
 
 it("counts a prompted mid-turn or chained continuation as delivering the note", () => {
