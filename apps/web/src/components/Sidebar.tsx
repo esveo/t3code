@@ -2813,6 +2813,7 @@ export default function Sidebar() {
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
   const timestampFormat = useClientSettings((s) => s.timestampFormat);
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
+  const twoLineThreadCards = useTwoLineThreadCards();
   const {
     settleThread,
     unsettleThread,
