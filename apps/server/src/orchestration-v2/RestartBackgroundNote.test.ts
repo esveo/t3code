@@ -95,6 +95,8 @@ it("bounds the note so it cannot crowd out the turn's context", () => {
   // Fork: the note ends with four lines of resume guidance.
   assert.lengthOf(note.split("\n"), 16);
   assert.include(note, "- and 15 more\n");
+  assert.include(note, "interrupted this background work");
+  assert.notInclude(note, "cancelled");
   const command = cancelledTurnItemWork({
     type: "command_execution",
     input: "x".repeat(10_000),

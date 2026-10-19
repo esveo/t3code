@@ -32,7 +32,7 @@ const FIRST_AFTER_RESTART = "Is the background subagent done yet?";
 const SECOND_AFTER_RESTART = "Thanks. Anything else?";
 // Fork: the note names the subagent's native id and how to resume interrupted work.
 const NOTE = [
-  "Note: the T3 server restarted, and this background work was cancelled before it finished. It will not report back on its own, so resume or restart what you still need and wait for its result:",
+  "Note: the T3 server restarted and interrupted this background work before it finished. It will not report back on its own:",
   "- subagent: Background subagent test (id a2995bfced8019363)",
   "Resume each of these unless it is no longer needed, and do not redo work that already finished:",
   "- A subagent keeps its context: continue it by sending it a message (SendMessage) to its id, telling it that a restart interrupted it and it should continue where it left off. If your tools cannot reach it, launch it again.",

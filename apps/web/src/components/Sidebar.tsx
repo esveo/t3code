@@ -3473,6 +3473,7 @@ export default function Sidebar() {
     if (started) {
       listMotionRef.current?.release();
       setDragState(null);
+      endSidebarThreadDrag();
     }
   };
   const attachDragSensor = (sensor: SidebarPointerSensor) => {
@@ -3514,7 +3515,8 @@ export default function Sidebar() {
   };
   const dropThreadContextDrag = (point: { x: number; y: number }) => {
     if (!pointerOutsideThreadList(point)) return false;
-    dropThreadContext(point, contextDragThreads());
+    // A composer takes the thread as context; the rest of a chat pane splits.
+    if (!dropThreadContext(point, contextDragThreads())) consumeSidebarThreadDrop();
     return true;
   };
   // useSensor memoizes on the options object; a fresh one each render rebuilds
@@ -3660,6 +3662,13 @@ export default function Sidebar() {
     } else {
       dragLabelOffsetRef.current = 0;
     }
+    const draggedThread = threadByKey.get(activeKey);
+    if (draggedThread) {
+      startSidebarThreadDrag(
+        scopeThreadRef(draggedThread.environmentId, draggedThread.id),
+        draggedThread.title,
+      );
+    }
     setDragState({
       activeKey,
       activeSection,
@@ -3784,6 +3793,7 @@ export default function Sidebar() {
     settledVisibleCount,
     routeThreadKey,
     snoozedThreadCount: snoozedThreads.length,
+    baseCardHeight: twoLineThreadCards ? 64 : 82,
   });
   const draggedThreadKey = dragState?.activeKey;
   const draggedFromSection = dragState?.activeSection;
@@ -3824,6 +3834,8 @@ export default function Sidebar() {
     );
   })();
   const handleThreadDragEnd = (event: DragEndEvent) => {
+    // Released over a chat pane: the split already consumed the drop.
+    if (consumeSidebarThreadDrop()) return;
     const activeKey = String(event.active.id);
     const activeSection = sectionByThreadKey.get(activeKey);
     const target =
