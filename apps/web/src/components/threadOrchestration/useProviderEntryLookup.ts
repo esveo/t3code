@@ -1,4 +1,3 @@
-import { useAtomValue } from "@effect/atom-react";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useCallback, useMemo } from "react";
 
@@ -7,8 +6,7 @@ import {
   deriveProviderInstanceEntries,
   type ProviderInstanceEntry,
 } from "~/providerInstances";
-import { useEnvironments, usePrimaryEnvironmentId } from "~/state/environments";
-import { primaryServerProvidersAtom } from "~/state/server";
+import { useEnvironmentProviders, useEnvironments } from "~/state/environments";
 
 /**
  * Fork: finds the provider instance a thread's model runs on, so a row can show
@@ -19,15 +17,12 @@ export function useProviderEntryLookup(): (
   instanceId: string,
 ) => ProviderInstanceEntry | null {
   const { environments } = useEnvironments();
-  const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const primaryProviders = useAtomValue(primaryServerProvidersAtom);
+  const providersByEnvironment = useEnvironmentProviders();
   const entries = useMemo(() => {
     const map = new Map<string, ProviderInstanceEntry>();
     for (const environment of environments) {
       const serverConfig = environment.serverConfig;
-      const providers =
-        serverConfig?.providers ??
-        (environment.environmentId === primaryEnvironmentId ? primaryProviders : []);
+      const providers = providersByEnvironment.get(environment.environmentId) ?? [];
       const derived = deriveProviderInstanceEntries(providers);
       const resolved = serverConfig
         ? applyProviderInstanceSettings(derived, serverConfig.settings, null)
@@ -36,7 +31,7 @@ export function useProviderEntryLookup(): (
         map.set(`${environment.environmentId}:${entry.instanceId}`, entry);
     }
     return map;
-  }, [environments, primaryEnvironmentId, primaryProviders]);
+  }, [environments, providersByEnvironment]);
   return useCallback(
     (environmentId, instanceId) => entries.get(`${environmentId}:${instanceId}`) ?? null,
     [entries],

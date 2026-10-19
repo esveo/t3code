@@ -14,9 +14,8 @@ import {
   useComposerDraftStore,
 } from "../composerDraftStore";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
-import { useEnvironmentThreadRefs, useThreadRefs, useThreadShell } from "../state/entities";
-import { useEnvironmentQuery } from "../state/query";
-import { environmentShell } from "../state/shell";
+import { useEnvironmentThreadRefs, useThreadRefs, useQuietThreadShell } from "../state/entities";
+import { useEnvironmentShellStatus } from "../state/shell";
 import {
   buildThreadRouteParams,
   isThreadRouteSnapshotAuthoritative,
@@ -54,7 +53,7 @@ export function ThreadRouteView({
     : null;
   const serverThreadRef: ScopedThreadRef | null =
     target.kind === "server" ? target.threadRef : (draftSession?.promotedTo ?? inferredThreadRef);
-  const serverThread = useThreadShell(serverThreadRef);
+  const serverThread = useQuietThreadShell(serverThreadRef);
   const backgroundSubmissionPending = useBackgroundDraftSubmissionPending(
     target.kind === "draft" ? serverThreadRef : null,
   );
@@ -67,12 +66,10 @@ export function ThreadRouteView({
         })
       : null;
 
-  const shell = useEnvironmentQuery(
-    serverThreadRef === null ? null : environmentShell.stateAtom(serverThreadRef.environmentId),
-  );
+  const shellStatus = useEnvironmentShellStatus(serverThreadRef?.environmentId ?? null);
   const serverThreadShell = serverThread;
   const environmentThreadRefs = useEnvironmentThreadRefs(serverThreadRef?.environmentId ?? null);
-  const bootstrapComplete = isThreadRouteSnapshotAuthoritative(shell.data?.status);
+  const bootstrapComplete = isThreadRouteSnapshotAuthoritative(shellStatus);
   const draftThread = useComposerDraftStore((store) =>
     serverThreadRef ? store.getDraftThreadByRef(serverThreadRef) : null,
   );

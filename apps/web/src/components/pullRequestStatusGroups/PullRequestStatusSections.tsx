@@ -7,7 +7,7 @@ import { ChevronDownIcon } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 
 import { cn } from "~/lib/utils";
-import type { PullRequestListLine } from "../pullRequest/pullRequestListLines";
+import type { PullRequestListLine } from "@t3tools/shared/threadPullRequests";
 import {
   groupPullRequestLinesByStatus,
   type PullRequestStatusGroup,

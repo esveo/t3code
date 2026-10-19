@@ -20,6 +20,7 @@ import {
   summarizeToolGroup,
   toolGroupAction,
   toolGroupSummaryKind,
+  contextCompactionTokenCounts,
   type ToolGroupSummaryKind,
 } from "@t3tools/client-runtime/work-log/presentation";
 export {
@@ -469,7 +470,7 @@ export interface TimelineDurationMessage {
 
 export type TimelineLatestRun = Pick<
   ThreadRunSummary,
-  "runId" | "status" | "startedAt" | "completedAt"
+  "runId" | "status" | "startedAt" | "completedAt" | "turnEnded"
 >;
 
 const LIVE_ACTIVITY_ROW_ID = "live-activity-row";
@@ -554,6 +555,7 @@ type MessagesTimelineRowContent =
       id: string;
       createdAt: string;
       label: string;
+      tokenCounts: ReturnType<typeof contextCompactionTokenCounts>;
       active: boolean;
     }
   | {
@@ -1085,6 +1087,8 @@ function deriveTurnFolds(input: {
         continue;
       }
       if (entry.kind === "work" && entry.entry.itemType === "notification") continue;
+      // User input stays visible after the surrounding work settles.
+      if (entry.kind === "work" && entry.entry.questionAnswer !== undefined) continue;
       hiddenEntryIds.add(entry.id);
     }
     if (hiddenEntryIds.size === 0) {
@@ -1414,6 +1418,7 @@ export function deriveMessagesTimelineRows(input: {
         entry.entry.sourceActivityKind === "runtime.error" ||
         entry.entry.itemType === "system_notice" ||
         entry.entry.itemType === "notification" ||
+        entry.entry.questionAnswer !== undefined ||
         !runIdIsActiveResponse(entry.entry.runId) ||
         entry.entry.sourceActivityKind === "context-compaction" ||
         collapsedEntryIds.has(entry.id) ||
@@ -1563,11 +1568,14 @@ export function deriveMessagesTimelineRows(input: {
     ) {
       const active = workEntryIsInActiveRun(timelineEntry.entry);
       hasActiveCompaction ||= active;
+      const compaction = timelineEntry.entry.structuredPayload;
       nextRows.push({
         kind: "context-compaction",
         id: timelineEntry.id,
         createdAt: timelineEntry.createdAt,
         label: timelineEntry.entry.label,
+        tokenCounts:
+          compaction?.type === "compaction" ? contextCompactionTokenCounts(compaction) : null,
         active,
       });
       continue;
@@ -1581,7 +1589,8 @@ export function deriveMessagesTimelineRows(input: {
         timelineEntry.entry.tone === "error" ||
         timelineEntry.entry.sourceActivityKind === "runtime.error" ||
         timelineEntry.entry.itemType === "system_notice" ||
-        timelineEntry.entry.itemType === "notification"
+        timelineEntry.entry.itemType === "notification" ||
+        timelineEntry.entry.questionAnswer !== undefined
       ) {
         nextRows.push({
           kind: "work",
@@ -1604,6 +1613,7 @@ export function deriveMessagesTimelineRows(input: {
           nextEntry.entry.sourceActivityKind === "runtime.error" ||
           nextEntry.entry.itemType === "system_notice" ||
           nextEntry.entry.itemType === "notification" ||
+          nextEntry.entry.questionAnswer !== undefined ||
           activeWorkEntryIds.has(nextEntry.id) ||
           collapsedEntryIds.has(nextEntry.id) ||
           collapsedSupersededEntryIds.has(nextEntry.id) ||
@@ -1865,6 +1875,7 @@ export function deriveMessagesTimelineRows(input: {
   }
   if (
     input.isWorking &&
+    input.latestRun?.turnEnded !== true &&
     !setupOwnsWorkingSlot &&
     !hasActiveCompaction &&
     (!hasActivityRow || latestToolFailed)
