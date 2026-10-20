@@ -223,6 +223,9 @@ export default defineConfig(() => {
         configuredDesktopUpdateRepository,
       ),
       "import.meta.env.APP_VERSION": JSON.stringify(configuredAppVersion),
+      "import.meta.env.VITE_ESVEO_COMMIT_HASH": JSON.stringify(
+        process.env.T3CODE_COMMIT_HASH?.trim() ?? "",
+      ),
     },
     resolve: {
       tsconfigPaths: true,
