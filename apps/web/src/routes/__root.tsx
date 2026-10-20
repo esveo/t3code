@@ -88,6 +88,7 @@ import { getDesktopSnapShotBridge } from "../lib/desktopSnapShot";
 import { installDesktopPasteAsText } from "../lib/desktopPasteAsText";
 import { isPopoutPathname, isPopoutWindow } from "../components/split/threadPopout";
 import { shouldResumeSnapShotSetupOnStartup } from "../lib/snapShotSetupResume";
+import { useEsveoErrorReport } from "../components/esveoErrorReport/useEsveoErrorReport";
 
 export const Route = createRootRoute({
   beforeLoad: async ({ location }) => {
@@ -425,7 +426,10 @@ function RootRouteErrorView({ error }: ErrorComponentProps) {
   const message = errorMessage(error);
   // Router pathname rather than window.location: desktop uses hash history, where the window path is always "/".
   const pathname = useLocation({ select: (location) => location.pathname });
-  const report = useMemo(() => errorReport(error, pathname), [error, pathname]);
+  const report = useEsveoErrorReport(
+    useMemo(() => errorReport(error, pathname), [error, pathname]),
+    error,
+  );
 
   return (
     <StandalonePage tone="error">

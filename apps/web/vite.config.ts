@@ -185,6 +185,9 @@ export default defineConfig(() => {
       "import.meta.env.VITE_HOSTED_APP_URL": JSON.stringify(configuredHostedAppUrl ?? ""),
       "import.meta.env.VITE_HOSTED_APP_CHANNEL": JSON.stringify(configuredHostedAppChannel),
       "import.meta.env.APP_VERSION": JSON.stringify(configuredAppVersion),
+      "import.meta.env.VITE_ESVEO_COMMIT_HASH": JSON.stringify(
+        process.env.T3CODE_COMMIT_HASH?.trim() ?? "",
+      ),
     },
     resolve: {
       tsconfigPaths: true,

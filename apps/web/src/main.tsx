@@ -14,6 +14,7 @@ import {
 } from "./lib/windowControlsOverlay";
 import { AppRoot } from "./AppRoot";
 import { clearChunkReloadGuard, reloadOnceForChunkLoadError } from "./lib/chunkReloadGuard";
+import { esveoReactRootErrorOptions } from "./components/esveoErrorReport/reactErrorInfo";
 
 prepareProviderAuthDelivery();
 
@@ -62,7 +63,10 @@ export const startup = Promise.all([
     // the lazy component and surfaces through the route error boundary.
     if (reloadScheduled) return;
     if (!chunkLoadFailed) clearChunkReloadGuard();
-    ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
+    ReactDOM.createRoot(
+      document.getElementById("root") as HTMLElement,
+      esveoReactRootErrorOptions,
+    ).render(
       <React.StrictMode>
         {ManagedAuthShell && clerkPublishableKey ? (
           <ManagedAuthShell publishableKey={clerkPublishableKey}>{app}</ManagedAuthShell>
