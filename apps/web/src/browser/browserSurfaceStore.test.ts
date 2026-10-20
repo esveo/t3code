@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vite-plus/test";
 import {
   acquireBrowserSurface,
   acquireBrowserSurfaceActivity,
+  canReclaimBrowserSurface,
   resolveBrowserSurfacePanelRect,
   useBrowserSurfaceStore,
 } from "./browserSurfaceStore";
@@ -10,6 +11,24 @@ import {
 describe("browserSurfaceStore", () => {
   beforeEach(() => {
     useBrowserSurfaceStore.setState({ activityByTabId: {}, byTabId: {} });
+  });
+
+  it("lets a slot take its tab back only when no other slot is showing it", () => {
+    const tabId = "contested-browser-surface";
+    const rect = { x: 0, y: 0, width: 100, height: 100 };
+    const byTabId = () => useBrowserSurfaceStore.getState().byTabId;
+    expect(canReclaimBrowserSurface(byTabId(), tabId)).toBe(true);
+
+    const first = acquireBrowserSurface(tabId);
+    const second = acquireBrowserSurface(tabId);
+    expect(first.present(rect, true)).toBe(false);
+    expect(canReclaimBrowserSurface(byTabId(), tabId)).toBe(true);
+
+    second.present(rect, true);
+    expect(canReclaimBrowserSurface(byTabId(), tabId)).toBe(false);
+
+    second.release();
+    expect(canReclaimBrowserSurface(byTabId(), tabId)).toBe(true);
   });
 
   it("keeps concurrent background work active until every lease is released", () => {

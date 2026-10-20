@@ -2,6 +2,7 @@
 
 Every feature and fix this fork adds on top of [T3 Code](https://github.com/pingdotgg/t3code), each with the commits that made it.
 
+- Fix: the app no longer crashes with React error #185 when two places, such as the floating mini player and the preview panel, show the same browser tab ([7d266d8](https://github.com/esveo/t3code/commit/7d266d8e058c89496eb9ace416aa3fb7aa0ddc69)).
 - The upstream sync runs weekly and repairs itself: Copilot works in rounds fed with the red checks, the lost fork lines and install failures, and a sync that stays red continues in the next run instead of starting over ([b4c665e](https://github.com/esveo/t3code/commit/b4c665e902aae7ca42ca0ac8a1e72e3d04bcba3e), [ace0ecf](https://github.com/esveo/t3code/commit/ace0ecf85736e92496cd652c5564ccb39f59699b), [f05c2ae](https://github.com/esveo/t3code/commit/f05c2ae716befa11e3ea762d37c449a08d64d45c)).
 - Automations can run in an existing thread and, optionally, start each run as a quiet subthread that reports back when done ([eba20b3](https://github.com/esveo/t3code/commit/eba20b3b15ee8f2efd6f1e2d2bc521ac36973240), [3b723d0](https://github.com/esveo/t3code/commit/3b723d0b478bf53a3f4f1ef1c2d454412e09cfc3)).
 - Fix: switching the service to a new server also repoints the `t3` command, so `t3 pair` no longer falls back to an old install that mints links without today's permissions ([a845247](https://github.com/esveo/t3code/commit/a845247c8c62423064a3ca7ff5c977242b5e2d4c)).

@@ -64,6 +64,19 @@ export function resolveBrowserSurfacePanelRect(
   return current?.rect ?? null;
 }
 
+/**
+ * A visible slot that lost its tab may take it back only when no other slot is
+ * showing it. Two visible slots taking the tab from each other re-render each
+ * other in a loop (React error #185).
+ */
+export function canReclaimBrowserSurface(
+  byTabId: Readonly<Record<string, BrowserSurfacePresentation>>,
+  tabId: string,
+): boolean {
+  const current = byTabId[tabId];
+  return !current || current.owner === null || !current.visible;
+}
+
 const rectEquals = (left: BrowserSurfaceRect | null, right: BrowserSurfaceRect): boolean =>
   left !== null &&
   left.x === right.x &&

@@ -2,7 +2,11 @@
 
 import { useLayoutEffect, useRef } from "react";
 
-import { acquireBrowserSurface } from "./browserSurfaceStore";
+import {
+  acquireBrowserSurface,
+  canReclaimBrowserSurface,
+  useBrowserSurfaceStore,
+} from "./browserSurfaceStore";
 import { observeResize } from "../lib/observeResize";
 
 export function BrowserSurfaceSlot(props: {
@@ -45,7 +49,11 @@ export function BrowserSurfaceSlot(props: {
         presentation.cornerRadius,
         presentation.zIndex,
       );
-      if (presentation.visible && !presented) {
+      if (
+        presentation.visible &&
+        !presented &&
+        canReclaimBrowserSurface(useBrowserSurfaceStore.getState().byTabId, tabId)
+      ) {
         lease.release();
         lease = acquireBrowserSurface(tabId, fitSourceContent);
         lease.present(
