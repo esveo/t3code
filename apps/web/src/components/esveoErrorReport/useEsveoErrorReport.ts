@@ -20,24 +20,30 @@ export function esveoErrorReport(report: string, error: unknown): string {
   return lines.join("\n");
 }
 
+/** Keeps the first report per error, since upstream's report carries a fresh timestamp on every render. */
 export function useEsveoErrorReport(report: string, error: unknown): string {
-  const [resolved, setResolved] = useState<{ readonly from: string; readonly text: string } | null>(
-    null,
-  );
+  const [snapshot, setSnapshot] = useState({ error, report });
+  if (snapshot.error !== error) setSnapshot({ error, report });
+  const [resolved, setResolved] = useState<{
+    readonly from: typeof snapshot;
+    readonly text: string;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     // Read here, not during render: React records the component stack after the error view renders.
-    const unresolved = esveoErrorReport(report, error);
+    const unresolved = esveoErrorReport(snapshot.report, snapshot.error);
     void symbolicateStackText(unresolved, sameOriginSourceMapLoader(window.location)).then(
       (text) => {
-        if (!cancelled) setResolved({ from: report, text });
+        if (!cancelled) setResolved({ from: snapshot, text });
       },
     );
     return () => {
       cancelled = true;
     };
-  }, [error, report]);
+  }, [snapshot]);
 
-  return resolved?.from === report ? resolved.text : esveoErrorReport(report, error);
+  return resolved?.from === snapshot
+    ? resolved.text
+    : esveoErrorReport(snapshot.report, snapshot.error);
 }
