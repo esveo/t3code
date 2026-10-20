@@ -265,7 +265,11 @@ import {
   ThreadParentDialogHost,
   useThreadParentActions,
 } from "./threadOrchestration/ThreadParentActions";
-import { sidebarRowsWithCoordinators } from "./threadOrchestration/childThreads.logic";
+import {
+  sidebarRowsWithCoordinators,
+  type ChildThreadGroups,
+} from "./threadOrchestration/childThreads.logic";
+import { useChildThreadGroups } from "./threadOrchestration/coordinatorLinks";
 import { forkSidebarList, useForkSidebarGroups } from "./sidebarProjectRuns/forkSidebarList";
 import {
   SidebarCoordinatorIcon,
@@ -415,6 +419,7 @@ interface SidebarThreadPartitionInput {
   readonly serverConfigs: ReadonlyMap<EnvironmentId, EnvironmentServerConfig>;
   readonly optimisticDrop: SidebarOptimisticDrop | null;
   readonly workingShelfEnabled: boolean;
+  readonly childThreadGroups: ChildThreadGroups; // Fork
   // Snooze wakes and the queued-turn grace depend on the clock, so the minute
   // tick and the precise snooze-wake tick are inputs: a new key repartitions.
   readonly clockKey: string;
@@ -481,6 +486,7 @@ function useSidebarThreads(input: {
   const { projectScopeKey, scopedProjectKeys, serverConfigs, optimisticDrop, routeThreadKey } =
     input;
   const threads = useThreadShells();
+  const childThreadGroups = useChildThreadGroups(threads); // Fork: thread orchestration
   const workingShelfEnabled = useClientSettings((s) => s.sidebarWorkingShelfEnabled);
   const nowMinute = useNowMinute();
   // Snooze wake times are second-precise, so classifying with the quantized
@@ -523,6 +529,7 @@ function useSidebarThreads(input: {
     serverConfigs,
     optimisticDrop,
     workingShelfEnabled,
+    childThreadGroups,
     clockKey: `${nowMinute}:${snoozeWakeTick}`,
   });
   const partitionNextWakeAt = partition.snoozedThreads[0]?.snoozedUntil ?? null;
@@ -570,6 +577,7 @@ function useSidebarThreads(input: {
   return {
     ...partition,
     threads,
+    childThreadGroups,
     workingShelfEnabled,
     searchableThreads: [
       ...pinnedThreads,
@@ -613,7 +621,11 @@ function useSidebarThreads(input: {
 function partitionSidebarThreads(input: SidebarThreadPartitionInput) {
   const { threads, scopedProjectKeys, serverConfigs, optimisticDrop, workingShelfEnabled } = input;
   const preciseNow = new Date().toISOString();
-  const visible = filterSidebarV2VisibleThreads(threads, scopedProjectKeys);
+  const visible = sidebarRowsWithCoordinators(
+    filterSidebarV2VisibleThreads(threads, scopedProjectKeys),
+    // Fork: a coordinator's child threads sit nested under it instead.
+    { threads, scopedProjectKeys, groups: input.childThreadGroups },
+  );
   inboxReturns.observe(workingShelfEnabled ? threads : null);
   const pinned: EnvironmentThreadShell[] = [];
   const active: EnvironmentThreadShell[] = [];
@@ -3074,6 +3086,7 @@ export default function Sidebar() {
 
   const {
     threads,
+    childThreadGroups,
     workingShelfEnabled,
     pinnedThreads,
     draggableThreadKeys,
@@ -3112,8 +3125,11 @@ export default function Sidebar() {
     optimisticDrop,
     routeThreadKey,
   });
-  const { childThreadGroups, crossProjectRunKeys, projectGroupByThreadProjectKey } =
-    useForkSidebarGroups({ threads, projectGroups });
+  const { crossProjectRunKeys, projectGroupByThreadProjectKey } = useForkSidebarGroups({
+    threads,
+    childThreadGroups,
+    projectGroups,
+  });
   const activeRuns = useSidebarProjectRuns({
     section: "active",
     threads: ungroupedActiveThreads,
@@ -5059,6 +5075,7 @@ export default function Sidebar() {
                             onUnpin={attemptUnpin}
                             onAcknowledgeWoke={acknowledgeWoke}
                             onFileDropThreads={handleThreadFileDrop}
+                            {...forkList.rowProps(threadKey, section)}
                           />
                         );
                       };

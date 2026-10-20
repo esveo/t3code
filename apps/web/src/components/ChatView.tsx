@@ -5559,7 +5559,8 @@ export default function ChatView(props: ChatViewProps) {
       if (!event.repeat) composerRef.current?.openControl(command);
     }) satisfies ChatShortcutHandler;
   useChatShortcuts({
-    enabled: activeThreadId !== null,
+    // Fork: with a split open, only the pane the user last engaged handles shortcuts.
+    enabled: activeThreadId !== null && isActivePane,
     keybindings,
     scriptKeybindings,
     getShortcutContext: getShortcutContextStable,
@@ -5736,6 +5737,30 @@ export default function ChatView(props: ChatViewProps) {
     };
   }, [activeThreadId, composerRef]);
 
+  // Fork: the desktop shell drops a paste that lands on no editable element, so
+  // the handler above never runs there. Read the clipboard ourselves in that case.
+  useEffect(
+    () =>
+      installDesktopClipboardPasteFallback({
+        bridge: window.desktopBridge,
+        target: window,
+        macPlatform: isMacPlatform(navigator.platform),
+        shouldHandle: (event) =>
+          isActivePaneRef.current &&
+          Boolean(activeThreadId) &&
+          !isCommandPaletteOpen() &&
+          getTerminalFocusOwner() === null &&
+          composerRef.current?.isModelPickerOpen() !== true &&
+          shouldRedirectInputToComposer(event),
+        insertText: (text, { bypassAutoAttachment }) => {
+          if (!composerRef.current?.pasteTextAtEnd(text, { bypassAutoAttachment })) {
+            composerRef.current?.insertTextAtEnd(text);
+          }
+        },
+      }),
+    [activeThreadId, composerRef],
+  );
+
   const onRevertToTurnCount = async (
     turnCount: number,
     messageId: MessageId,
@@ -5818,7 +5843,7 @@ export default function ChatView(props: ChatViewProps) {
       promptRef.current = nextPrompt;
       composerRef.current?.resetCursorState({ prompt: nextPrompt, cursor: nextPrompt.length });
       requestAnimationFrame(() => {
-        if (currentRouteThreadKeyRef.current === routeThreadKey) composerRef.current?.focusAtEnd();
+        if (currentRouteThreadKeyRef.current === routeThreadKey) focusComposerStable();
       });
     }
   };

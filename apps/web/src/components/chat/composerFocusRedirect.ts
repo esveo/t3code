@@ -53,7 +53,6 @@ export function shouldRedirectInputToComposer(event: Event): boolean {
   // must never land in the composer draft, which is persisted and sent.
   if (eventPathContainsSelector(event, SECRET_REQUEST_SELECTOR)) return false;
   if (eventPathContainsSelector(event, TYPE_TO_FOCUS_EDITABLE_SELECTOR)) return false;
-  if (eventPathContainsSelector(event, TYPE_TO_FOCUS_INTERACTIVE_SELECTOR)) return false;
   if (document.querySelector(TYPE_TO_FOCUS_FLOATING_LAYER_SELECTOR)) return false;
   return true;
 }
@@ -63,6 +62,11 @@ export function shouldTypeToFocusComposer(event: KeyboardEvent): boolean {
   if (event.metaKey || event.ctrlKey || event.altKey) return false;
   if (event.key.length !== 1) return false;
   if (!shouldRedirectInputToComposer(event)) return false;
+  // Fork: typed keys stay with a focused control, which may act on them (Space
+  // and Enter activate a button). A paste is different: nothing outside an
+  // editable can receive one, so a paste after clicking a copy button still
+  // reaches the composer.
+  if (eventPathContainsSelector(event, TYPE_TO_FOCUS_INTERACTIVE_SELECTOR)) return false;
 
   return true;
 }
