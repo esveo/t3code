@@ -11,6 +11,7 @@ import * as DateTime from "effect/DateTime";
 import {
   cancelledRosterTaskWork,
   cancelledTurnItemWork,
+  isAwaitedWork,
   isRestartNoteContinuation,
   pendingRestartCancelledBackgroundWork,
   restartCancelledBackgroundWorkNote,
@@ -94,6 +95,8 @@ it("bounds the note so it cannot crowd out the turn's context", () => {
   // Fork: the note ends with four lines of resume guidance.
   assert.lengthOf(note.split("\n"), 16);
   assert.include(note, "- and 15 more\n");
+  assert.include(note, "interrupted this background work");
+  assert.notInclude(note, "cancelled");
   const command = cancelledTurnItemWork({
     type: "command_execution",
     input: "x".repeat(10_000),
@@ -112,6 +115,47 @@ it("bounds roster task labels including a long task id", () => {
   assert.lengthOf(work.label, 160);
   const idOnly = cancelledRosterTaskWork({ kind: "background_task", taskId: "t".repeat(400) });
   assert.lengthOf(idOnly.label, 160);
+});
+
+it("names a lost subagent by the id the agent resumes it with", () => {
+  const ownShell = cancelledRosterTaskWork({
+    kind: "command",
+    taskId: "shell-1",
+    description: "sleep 150",
+    parentTaskId: "agent-1",
+  });
+  // The agent waits on the subagent, which waits on its shell.
+  assert.deepEqual(ownShell, {
+    kind: "subagent",
+    label: "sleep 150 (subagent agent-1)",
+    id: "agent-1",
+  });
+  assert.isTrue(isAwaitedWork(ownShell));
+  const long = cancelledRosterTaskWork({
+    kind: "command",
+    taskId: "shell-1",
+    description: "d".repeat(400),
+    parentTaskId: "agent-1",
+  }).label;
+  assert.lengthOf(long, 160);
+  assert.isTrue(long.endsWith("(subagent agent-1)"));
+  const longId = cancelledRosterTaskWork({
+    kind: "command",
+    taskId: "shell-1",
+    parentTaskId: "a".repeat(400),
+  }).label;
+  assert.lengthOf(longId, 160);
+  assert.isFalse(isAwaitedWork(cancelledRosterTaskWork({ kind: "command", taskId: "shell-2" })));
+  assert.equal(
+    cancelledTurnItemWork({
+      id: "item-1",
+      type: "subagent",
+      origin: "provider_native",
+      title: "Review",
+      nativeItemRef: { driver: "claudeAgent", nativeId: "agent-1", strength: "strong" },
+    } as never)?.label,
+    "Review (id agent-1)",
+  );
 });
 
 it("keeps separate cancelled tasks that share a kind and label", () => {
@@ -160,16 +204,16 @@ it("names a subagent's native id and how to resume it", () => {
     id: "turn-item:1",
     title: "r".repeat(400),
     prompt: "",
+    origin: "provider_native",
     nativeItemRef: { driver: "claudeAgent", nativeId: "a1b2c3", strength: "strong" },
   } as never);
   assert.equal(subagent?.id, "turn-item:1");
   assert.lengthOf(subagent?.label ?? "", 160);
   assert.isTrue(subagent?.label.endsWith("(id a1b2c3)"));
   const note = restartCancelledBackgroundWorkNote(subagent === undefined ? [] : [subagent]);
-  assert.include(note, "interrupted this background work");
+  assert.include(note, "server restarted");
   assert.include(note, "SendMessage");
   assert.include(note, "resumeFromRunId");
-  assert.notInclude(note, "cancelled");
 });
 
 it("counts a prompted mid-turn or chained continuation as delivering the note", () => {

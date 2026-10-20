@@ -1,7 +1,7 @@
 import type { ThreadPullRequestLink } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
-import type { PullRequestListLine } from "../pullRequest/pullRequestListLines";
+import type { PullRequestListLine } from "@t3tools/shared/threadPullRequests";
 import { groupPullRequestLinesByStatus } from "./pullRequestStatusGroups.logic";
 
 function line(

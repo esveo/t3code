@@ -3,7 +3,6 @@ import { useMemo, type ReactNode } from "react";
 import type { SidebarSection } from "../Sidebar.logic";
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
 import { SidebarChildThreads } from "../threadOrchestration/SidebarChildThreads";
-import { useChildThreadGroups } from "../threadOrchestration/coordinatorLinks";
 import {
   CROSS_PROJECT_RUN_KEY,
   crossProjectCoordinatorKeys,
@@ -20,11 +19,11 @@ import type { SidebarProjectRuns } from "./useSidebarProjectRuns";
  */
 export function useForkSidebarGroups(input: {
   threads: ReadonlyArray<EnvironmentThreadShell>;
+  /** Threads a coordinator started render under it, not as rows of their own. */
+  childThreadGroups: ChildThreadGroups;
   projectGroups: ReadonlyArray<SidebarProjectSnapshot>;
 }) {
-  const { threads, projectGroups } = input;
-  // Threads a coordinator started render under it, not as rows of their own.
-  const childThreadGroups = useChildThreadGroups(threads);
+  const { threads, childThreadGroups, projectGroups } = input;
   // Coordinators whose work spans projects gather under "Cross-project".
   const crossProjectRunKeys = useMemo(
     () =>
@@ -47,7 +46,7 @@ export function useForkSidebarGroups(input: {
       ),
     [projectGroups],
   );
-  return { childThreadGroups, crossProjectRunKeys, projectGroupByThreadProjectKey };
+  return { crossProjectRunKeys, projectGroupByThreadProjectKey };
 }
 
 type RunSection = "active" | "settled";
