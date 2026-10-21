@@ -25,6 +25,7 @@ import {
 import { Toggle as ToggleGroupItem, ToggleGroup } from "~/components/ui/toggle-group";
 import { ClaudeAI, type Icon, OpenAI } from "../Icons";
 import { useAtomCommand } from "~/state/use-atom-command";
+import { ForkInstructionsEditor } from "./ForkInstructionsEditor";
 import { forkInstructionsEnvironment } from "./forkInstructionsState";
 import { useForkInstructionsDrafts, useForkInstructionsStore } from "./forkInstructionsStore";
 
@@ -282,13 +283,11 @@ function ForkInstructions({ threadRef }: { threadRef: ScopedThreadRef }) {
             </Alert>
           ) : null}
 
-          <textarea
-            aria-label={snapshot.displayPath}
-            className="min-h-0 flex-1 resize-none rounded-lg border border-input bg-background p-2 font-mono text-xs outline-none focus-visible:border-ring dark:bg-input/32"
-            spellCheck={false}
+          <ForkInstructionsEditor
+            label={snapshot.displayPath}
             readOnly={!canWrite}
             value={content}
-            onChange={(event) => edit(event.target.value)}
+            onChange={edit}
             onKeyDown={onKeyDown}
           />
 
