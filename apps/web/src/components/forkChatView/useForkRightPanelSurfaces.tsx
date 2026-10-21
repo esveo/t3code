@@ -7,6 +7,8 @@ import { AgentStagePanel } from "../agentStage/AgentStagePanel";
 import { useAgentStageEnabled } from "../agentStage/agentStageStore";
 import { ForkNotesPanel } from "../forkNotes/ForkNotesPanel";
 import { useForkNotesSurface } from "../forkNotes/useForkNotesSurface";
+import { ForkInstructionsPanel } from "../forkInstructions/ForkInstructionsPanel";
+import { forkInstructionsSurface } from "../forkInstructions/useForkInstructionsSurface";
 import { nextGitGraphPanelStep } from "../gitGraph/gitGraphPanelLadder";
 import { ThreadInboxPanel } from "../threadInbox/ThreadInboxPanel";
 import { useThreadInboxSurface } from "../threadInbox/useThreadInboxSurface";
@@ -19,7 +21,7 @@ const GitGraphView = lazy(() =>
 
 /**
  * Fork: the right panel surfaces the fork adds to a chat — agent stage,
- * thread overview, inbox, notes and the Git graph. `ChatView` spreads
+ * thread overview, inbox, notes, instructions and the Git graph. `ChatView` spreads
  * `tabProps` into its `RightPanelTabs` and asks `renderSurface` before its
  * own surfaces, so upstream's chain stays as it is.
  */
@@ -45,6 +47,7 @@ export function useForkRightPanelSurfaces(input: {
   const threadOverview = useThreadOverviewSurface(threadRef);
   const threadInbox = useThreadInboxSurface(threadRef);
   const notes = useForkNotesSurface(threadRef);
+  const instructions = forkInstructionsSurface(threadRef);
   const addAgentStageSurface = useCallback(() => {
     if (!threadRef || !agentStageEnabled) return;
     useRightPanelStore.getState().open(threadRef, "agent-stage");
@@ -99,12 +102,14 @@ export function useForkRightPanelSurfaces(input: {
       threadsWaitingCount: threadOverview.waitingCount,
       threadInbox,
       notes,
+      instructions,
     }),
     [
       addAgentStageSurface,
       addGitGraphSurface,
       agentStageEnabled,
       gitGraphAvailable,
+      instructions,
       notes,
       threadInbox,
       threadOverview.available,
@@ -126,6 +131,8 @@ export function useForkRightPanelSurfaces(input: {
         return (
           <ForkNotesPanel threadRef={threadRef} composerDraftTarget={input.composerDraftTarget} />
         );
+      case "instructions":
+        return <ForkInstructionsPanel threadRef={threadRef} />;
       case "git-graph":
         if (gitGraphCwd === null || input.environmentId === undefined) return undefined;
         return (

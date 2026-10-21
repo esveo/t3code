@@ -90,6 +90,7 @@ import * as DelegatedAttachments from "./mcp/toolkits/threads/attachments.ts";
 import * as ThreadCoordinators from "./threadOrchestration/ThreadCoordinators.ts";
 import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
 import * as ForkNotes from "./forkNotes/ForkNotes.ts";
+import * as ForkInstructions from "./forkInstructions/ForkInstructions.ts";
 import * as AgentTime from "./agentTime/AgentTime.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import * as ServerSettings from "./serverSettings.ts";
@@ -608,6 +609,8 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   ThreadDecisions.layer,
   // Fork: notes and todos of the Notes tab.
   ForkNotes.layer,
+  // Fork: instruction files of the Instructions tab.
+  ForkInstructions.layer.pipe(Layer.provide(ProjectionStoreV2.layer)),
   // Fork: agent time on the Usage page.
   AgentTime.layer,
   Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),

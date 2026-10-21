@@ -28,6 +28,7 @@ import {
   THREAD_COORDINATORS_WS_METHODS,
   THREAD_DECISIONS_WS_METHODS,
   FORK_NOTES_WS_METHODS,
+  FORK_INSTRUCTIONS_WS_METHODS,
   VOICE_INPUT_WS_METHODS,
   AuthTerminalReadScope,
   type AuthEnvironmentScope,
@@ -219,6 +220,8 @@ export const RPC_REQUIRED_SCOPES = {
   // Fork: notes and todos of the Notes tab.
   [FORK_NOTES_WS_METHODS.subscribe]: AuthOrchestrationReadScope,
   [FORK_NOTES_WS_METHODS.act]: AuthOrchestrationOperateScope,
+  // Fork: reading an instruction file in the Instructions tab (saving is guarded above).
+  [FORK_INSTRUCTIONS_WS_METHODS.read]: AuthFilesystemReadScope,
   // Fork: which coordinator a thread reports to.
   [THREAD_COORDINATORS_WS_METHODS.subscribe]: AuthOrchestrationReadScope,
   [THREAD_COORDINATORS_WS_METHODS.set]: AuthOrchestrationOperateScope,

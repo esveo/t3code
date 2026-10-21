@@ -1,6 +1,11 @@
 import * as RpcGroup from "effect/rpc/RpcGroup";
 
 import { AGENT_TIME_WS_METHODS, WsAgentTimeSummaryRpc } from "./agentTime.ts";
+import {
+  FORK_INSTRUCTIONS_WS_METHODS,
+  WsForkInstructionsReadRpc,
+  WsForkInstructionsWriteRpc,
+} from "./forkInstructions.ts";
 import { FORK_NOTES_WS_METHODS, WsForkNotesActRpc, WsForkNotesSubscribeRpc } from "./forkNotes.ts";
 import {
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS,
@@ -35,6 +40,9 @@ export const ForkWsRpcGroup = RpcGroup.make(
   // Notes and todos in the Notes tab.
   WsForkNotesSubscribeRpc,
   WsForkNotesActRpc,
+  // Instruction files in the Instructions tab.
+  WsForkInstructionsReadRpc,
+  WsForkInstructionsWriteRpc,
   // Which coordinator a thread reports to.
   WsThreadCoordinatorsSubscribeRpc,
   WsThreadCoordinatorsSetRpc,
@@ -54,6 +62,8 @@ export const FORK_WS_RPC_TAGS = [
   THREAD_DECISIONS_WS_METHODS.act,
   FORK_NOTES_WS_METHODS.subscribe,
   FORK_NOTES_WS_METHODS.act,
+  FORK_INSTRUCTIONS_WS_METHODS.read,
+  FORK_INSTRUCTIONS_WS_METHODS.write,
   THREAD_COORDINATORS_WS_METHODS.subscribe,
   THREAD_COORDINATORS_WS_METHODS.set,
   VOICE_INPUT_WS_METHODS.prepare,
