@@ -25,6 +25,7 @@ import {
 import { Toggle as ToggleGroupItem, ToggleGroup } from "~/components/ui/toggle-group";
 import { ClaudeAI, type Icon, OpenAI } from "../Icons";
 import { useAtomCommand } from "~/state/use-atom-command";
+import { FORK_NOTE_SCOPE_ICONS } from "../forkNotes/forkNoteScopeIcons";
 import { ForkInstructionsEditor } from "./ForkInstructionsEditor";
 import { forkInstructionsEnvironment } from "./forkInstructionsState";
 import { useForkInstructionsDrafts, useForkInstructionsStore } from "./forkInstructionsStore";
@@ -47,6 +48,11 @@ const PROVIDER_ICONS: Record<ForkInstructionsProvider, Icon> = {
 function ProviderIcon({ provider }: { provider: ForkInstructionsProvider }) {
   const ProviderGlyph = PROVIDER_ICONS[provider];
   return <ProviderGlyph className="size-3.5" />;
+}
+
+function ScopeIcon({ scope }: { scope: ForkInstructionsScope }) {
+  const ScopeGlyph = FORK_NOTE_SCOPE_ICONS[scope];
+  return <ScopeGlyph aria-hidden className="size-3.5" />;
 }
 
 const basename = (path: string) => path.slice(path.lastIndexOf("/") + 1);
@@ -190,12 +196,18 @@ function ForkInstructions({ threadRef }: { threadRef: ScopedThreadRef }) {
           }}
         >
           <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label="Scope">
-            <SelectValue />
+            <span className="inline-flex min-w-0 items-center gap-1.5">
+              <ScopeIcon scope={scope} />
+              <SelectValue />
+            </span>
           </SelectTrigger>
           <SelectPopup>
             {SCOPES.map((option) => (
               <SelectItem key={option.value} value={option.value}>
-                {option.label}
+                <span className="inline-flex items-center gap-1.5">
+                  <ScopeIcon scope={option.value} />
+                  {option.label}
+                </span>
               </SelectItem>
             ))}
           </SelectPopup>

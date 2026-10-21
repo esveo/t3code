@@ -21,8 +21,8 @@ import { Button } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from "~/components/ui/menu";
 import { ScrollArea } from "~/components/ui/scroll-area";
+import { Select, SelectItem, SelectPopup, SelectTrigger } from "~/components/ui/select";
 import { Toggle } from "~/components/ui/toggle";
-import { Toggle as ToggleGroupItem, ToggleGroup } from "~/components/ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { shortcutLabelForCommand } from "~/keybindings";
 import { cn } from "~/lib/utils";
@@ -38,6 +38,7 @@ import {
   parseForkNoteText,
   resolveForkNoteDrop,
 } from "./forkNotesLogic";
+import { FORK_NOTE_SCOPE_ICONS } from "./forkNoteScopeIcons";
 import { useForkNotesStore } from "./forkNotesStore";
 import { forkNotesToastAnchor, showForkNotesToast, toastWithUndo } from "./forkNotesToast";
 import { useForkNotes } from "./useForkNotes";
@@ -114,7 +115,6 @@ function ForkNotes({
 
   const [dragging, setDragging] = useState<ForkNote | null>(null);
   const [dropTarget, setDropTargetState] = useState<ForkNoteDropTarget | null>(null);
-  const [scopeDrop, setScopeDrop] = useState<ForkNoteScope | null>(null);
   const setDropTarget = (next: ForkNoteDropTarget | null) =>
     setDropTargetState((previous) => (sameDropTarget(previous, next) ? previous : next));
 
@@ -243,7 +243,6 @@ function ForkNotes({
   const endDrag = () => {
     setDragging(null);
     setDropTarget(null);
-    setScopeDrop(null);
   };
 
   const rowProps = (note: ForkNote) => ({
@@ -277,47 +276,31 @@ function ForkNotes({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex flex-col gap-2 p-3 pb-2">
-        <ToggleGroup
-          className="w-full *:flex-1"
-          // A scope an entry is dragged over shows as selected: that is where it lands.
-          value={[scopeDrop ?? scope]}
-          onValueChange={(next) => {
-            const [selected] = next;
+      <div className="flex items-start gap-2 p-3 pb-2">
+        <Select
+          value={scope}
+          onValueChange={(selected) => {
             if (selected === "thread" || selected === "project" || selected === "global") {
               setScope(selected);
             }
           }}
         >
-          {FORK_NOTE_SCOPES.map((option) => {
-            const count = openTodoCount(lists[option].notes);
-            return (
-              <ToggleGroupItem
-                key={option}
-                value={option}
-                disabled={targets[option] === null}
-                aria-label={FORK_NOTE_SCOPE_LABELS[option]}
-                onDragOver={(event) => {
-                  if (!dragging || option === scope || targets[option] === null) return;
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = "move";
-                  setScopeDrop(option);
-                }}
-                onDragLeave={() => setScopeDrop(null)}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  const note = dragging;
-                  endDrag();
-                  if (note) moveToScope(note, option);
-                }}
-              >
-                {FORK_NOTE_SCOPE_LABELS[option]}
-                {count > 0 ? <span className="tabular-nums opacity-70">{count}</span> : null}
-              </ToggleGroupItem>
-            );
-          })}
-        </ToggleGroup>
-        {target ? <AddField target={target} act={act} /> : null}
+          <SelectTrigger className="w-auto min-w-0 shrink-0" aria-label="Scope">
+            <ForkNoteScopeLabel scope={scope} count={openTodoCount(lists[scope].notes)} />
+          </SelectTrigger>
+          <SelectPopup>
+            {FORK_NOTE_SCOPES.map((option) => (
+              <SelectItem key={option} value={option} disabled={targets[option] === null}>
+                <ForkNoteScopeLabel scope={option} count={openTodoCount(lists[option].notes)} />
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
+        {target ? (
+          <div className="min-w-0 flex-1">
+            <AddField target={target} act={act} />
+          </div>
+        ) : null}
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <div
@@ -379,6 +362,17 @@ function ForkNotes({
       {/* Notes toasts sit just above this, over the bottom of the list. */}
       <div ref={forkNotesToastAnchor} aria-hidden className="h-0 w-full shrink-0" />
     </div>
+  );
+}
+
+function ForkNoteScopeLabel({ scope, count }: { scope: ForkNoteScope; count: number }) {
+  const ScopeIcon = FORK_NOTE_SCOPE_ICONS[scope];
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <ScopeIcon aria-hidden className="size-3.5" />
+      {FORK_NOTE_SCOPE_LABELS[scope]}
+      {count > 0 ? <span className="tabular-nums opacity-70">{count}</span> : null}
+    </span>
   );
 }
 
