@@ -2,6 +2,7 @@
 
 Every feature and fix this fork adds on top of [T3 Code](https://github.com/pingdotgg/t3code), each with the commits that made it.
 
+- The right panel's Instructions tab opens and edits the instruction file the thread's Claude or Codex agent reads, for the project or globally, and refuses to overwrite a file changed meanwhile ([f0373c7](https://github.com/esveo/t3code/commit/f0373c7ffcae0e8e72d95e6acc9eec0f2d46afd7)).
 - The crash page's error report names source files and lines instead of minified bundle frames, and adds React's component stack and the build's commit ([6853714](https://github.com/esveo/t3code/commit/685371483625b8a449f9dd5f19c12f2ec4724f54), [3524b4f](https://github.com/esveo/t3code/commit/3524b4f4089579f01f2da7f9e6bc2d1cbcadc3e6)).
 - Fix: the app no longer crashes with React error #185 when two places, such as the floating mini player and the preview panel, show the same browser tab ([7d266d8](https://github.com/esveo/t3code/commit/7d266d8e058c89496eb9ace416aa3fb7aa0ddc69)).
 - The upstream sync runs weekly and repairs itself: Copilot works in rounds fed with the red checks, the lost fork lines and install failures, and a sync that stays red continues in the next run instead of starting over ([b4c665e](https://github.com/esveo/t3code/commit/b4c665e902aae7ca42ca0ac8a1e72e3d04bcba3e), [ace0ecf](https://github.com/esveo/t3code/commit/ace0ecf85736e92496cd652c5564ccb39f59699b), [f05c2ae](https://github.com/esveo/t3code/commit/f05c2ae716befa11e3ea762d37c449a08d64d45c)).
