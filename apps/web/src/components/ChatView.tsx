@@ -1689,13 +1689,11 @@ export default function ChatView(props: ChatViewProps) {
     activeThreadKey,
     panelAnimationDurationMs,
   );
-  const rightPanelPresenceValue = {
-    activeSurface: activeRightPanelSurface,
-    surfaces: rightPanelState.surfaces,
-  };
+  // Fork: the store's state object, not a fresh one: ChatView is not compiled, and
+  // usePanelPresence sets state during render whenever its value changes identity.
   const rightPanelPresence = usePanelPresence(
     rightPanelOpen && activeThreadRef !== null,
-    rightPanelPresenceValue,
+    rightPanelState,
     panelAnimationsActive,
     activeThreadKey,
     panelAnimationDurationMs,
@@ -1706,7 +1704,10 @@ export default function ChatView(props: ChatViewProps) {
   const rightPanelControlsInPanel =
     shouldUsePlanSidebarSheet && rightPanelPresent && rightPanelOpen;
   const rightPanelControlsAtRoot = rightPanelPresent && !shouldUsePlanSidebarSheet;
-  const renderedRightPanelSurface = rightPanelPresence.value?.activeSurface ?? null;
+  const renderedRightPanelSurface =
+    rightPanelPresence.value?.surfaces.find(
+      (surface) => surface.id === rightPanelPresence.value?.activeSurfaceId,
+    ) ?? null;
   const renderedRightPanelSurfaces = rightPanelPresence.value?.surfaces ?? [];
   const previewMiniPlayerVisible = shouldRenderPreviewMiniPlayer(
     activePreviewMiniPlayer?.source ?? null,
