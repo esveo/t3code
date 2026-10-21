@@ -1062,7 +1062,9 @@ export default function ChatView(props: ChatViewProps) {
   const { settleThread, pinThread, confirmAndUnpinThread } = useThreadActions();
   const isActivePane = useIsActiveChatPane();
   const isActivePaneRef = useRef(isActivePane);
-  isActivePaneRef.current = isActivePane;
+  useLayoutEffect(() => {
+    isActivePaneRef.current = isActivePane;
+  }, [isActivePane]);
   const routeThreadRef = scopeThreadRef(environmentId, threadId);
   const routeThreadKey = scopedThreadKey(routeThreadRef);
   const currentRouteThreadKeyRef = useRef<string | null>(routeThreadKey);
@@ -1455,16 +1457,15 @@ export default function ChatView(props: ChatViewProps) {
       });
     }
   }
+  const draftProjectSettings = resolveProjectSettings(
+    settings,
+    fallbackDraftProject?.id ?? null,
+    fallbackDraftProject ?? undefined,
+  ).settings;
+  const draftDefaultModelSelection =
+    draftProjectSettings.defaultModelSelection ?? NO_PROVIDER_MODEL_SELECTION;
   const localDraftThread = draftThread
-    ? buildLocalDraftThread(
-        threadId,
-        draftThread,
-        resolveProjectSettings(
-          settings,
-          fallbackDraftProject?.id ?? null,
-          fallbackDraftProject ?? undefined,
-        ).settings.defaultModelSelection ?? NO_PROVIDER_MODEL_SELECTION,
-      )
+    ? buildLocalDraftThread(threadId, draftThread, draftDefaultModelSelection)
     : undefined;
   const isServerThread = serverThread !== null;
   const activeThread = isServerThread ? serverThread : localDraftThread;
@@ -4662,11 +4663,12 @@ export default function ChatView(props: ChatViewProps) {
   }
   const pendingServerThreadEnvMode =
     pendingServerThreadEnvModeEntry !== null &&
-    pendingServerThreadEnvModeEntry.threadId === activeThread?.id
+    pendingServerThreadEnvModeEntry.threadId === activeThreadId
       ? pendingServerThreadEnvModeEntry.mode
       : null;
   const pendingServerThreadBranchEntryForThread =
-    pendingServerThreadBranchEntry?.threadId === activeThread?.id
+    pendingServerThreadBranchEntry !== null &&
+    pendingServerThreadBranchEntry.threadId === activeThreadId
       ? pendingServerThreadBranchEntry
       : null;
   const setPendingServerThreadBranch = (branch: string | null) => {

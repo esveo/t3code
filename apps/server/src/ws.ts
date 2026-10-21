@@ -67,6 +67,7 @@ import {
   THREAD_COORDINATORS_WS_METHODS,
   THREAD_DECISIONS_WS_METHODS,
   FORK_NOTES_WS_METHODS,
+  FORK_INSTRUCTIONS_WS_METHODS,
   VOICE_INPUT_WS_METHODS,
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS,
   AGENT_TIME_WS_METHODS,
@@ -208,6 +209,7 @@ import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration-v2/workflowScriptQuery.ts";
 import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
 import * as ForkNotes from "./forkNotes/ForkNotes.ts";
+import * as ForkInstructions from "./forkInstructions/ForkInstructions.ts";
 import * as ThreadCoordinators from "./threadOrchestration/ThreadCoordinators.ts";
 import * as VoiceInput from "./voiceInput/VoiceInput.ts";
 import * as ProviderSubagentControl from "./providerSubagentControl/ProviderSubagentControl.ts";
@@ -3111,6 +3113,9 @@ const layerWsRpc = (
         // notes and todos of the Notes tab.
         [FORK_NOTES_WS_METHODS.subscribe]: (input) => ForkNotes.subscribeRpc(input),
         [FORK_NOTES_WS_METHODS.act]: (input) => ForkNotes.actRpc(input),
+        // instruction files of the Instructions tab.
+        [FORK_INSTRUCTIONS_WS_METHODS.read]: (input) => ForkInstructions.readRpc(input),
+        [FORK_INSTRUCTIONS_WS_METHODS.write]: (input) => ForkInstructions.writeRpc(input),
         // which coordinator a thread reports to.
         [THREAD_COORDINATORS_WS_METHODS.subscribe]: (_input) => ThreadCoordinators.subscribeRpc(),
         [THREAD_COORDINATORS_WS_METHODS.set]: (input) => ThreadCoordinators.setRpc(input),
