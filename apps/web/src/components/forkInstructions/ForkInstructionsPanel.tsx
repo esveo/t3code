@@ -15,7 +15,15 @@ import { type KeyboardEvent, useEffect, useState } from "react";
 import { Alert, AlertAction, AlertDescription } from "~/components/ui/alert";
 import { Badge } from "~/components/ui/badge";
 import { Button } from "~/components/ui/button";
+import {
+  Select,
+  SelectItem,
+  SelectPopup,
+  SelectTrigger,
+  SelectValue,
+} from "~/components/ui/select";
 import { Toggle as ToggleGroupItem, ToggleGroup } from "~/components/ui/toggle-group";
+import { ClaudeAI, type Icon, OpenAI } from "../Icons";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { forkInstructionsEnvironment } from "./forkInstructionsState";
 import { useForkInstructionsDrafts, useForkInstructionsStore } from "./forkInstructionsStore";
@@ -29,6 +37,16 @@ const PROVIDERS: ReadonlyArray<{ value: ForkInstructionsProvider; label: string 
   { value: "claude", label: "Claude" },
   { value: "codex", label: "Codex" },
 ];
+
+const PROVIDER_ICONS: Record<ForkInstructionsProvider, Icon> = {
+  claude: ClaudeAI,
+  codex: OpenAI,
+};
+
+function ProviderIcon({ provider }: { provider: ForkInstructionsProvider }) {
+  const ProviderGlyph = PROVIDER_ICONS[provider];
+  return <ProviderGlyph className="size-3.5" />;
+}
 
 const basename = (path: string) => path.slice(path.lastIndexOf("/") + 1);
 
@@ -162,35 +180,49 @@ function ForkInstructions({ threadRef }: { threadRef: ScopedThreadRef }) {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex flex-col gap-2 p-3 pb-2">
-        <ToggleGroup
-          className="w-full *:flex-1"
-          value={[scope]}
-          onValueChange={(next) => {
-            const [selected] = next;
+      <div className="flex gap-2 p-3 pb-2">
+        <Select
+          value={scope}
+          items={SCOPES}
+          onValueChange={(selected) => {
             if (selected === "project" || selected === "global") setScope(threadKey, selected);
           }}
         >
-          {SCOPES.map((option) => (
-            <ToggleGroupItem key={option.value} value={option.value}>
-              {option.label}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
-        <ToggleGroup
-          className="w-full *:flex-1"
-          value={provider ? [provider] : []}
-          onValueChange={(next) => {
-            const [selected] = next;
+          <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label="Scope">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectPopup>
+            {SCOPES.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
+        <Select
+          value={provider}
+          items={PROVIDERS}
+          onValueChange={(selected) => {
             if (selected === "claude" || selected === "codex") setProvider(threadKey, selected);
           }}
         >
-          {PROVIDERS.map((option) => (
-            <ToggleGroupItem key={option.value} value={option.value}>
-              {option.label}
-            </ToggleGroupItem>
-          ))}
-        </ToggleGroup>
+          <SelectTrigger size="sm" className="min-w-0 flex-1" aria-label="Provider">
+            <span className="inline-flex min-w-0 items-center gap-1.5">
+              {provider ? <ProviderIcon provider={provider} /> : null}
+              <SelectValue />
+            </span>
+          </SelectTrigger>
+          <SelectPopup>
+            {PROVIDERS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                <span className="inline-flex items-center gap-1.5">
+                  <ProviderIcon provider={option.value} />
+                  {option.label}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
       </div>
 
       {loadError !== null ? (
