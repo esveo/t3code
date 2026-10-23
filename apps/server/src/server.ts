@@ -96,6 +96,7 @@ import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
 import * as ForkNotes from "./forkNotes/ForkNotes.ts";
 import * as VoiceCall from "./voiceCall/VoiceCallService.ts";
 import * as RealtimeCallClient from "./voiceCall/RealtimeCallClient.ts";
+import * as VoiceCallReadBack from "./voiceCall/VoiceCallReadBack.ts";
 import * as ForkInstructions from "./forkInstructions/ForkInstructions.ts";
 import * as AgentTime from "./agentTime/AgentTime.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
@@ -644,7 +645,10 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   // Fork: agent time on the Usage page.
   AgentTime.layer,
   // Fork: voice call with GPT-Live.
-  VoiceCall.layer.pipe(Layer.provide(RealtimeCallClient.layer)),
+  VoiceCallReadBack.startedLayer.pipe(
+    Layer.provideMerge(VoiceCall.layer),
+    Layer.provide(RealtimeCallClient.layer),
+  ),
   Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
 ).pipe(
   Layer.provideMerge(layerOrchestrationApplication),

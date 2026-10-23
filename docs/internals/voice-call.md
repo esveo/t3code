@@ -199,9 +199,20 @@ Appends are limited to 500 tokens each. Like Codex, cap a result at about
 
 **Proven:** a delegation held for 180 s is still spoken when answered; an
 unsolicited `session.context.append` is spoken; the data channel alone works
-end to end. **Not tested:** holds over 180 s, several open delegations at
-once, barge-in during injected speech, a non-spoken context channel
-(`session.thinking.append`, `initial_items`). Phase 2 tests the open ones.
+end to end. **Settled by rule in phase 2** instead of by probing, because each
+probe costs voice quota and the rule is safe either way:
+
+- _Holds over 180 s:_ not relied on. An answer to a delegation older than
+  180 s, or from a closed segment, goes out as `session.context.append`
+  ("Result of the earlier request "…". From <title>: …"), the proven path.
+- _Several open delegations:_ only the newest open delegation of a run gets
+  the answer; the older ones are marked superseded and stay unanswered in
+  the session.
+- _Barge-in during injected speech:_ left to the model. The speaking gate
+  only decides when an injection starts.
+
+**Not tested:** a non-spoken context channel (`session.thinking.append`,
+`initial_items`).
 
 ## Server modules
 
@@ -331,6 +342,13 @@ and add a small fork chip if it looks wrong.
   the server was down is delivered as an unprompted result on the next
   segment. `streamDomainEvents` is live-tail only, so there is no replay to
   rely on.
+- **Built in phase 2:** the gate and its queue live in `VoiceCallService`
+  (the segment state is there); `VoiceCallReadBack.ts` follows
+  `DelegatedTaskQuestionReactor`. Open delegations survive a hang-up as well
+  as a restart: their answers wait for the next segment, which flushes them
+  on its first event (`session.started`). Queued items older than an hour are
+  dropped; unprompted updates are dropped at hang-up. A turn open for more
+  than 30 s no longer holds the gate, so a lost `turn.done` cannot block it.
 
 **Questions and approvals** are not answered by voice in v1 (PAD,
 2026-10-23). A new pending request in the target thread may be announced as
@@ -426,6 +444,10 @@ not orchestration events: a call is not thread state.
 Transcript turns are written on `turn.done`, never per delta. Live deltas only
 go over the stream. Delegations are written when they arrive, because the
 read-back needs them after a restart.
+
+Phase 2 built only `fork_voice_call_delegations` (delegation id, call id,
+status, the delegation as JSON); the other tables come with history in
+phase 4.
 
 ## Settings and feature flag
 

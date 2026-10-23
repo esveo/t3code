@@ -13,16 +13,18 @@ import {
   type VoiceCallAvailability,
   type VoiceCallConnectInput,
   type VoiceCallConnectResult,
-  type VoiceCallDelegation,
+  VoiceCallDelegation,
   VoiceCallDisabledError,
   VoiceCallError,
   type VoiceCallEvent,
   type VoiceCallStatus,
 } from "@t3tools/contracts";
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
@@ -30,8 +32,10 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
+import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
+import * as SqlClient from "effect/sql/SqlClient";
 import * as Stream from "effect/Stream";
 
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
@@ -69,17 +73,16 @@ export class VoiceCallService extends Context.Service<
     ) => Effect.Effect<VoiceCallConnectResult, VoiceCallError | VoiceCallDisabledError>;
     readonly setTarget: (target: ThreadId | null) => Effect.Effect<void>;
     readonly hangUp: Effect.Effect<void>;
-    /** The delegation the voice is waiting on gets this text as its answer. */
+    /**
+     * Answers a delegation once the user is quiet. With no live segment the
+     * answer waits for the next one, also across a hang-up or a restart.
+     */
     readonly answerDelegation: (delegationId: string, text: string) => Effect.Effect<void>;
-    /** Something the voice should say without being asked. */
+    /** Something the voice should say unprompted; dropped when no call is live. */
     readonly speak: (text: string) => Effect.Effect<void>;
     readonly delegations: Effect.Effect<ReadonlyArray<VoiceCallDelegation>>;
     readonly targetThreadId: Effect.Effect<ThreadId | null>;
-    /** Every realtime event of the live segment, for the read-back. */
-    readonly realtimeEvents: Stream.Stream<{
-      readonly segmentId: string;
-      readonly event: RealtimeEvent;
-    }>;
+    readonly live: Effect.Effect<boolean>;
     readonly updateDelegation: (
       delegationId: string,
       patch: Partial<Pick<VoiceCallDelegation, "status" | "answer">>,
@@ -92,7 +95,30 @@ interface Segment {
   readonly scope: Scope.Closeable;
   readonly sideband: RealtimeSideband;
   readonly turnSpeakers: Map<string, RealtimeSpeaker>;
+  /** Speaking gate: open turns by the time they opened, the user's last word, the next re-check. */
+  readonly openTurns: Map<string, number>;
+  lastUserSpeechAt: number;
+  wakeAt: number | null;
 }
+
+/** Something waiting for the speaking gate; `delegation` null is an unprompted update. */
+interface Injection {
+  readonly delegation: VoiceCallDelegation | null;
+  readonly text: string;
+  readonly queuedAt: number;
+}
+
+/** Answering a held delegation works for at least 180 s (spike); later ones go out unprompted. */
+const DELEGATION_ANSWER_WINDOW_MS = 180_000;
+/** The user may pause mid-sentence; nothing is injected until they have been quiet this long. */
+const QUIET_AFTER_USER_MS = 1_000;
+/** A turn that never reports done must not hold the queue forever. */
+const STALE_TURN_MS = 30_000;
+/** Results nobody heard within this time are dropped instead of opening the next call. */
+const PENDING_MAX_AGE_MS = 60 * 60_000;
+
+const encodeDelegation = Schema.encodeSync(Schema.fromJsonString(VoiceCallDelegation));
+const decodeDelegation = Schema.decodeUnknownOption(Schema.fromJsonString(VoiceCallDelegation));
 
 const contextIdFor = (delegationId: string) =>
   `voice-${delegationId.replace(/[^a-z0-9_-]/gi, "").slice(-100)}`;
@@ -137,15 +163,27 @@ const make = Effect.gen(function* () {
   const changes = yield* Effect.acquireRelease(PubSub.unbounded<VoiceCallEvent>(), (pubsub) =>
     PubSub.shutdown(pubsub),
   );
-  const realtimeEvents = yield* Effect.acquireRelease(
-    PubSub.unbounded<{ readonly segmentId: string; readonly event: RealtimeEvent }>(),
-    (pubsub) => PubSub.shutdown(pubsub),
-  );
+  const sql = yield* SqlClient.SqlClient;
 
   let call: VoiceCallStatus | null = null;
   let segment: Segment | null = null;
+  let pending: Array<Injection> = [];
   const delegations = new Map<string, VoiceCallDelegation>();
   const subscriptions = new Map<string, number>();
+
+  // Open delegations outlive the call and the process: their answers are still owed.
+  const stored = yield* sql<{ readonly delegation_json: string }>`
+    SELECT delegation_json FROM fork_voice_call_delegations WHERE status = 'open'
+  `.pipe(
+    Effect.catch((error) =>
+      Effect.as(Effect.logWarning("voice call: loading delegations failed", error), []),
+    ),
+  );
+  for (const row of stored) {
+    for (const delegation of Option.toArray(decodeDelegation(row.delegation_json))) {
+      delegations.set(delegation.id, delegation);
+    }
+  }
 
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
   const uuid = crypto.randomUUIDv4().pipe(Effect.orDie);
@@ -157,10 +195,24 @@ const make = Effect.gen(function* () {
       call = { ...call, ...patch };
       return publishCall;
     });
+  const persist = (delegation: VoiceCallDelegation) =>
+    Effect.gen(function* () {
+      const updatedAt = yield* nowIso;
+      yield* sql`
+        INSERT INTO fork_voice_call_delegations
+          (delegation_id, call_id, status, delegation_json, updated_at)
+        VALUES (${delegation.id}, ${call?.callId ?? ""}, ${delegation.status},
+          ${encodeDelegation(delegation)}, ${updatedAt})
+        ON CONFLICT (delegation_id) DO UPDATE SET status = excluded.status,
+          delegation_json = excluded.delegation_json, updated_at = excluded.updated_at
+      `;
+    }).pipe(
+      Effect.catch((error) => Effect.logWarning("voice call: saving a delegation failed", error)),
+    );
   const recordDelegation = (delegation: VoiceCallDelegation) =>
     Effect.suspend(() => {
       delegations.set(delegation.id, delegation);
-      return publish({ type: "delegation", delegation });
+      return Effect.andThen(publish({ type: "delegation", delegation }), persist(delegation));
     });
 
   const readAuth = Effect.gen(function* () {
@@ -199,9 +251,61 @@ const make = Effect.gen(function* () {
     return current === null ? Effect.void : Scope.close(current.scope, Exit.void);
   });
 
+  /** An answer older than the window, or from a closed segment, can only go out unprompted. */
+  const injectionEvents = (current: Segment, item: Injection, now: number) => {
+    const delegation = item.delegation;
+    if (delegation === null) return sessionUpdateEvents(item.text);
+    const age = now - DateTime.toEpochMillis(DateTime.makeUnsafe(delegation.createdAt));
+    return delegation.segmentId === current.id && age <= DELEGATION_ANSWER_WINDOW_MS
+      ? delegationAnswerEvents(delegation.id, item.text)
+      : sessionUpdateEvents(`Result of the earlier request "${delegation.text}". ${item.text}`);
+  };
+
+  /**
+   * The speaking gate: injections wait until no turn is open and the user has
+   * been quiet for a moment, so the voice never talks over them. Barge-in
+   * while the voice speaks an injection is left to the model.
+   */
+  const flush: Effect.Effect<void> = Effect.gen(function* () {
+    const current = segment;
+    if (current === null || pending.length === 0) return;
+    const now = yield* Clock.currentTimeMillis;
+    const readyAt = Math.max(
+      current.lastUserSpeechAt + QUIET_AFTER_USER_MS,
+      ...[...current.openTurns.values()].map((openedAt) => openedAt + STALE_TURN_MS),
+    );
+    if (now < readyAt) {
+      // Events re-check the gate; this timer covers the quiet rule and stale turns.
+      if (current.wakeAt === null || readyAt < current.wakeAt) {
+        current.wakeAt = readyAt;
+        yield* Effect.sleep(Duration.millis(readyAt - now)).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              if (current.wakeAt === readyAt) current.wakeAt = null;
+            }),
+          ),
+          Effect.andThen(Effect.suspend(() => flush)),
+          Effect.forkIn(current.scope),
+        );
+      }
+      return;
+    }
+    const due = pending.filter((item) => now - item.queuedAt <= PENDING_MAX_AGE_MS);
+    pending = [];
+    yield* sendAll(due.flatMap((item) => injectionEvents(current, item, now)));
+  });
+
+  const enqueue = (delegation: VoiceCallDelegation | null, text: string) =>
+    Effect.gen(function* () {
+      pending.push({ delegation, text, queuedAt: yield* Clock.currentTimeMillis });
+      yield* flush;
+    });
+
   const endCall = (error: string | null) =>
     Effect.gen(function* () {
       yield* closeSegment;
+      // Answers stay owed to the next call; unprompted updates are stale by then.
+      pending = pending.filter((item) => item.delegation !== null);
       if (call !== null && (call.state === "connecting" || call.state === "live")) {
         yield* setCall({ state: error === null ? "ended" : "error", segmentId: null, error });
       }
@@ -214,7 +318,12 @@ const make = Effect.gen(function* () {
     );
 
   const answerDelegation = (delegationId: string, text: string) =>
-    sendAll(delegationAnswerEvents(delegationId, text));
+    Effect.suspend(() => {
+      const delegation = delegations.get(delegationId);
+      if (delegation === undefined) return Effect.void;
+      const answered: VoiceCallDelegation = { ...delegation, status: "answered", answer: text };
+      return Effect.andThen(recordDelegation(answered), enqueue(answered, text));
+    });
 
   const steer = (callId: string, segmentId: string, delegationId: string, text: string) =>
     Effect.gen(function* () {
@@ -231,11 +340,10 @@ const make = Effect.gen(function* () {
         answer: null,
         createdAt: yield* nowIso,
       };
-      const fail = (answer: string) =>
-        Effect.andThen(
-          recordDelegation({ ...base, status: "failed", answer }),
-          answerDelegation(delegationId, answer),
-        );
+      const fail = (answer: string) => {
+        const failed: VoiceCallDelegation = { ...base, status: "failed", answer };
+        return Effect.andThen(recordDelegation(failed), enqueue(failed, answer));
+      };
       if (targetThreadId === null) return yield* fail(noTargetAnswer);
       const shell = yield* threads
         .getThreadShell(targetThreadId)
@@ -267,14 +375,20 @@ const make = Effect.gen(function* () {
 
   const handleEvent = (callId: string, current: Segment, event: RealtimeEvent) =>
     Effect.gen(function* () {
-      yield* PubSub.publish(realtimeEvents, { segmentId: current.id, event });
+      const now = yield* Clock.currentTimeMillis;
       switch (event.type) {
         case "turn.created":
           current.turnSpeakers.set(event.turnId, event.speaker);
+          current.openTurns.set(event.turnId, now);
+          if (event.speaker === "user") current.lastUserSpeechAt = now;
+          return;
+        case "transcript":
+          if (event.speaker === "user") current.lastUserSpeechAt = now;
           return;
         case "turn.delta": {
           const speaker = current.turnSpeakers.get(event.turnId);
           if (speaker === undefined) return;
+          if (speaker === "user") current.lastUserSpeechAt = now;
           return yield* publish({
             type: "transcript",
             speaker,
@@ -285,6 +399,7 @@ const make = Effect.gen(function* () {
         }
         case "turn.done":
           current.turnSpeakers.delete(event.turnId);
+          current.openTurns.delete(event.turnId);
           return yield* publish({
             type: "transcript",
             speaker: event.speaker,
@@ -301,7 +416,7 @@ const make = Effect.gen(function* () {
         default:
           return;
       }
-    });
+    }).pipe(Effect.andThen(flush));
 
   /** The sideband ended on its own: the session closed or the socket dropped. */
   const segmentEnded = (current: Segment, reason: string | null) =>
@@ -337,7 +452,11 @@ const make = Effect.gen(function* () {
         // the segment; only a call that already ended starts over.
         yield* closeSegment;
         const continuing = call !== null && (call.state === "connecting" || call.state === "live");
-        if (!continuing) delegations.clear();
+        if (!continuing) {
+          for (const [id, delegation] of delegations) {
+            if (delegation.status !== "open") delegations.delete(id);
+          }
+        }
         const callId = continuing && call !== null ? call.callId : `vc-${yield* uuid}`;
         call = {
           callId,
@@ -384,6 +503,9 @@ const make = Effect.gen(function* () {
           scope,
           sideband,
           turnSpeakers: new Map(),
+          openTurns: new Map(),
+          lastUserSpeechAt: Number.NEGATIVE_INFINITY,
+          wakeAt: null,
         };
         segment = current;
         yield* sideband.events.pipe(
@@ -454,10 +576,10 @@ const make = Effect.gen(function* () {
     setTarget,
     hangUp,
     answerDelegation,
-    speak: (text) => sendAll(sessionUpdateEvents(text)),
+    speak: (text) => Effect.suspend(() => (segment === null ? Effect.void : enqueue(null, text))),
     delegations: Effect.sync(() => [...delegations.values()]),
     targetThreadId: Effect.sync(() => call?.targetThreadId ?? null),
-    realtimeEvents: Stream.fromPubSub(realtimeEvents),
+    live: Effect.sync(() => segment !== null),
     updateDelegation: (delegationId, patch) =>
       Effect.suspend(() => {
         const existing = delegations.get(delegationId);
