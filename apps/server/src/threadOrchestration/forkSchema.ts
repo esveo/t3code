@@ -102,6 +102,17 @@ export const ensureForkSchema = Effect.gen(function* () {
   yield* sql`
     CREATE INDEX IF NOT EXISTS fork_notes_scope ON fork_notes (scope, scope_id)
   `;
+  // Voice call: what the voice handed to a thread, so an answer still
+  // reaches the user after a hang-up or a restart (voiceCall/VoiceCallService.ts).
+  yield* sql`
+    CREATE TABLE IF NOT EXISTS fork_voice_call_delegations (
+      delegation_id TEXT PRIMARY KEY,
+      call_id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      delegation_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `;
   // Automations: run each trigger as a subthread of the bound thread
   // (scheduledTasks/forkSubthreadRun.ts).
   const scheduledTaskColumns = yield* sql<{ readonly name: string }>`
