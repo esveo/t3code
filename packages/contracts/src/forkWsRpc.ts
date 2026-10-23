@@ -23,6 +23,13 @@ import {
   WsThreadDecisionsSubscribeRpc,
 } from "./threadDecisions.ts";
 import {
+  VOICE_CALL_WS_METHODS,
+  WsVoiceCallConnectRpc,
+  WsVoiceCallHangUpRpc,
+  WsVoiceCallSetTargetRpc,
+  WsVoiceCallSubscribeRpc,
+} from "./voiceCall.ts";
+import {
   VOICE_INPUT_WS_METHODS,
   WsVoiceInputPrepareRpc,
   WsVoiceInputTranscribeRpc,
@@ -49,6 +56,11 @@ export const ForkWsRpcGroup = RpcGroup.make(
   // Dictation in the composer.
   WsVoiceInputPrepareRpc,
   WsVoiceInputTranscribeRpc,
+  // Voice call with GPT-Live.
+  WsVoiceCallSubscribeRpc,
+  WsVoiceCallConnectRpc,
+  WsVoiceCallSetTargetRpc,
+  WsVoiceCallHangUpRpc,
   // Stop and message a provider subagent from its thread.
   WsProviderSubagentTargetRpc,
   WsProviderSubagentStopRpc,
@@ -68,6 +80,10 @@ export const FORK_WS_RPC_TAGS = [
   THREAD_COORDINATORS_WS_METHODS.set,
   VOICE_INPUT_WS_METHODS.prepare,
   VOICE_INPUT_WS_METHODS.transcribe,
+  VOICE_CALL_WS_METHODS.subscribe,
+  VOICE_CALL_WS_METHODS.connect,
+  VOICE_CALL_WS_METHODS.setTarget,
+  VOICE_CALL_WS_METHODS.hangUp,
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS.target,
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS.stop,
   AGENT_TIME_WS_METHODS.summary,

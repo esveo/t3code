@@ -70,6 +70,7 @@ export * from "./forkNotes.ts";
 export * from "./forkInstructions.ts";
 export * from "./threadCoordinators.ts";
 export * from "./voiceInput.ts";
+export * from "./voiceCall.ts";
 export * from "./providerSubagentControl.ts";
 export * from "./forkWsRpc.ts";
 export * from "./agentTime.ts";
