@@ -162,7 +162,8 @@ export type VoiceCallSubscribeInput = typeof VoiceCallSubscribeInput.Type;
 
 export const VoiceCallConnectInput = Schema.Struct({
   clientId: TrimmedNonEmptyString,
-  offerSdp: TrimmedNonEmptyString.check(Schema.isMaxLength(64_000)),
+  /** Untrimmed: the SDP parser needs the final line break. */
+  offerSdp: Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(64_000)),
   target: Schema.NullOr(ThreadId),
   /** The segment whose peer never connected; the server closes it and starts a new one. */
   retryOf: Schema.optionalKey(Schema.String),
