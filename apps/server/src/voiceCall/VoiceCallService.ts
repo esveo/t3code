@@ -421,14 +421,16 @@ const make = Effect.gen(function* () {
   /** The sideband ended on its own: the session closed or the socket dropped. */
   const segmentEnded = (current: Segment, reason: string | null) =>
     lifecycle.withPermits(1)(
-      Effect.suspend(() =>
-        segment !== current
-          ? Effect.void
-          : endCall(
-              reason === null || reason === "client_request"
-                ? null
-                : `The voice session ended (${reason}).`,
-            ),
+      Effect.logInfo("voice call: segment ended", { segmentId: current.id, reason }).pipe(
+        Effect.andThen(() =>
+          segment !== current
+            ? Effect.void
+            : endCall(
+                reason === null || reason === "client_request"
+                  ? null
+                  : `The voice session ended (${reason}).`,
+              ),
+        ),
       ),
     );
 
@@ -518,6 +520,7 @@ const make = Effect.gen(function* () {
           Effect.forkIn(scope),
         );
         yield* setCall({ state: "live", segmentId: current.id });
+        yield* Effect.logInfo("voice call: segment live", { callId, segmentId: current.id });
         return { callId, segmentId: current.id, answerSdp: created.answerSdp };
       }),
     );
@@ -603,7 +606,9 @@ export const subscribeRpc = (input: { readonly clientId: string }) =>
   Stream.unwrap(withService((service) => Effect.succeed(service.subscribe(input.clientId))));
 
 export const connectRpc = (input: VoiceCallConnectInput) =>
-  withService((service) => service.connect(input));
+  withService((service) => service.connect(input)).pipe(
+    Effect.tapError((error) => Effect.logWarning("voice call: connect failed", error.message)),
+  );
 
 export const setTargetRpc = (input: { readonly target: ThreadId | null }) =>
   withService((service) => service.setTarget(input.target)).pipe(Effect.as({}));
