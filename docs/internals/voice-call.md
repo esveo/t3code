@@ -1,6 +1,6 @@
 # Voice call (plan)
 
-Status: implementation plan for the fork; phase 1 is built (see
+Status: implementation plan for the fork; phases 1 and 2 are built (see
 [Deviations](#deviations-from-the-plan)). PAD's decisions of 2026-10-21/22/23
 are the source; the v1 scope cut and the gpt-live-1.1 findings override older
 notes. The plan is a guide, not a contract: where the code or a test showed a
@@ -46,6 +46,21 @@ Phase 1:
   billed session alive.
 - **Transcripts** go to the browser console (`[voice call] …` via
   `Effect.logInfo`) until the panel exists.
+
+Phase 2:
+
+- **Questions and approvals are only announced** (PAD, 2026-10-23); see
+  [Later](#later).
+- **The gate and its queue live in `VoiceCallService`**, next to the segment
+  state they read, not in a module of their own. A turn open for more than
+  30 s stops holding the gate, so a lost `turn.done` cannot block it.
+- **One table only.** `fork_voice_call_delegations` holds what the restart
+  re-arm needs; the call and transcript tables wait for history in phase 4.
+- **The three open protocol points were settled by rule, not by probing**;
+  see [Protocol](#protocol).
+- **The offer SDP is not trimmed.** ChatGPT rejects an offer without its
+  final line break ("failed to unmarshal SDP: EOF"); the first real call
+  from headless Chromium found it, and the fix went into phase 1.
 
 ## Goal and non-goals
 
