@@ -94,6 +94,8 @@ import * as DelegatedAttachments from "./mcp/toolkits/threads/attachments.ts";
 import * as ThreadCoordinators from "./threadOrchestration/ThreadCoordinators.ts";
 import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
 import * as ForkNotes from "./forkNotes/ForkNotes.ts";
+import * as VoiceCall from "./voiceCall/VoiceCallService.ts";
+import * as RealtimeCallClient from "./voiceCall/RealtimeCallClient.ts";
 import * as ForkInstructions from "./forkInstructions/ForkInstructions.ts";
 import * as AgentTime from "./agentTime/AgentTime.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
@@ -641,6 +643,8 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   ForkInstructions.layer.pipe(Layer.provide(ProjectionStoreV2.layer)),
   // Fork: agent time on the Usage page.
   AgentTime.layer,
+  // Fork: voice call with GPT-Live.
+  VoiceCall.layer.pipe(Layer.provide(RealtimeCallClient.layer)),
   Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
 ).pipe(
   Layer.provideMerge(layerOrchestrationApplication),

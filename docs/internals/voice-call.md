@@ -1,15 +1,51 @@
 # Voice call (plan)
 
-Status: implementation plan for the fork, not yet built. PAD's decisions of
-2026-10-21/22 are the source; the v1 scope cut and the gpt-live-1.1 findings
-override older notes. When the feature lands, rewrite this page into the
-durable decisions and traps and drop the phase list.
+Status: implementation plan for the fork; phase 1 is built (see
+[Deviations](#deviations-from-the-plan)). PAD's decisions of 2026-10-21/22/23
+are the source; the v1 scope cut and the gpt-live-1.1 findings override older
+notes. The plan is a guide, not a contract: where the code or a test showed a
+better way, the build deviates and says so below. When the feature lands,
+rewrite this page into the durable decisions and traps and drop the phase
+list.
 
 A voice call lets the user talk to esveo code. A realtime voice model
 (OpenAI's GPT-Live, on the user's ChatGPT subscription) holds the
 conversation, hands real work to the thread that is open on screen, and
 reads the result back. It is separate from [voice input](voice-input.md),
 which only dictates into the composer.
+
+## Deviations from the plan
+
+Phase 1:
+
+- **Sideband socket.** Node's global `WebSocket` (undici) with the headers in
+  its options, not the `ws` package; no new dependency.
+- **`sendToThread` gained an optional `context`** (`// Fork:` lines in
+  `ThreadManagementService.ts`), because it had no way to attach the
+  `voice-call` record.
+- **The reference href is `t3-context://v1/voice-call/<id>`**, the form
+  `formatComposerContextReference` produces; the plan's form without `v1`
+  does not parse.
+- **The client identifies itself.** `subscribe` and `connect` carry a
+  per-tab `clientId`. The server only connects a client that holds a
+  subscription and ends the call when the owner's last subscription closes,
+  which is the "dropped client" rule made concrete. A takeover is not a
+  separate state: any `connect` (retry, takeover, fresh) closes the current
+  segment, the status names the new owner, and the old tab closes its peer
+  when it sees that it is no longer the owner.
+- **`target` is a `ThreadId`**, not a `ThreadRef`: the call lives in one
+  environment, so the environment part was redundant.
+- **The segment lives inside `VoiceCallService`** for now; a separate
+  `VoiceCallSegment.ts` waits until pause and expiry give it enough to own.
+- **Auth: existing mode only, no refresh.** `VoiceCallAuth` reads the
+  instance's `auth.json` (honouring `homePath`, shadow homes and
+  `CODEX_HOME`), never writes it, and fails fast with "renew the Codex login"
+  when the token expires within 5 minutes. Asking Codex to refresh and
+  managed mode are left for a later phase; PAD's setup does not need them.
+- **The subscription needs the operate scope** as well, since it keeps a
+  billed session alive.
+- **Transcripts** go to the browser console (`[voice call] …` via
+  `Effect.logInfo`) until the panel exists.
 
 ## Goal and non-goals
 
@@ -20,7 +56,9 @@ Goal for v1:
   or starts a normal turn when the thread is idle.
 - The backend is the thread's own provider and model. The voice is only the
   front end; no extra model hop sits between them.
-- Results, questions and approvals of that thread come back as speech.
+- Results of that thread come back as speech. A new question or approval
+  in the target thread is announced, but answered on screen only (see
+  [Later](#later)).
 - The call survives thread switches (the target follows the screen), pauses
   itself when it is quiet because open time is billed, and wakes on speech
   or on a result.
@@ -133,27 +171,27 @@ undocumented endpoint; re-check it when Codex changes its realtime code.
 
 **Events we read**
 
-| Event | Use |
-|---|---|
-| `session.started {session:{id, status, expires_at}}` | segment is live; `expires_at` is about 2 h out |
-| `input_transcript.added {item.text, start_ms, end_ms}` | user transcript deltas, silence timer |
-| `output_transcript.added` | voice transcript deltas, silence timer |
-| `turn.created` / `turn.done {turn:{id, role, transcript}}` | speaking gate; persisted transcript on `turn.done` |
-| `delegation.created {item:{id, content[].text}, handoff_id, user_bidi_turn_id}` | the request to dispatch |
-| `delegation.context.appended`, `session.context.appended` | delivery acks |
-| `session.usage.updated {usage.audio_duration_ms, usage_limit{status, reset_seconds}}` | quota, every 15 s |
-| `session.closed`, `error` | segment ended; `forbidden` means a bad voice |
+| Event                                                                                 | Use                                                |
+| ------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `session.started {session:{id, status, expires_at}}`                                  | segment is live; `expires_at` is about 2 h out     |
+| `input_transcript.added {item.text, start_ms, end_ms}`                                | user transcript deltas, silence timer              |
+| `output_transcript.added`                                                             | voice transcript deltas, silence timer             |
+| `turn.created` / `turn.done {turn:{id, role, transcript}}`                            | speaking gate; persisted transcript on `turn.done` |
+| `delegation.created {item:{id, content[].text}, handoff_id, user_bidi_turn_id}`       | the request to dispatch                            |
+| `delegation.context.appended`, `session.context.appended`                             | delivery acks                                      |
+| `session.usage.updated {usage.audio_duration_ms, usage_limit{status, reset_seconds}}` | quota, every 15 s                                  |
+| `session.closed`, `error`                                                             | segment ended; `forbidden` means a bad voice       |
 
 `session.input_audio.append` and `session.output_audio.delta` also arrive and
 are dropped unread. No event names the model revision.
 
 **Events we send (sideband only)**
 
-| Event | Use |
-|---|---|
-| `delegation.context.append {delegation_item_id, channel:"speakable", content:[{type:"input_text", text}]}` | the answer to one delegation |
-| `session.context.append {channel:"speakable", content:[…]}` | unprompted events: results, questions, approvals |
-| `session.close` | pause, hang-up, expiry, failed connect |
+| Event                                                                                                      | Use                                              |
+| ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
+| `delegation.context.append {delegation_item_id, channel:"speakable", content:[{type:"input_text", text}]}` | the answer to one delegation                     |
+| `session.context.append {channel:"speakable", content:[…]}`                                                | unprompted events: results, questions, approvals |
+| `session.close`                                                                                            | pause, hang-up, expiry, failed connect           |
 
 Appends are limited to 500 tokens each. Like Codex, cap a result at about
 1,000 tokens (`REALTIME_ASSISTANT_OUTPUT_TOKEN_BUDGET`) and send it in
@@ -173,7 +211,7 @@ existing `voiceInput/` dictation module), with the contract in
 
 - **`VoiceCallAuth.ts`** returns `{ accessToken, accountId }` for the Codex
   provider instance (v1: the default `codex` instance).
-  - *Existing mode* (PAD's setup: no `providerInstances.codex`, so the default
+  - _Existing mode_ (PAD's setup: no `providerInstances.codex`, so the default
     mode, with `~/.codex/auth.json`): read `<CODEX_HOME>/auth.json` on every
     mint (resolve the home as
     [`threadRoots.ts`](../../apps/server/src/forkInstructions/threadRoots.ts)
@@ -182,7 +220,7 @@ existing `voiceInput/` dictation module), with the contract in
     write would race its refresh. If the JWT `exp` is near, ask Codex to
     refresh (to verify in phase 1: the app-server account read with token
     refresh); if that is not possible, fail with "renew the Codex login".
-  - *Managed mode*: `makeCodexChatGptAuth(...).access` in
+  - _Managed mode_: `makeCodexChatGptAuth(...).access` in
     [`CodexChatGptAuth.ts`](../../apps/server/src/provider/CodexChatGptAuth.ts)
     already refreshes under the shared session lock. The account id is not a
     field there; read it from the id token's ChatGPT claim. Its token is
@@ -245,7 +283,7 @@ On `delegation.created`:
    `voice-call-message:<callId>:<delegationItemId>`, so a retried event cannot
    dispatch twice. `createdBy: "user"`, `creationSource: "server"`.
 3. Record the delegation `{ delegationItemId, segmentId, threadId, messageId,
-   runId, status: open }` and push a card to the panel.
+runId, status: open }` and push a card to the panel.
 
 The voice has already said a filler ("On it.") and stays conversational; the
 answer follows when the run settles. A dispatch failure is answered at once
@@ -273,8 +311,8 @@ and add a small fork chip if it looks wrong.
   Older open delegations of the same run (steered twice) are marked
   superseded and get nothing. A failed or interrupted run answers with one
   sentence and the error.
-- **Unprompted events** in the thread that is the target *when the event
-  fires*: a run that settles with no open delegation, a new user-input
+- **Unprompted events** in the thread that is the target _when the event
+  fires_: a run that settles with no open delegation, a new user-input
   question, a new approval request. They go out as `session.context.append`
   ("Update from <title>: …"). A run that answered a delegation never also
   triggers an unprompted update.
@@ -294,25 +332,10 @@ and add a small fork chip if it looks wrong.
   segment. `streamDomainEvents` is live-tail only, so there is no replay to
   rely on.
 
-### Questions and approvals (decision for PAD)
-
-With no routing, "yes, allow it" would become a steer and the request would
-stay pending. v1 needs exactly one rule for this. Recommendation:
-
-- While the target thread has exactly one pending `user_input` request, the
-  next delegation is its free-text answer: `runtime-request.respond` with
-  `answers` (the path MCP `t3_pending_request_respond` uses), not a steer.
-- Approvals: PAD runs with full access, so they are rare. The voice announces
-  them and the front-end prompt tells it to delegate exactly `approve` or
-  `decline` as the answer. A delegation that normalises to one of those words
-  while one approval is pending is answered with `decision: accept|decline`;
-  anything else is a normal steer. Unlike MCP, this server path may send
-  `decision`, so the rule stays this narrow.
-- More than one pending request: announce how many, answer nothing by voice,
-  point to the screen.
-
-Alternatives: approvals only announced, never answered by voice; or a
-request header format (moved to Later).
+**Questions and approvals** are not answered by voice in v1 (PAD,
+2026-10-23). A new pending request in the target thread may be announced as
+an unprompted update; the front-end prompt tells the voice to send the user
+to the screen. Anything the user says in reply is a normal steer.
 
 ## Prompts
 
@@ -325,8 +348,7 @@ plugin is the reference for tone and for the doze notes.
   instruction in your own words; the client sends it to the thread open on
   screen; say a short filler and stay responsive while it runs; read results
   back short and without Markdown; when told about a question or approval,
-  ask the user and pass the answer on (exact words for approvals); do not
-  invent results. Plus the language line (`auto`: answer in the user's
+  tell the user it waits on screen; do not invent results. Plus the language line (`auto`: answer in the user's
   language; `de`: always German, from the first sentence), the persona text,
   the current target thread's title, the time, and on resume a recap.
 - **Backend hint** (the `voice-call` context record), modelled on Codex's
@@ -417,9 +439,8 @@ matching optional key in `ServerSettingsPatch`.
 - `voiceCallVoice`: one of the 25 v3 voices (a constant list in the contract:
   juniper, maple, spruce, ember, vale, breeze, arbor, sol, cove, aube,
   bubbie, haetsal, hanul, himari, leher, miko, neer, porto, rindo, rio,
-  rivage, selva, sonna, tinta, viola). Default `sonna` (German worked;
-  PAD may prefer `miko`). Only the list is offered, because an off-list voice
-  kills the session.
+  rivage, selva, sonna, tinta, viola). Default `miko` (PAD, 2026-10-23).
+  Only the list is offered, because an off-list voice kills the session.
 - `voiceCallLanguage: "auto" | "de"`, default `"auto"`.
 - `voiceCallPersona: string`, default empty, capped in length.
 
@@ -483,9 +504,9 @@ Each phase is one reviewable PR on the feature branch, behind the flag.
    browser console) is the end-to-end check; no panel, bar or pause yet.
    Desktop mic only if the check shows it is needed.
 2. **Read-back.** `VoiceCallReadBack`, delegation answers with cap and
-   chunking, unprompted events for the target, the speaking gate,
-   questions and approvals per PAD's decision, the delegations table and
-   restart re-arm. Settles the untested protocol points listed above.
+   chunking, unprompted events for the target, the speaking gate, the
+   delegations table and restart re-arm. Questions and approvals are only
+   announced. Settles the untested protocol points listed above.
 3. **Pause, resume, expiry, quota.** Auto-pause, client level gate and
    replay buffer, wake on result, manual pause, recap, 2 h rollover, usage
    tracking.
@@ -539,6 +560,15 @@ Each phase is one reviewable PR on the feature branch, behind the flag.
 
 ## Later
 
+- Answering questions and approvals by voice. The rule PAD postponed on
+  2026-10-23: while the target thread has exactly one pending `user_input`
+  request, the next delegation is its free-text answer
+  (`runtime-request.respond` with `answers`, the path MCP
+  `t3_pending_request_respond` uses), not a steer; a delegation of exactly
+  `approve` or `decline` while one approval is pending answers it with
+  `decision: accept|decline`; with more than one pending request, announce
+  how many and point to the screen. The alternative is a request header
+  format (see routing).
 - Routing: send to another thread (and switch the UI there), open a new
   thread with project and model inference, queue instead of steer, promote
   the last queued message to a steer. Options: a fixed request header the
