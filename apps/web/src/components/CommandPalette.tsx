@@ -1610,6 +1610,7 @@ function OpenCommandPaletteDialog(props: {
     if (firstOption) startNewProject(firstOption.environmentId, null);
   };
 
+  const agentStageEnabled = useAgentStageStore((state) => state.enabled);
   const actionItems: Array<CommandPaletteActionItem | CommandPaletteSubmenuItem> = [];
 
   if (projects.length > 0) {
@@ -1691,7 +1692,7 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
-  if (activeThread && useAgentStageStore.getState().enabled) {
+  if (activeThread && agentStageEnabled) {
     actionItems.push({
       kind: "action",
       value: "action:open-agent-stage",

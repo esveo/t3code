@@ -94,15 +94,7 @@ function EnabledComposerVoiceInputControl(props: ComposerVoiceInputControlProps)
     return () => window.removeEventListener("keydown", onEscape);
   }, [cancel, phase]);
 
-  // An environment without dictation gets no button.
-  if (!voice.supported) return null;
-  return (
-    <span ref={rootRef} className="contents">
-      {renderControls()}
-    </span>
-  );
-
-  function renderControls() {
+  const renderControls = () => {
     if (phase === "idle") {
       const label = shortcutLabel ? `Dictate (${shortcutLabel})` : "Dictate";
       return (
@@ -176,7 +168,15 @@ function EnabledComposerVoiceInputControl(props: ComposerVoiceInputControlProps)
         </span>
       </div>
     );
-  }
+  };
+
+  // An environment without dictation gets no button.
+  if (!voice.supported) return null;
+  return (
+    <span ref={rootRef} className="contents">
+      {renderControls()}
+    </span>
+  );
 }
 
 /**
