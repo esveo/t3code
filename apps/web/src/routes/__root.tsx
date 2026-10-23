@@ -89,6 +89,7 @@ import { installDesktopPasteAsText } from "../lib/desktopPasteAsText";
 import { isPopoutPathname, isPopoutWindow } from "../components/split/threadPopout";
 import { shouldResumeSnapShotSetupOnStartup } from "../lib/snapShotSetupResume";
 import { useEsveoErrorReport } from "../components/esveoErrorReport/useEsveoErrorReport";
+import { useEsveoEmbedBridge } from "../components/esveoEmbed/embedBridge";
 
 export const Route = createRootRoute({
   beforeLoad: async ({ location }) => {
@@ -154,6 +155,7 @@ function RootRouteView() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { authGateState } = Route.useRouteContext();
   const primaryEnvironmentAuthenticated = authGateState.status === "authenticated";
+  useEsveoEmbedBridge(primaryEnvironmentAuthenticated);
   // Once true, stays true: a visit to /welcome means the bootstrap already chose a route.
   const [returningFromWelcome, setReturningFromWelcome] = useState(pathname === "/welcome");
   if (pathname === "/welcome" && !returningFromWelcome) setReturningFromWelcome(true);
