@@ -1,6 +1,7 @@
 import {
   EnvironmentAuthorizationError,
   FORK_NOTES_WS_METHODS,
+  VOICE_CALL_WS_METHODS,
   clientRpcRequiredScopes,
   authScopeRequiredResponse,
   type EnvironmentId,
@@ -80,6 +81,8 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof THREAD_COORDINATORS_WS_METHODS.subscribe
   // Fork: the Notes tab.
   | typeof FORK_NOTES_WS_METHODS.subscribe
+  // Fork: the voice call.
+  | typeof VOICE_CALL_WS_METHODS.subscribe
   | typeof VOICE_INPUT_WS_METHODS.prepare
   | typeof WS_METHODS.terminalObserve;
 

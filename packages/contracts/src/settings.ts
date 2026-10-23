@@ -6,6 +6,12 @@ import {
   IdleAutoCompactMinContextTokens,
 } from "./idleAutoCompact.ts"; // Fork
 import {
+  DEFAULT_VOICE_CALL_VOICE,
+  VoiceCallLanguage,
+  VoiceCallPersona,
+  VoiceCallVoice,
+} from "./voiceCall.ts"; // Fork
+import {
   AuthOrchestrationOperateScope,
   AuthSettingsWriteScope,
   AuthProvidersManageScope,
@@ -1139,6 +1145,15 @@ export const ServerSettings = Schema.Struct({
   idleAutoCompactMinContextTokens: IdleAutoCompactMinContextTokens.pipe(
     Schema.withDecodingDefault(Effect.succeed(DEFAULT_IDLE_AUTO_COMPACT_CONTEXT_TOKENS)),
   ),
+  /** Fork: voice call with GPT-Live on the Codex ChatGPT login (docs/internals/voice-call.md). */
+  enableVoiceCall: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  voiceCallVoice: VoiceCallVoice.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_VOICE_CALL_VOICE)),
+  ),
+  voiceCallLanguage: VoiceCallLanguage.pipe(
+    Schema.withDecodingDefault(Effect.succeed<VoiceCallLanguage>("auto")),
+  ),
+  voiceCallPersona: VoiceCallPersona.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
   /**
    * Kept separate from agent access so enabling the user's Device panel does
    * not also grant providers control of simulators and emulators.
@@ -1456,6 +1471,11 @@ export const ServerSettingsPatch = Schema.Struct({
   enableIdleAutoCompact: Schema.optionalKey(Schema.Boolean),
   idleAutoCompactAfterMinutes: Schema.optionalKey(IdleAutoCompactAfterMinutes),
   idleAutoCompactMinContextTokens: Schema.optionalKey(IdleAutoCompactMinContextTokens),
+  // Fork: voice call.
+  enableVoiceCall: Schema.optionalKey(Schema.Boolean),
+  voiceCallVoice: Schema.optionalKey(VoiceCallVoice),
+  voiceCallLanguage: Schema.optionalKey(VoiceCallLanguage),
+  voiceCallPersona: Schema.optionalKey(VoiceCallPersona),
   enableDeviceSupport: Schema.optionalKey(Schema.Boolean),
   deviceOnboardingCompleted: Schema.optionalKey(Schema.Boolean),
   deviceHosts: Schema.optionalKey(SshDeviceHostConfigs),

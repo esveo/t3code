@@ -1,4 +1,5 @@
 import type {
+  OrchestrationMessageContext, // Fork: voice call
   OrchestrationV2SearchThreadInput,
   OrchestrationV2SearchThreadResult,
 } from "@t3tools/contracts";
@@ -126,6 +127,8 @@ export interface ThreadManagementSendInput {
   readonly scheduledTaskId?: ScheduledTaskId;
   readonly senderThreadId?: ThreadId;
   readonly text: string;
+  // Fork: the voice call marks its messages with a context record.
+  readonly context?: OrchestrationMessageContext;
   readonly attachments: ReadonlyArray<ChatAttachment>;
   readonly modelSelection?: ModelSelection;
   readonly mode: ThreadManagementSendMode;
@@ -788,6 +791,7 @@ const make = Effect.gen(function* () {
         ...(input.scheduledTaskId === undefined ? {} : { scheduledTaskId: input.scheduledTaskId }),
         ...(input.senderThreadId === undefined ? {} : { senderThreadId: input.senderThreadId }),
         text: input.text,
+        ...(input.context === undefined ? {} : { context: input.context }), // Fork: voice call
         attachments: input.attachments,
         ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
         dispatchMode,
