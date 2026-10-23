@@ -149,6 +149,10 @@ cmd_checks() {
     step "tests related to $(echo "$rel" | wc -l | tr -d ' ') changed files in $pkg" \
       bash -c 'cd "$1" && shift && vp test related --run --passWithNoTests --retry 1 "$@"' _ "$pkg" $extra $rel
   done
+  # It reads the sources from disk, so `vp test related` never selects it. A
+  # merge that made ChatView skip the React Compiler crashed every thread (#301).
+  step "React Compiler coverage in apps/web" \
+    bash -c 'cd apps/web && vp test run src/reactCompilerCoverage.test.ts'
   return $failed
 }
 

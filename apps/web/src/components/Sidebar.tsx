@@ -3153,7 +3153,7 @@ export default function Sidebar() {
   ];
   const handleRunHeaderNewThread = (project: SidebarProjectSnapshot) => {
     if (isMobile) setOpenMobile(false);
-    void handleNewThreadRef.current(scopeProjectRef(project.environmentId, project.id));
+    void newThreadContext.handleNewThread(scopeProjectRef(project.environmentId, project.id));
   };
   const forkList = forkSidebarList({
     activeRuns,
