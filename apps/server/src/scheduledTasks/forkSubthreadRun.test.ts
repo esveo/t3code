@@ -13,6 +13,7 @@ import type * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchServi
 import * as ThreadLaunchServiceModule from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
+import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import { ThreadCoordinators } from "../threadOrchestration/ThreadCoordinators.ts";
@@ -88,6 +89,10 @@ const withService = <A, E>(
                     } as never)
                   : null,
           ),
+      }),
+      Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+        namedProjectsRoot: "/projects",
+        isScratchProject: () => Effect.succeed(false),
       }),
       Layer.mock(SecretRequests.SecretRequests)({}),
       Layer.mock(ThreadCoordinators)({

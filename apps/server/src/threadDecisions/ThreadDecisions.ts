@@ -169,10 +169,10 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const coordinator = yield* threads.getThreadShell(coordinatorId).pipe(
         Effect.mapError(storeFailed("find the coordinator for")),
-        Effect.flatMap((thread) =>
-          thread !== null && thread.deletedAt === null
-            ? Effect.succeed(thread)
-            : Effect.fail(failure("The coordinator thread was not found.")),
+        Effect.filterOrFail(
+          (thread): thread is NonNullable<typeof thread> =>
+            thread !== null && thread.deletedAt === null,
+          () => failure("The coordinator thread was not found."),
         ),
       );
       yield* threads

@@ -227,14 +227,12 @@ function useStageApprovals(threadRef: ScopedThreadRef) {
     setRespondingRequestIds((existing) =>
       existing.includes(requestId) ? existing : [...existing, requestId],
     );
-    try {
-      return await respond({
-        environmentId: threadRef.environmentId,
-        input: { threadId: threadRef.threadId, requestId, decision },
-      });
-    } finally {
+    return respond({
+      environmentId: threadRef.environmentId,
+      input: { threadId: threadRef.threadId, requestId, decision },
+    }).finally(() => {
       setRespondingRequestIds((existing) => existing.filter((id) => id !== requestId));
-    }
+    });
   };
   return { respondingRequestIds, onRespondToApproval };
 }

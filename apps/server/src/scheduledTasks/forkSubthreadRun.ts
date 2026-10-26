@@ -90,7 +90,18 @@ export const launchScheduledSubthread = (
     readonly messageId: MessageId;
     readonly prompt: string;
   },
-) =>
+): Effect.Effect<
+  Effect.Success<ReturnType<ThreadLaunchService.ThreadLaunchService["Service"]["launch"]>>,
+  | ScheduledTaskError
+  | Effect.Error<
+      ReturnType<
+        ThreadManagementService.ThreadManagementService["Service"]["getProjectThreadRecords"]
+      >
+    >
+  | Effect.Error<ReturnType<ThreadCoordinators["Service"]["claim"]>>
+  | Effect.Error<ReturnType<ThreadCoordinators["Service"]["unclaim"]>>
+  | Effect.Error<ReturnType<ThreadLaunchService.ThreadLaunchService["Service"]["launch"]>>
+> =>
   Effect.gen(function* () {
     const { task } = input;
     if (Option.isNone(services.coordinators)) {

@@ -97,8 +97,11 @@ export function useReviewFilePatches({
       const added = indices.filter((index) => !previous.includes(index));
       return added.length === 0 ? current : { scope, indices: [...previous, ...added] };
     });
-  const loadNextFiles = () =>
+  // The first unsettled file already requested means a batch is in flight; wait for it.
+  const loadNextFiles = () => {
+    if (queries.some(({ index }) => index === settledFileCount)) return;
     requestFiles(Array.from({ length: 4 }, (_, index) => settledFileCount + index));
+  };
   const requestFile = (index: number) => requestFiles([index]);
   const renderableFiles = source
     ? files.map((file, index): FileDiffMetadata => {
@@ -116,6 +119,8 @@ export function useReviewFilePatches({
           hunks: [],
           additionLines: [],
           deletionLines: [],
+          additionCharacterCount: 0,
+          deletionCharacterCount: 0,
           splitLineCount: 0,
           unifiedLineCount: 0,
           isPartial: true,
@@ -164,7 +169,6 @@ export function useReviewFilePatches({
   };
 }
 
-// The refresh effect keys on the identity of these queries.
 function reviewFileQueries({
   environmentId,
   cwd,
@@ -221,7 +225,6 @@ function sortedReviewFiles(source: ReviewDiffPreviewSource | null) {
 
 type ReviewPatchTarget = Parameters<typeof reviewEnvironment.diffFilePatch>[0];
 
-// Derived atoms parse each query result once, even when another file finishes loading.
 const parsedPatchAtom = Atom.family((key: string) => {
   const [theme, target] = JSON.parse(key) as ["light" | "dark", ReviewPatchTarget];
   return Atom.map(reviewEnvironment.diffFilePatch(target), (result) =>
@@ -241,7 +244,6 @@ const parsedPatchAtom = Atom.family((key: string) => {
   );
 });
 
-// Keyed by theme and query targets so every render with the same files reads the same atom.
 const reviewPatchesAtom = Atom.family((key: string) => {
   const [theme, entries] = JSON.parse(key) as [
     "light" | "dark",

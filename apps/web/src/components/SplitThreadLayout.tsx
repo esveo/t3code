@@ -18,6 +18,7 @@ import { SidebarInset } from "./ui/sidebar";
 import { Button } from "./ui/button";
 import { cn } from "~/lib/utils";
 import { useThreadShell } from "../state/entities";
+import { useEnvironmentThread } from "../state/threads";
 import { useEnvironmentQuery } from "../state/query";
 import { environmentShell } from "../state/shell";
 import {
@@ -51,6 +52,7 @@ import {
 import { ChatPaneContext } from "./split/chatPane";
 import { isPopoutWindow, openThreadPopout } from "./split/threadPopout";
 import { ThreadRouteView } from "./ThreadRouteView";
+import { BackgroundThreadContext } from "./chat/backgroundThread";
 
 const DRAG_START_DISTANCE = 4;
 
@@ -78,7 +80,13 @@ interface DropTarget {
  * Every pane is an absolutely positioned sibling keyed by its id, so changing
  * the layout moves panes without remounting their ChatViews.
  */
-export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
+export function SplitThreadLayout({
+  target,
+  background = false,
+}: {
+  target: ThreadRouteTarget;
+  background?: boolean;
+}) {
   const navigate = useNavigate();
   const layout = useSplitThreadStore((state) => state.layout);
   const activeLeafId = useSplitThreadStore((state) => state.activeLeafId);
@@ -287,92 +295,108 @@ export function SplitThreadLayout({ target }: { target: ThreadRouteTarget }) {
   // the shared layout says, and whatever it navigates to.
   if (isPopoutWindow()) {
     return (
-      <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh">
-        <ThreadRouteView target={target} bare />
-      </SidebarInset>
+      <BackgroundThreadContext value={background}>
+        <SidebarInset
+          className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh"
+          inert={background}
+        >
+          <ThreadRouteView target={target} background={background} bare />
+        </SidebarInset>
+      </BackgroundThreadContext>
     );
   }
 
   return (
-    <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh">
-      <div ref={gridRef} data-chat-grid className="relative min-h-0 min-w-0 flex-1">
-        {orderedPanes.map(({ leaf, rect }) => (
-          <div
-            key={leaf.id}
-            data-chat-pane={leaf.id}
-            className={cn(
-              "absolute flex min-h-0 min-w-0 flex-col overflow-hidden",
-              isSplit && activeLeafId === leaf.id && "ring-1 ring-inset ring-primary/35",
-            )}
-            style={rectStyle(rect)}
-          >
-            {isSplit ? (
-              <PaneHeader
-                leaf={leaf}
-                routeThreadRef={routeThreadRef}
-                onClose={() => closePane(leaf.id)}
-                onPopOut={(threadRef) => popOutPane(leaf.id, threadRef)}
-                onDragStart={(title) => setDrag({ kind: "leaf", leafId: leaf.id, title })}
-              />
-            ) : null}
-            {/* Layout containment makes the chat's fixed-position header controls
-                anchor to this pane instead of the window. */}
+    <BackgroundThreadContext value={background}>
+      <SidebarInset
+        className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh"
+        inert={background}
+      >
+        <div ref={gridRef} data-chat-grid className="relative min-h-0 min-w-0 flex-1">
+          {orderedPanes.map(({ leaf, rect }) => (
             <div
-              className={cn("relative flex min-h-0 flex-1 flex-col", isSplit && "[contain:layout]")}
+              key={leaf.id}
+              data-chat-pane={leaf.id}
+              className={cn(
+                "absolute flex min-h-0 min-w-0 flex-col overflow-hidden",
+                isSplit && activeLeafId === leaf.id && "ring-1 ring-inset ring-primary/35",
+              )}
+              style={rectStyle(rect)}
             >
-              <ChatPaneContext.Provider value={leaf.id}>
-                {leaf.thread === "route" ? (
-                  <ThreadRouteView
-                    target={target}
-                    bare
-                    reserveTitleBarControlInset={rect.left === 0 && rect.top === 0}
-                  />
-                ) : (
-                  <PaneThreadView
-                    threadRef={leaf.thread}
-                    reserveTitleBarControlInset={rect.left === 0 && rect.top === 0}
-                    onMissing={() => closePane(leaf.id)}
-                  />
+              {isSplit ? (
+                <PaneHeader
+                  leaf={leaf}
+                  routeThreadRef={routeThreadRef}
+                  onClose={() => closePane(leaf.id)}
+                  onPopOut={(threadRef) => popOutPane(leaf.id, threadRef)}
+                  onDragStart={(title) => setDrag({ kind: "leaf", leafId: leaf.id, title })}
+                />
+              ) : null}
+              {/* Layout containment makes the chat's fixed-position header controls
+                anchor to this pane instead of the window. */}
+              <div
+                className={cn(
+                  "relative flex min-h-0 flex-1 flex-col",
+                  isSplit && "[contain:layout]",
                 )}
-              </ChatPaneContext.Provider>
+              >
+                <ChatPaneContext.Provider value={leaf.id}>
+                  {leaf.thread === "route" ? (
+                    <ThreadRouteView
+                      target={target}
+                      background={background}
+                      bare
+                      reserveTitleBarControlInset={rect.left === 0 && rect.top === 0}
+                    />
+                  ) : (
+                    <PaneThreadView
+                      threadRef={leaf.thread}
+                      reserveTitleBarControlInset={rect.left === 0 && rect.top === 0}
+                      onMissing={() => closePane(leaf.id)}
+                    />
+                  )}
+                </ChatPaneContext.Provider>
+              </div>
             </div>
-          </div>
-        ))}
-        {dividers.map((divider) => (
-          <div
-            key={`${divider.branchId}:${divider.index}`}
-            role="separator"
-            aria-orientation={divider.direction === "row" ? "vertical" : "horizontal"}
-            aria-label="Resize panes"
-            className={cn(
-              "absolute z-30 touch-none",
-              "after:absolute after:bg-border after:content-['']",
-              divider.direction === "row"
-                ? "-ml-1.5 w-3 cursor-col-resize after:inset-y-0 after:left-1/2 after:w-px"
-                : "-mt-1.5 h-3 cursor-row-resize after:inset-x-0 after:top-1/2 after:h-px",
-            )}
-            style={
-              divider.direction === "row"
-                ? {
-                    left: percent(divider.rect.left),
-                    top: percent(divider.rect.top),
-                    height: percent(divider.rect.height),
-                  }
-                : {
-                    left: percent(divider.rect.left),
-                    top: percent(divider.rect.top),
-                    width: percent(divider.rect.width),
-                  }
-            }
-            onPointerDown={(event) => startResize(divider, event)}
-            onDoubleClick={() =>
-              setLayout(equalizeBranch(useSplitThreadStore.getState().layout, divider.branchId))
-            }
-          />
-        ))}
-        {drag ? <SplitDragOverlay drag={drag} gridRef={gridRef} panes={panes} drop={drop} /> : null}
-      </div>
-    </SidebarInset>
+          ))}
+          {dividers.map((divider) => (
+            <div
+              key={`${divider.branchId}:${divider.index}`}
+              role="separator"
+              aria-orientation={divider.direction === "row" ? "vertical" : "horizontal"}
+              aria-label="Resize panes"
+              className={cn(
+                "absolute z-30 touch-none",
+                "after:absolute after:bg-border after:content-['']",
+                divider.direction === "row"
+                  ? "-ml-1.5 w-3 cursor-col-resize after:inset-y-0 after:left-1/2 after:w-px"
+                  : "-mt-1.5 h-3 cursor-row-resize after:inset-x-0 after:top-1/2 after:h-px",
+              )}
+              style={
+                divider.direction === "row"
+                  ? {
+                      left: percent(divider.rect.left),
+                      top: percent(divider.rect.top),
+                      height: percent(divider.rect.height),
+                    }
+                  : {
+                      left: percent(divider.rect.left),
+                      top: percent(divider.rect.top),
+                      width: percent(divider.rect.width),
+                    }
+              }
+              onPointerDown={(event) => startResize(divider, event)}
+              onDoubleClick={() =>
+                setLayout(equalizeBranch(useSplitThreadStore.getState().layout, divider.branchId))
+              }
+            />
+          ))}
+          {drag ? (
+            <SplitDragOverlay drag={drag} gridRef={gridRef} panes={panes} drop={drop} />
+          ) : null}
+        </div>
+      </SidebarInset>
+    </BackgroundThreadContext>
   );
 }
 
@@ -457,10 +481,15 @@ function PaneThreadView({
 }): ReactNode {
   const shell = useEnvironmentQuery(environmentShell.stateAtom(threadRef.environmentId));
   const threadShell = useThreadShell(threadRef);
+  const unlistedThreadDetail = useEnvironmentThread(
+    threadShell === null ? threadRef.environmentId : null,
+    threadShell === null ? threadRef.threadId : null,
+  );
   const renderState = resolveThreadRouteRenderState({
     bootstrapComplete: shell.data?.snapshot._tag === "Some",
     serverThreadExists: threadShell !== null,
     serverThreadDeleted: threadShell?.deletedAt != null,
+    unlistedThreadDetail,
     draftThreadExists: false,
   });
 

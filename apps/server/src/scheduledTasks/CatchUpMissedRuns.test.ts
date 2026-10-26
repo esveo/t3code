@@ -11,6 +11,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import { layerMemory as SqlitePersistenceMemory } from "../persistence/Sqlite.ts";
+import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as ScheduledTaskService from "./ScheduledTaskService.ts";
@@ -84,6 +85,10 @@ it.effect("catches up a missed fixed-time run once only when the task opts in", 
                   ),
               }),
               Layer.mock(ThreadManagementService.ThreadManagementService)({}),
+              Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+                namedProjectsRoot: "/projects",
+                isScratchProject: () => Effect.succeed(false),
+              }),
               Layer.mock(SecretRequests.SecretRequests)({}),
               NodeCrypto.layer,
               Scheduler.layer,

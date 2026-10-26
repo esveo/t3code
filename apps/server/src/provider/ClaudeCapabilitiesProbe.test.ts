@@ -30,7 +30,7 @@ import { COMPACT_SLASH_COMMAND } from "@t3tools/provider-core/server/snapshotPro
 
 vi.mock("@anthropic-ai/claude-agent-sdk", { spy: true });
 
-const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
+const decodeClaudeSettings = Schema.decodeEffect(ClaudeSettings);
 
 it("isolates Claude capability probes without dropping workspace setting sources", () => {
   const abortController = new AbortController();
@@ -136,7 +136,7 @@ it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
         yield* Effect.addFinalizer(() => Effect.sync(() => query.mockRestore()));
         for (const [index, cwd] of workspaces.entries()) {
           const scoped = yield* probeClaudeWorkspaceSnapshot(
-            decodeClaudeSettings({ homePath: configDir }),
+            yield* decodeClaudeSettings({ homePath: configDir }),
             machineSnapshot,
             cwd,
             { ...process.env, T3_WORKSPACE_PROBE: "owned-instance" },
@@ -211,7 +211,7 @@ it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
           }) as ReturnType<typeof ClaudeSdk.query>,
       );
       yield* Effect.addFinalizer(() => Effect.sync(() => query.mockRestore()));
-      const settings = decodeClaudeSettings({ homePath: cwd });
+      const settings = yield* decodeClaudeSettings({ homePath: cwd });
       const failed = yield* probeClaudeWorkspaceSnapshot(settings, machineSnapshot, cwd);
       assert.deepEqual(failed, {
         ...machineSnapshot,
@@ -282,7 +282,7 @@ it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
       );
 
       const capabilities = yield* probeClaudeCapabilities(
-        decodeClaudeSettings({ binaryPath: executablePath }),
+        yield* decodeClaudeSettings({ binaryPath: executablePath }),
         {
           ...process.env,
           T3_PROBE_INVOCATION_PATH: invocationPath,
@@ -308,6 +308,7 @@ it.layer(NodeServices.layer)("Claude capability probe SDK boundary", (it) => {
           rate_limits_available: true,
           rate_limits: { five_hour: { utilization: 12, resets_at: "2026-07-18T14:39:00Z" } },
         },
+        usageCheckedAt: "1970-01-01T00:00:00.000Z",
       });
 
       const invocation = JSON.parse(yield* fs.readFileString(invocationPath)) as {
@@ -353,7 +354,7 @@ it.effect("preserves initialized capabilities when optional usage times out", ()
     });
     yield* Effect.addFinalizer(() => Effect.sync(() => query.mockRestore()));
     const probe = yield* probeClaudeCapabilities(
-      decodeClaudeSettings({ binaryPath: "claude" }),
+      yield* decodeClaudeSettings({ binaryPath: "claude" }),
     ).pipe(Effect.forkChild);
     yield* Deferred.await(usageStarted);
     // Fork: the usage timeout is 45s (ClaudeProvider.ts).
@@ -388,7 +389,7 @@ it.effect("fails a hung initialization probe with a timeout", () =>
     );
     yield* Effect.addFinalizer(() => Effect.sync(() => query.mockRestore()));
     const probe = yield* probeClaudeCapabilities(
-      decodeClaudeSettings({ binaryPath: "claude" }),
+      yield* decodeClaudeSettings({ binaryPath: "claude" }),
     ).pipe(Effect.result, Effect.forkChild);
 
     yield* Deferred.await(initializationStarted);
@@ -424,7 +425,7 @@ it.effect("keeps usage that answers after the shared 4 second budget", () =>
     });
     yield* Effect.addFinalizer(() => Effect.sync(() => query.mockRestore()));
     const probe = yield* probeClaudeCapabilities(
-      decodeClaudeSettings({ binaryPath: "claude" }),
+      yield* decodeClaudeSettings({ binaryPath: "claude" }),
     ).pipe(Effect.forkChild);
     yield* Deferred.await(usageStarted);
     yield* TestClock.adjust("5 seconds");
@@ -454,7 +455,19 @@ it.effect("asks for usage without the local transcript scan", () =>
         }) as unknown as ReturnType<typeof ClaudeSdk.query>,
     );
     yield* Effect.addFinalizer(() => Effect.sync(() => query.mockRestore()));
-    yield* probeClaudeCapabilities(decodeClaudeSettings({ binaryPath: "claude" }));
+    yield* probeClaudeCapabilities(yield* decodeClaudeSettings({ binaryPath: "claude" }));
     assert.deepEqual(usageOptions, { skipBehaviors: true });
   }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+);
+
+it.effect("reports a deleted worktree's scan as finished, not pending", () =>
+  Effect.gen(function* () {
+    const snapshot = yield* probeClaudeWorkspaceSnapshot(
+      yield* decodeClaudeSettings({}),
+      { skills: [], slashCommands: [] } as unknown as ServerProvider,
+      "/nonexistent/t3-deleted-worktree",
+      { HOME: "/nonexistent/t3-home" },
+    );
+    assert.strictEqual(snapshot.slashCommandsPending, false);
+  }).pipe(Effect.provide(NodeServices.layer)),
 );

@@ -59,7 +59,6 @@ const ThreadsToolkitStubLive = McpHttpServer.toolkitRegistration(
 
 const TestLayer = Layer.mergeAll(ThreadsToolkitStubLive).pipe(
   Layer.provideMerge(McpHttpServer.layerMcpTransport),
-  Layer.provideMerge(McpSessionRegistry.layer),
   Layer.provide(McpToolAccessTestkit.liveThreadsLayer),
   Layer.provide(
     Layer.succeed(ServerEnvironment.ServerEnvironment, {
@@ -68,6 +67,17 @@ const TestLayer = Layer.mergeAll(ThreadsToolkitStubLive).pipe(
     }),
   ),
   Layer.provide(NodeServices.layer),
+);
+
+const RegistryLive = McpSessionRegistry.layer.pipe(
+  Layer.provide(
+    Layer.succeed(ServerEnvironment.ServerEnvironment, {
+      getEnvironmentId: Effect.succeed(EnvironmentId.make("environment-1")),
+      getDescriptor: Effect.die("unused"),
+    }),
+  ),
+  Layer.provide(NodeServices.layer),
+  Layer.provideMerge(NodeHttpServer.layerTest),
 );
 
 const toolNames = (body: unknown) =>
@@ -82,12 +92,13 @@ it.effect("offers the decision tools only while their switch is on, live", () =>
         Layer.build,
       );
       const httpClient = yield* HttpClient.HttpClient;
+      const registry = yield* McpSessionRegistry.McpSessionRegistry;
       // The session's credential does not grant "decisions".
-      const { config } = yield* McpSessionRegistry.issueActiveMcpCredential({
+      const { config } = yield* registry.issue({
         threadId: ThreadId.make("coordinator"),
         providerInstanceId: ProviderInstanceId.make("claudeAgent"),
         capabilities: new Set(["pull-requests"]),
-      }).pipe(Effect.map((issued) => issued!));
+      });
       const settings = yield* ServerSettings.ServerSettingsService;
 
       const headers = {
@@ -176,5 +187,5 @@ it.effect("offers the decision tools only while their switch is on, live", () =>
       });
       expect(yield* Queue.size(events)).toBe(0);
     }),
-  ).pipe(Effect.provide(Layer.merge(NodeHttpServer.layerTest, SettingsLive))),
+  ).pipe(Effect.provide(Layer.merge(RegistryLive, SettingsLive))),
 );
