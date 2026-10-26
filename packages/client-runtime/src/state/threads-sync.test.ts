@@ -1717,7 +1717,7 @@ describe("EnvironmentThreads", () => {
 
       expect(Option.isNone(state.data)).toBe(true);
       expect(Option.isNone(state.error)).toBe(true);
-      expect(yield* Ref.get(harness.subscriptionCount)).toBe(0);
+      expect(yield* SubscriptionRef.get(harness.subscriptionCount)).toBe(0);
       expect(yield* Ref.get(harness.retryCount)).toBe(0);
     }),
   );
@@ -1750,7 +1750,7 @@ describe("EnvironmentThreads", () => {
         (value) => value.status === "live" && Option.isSome(value.data),
       );
       expect(Option.getOrThrow(state.data).thread.title).toBe("Cached thread");
-      expect(yield* Ref.get(harness.subscriptionCount)).toBe(1);
+      expect(yield* SubscriptionRef.get(harness.subscriptionCount)).toBe(1);
       expect(yield* Ref.get(harness.lastSubscribeAfterSequence)).toBe(CACHED_SNAPSHOT_SEQUENCE);
     }),
   );
@@ -1963,7 +1963,7 @@ describe("EnvironmentThreads", () => {
       const state = yield* awaitThreadState(h.observed, (value) => value.status === "live");
       expect(Option.getOrThrow(state.data)).toEqual(BASE_PROJECTION);
       expect(yield* Ref.get(h.loaderCalls)).toBe(1);
-      expect(yield* Ref.get(h.subscriptionCount)).toBe(1);
+      expect(yield* SubscriptionRef.get(h.subscriptionCount)).toBe(1);
     }),
   );
 
@@ -2524,11 +2524,11 @@ describe("EnvironmentThreads", () => {
         Option.isSome(value.error),
       );
       expect(Option.getOrThrow(failed.error)).toBe("thread not found yet");
-      expect(yield* Ref.get(harness.subscriptionCount)).toBe(1);
+      expect(yield* SubscriptionRef.get(harness.subscriptionCount)).toBe(1);
 
       yield* TestClock.adjust("250 millis");
       for (let attempt = 0; attempt < 100; attempt += 1) {
-        if ((yield* Ref.get(harness.subscriptionCount)) >= 2) {
+        if ((yield* SubscriptionRef.get(harness.subscriptionCount)) >= 2) {
           break;
         }
         yield* Effect.yieldNow;
@@ -2550,7 +2550,7 @@ describe("EnvironmentThreads", () => {
       );
 
       expect(Option.isNone(recovered.error)).toBe(true);
-      expect(yield* Ref.get(harness.subscriptionCount)).toBe(2);
+      expect(yield* SubscriptionRef.get(harness.subscriptionCount)).toBe(2);
       expect(yield* Ref.get(harness.retryCount)).toBe(0);
     }),
   );
@@ -2607,11 +2607,11 @@ describe("EnvironmentThreads", () => {
 
       yield* harness.replaceSession;
       for (let attempt = 0; attempt < 100; attempt += 1) {
-        if ((yield* Ref.get(harness.subscriptionCount)) >= 2) break;
+        if ((yield* SubscriptionRef.get(harness.subscriptionCount)) >= 2) break;
         yield* Effect.yieldNow;
       }
 
-      expect(yield* Ref.get(harness.subscriptionCount)).toBe(2);
+      expect(yield* SubscriptionRef.get(harness.subscriptionCount)).toBe(2);
       expect(yield* Ref.get(harness.lastSubscribeAfterSequence)).toBe(CACHED_SNAPSHOT_SEQUENCE + 1);
       expect((yield* Ref.get(harness.latest)).status).toBe("synchronizing");
     }),
@@ -2639,12 +2639,12 @@ describe("EnvironmentThreads", () => {
         (value) => value.status === "synchronizing" && Option.isSome(value.data),
       );
       for (let attempt = 0; attempt < 100; attempt += 1) {
-        if ((yield* Ref.get(harness.subscriptionCount)) >= 2) break;
+        if ((yield* SubscriptionRef.get(harness.subscriptionCount)) >= 2) break;
         yield* Effect.yieldNow;
       }
 
       expect(synchronizing.status).toBe("synchronizing");
-      expect(yield* Ref.get(harness.subscriptionCount)).toBe(2);
+      expect(yield* SubscriptionRef.get(harness.subscriptionCount)).toBe(2);
       expect(yield* Ref.get(harness.lastSubscribeAfterSequence)).toBe(CACHED_SNAPSHOT_SEQUENCE + 1);
       expect(yield* Ref.get(harness.lastRequestCompletionMarker)).toBe(true);
       expect(yield* Ref.get(harness.loaderCalls)).toBe(0);
@@ -2658,16 +2658,16 @@ describe("EnvironmentThreads", () => {
 
       yield* Queue.offer(harness.wakeups, "application-active-probe");
       for (let attempt = 0; attempt < 100; attempt += 1) {
-        if ((yield* Ref.get(harness.subscriptionCount)) >= 3) break;
+        if ((yield* SubscriptionRef.get(harness.subscriptionCount)) >= 3) break;
         yield* Effect.yieldNow;
       }
-      expect(yield* Ref.get(harness.subscriptionCount)).toBe(3);
+      expect(yield* SubscriptionRef.get(harness.subscriptionCount)).toBe(3);
 
       yield* Queue.offer(harness.wakeups, "application-active-reconnect");
       for (let attempt = 0; attempt < 10; attempt += 1) {
         yield* Effect.yieldNow;
       }
-      expect(yield* Ref.get(harness.subscriptionCount)).toBe(3);
+      expect(yield* SubscriptionRef.get(harness.subscriptionCount)).toBe(3);
     }),
   );
 });
