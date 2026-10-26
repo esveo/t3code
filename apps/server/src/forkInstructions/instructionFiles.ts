@@ -68,24 +68,22 @@ export const importOnlyTargets = (content: string): ReadonlyArray<string> | null
   return targets.every((target) => target !== undefined) ? (targets as string[]) : null;
 };
 
-const exists = (path: string) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
-    return yield* fs.exists(path).pipe(Effect.orElseSucceed(() => false));
-  });
+const exists = Effect.fn("forkInstructions.exists")(function* (path: string) {
+  const fs = yield* FileSystem.FileSystem;
+  return yield* fs.exists(path).pipe(Effect.orElseSucceed(() => false));
+});
 
-const readExisting = (path: string) =>
-  Effect.gen(function* () {
-    const fs = yield* FileSystem.FileSystem;
-    if (!(yield* exists(path))) return null;
-    const content = yield* fs
-      .readFileString(path)
-      .pipe(Effect.mapError(() => failure(`Could not read ${path}.`)));
-    if (content.length > FORK_INSTRUCTIONS_MAX_BYTES) {
-      return yield* failure(`${path} is too large to edit here.`);
-    }
-    return content;
-  });
+const readExisting = Effect.fn("forkInstructions.readExisting")(function* (path: string) {
+  const fs = yield* FileSystem.FileSystem;
+  if (!(yield* exists(path))) return null;
+  const content = yield* fs
+    .readFileString(path)
+    .pipe(Effect.mapError(() => failure(`Could not read ${path}.`)));
+  if (content.length > FORK_INSTRUCTIONS_MAX_BYTES) {
+    return yield* failure(`${path} is too large to edit here.`);
+  }
+  return content;
+});
 
 /** The file the provider gives precedence to, and the others it reads beside it. */
 export const resolveLocation = Effect.fn("forkInstructions.resolveLocation")(function* (

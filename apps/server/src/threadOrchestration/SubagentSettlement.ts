@@ -85,22 +85,22 @@ const make = Effect.gen(function* () {
       ),
     );
 
-  const settleAll = (parentId?: ThreadId) =>
-    Effect.gen(function* () {
-      const snapshot = yield* threads.getShellSnapshot();
-      yield* Effect.forEach(subagentsToSettle(snapshot.threads, parentId), settle, {
-        discard: true,
-      });
+  const settleAll = Effect.fn("SubagentSettlement.settleAll")(function* (parentId?: ThreadId) {
+    const snapshot = yield* threads.getShellSnapshot();
+    yield* Effect.forEach(subagentsToSettle(snapshot.threads, parentId), settle, {
+      discard: true,
     });
+  });
 
-  const settleIfOrphaned = (childId: ThreadId) =>
-    Effect.gen(function* () {
-      const child = yield* threads.getThreadShell(childId);
-      const parentId = child?.lineage.parentThreadId ?? null;
-      if (child === null || parentId === null || child.settledOverride !== null) return;
-      const parent = yield* threads.getThreadShell(parentId);
-      if (parent !== null && followsSettledParent(child, parent)) yield* settle(childId);
-    });
+  const settleIfOrphaned = Effect.fn("SubagentSettlement.settleIfOrphaned")(function* (
+    childId: ThreadId,
+  ) {
+    const child = yield* threads.getThreadShell(childId);
+    const parentId = child?.lineage.parentThreadId ?? null;
+    if (child === null || parentId === null || child.settledOverride !== null) return;
+    const parent = yield* threads.getThreadShell(parentId);
+    if (parent !== null && followsSettledParent(child, parent)) yield* settle(childId);
+  });
 
   const processEvent = (event: OrchestrationV2DomainEvent) => {
     const work =

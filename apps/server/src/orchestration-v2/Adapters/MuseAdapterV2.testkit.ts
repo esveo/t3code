@@ -101,9 +101,9 @@ function replayValueMatches(expected: unknown, actual: unknown): boolean {
     const keys = new Set([...Object.keys(expected), ...Object.keys(actual)]);
     return [...keys].every((key) => replayValueMatches(expected[key], actual[key]));
   }
-  // Fork: the recorded prompts say T3 Code where esveo code names itself (runtimeInstructions.ts).
-  if (typeof actual === "string" && actual.includes("running in esveo code")) {
-    return Object.is(expected, actual.replaceAll("running in esveo code", "running in T3 Code"));
+  // Fork: recorded upstream prompts use T3 Code where runtime instructions name esveo code.
+  if (typeof actual === "string" && actual.includes("esveo code")) {
+    return Object.is(expected, actual.replaceAll("esveo code", "T3 Code"));
   }
   return Object.is(expected, actual);
 }
@@ -204,12 +204,7 @@ interface MuseReplayHost {
   open: boolean;
 }
 
-/**
- * A write that matches a later outbound record of the same turn is held until
- * the transcript reaches it, because independent adapter fibers can reach stdin
- * in a different order than recorded. A write that matches nothing before the
- * next turn fails at once.
- */
+/** Adapter fibers can reorder stdin writes; hold matches within the turn until reached, and fail unmatched writes. */
 class MuseReplayController {
   private cursor = 0;
   private failure: unknown = null;
@@ -415,7 +410,7 @@ function makeReplayCreateHost(controller: MuseReplayController) {
   };
 }
 
-const DEFAULT_MUSE_SETTINGS = Schema.decodeUnknownSync(MuseSettings)({ enabled: true });
+const DEFAULT_MUSE_SETTINGS = Schema.decodeSync(MuseSettings)({ enabled: true });
 
 export function layer(input: {
   readonly scenario: string;
@@ -430,7 +425,6 @@ export function layer(input: {
           settings: DEFAULT_MUSE_SETTINGS,
           environment: input.environment ?? {},
           createHost: input.createHost,
-          // Same queue the continuation worker drains when the fixture runs it.
           continuationRequests: yield* ProviderContinuationRequests.ProviderContinuationRequests,
         }),
       ];
@@ -446,11 +440,7 @@ export function layer(input: {
   );
 }
 
-/**
- * Fills a recording's `<workspace>` with what the adapter sends on this host:
- * the canonical path (macOS /var -> /private/var), which `turn/start` names in
- * museWorkspaceRoot's form (verbatim on Windows).
- */
+/** Uses canonical workspace paths, with turn/start in museWorkspaceRoot form (verbatim on Windows). */
 export const materializeMuseReplayWorkspace = Effect.fn("materializeMuseReplayWorkspace")(
   function* (transcript: ProviderReplayTranscript, workspace: string) {
     const canonical = yield* FileSystem.FileSystem.pipe(

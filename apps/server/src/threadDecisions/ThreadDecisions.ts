@@ -165,30 +165,32 @@ export const make = Effect.gen(function* () {
     );
 
   /** Sends the replies to the coordinator, as if the user had typed them. */
-  const sendReplies = (coordinatorId: ThreadId, text: string) =>
-    Effect.gen(function* () {
-      const coordinator = yield* threads.getThreadShell(coordinatorId).pipe(
-        Effect.mapError(storeFailed("find the coordinator for")),
-        Effect.flatMap((thread) =>
-          thread !== null && thread.deletedAt === null
-            ? Effect.succeed(thread)
-            : Effect.fail(failure("The coordinator thread was not found.")),
-        ),
-      );
-      yield* threads
-        .sendToThread({
-          projectId: coordinator.projectId,
-          commandId: CommandId.make(`server:thread-decisions-submit:${yield* uuid}`),
-          threadId: coordinator.id,
-          messageId: MessageId.make(yield* uuid),
-          text,
-          attachments: [],
-          mode: "auto",
-          createdBy: "user",
-          creationSource: "server",
-        })
-        .pipe(Effect.mapError(() => failure("Could not send the replies to the coordinator.")));
-    });
+  const sendReplies = Effect.fn("ThreadDecisions.sendReplies")(function* (
+    coordinatorId: ThreadId,
+    text: string,
+  ) {
+    const coordinator = yield* threads.getThreadShell(coordinatorId).pipe(
+      Effect.mapError(storeFailed("find the coordinator for")),
+      Effect.filterOrFail(
+        (thread): thread is NonNullable<typeof thread> =>
+          thread !== null && thread.deletedAt === null,
+        () => failure("The coordinator thread was not found."),
+      ),
+    );
+    yield* threads
+      .sendToThread({
+        projectId: coordinator.projectId,
+        commandId: CommandId.make(`server:thread-decisions-submit:${yield* uuid}`),
+        threadId: coordinator.id,
+        messageId: MessageId.make(yield* uuid),
+        text,
+        attachments: [],
+        mode: "auto",
+        createdBy: "user",
+        creationSource: "server",
+      })
+      .pipe(Effect.mapError(() => failure("Could not send the replies to the coordinator.")));
+  });
 
   const routeLink = Effect.fn("ThreadDecisions.routeLink")(function* (threadId: ThreadId) {
     const thread = yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null));

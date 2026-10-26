@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import * as NodeFS from "node:fs";
 import * as NodeReadline from "node:readline";
+
 const args = process.argv.slice(2);
 const mcpConfigIndex = args.indexOf("--mcp-config");
 const rawMcpConfig = mcpConfigIndex >= 0 ? args[mcpConfigIndex + 1] : undefined;
@@ -55,9 +56,6 @@ lines.on("line", (line) => {
     });
   }
 });
-// Stay alive for follow-up control requests, but never outlive the
-// parent: the probe aborts the SDK without awaiting the child, so an
-// unconditional interval would strand this process until reboot.
 const keepAlive = setInterval(() => {}, 1_000);
 lines.on("close", () => {
   clearInterval(keepAlive);

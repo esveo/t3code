@@ -17,7 +17,7 @@ export function catchesUpMissedRuns(schedule: ScheduledTaskSchedule): boolean {
 export const catchUpMissedRun = <A, E, R>(
   task: ScheduledTask,
   runTask: (task: ScheduledTask, trigger: "scheduled") => Effect.Effect<A, E, R>,
-) =>
+): Effect.Effect<A, E, R> =>
   Effect.logInfo("Catching up missed schedule task run", {
     taskId: task.id,
     missedRunAt: task.nextRunAt,

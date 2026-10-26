@@ -249,49 +249,50 @@ export const layer = Layer.effect(
     const threads = yield* ThreadManagementService;
     const coordinators = yield* ThreadCoordinators;
 
-    const readMessages = (threadId: ThreadId) =>
-      Effect.gen(function* () {
-        // Threads carried over from V1 load their transcript on first read.
-        yield* threads.ensureLegacyTranscript(threadId).pipe(Effect.ignore);
-        const records = yield* threads.getThreadRecords(threadId, ["messages"]);
-        return records.messages;
-      });
+    const readMessages = Effect.fn("DelegatedAttachments.readMessages")(function* (
+      threadId: ThreadId,
+    ) {
+      // Threads carried over from V1 load their transcript on first read.
+      yield* threads.ensureLegacyTranscript(threadId).pipe(Effect.ignore);
+      const records = yield* threads.getThreadRecords(threadId, ["messages"]);
+      return records.messages;
+    });
 
     return DelegatedAttachments.of({
       // An id is looked up in the thread it names, then in the coordinator's
       // own thread and its children.
-      claim: (coordinatorId, attachments) =>
-        Effect.gen(function* () {
-          const children = attachments.some((entry) => entry.attachmentId !== undefined)
-            ? (yield* coordinators
-                .childrenOf(coordinatorId)
-                .pipe(Effect.orElseSucceed(() => []))).map((thread) => thread.id)
-            : [];
-          const sources = yield* threadAttachments.resolve({
-            attachments,
-            threadsToSearch: [coordinatorId, ...children],
-            readMessages,
-          });
-          return yield* threadAttachments.claim(coordinatorId, sources);
-        }),
-      release: (attachments) => threadAttachments.release(attachments).pipe(Effect.asVoid),
+      claim: Effect.fn("DelegatedAttachments.claim")(function* (coordinatorId, attachments) {
+        const children = attachments.some((entry) => entry.attachmentId !== undefined)
+          ? (yield* coordinators
+              .childrenOf(coordinatorId)
+              .pipe(Effect.orElseSucceed(() => []))).map((thread) => thread.id)
+          : [];
+        const sources = yield* threadAttachments.resolve({
+          attachments,
+          threadsToSearch: [coordinatorId, ...children],
+          readMessages,
+        });
+        return yield* threadAttachments.claim(coordinatorId, sources);
+      }),
+      release: Effect.fn("DelegatedAttachments.release")((attachments) =>
+        threadAttachments.release(attachments).pipe(Effect.asVoid),
+      ),
     });
   }),
 );
 
 /** The files for a delegated child, claimed; none when the server cannot attach any. */
-export const claimDelegatedAttachments = (
+export const claimDelegatedAttachments = Effect.fn("claimDelegatedAttachments")(function* (
   coordinatorId: ThreadId,
   attachments: ReadonlyArray<OrchestratorMcpDelegateAttachment> | undefined,
-) =>
-  Effect.gen(function* () {
-    if (attachments === undefined || attachments.length === 0) return [];
-    const service = yield* Effect.serviceOption(DelegatedAttachments);
-    if (Option.isNone(service)) {
-      return yield* failure("This server cannot attach files to delegated tasks.");
-    }
-    return yield* service.value.claim(coordinatorId, attachments);
-  });
+) {
+  if (attachments === undefined || attachments.length === 0) return [];
+  const service = yield* Effect.serviceOption(DelegatedAttachments);
+  if (Option.isNone(service)) {
+    return yield* failure("This server cannot attach files to delegated tasks.");
+  }
+  return yield* service.value.claim(coordinatorId, attachments);
+});
 
 export const releaseDelegatedAttachments = (attachments: ReadonlyArray<ChatAttachment>) =>
   attachments.length === 0

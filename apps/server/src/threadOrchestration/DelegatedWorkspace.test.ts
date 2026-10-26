@@ -53,7 +53,7 @@ const withWorkspace = <A, E>(
       Layer.mergeAll(
         Layer.mock(ProjectService.ProjectService)({
           listShells: () => Effect.succeed(PROJECTS),
-          getById: () => Effect.succeed(Option.none()),
+          getById: () => Effect.succeedNone,
         }),
         Layer.mock(GitWorkflowService.GitWorkflowService)({
           localStatus: ({ cwd }) =>

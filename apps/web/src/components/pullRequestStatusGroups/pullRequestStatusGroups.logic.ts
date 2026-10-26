@@ -4,7 +4,7 @@
  */
 import type { ThreadPullRequestLink } from "@t3tools/contracts";
 
-import type { PullRequestListLine } from "@t3tools/shared/threadPullRequests";
+import type { PullRequestListLine } from "@t3tools/client-runtime/thread-pull-requests";
 
 export type PullRequestStatusGroupId = "open" | "draft" | "merged" | "closed";
 

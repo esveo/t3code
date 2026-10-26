@@ -78,11 +78,12 @@ export const make = Effect.gen(function* () {
     return { home, location: yield* resolveLocation(provider, target.scope, roots) };
   });
 
-  const read: ForkInstructions["Service"]["read"] = (target) =>
-    Effect.gen(function* () {
-      const { home, location } = yield* resolve(target);
-      return yield* readSnapshot(location, home, target.file);
-    }).pipe(Effect.provide(context));
+  const read: ForkInstructions["Service"]["read"] = Effect.fn("ForkInstructions.read")(function* (
+    target,
+  ) {
+    const { home, location } = yield* resolve(target);
+    return yield* readSnapshot(location, home, target.file);
+  }, Effect.provide(context));
 
   const write: ForkInstructions["Service"]["write"] = (input) =>
     writes.withPermits(1)(

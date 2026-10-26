@@ -46,17 +46,15 @@ export const crossProjectThreadsOn: Effect.Effect<boolean> = Effect.serviceOptio
 );
 
 /** Fails with `message` and the hint unless cross-project threads are on. */
-export const requireCrossProjectThreads = (
-  message: string,
-  code: OrchestratorMcpFailure["code"] = "invalid_request",
-) =>
-  Effect.gen(function* () {
+export const requireCrossProjectThreads = Effect.fn("forkThreadReach.requireCrossProjectThreads")(
+  function* (message: string, code: OrchestratorMcpFailure["code"] = "invalid_request") {
     if (yield* crossProjectThreadsOn) return;
     return yield* new OrchestratorMcpFailure({
       code,
       message: `${message} ${CROSS_PROJECT_THREADS_HINT}`,
     });
-  });
+  },
+);
 
 /**
  * The project to look the thread up in: its own when cross-project threads
@@ -64,20 +62,19 @@ export const requireCrossProjectThreads = (
  * with the hint while the setting is off; a missing one falls through to the
  * lookup that follows, which reports it.
  */
-export const threadProjectId = (
+export const threadProjectId = Effect.fn("forkThreadReach.threadProjectId")(function* (
   threads: Pick<ThreadManagementServiceShape, "getThreadShell">,
   threadId: ThreadId,
   callerProjectId: ProjectId,
-) =>
-  Effect.gen(function* () {
-    const shell = yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null));
-    if (shell === null || shell.projectId === callerProjectId) return callerProjectId;
-    yield* requireCrossProjectThreads(
-      `Thread ${threadId} is not in the calling project.`,
-      "thread_not_found",
-    );
-    return shell.projectId;
-  });
+) {
+  const shell = yield* threads.getThreadShell(threadId).pipe(Effect.orElseSucceed(() => null));
+  if (shell === null || shell.projectId === callerProjectId) return callerProjectId;
+  yield* requireCrossProjectThreads(
+    `Thread ${threadId} is not in the calling project.`,
+    "thread_not_found",
+  );
+  return shell.projectId;
+});
 
 /**
  * The threads t3_thread_list pages through: the calling project's by default,

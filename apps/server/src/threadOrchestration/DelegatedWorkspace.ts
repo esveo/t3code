@@ -79,8 +79,8 @@ export const make = Effect.gen(function* () {
   const launches = yield* ThreadLaunch.ThreadLaunchService;
 
   /** A base ref that does not resolve, with the branches the caller probably meant. */
-  const suggestionsFor = (cwd: string, baseRef: string) =>
-    Effect.gen(function* () {
+  const suggestionsFor = Effect.fn("DelegatedWorkspace.suggestionsFor")(
+    function* (cwd: string, baseRef: string) {
       const refs: Array<VcsListRefsResult["refs"][number]> = [];
       let cursor: number | null = 0;
       while (cursor !== null && refs.length < 5_000) {
@@ -95,10 +95,12 @@ export const make = Effect.gen(function* () {
         cursor = page.nextCursor;
       }
       return suggestBranches(baseRef, refs);
-    }).pipe(Effect.orElseSucceed((): string[] => []));
+    },
+    Effect.orElseSucceed((): string[] => []),
+  );
 
-  const plan: DelegatedWorkspace["Service"]["plan"] = (parent, input) =>
-    Effect.gen(function* () {
+  const plan: DelegatedWorkspace["Service"]["plan"] = Effect.fn("DelegatedWorkspace.plan")(
+    function* (parent, input) {
       const shells = yield* projects
         .listShells()
         .pipe(Effect.mapError(() => invalid("The projects could not be read.")));
@@ -152,7 +154,8 @@ export const make = Effect.gen(function* () {
         command: { projectId: project.id, branch: null, worktreePath: null, prepare: true },
         worktree: { baseRef },
       };
-    });
+    },
+  );
 
   const prepare: DelegatedWorkspace["Service"]["prepare"] = (input) =>
     input.plan.worktree === null || launches.prepareWorkspace === undefined

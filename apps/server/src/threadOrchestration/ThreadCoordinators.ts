@@ -174,30 +174,35 @@ export const make = Effect.gen(function* () {
     Effect.mapError(storeFailed("list the threads")),
   );
 
-  const childrenOf: ThreadCoordinators["Service"]["childrenOf"] = (coordinatorId) =>
-    Effect.gen(function* () {
-      const links = yield* overrides;
-      const all = yield* activeShells;
-      return all
-        .filter(
-          (thread) =>
-            thread.id !== coordinatorId && coordinatorThreadIdOf(thread, links) === coordinatorId,
-        )
-        .toSorted(
-          (left, right) =>
-            DateTime.toEpochMillis(left.createdAt) - DateTime.toEpochMillis(right.createdAt),
-        );
-    });
+  const childrenOf: ThreadCoordinators["Service"]["childrenOf"] = Effect.fn(
+    "ThreadCoordinators.childrenOf",
+  )(function* (coordinatorId) {
+    const links = yield* overrides;
+    const all = yield* activeShells;
+    return all
+      .filter(
+        (thread) =>
+          thread.id !== coordinatorId && coordinatorThreadIdOf(thread, links) === coordinatorId,
+      )
+      .toSorted(
+        (left, right) =>
+          DateTime.toEpochMillis(left.createdAt) - DateTime.toEpochMillis(right.createdAt),
+      );
+  });
 
-  const markReported: ThreadCoordinators["Service"]["markReported"] = (threadId, runId) =>
-    Effect.gen(function* () {
+  const markReported: ThreadCoordinators["Service"]["markReported"] = Effect.fn(
+    "ThreadCoordinators.markReported",
+  )(
+    function* (threadId, runId) {
       const now = yield* nowIso;
       yield* sql`
         INSERT INTO fork_thread_reports (thread_id, run_id, reported_at)
         VALUES (${threadId}, ${runId}, ${now})
         ON CONFLICT (thread_id) DO UPDATE SET run_id = excluded.run_id, reported_at = excluded.reported_at
       `;
-    }).pipe(Effect.mapError(storeFailed("record the reported result")));
+    },
+    Effect.mapError(storeFailed("record the reported result")),
+  );
 
   const lastReportedRun: ThreadCoordinators["Service"]["lastReportedRun"] = (threadId) =>
     sql<{ readonly run_id: string }>`
@@ -363,8 +368,9 @@ export const make = Effect.gen(function* () {
 
   return ThreadCoordinators.of({
     overrides,
-    coordinatorOf: (thread) =>
+    coordinatorOf: Effect.fn("ThreadCoordinators.coordinatorOf")((thread) =>
       Effect.map(overrides, (links) => coordinatorThreadIdOf(thread, links)),
+    ),
     childrenOf,
     set,
     claim,

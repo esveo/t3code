@@ -274,241 +274,239 @@ function runScript(
   });
 }
 
-export const makeForkUpdates = (input: { readonly root: string; readonly script: string }) =>
-  Effect.gen(function* () {
-    const electronWindow = yield* ElectronWindow.ElectronWindow;
-    const environment = yield* DesktopEnvironment.DesktopEnvironment;
+export const makeForkUpdates = Effect.fn("makeForkUpdates")(function* (input: {
+  readonly root: string;
+  readonly script: string;
+}) {
+  const electronWindow = yield* ElectronWindow.ElectronWindow;
+  const environment = yield* DesktopEnvironment.DesktopEnvironment;
 
-    const currentLabel =
-      readBuildInfo(NodePath.join(input.root, "current"))?.label ?? environment.appVersion;
-    const baseState: DesktopUpdateState = {
-      ...createInitialDesktopUpdateState(
-        currentLabel,
-        environment.runtimeInfo,
-        environment.defaultDesktopSettings.updateChannel,
-      ),
-      enabled: true,
-      status: "idle",
-    };
+  const currentLabel =
+    readBuildInfo(NodePath.join(input.root, "current"))?.label ?? environment.appVersion;
+  const baseState: DesktopUpdateState = {
+    ...createInitialDesktopUpdateState(
+      currentLabel,
+      environment.runtimeInfo,
+      environment.defaultDesktopSettings.updateChannel,
+    ),
+    enabled: true,
+    status: "idle",
+  };
 
-    const stateRef = yield* Ref.make(baseState);
-    const stateChanges = yield* PubSub.sliding<DesktopUpdateState>(16);
-    const stateMutex = yield* Semaphore.make(1);
-    const installingRef = yield* Ref.make(false);
+  const stateRef = yield* Ref.make(baseState);
+  const stateChanges = yield* PubSub.sliding<DesktopUpdateState>(16);
+  const stateMutex = yield* Semaphore.make(1);
+  const installingRef = yield* Ref.make(false);
 
-    const emitState = Ref.get(stateRef).pipe(
-      Effect.flatMap((state) => electronWindow.sendAll(IpcChannels.UPDATE_STATE_CHANNEL, state)),
-    );
+  const emitState = Ref.get(stateRef).pipe(
+    Effect.flatMap((state) => electronWindow.sendAll(IpcChannels.UPDATE_STATE_CHANNEL, state)),
+  );
 
-    const setState = (next: DesktopUpdateState) =>
-      stateMutex
-        .withPermits(1)(
-          Ref.get(stateRef).pipe(
-            Effect.flatMap((previous) =>
-              JSON.stringify(previous) === JSON.stringify(next)
-                ? Effect.void
-                : Ref.set(stateRef, next).pipe(
-                    Effect.andThen(PubSub.publish(stateChanges, next)),
-                    Effect.andThen(emitState),
-                  ),
-            ),
+  const setState = (next: DesktopUpdateState) =>
+    stateMutex
+      .withPermits(1)(
+        Ref.get(stateRef).pipe(
+          Effect.flatMap((previous) =>
+            JSON.stringify(previous) === JSON.stringify(next)
+              ? Effect.void
+              : Ref.set(stateRef, next).pipe(
+                  Effect.andThen(PubSub.publish(stateChanges, next)),
+                  Effect.andThen(emitState),
+                ),
           ),
-        )
-        .pipe(Effect.as(next));
-
-    /** Reflects the waiting builds and where the service stands. */
-    const refresh = (checked: boolean) =>
-      Effect.gen(function* () {
-        const state = yield* Ref.get(stateRef);
-        const now = yield* DateTime.now;
-        const checkedAt = checked ? DateTime.formatIso(now) : state.checkedAt;
-        const { service, builds } = readForkState(input.root, DateTime.toEpochMillis(now));
-        const offer = resolveForkUpdateOffer({ builds, service });
-        return yield* setState(
-          offer !== null
-            ? {
-                ...state,
-                status: "downloaded",
-                availableVersion: offer.label,
-                downloadedVersion: offer.label,
-                checkedAt,
-                message: null,
-                errorContext: null,
-                forkService: service,
-                forkBuilds: builds,
-              }
-            : {
-                ...state,
-                status: checked
-                  ? "up-to-date"
-                  : state.status === "up-to-date"
-                    ? "up-to-date"
-                    : "idle",
-                availableVersion: null,
-                downloadedVersion: null,
-                checkedAt,
-                message: null,
-                errorContext: null,
-                forkService: service,
-                forkBuilds: builds,
-              },
-        );
-      });
-
-    const logDir = NodePath.join(input.root, "logs");
-    const watchLog = NodePath.join(logDir, "fork-watch.log");
-    const appLog = NodePath.join(logDir, "fork-app.log");
-
-    // One pass at a time; a build takes minutes, so passes queue up otherwise.
-    const watchMutex = yield* Semaphore.make(1);
-    const watchPass = watchMutex.withPermitsIfAvailable(1)(
-      Effect.gen(function* () {
-        yield* Effect.sync(() => {
-          NodeFS.mkdirSync(logDir, { recursive: true });
-          try {
-            if (NodeFS.statSync(watchLog).size > WATCH_LOG_MAX_BYTES) {
-              NodeFS.renameSync(watchLog, `${watchLog}.1`);
-            }
-          } catch {
-            // No log yet.
-          }
-        });
-        yield* runScript(environment.platform, input.script, ["watch"], watchLog);
-        yield* refresh(false);
-      }),
-    );
-
-    const installFailure = (message: string) =>
-      Effect.gen(function* () {
-        yield* Ref.set(installingRef, false);
-        const state = yield* Ref.get(stateRef);
-        const next = yield* setState({
-          ...state,
-          status: "error",
-          errorContext: "install",
-          message,
-          canRetry: true,
-        });
-        return { accepted: true, completed: false, state: next };
-      });
-
-    /** Switches to a build (the leading one when none is named) and relaunches. */
-    const install = (slug: string | null) =>
-      Effect.gen(function* () {
-        const state = yield* Ref.get(stateRef);
-        const builds = state.forkBuilds ?? [];
-        const service = state.forkService ?? {
-          runningVersion: null,
-          pendingVersion: null,
-          blockedReason: null,
-        };
-        const target =
-          slug !== null
-            ? (builds.find((build) => build.slug === slug) ?? null)
-            : (resolveForkUpdateOffer({ builds, service })?.build ?? null);
-        if (slug !== null && target === null) {
-          return { accepted: false, completed: false, state };
-        }
-        const serverVersion =
-          target !== null
-            ? target.serverVersion
-            : service.blockedReason === null
-              ? service.pendingVersion
-              : null;
-        if (target === null && serverVersion === null) {
-          return { accepted: false, completed: false, state };
-        }
-        yield* Ref.set(installingRef, true);
-        const failed = yield* Effect.sync(() => {
-          // Detached so the scripts outlive this process when `restart` stops the app.
-          const spawnDetached = (args: readonly string[], log: number | "ignore") => {
-            const child = spawnScript(environment.platform, input.script, args, {
-              detached: true,
-              stdio: ["ignore", log, log],
-            });
-            child.unref();
-          };
-          try {
-            if (serverVersion !== null) {
-              NodeFS.mkdirSync(logDir, { recursive: true });
-              const log = NodeFS.openSync(appLog, "a");
-              try {
-                spawnDetached(["restart-service", serverVersion], log);
-              } finally {
-                NodeFS.closeSync(log);
-              }
-            }
-            if (target !== null) spawnDetached(["restart", target.slug], "ignore");
-            return false;
-          } catch {
-            return true;
-          }
-        });
-        if (failed) return yield* installFailure(`Could not run ${input.script}`);
-        // Only an app restart ends this process; a service-only switch keeps
-        // it running, so it must not stay marked as installing.
-        if (target === null) yield* Ref.set(installingRef, false);
-        return { accepted: true, completed: true, state: yield* Ref.get(stateRef) };
-      });
-
-    /** Removes a branch's build and server; the list refreshes right after. */
-    const remove = (slug: string) =>
-      Effect.gen(function* () {
-        const known = yield* Ref.get(stateRef);
-        if (!(known.forkBuilds ?? []).some((build) => build.slug === slug)) {
-          return { accepted: false, completed: false, state: known };
-        }
-        yield* Effect.sync(() => NodeFS.mkdirSync(logDir, { recursive: true }));
-        const code = yield* runScript(environment.platform, input.script, ["delete", slug], appLog);
-        const state = yield* refresh(false);
-        return code === 0
-          ? { accepted: true, completed: true, state }
-          : {
-              accepted: true,
-              completed: false,
-              state: { ...state, message: `Could not remove the build of ${slug}` },
-            };
-      });
-
-    const updates = DesktopUpdates.DesktopUpdates.of({
-      getState: Ref.get(stateRef),
-      isActionActive: Ref.get(installingRef),
-      isInstallActive: Ref.get(installingRef),
-      subscribe: stateMutex.withPermits(1)(
-        Effect.gen(function* () {
-          const subscription = yield* PubSub.subscribe(stateChanges);
-          const latest = yield* Ref.get(stateRef);
-          return { latest, changes: Stream.fromSubscription(subscription) };
-        }),
-      ),
-      emitState,
-      disabledReason: Effect.succeed(Option.none()),
-      configure: Effect.all([
-        refresh(false).pipe(Effect.repeat(Schedule.spaced(POLL_INTERVAL)), Effect.forkScoped),
-        watchPass.pipe(Effect.repeat(Schedule.spaced(WATCH_INTERVAL)), Effect.forkScoped),
-      ]).pipe(Effect.asVoid),
-      setChannel: () => Ref.get(stateRef),
-      // Starts a fetch without waiting for the build it may lead to.
-      check: () =>
-        watchPass.pipe(
-          Effect.forkDetach,
-          Effect.andThen(refresh(true)),
-          Effect.map((state) => ({ checked: true, state })),
         ),
-      download: refresh(true).pipe(
-        Effect.map((state) => ({ accepted: false, completed: false, state })),
-      ),
-      install: install(null),
-      installPrepared: () =>
-        install(null).pipe(Effect.map((result) => ({ ...result, failed: !result.completed }))),
-    });
-    const builds = ForkAppBuilds.of({
-      act: (action) => (action.kind === "install" ? install(action.slug) : remove(action.slug)),
-    });
-    return Context.make(DesktopUpdates.DesktopUpdates, updates).pipe(
-      Context.add(ForkAppBuilds, builds),
+      )
+      .pipe(Effect.as(next));
+
+  /** Reflects the waiting builds and where the service stands. */
+  const refresh = Effect.fn("ForkAppUpdates.refresh")(function* (checked: boolean) {
+    const state = yield* Ref.get(stateRef);
+    const now = yield* DateTime.now;
+    const checkedAt = checked ? DateTime.formatIso(now) : state.checkedAt;
+    const { service, builds } = readForkState(input.root, DateTime.toEpochMillis(now));
+    const offer = resolveForkUpdateOffer({ builds, service });
+    return yield* setState(
+      offer !== null
+        ? {
+            ...state,
+            status: "downloaded",
+            availableVersion: offer.label,
+            downloadedVersion: offer.label,
+            checkedAt,
+            message: null,
+            errorContext: null,
+            forkService: service,
+            forkBuilds: builds,
+          }
+        : {
+            ...state,
+            status: checked ? "up-to-date" : state.status === "up-to-date" ? "up-to-date" : "idle",
+            availableVersion: null,
+            downloadedVersion: null,
+            checkedAt,
+            message: null,
+            errorContext: null,
+            forkService: service,
+            forkBuilds: builds,
+          },
     );
   });
+
+  const logDir = NodePath.join(input.root, "logs");
+  const watchLog = NodePath.join(logDir, "fork-watch.log");
+  const appLog = NodePath.join(logDir, "fork-app.log");
+
+  // One pass at a time; a build takes minutes, so passes queue up otherwise.
+  const watchMutex = yield* Semaphore.make(1);
+  const watchPass = watchMutex.withPermitsIfAvailable(1)(
+    Effect.gen(function* () {
+      yield* Effect.sync(() => {
+        NodeFS.mkdirSync(logDir, { recursive: true });
+        try {
+          if (NodeFS.statSync(watchLog).size > WATCH_LOG_MAX_BYTES) {
+            NodeFS.renameSync(watchLog, `${watchLog}.1`);
+          }
+        } catch {
+          // No log yet.
+        }
+      });
+      yield* runScript(environment.platform, input.script, ["watch"], watchLog);
+      yield* refresh(false);
+    }),
+  );
+
+  const installFailure = Effect.fn("ForkAppUpdates.installFailure")(function* (message: string) {
+    yield* Ref.set(installingRef, false);
+    const state = yield* Ref.get(stateRef);
+    const next = yield* setState({
+      ...state,
+      status: "error",
+      errorContext: "install",
+      message,
+      canRetry: true,
+    });
+    return { accepted: true, completed: false, state: next };
+  });
+
+  /** Switches to a build (the leading one when none is named) and relaunches. */
+  const install = Effect.fn("ForkAppUpdates.install")(function* (slug: string | null) {
+    const state = yield* Ref.get(stateRef);
+    const builds = state.forkBuilds ?? [];
+    const service = state.forkService ?? {
+      runningVersion: null,
+      pendingVersion: null,
+      blockedReason: null,
+    };
+    const target =
+      slug !== null
+        ? (builds.find((build) => build.slug === slug) ?? null)
+        : (resolveForkUpdateOffer({ builds, service })?.build ?? null);
+    if (slug !== null && target === null) {
+      return { accepted: false, completed: false, state };
+    }
+    const serverVersion =
+      target !== null
+        ? target.serverVersion
+        : service.blockedReason === null
+          ? service.pendingVersion
+          : null;
+    if (target === null && serverVersion === null) {
+      return { accepted: false, completed: false, state };
+    }
+    yield* Ref.set(installingRef, true);
+    const failed = yield* Effect.sync(() => {
+      // Detached so the scripts outlive this process when `restart` stops the app.
+      const spawnDetached = (args: readonly string[], log: number | "ignore") => {
+        const child = spawnScript(environment.platform, input.script, args, {
+          detached: true,
+          stdio: ["ignore", log, log],
+        });
+        child.unref();
+      };
+      try {
+        if (serverVersion !== null) {
+          NodeFS.mkdirSync(logDir, { recursive: true });
+          const log = NodeFS.openSync(appLog, "a");
+          try {
+            spawnDetached(["restart-service", serverVersion], log);
+          } finally {
+            NodeFS.closeSync(log);
+          }
+        }
+        if (target !== null) spawnDetached(["restart", target.slug], "ignore");
+        return false;
+      } catch {
+        return true;
+      }
+    });
+    if (failed) return yield* installFailure(`Could not run ${input.script}`);
+    // Only an app restart ends this process; a service-only switch keeps
+    // it running, so it must not stay marked as installing.
+    if (target === null) yield* Ref.set(installingRef, false);
+    return { accepted: true, completed: true, state: yield* Ref.get(stateRef) };
+  });
+
+  /** Removes a branch's build and server; the list refreshes right after. */
+  const remove = Effect.fn("ForkAppUpdates.remove")(function* (slug: string) {
+    const known = yield* Ref.get(stateRef);
+    if (!(known.forkBuilds ?? []).some((build) => build.slug === slug)) {
+      return { accepted: false, completed: false, state: known };
+    }
+    yield* Effect.sync(() => NodeFS.mkdirSync(logDir, { recursive: true }));
+    const code = yield* runScript(environment.platform, input.script, ["delete", slug], appLog);
+    const state = yield* refresh(false);
+    return code === 0
+      ? { accepted: true, completed: true, state }
+      : {
+          accepted: true,
+          completed: false,
+          state: { ...state, message: `Could not remove the build of ${slug}` },
+        };
+  });
+
+  const updates = DesktopUpdates.DesktopUpdates.of({
+    getState: Ref.get(stateRef),
+    isActionActive: Ref.get(installingRef),
+    isInstallActive: Ref.get(installingRef),
+    subscribe: stateMutex.withPermits(1)(
+      Effect.gen(function* () {
+        const subscription = yield* PubSub.subscribe(stateChanges);
+        const latest = yield* Ref.get(stateRef);
+        return { latest, changes: Stream.fromSubscription(subscription) };
+      }),
+    ),
+    emitState,
+    disabledReason: Effect.succeedNone,
+    configure: Effect.all([
+      refresh(false).pipe(Effect.repeat(Schedule.spaced(POLL_INTERVAL)), Effect.forkScoped),
+      watchPass.pipe(Effect.repeat(Schedule.spaced(WATCH_INTERVAL)), Effect.forkScoped),
+    ]).pipe(Effect.asVoid),
+    setChannel: Effect.fn("DesktopUpdates.DesktopUpdates.setChannel")(() => Ref.get(stateRef)),
+    // Starts a fetch without waiting for the build it may lead to.
+    check: Effect.fn("DesktopUpdates.DesktopUpdates.check")(() =>
+      watchPass.pipe(
+        Effect.forkDetach,
+        Effect.andThen(refresh(true)),
+        Effect.map((state) => ({ checked: true, state })),
+      ),
+    ),
+    download: refresh(true).pipe(
+      Effect.map((state) => ({ accepted: false, completed: false, state })),
+    ),
+    install: install(null),
+    installPrepared: Effect.fn("DesktopUpdates.DesktopUpdates.installPrepared")(() =>
+      install(null).pipe(Effect.map((result) => ({ ...result, failed: !result.completed }))),
+    ),
+  });
+  const builds = ForkAppBuilds.of({
+    act: Effect.fn("ForkAppBuilds.act")((action) =>
+      action.kind === "install" ? install(action.slug) : remove(action.slug),
+    ),
+  });
+  return Context.make(DesktopUpdates.DesktopUpdates, updates).pipe(
+    Context.add(ForkAppBuilds, builds),
+  );
+});
 
 /** Without the fork launcher there are no branch builds to act on. */
 const noForkBuilds = Layer.effect(
@@ -516,10 +514,11 @@ const noForkBuilds = Layer.effect(
   Effect.gen(function* () {
     const updates = yield* DesktopUpdates.DesktopUpdates;
     return ForkAppBuilds.of({
-      act: () =>
+      act: Effect.fn("ForkAppBuilds.act")(() =>
         updates.getState.pipe(
           Effect.map((state) => ({ accepted: false, completed: false, state })),
         ),
+      ),
     });
   }),
 );

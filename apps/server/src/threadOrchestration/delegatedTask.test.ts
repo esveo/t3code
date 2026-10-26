@@ -407,7 +407,7 @@ it.layer(TestLayer)("fork: delegate_task patches", (it) => {
       const projection = yield* orchestrator.getThreadProjection(threadId);
       const text = projection.messages.find((message) => message.id === messageId)?.text ?? "";
       // The upstream instruction first, then the result itself.
-      assert.isTrue(text.startsWith(`Delegated task ${taskId} reached a terminal state.`));
+      assert.isTrue(text.startsWith(`Delegated task ${taskId} (Migration report) [completed]`));
       const updates = text.slice(text.indexOf("<t3_thread_update"));
       assert.deepEqual(
         parseThreadUpdates(updates)?.map((update) => [update.threadId, update.state, update.body]),
