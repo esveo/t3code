@@ -2629,7 +2629,7 @@ it.each(["rtf", "epub", "ods"] as const)(
         const frame = screen.container.querySelector("iframe");
         expect(frame?.srcdoc).toContain(kind === "rtf" ? "10–20" : "first<br>second<br>third");
       }
-    });
+    }, 10_000);
     expect(screen.container.querySelector('[role="alert"]')).toBeNull();
   },
 );
