@@ -1318,55 +1318,55 @@ const make = Effect.gen(function* () {
             : Effect.succeed(shell),
         ),
       );
-        const loadTarget = () =>
-          threadManagement
-            .getThreadRecords(threadId, ["runs", "runtimeRequests", "contextTransfers"])
-            .pipe(Effect.mapError(threadManagementFailure));
-        if (threadId === parent.thread.id) {
-          return { parent, target: yield* loadTarget(), shell: yield* loadShell } as const;
-        }
-        const target = yield* threadProjectId(
-          threadManagement,
-          threadId,
-          parent.thread.projectId,
-        ).pipe(
-          Effect.flatMap((projectId) =>
-            threadManagement
-              .getProjectThreadRecords({ projectId, threadId }, [
-                "runs",
-                "runtimeRequests",
-                "contextTransfers",
-              ])
-              .pipe(Effect.mapError(threadManagementFailure)),
-          ),
-          Effect.catchIf(
-            (error) =>
-              error.code === "thread_not_found" && userAttachedThreadIds(parent).has(threadId),
-            loadTarget,
-          ),
-        );
-        if (target.thread.deletedAt !== null) {
-          return yield* failure("thread_not_found", `Thread ${threadId} is no longer available.`);
-        }
-        return { parent, target, shell: yield* loadShell } as const;
+      const loadTarget = () =>
+        threadManagement
+          .getThreadRecords(threadId, ["runs", "runtimeRequests", "contextTransfers"])
+          .pipe(Effect.mapError(threadManagementFailure));
+      if (threadId === parent.thread.id) {
+        return { parent, target: yield* loadTarget(), shell: yield* loadShell } as const;
       }
-      const shell = yield* threadManagement
-        .getThreadShell(threadId)
-        .pipe(Effect.mapError(threadManagementFailure));
-      if (shell === null || shell.deletedAt !== null)
-        return yield* threadNotFound(
-          threadManagement,
-          threadId,
-          `Thread ${threadId} is no longer available.`,
-        );
-      const target = yield* threadManagement
-        .getProjectThreadRecords({ projectId: shell.projectId, threadId }, [
-          "runs",
-          "runtimeRequests",
-          "contextTransfers",
-        ])
-        .pipe(Effect.mapError(threadManagementFailure));
-      return { parent, target, shell } as const;
+      const target = yield* threadProjectId(
+        threadManagement,
+        threadId,
+        parent.thread.projectId,
+      ).pipe(
+        Effect.flatMap((projectId) =>
+          threadManagement
+            .getProjectThreadRecords({ projectId, threadId }, [
+              "runs",
+              "runtimeRequests",
+              "contextTransfers",
+            ])
+            .pipe(Effect.mapError(threadManagementFailure)),
+        ),
+        Effect.catchIf(
+          (error) =>
+            error.code === "thread_not_found" && userAttachedThreadIds(parent).has(threadId),
+          loadTarget,
+        ),
+      );
+      if (target.thread.deletedAt !== null) {
+        return yield* failure("thread_not_found", `Thread ${threadId} is no longer available.`);
+      }
+      return { parent, target, shell: yield* loadShell } as const;
+    }
+    const shell = yield* threadManagement
+      .getThreadShell(threadId)
+      .pipe(Effect.mapError(threadManagementFailure));
+    if (shell === null || shell.deletedAt !== null)
+      return yield* threadNotFound(
+        threadManagement,
+        threadId,
+        `Thread ${threadId} is no longer available.`,
+      );
+    const target = yield* threadManagement
+      .getProjectThreadRecords({ projectId: shell.projectId, threadId }, [
+        "runs",
+        "runtimeRequests",
+        "contextTransfers",
+      ])
+      .pipe(Effect.mapError(threadManagementFailure));
+    return { parent, target, shell } as const;
   });
 
   const loadProviders = providerRegistry.getProviders;
@@ -2287,163 +2287,163 @@ const make = Effect.gen(function* () {
             .pipe(
               Effect.mapError(() =>
                 failure(
-                    "invalid_request",
-                    `Isolation "worktree" creates the child checkout in project "${project.title}" (${project.workspaceRoot}), which does not contain the parent checkout's commit. Use isolation "shared" to work in the parent's checkout.`,
-                  ),
+                  "invalid_request",
+                  `Isolation "worktree" creates the child checkout in project "${project.title}" (${project.workspaceRoot}), which does not contain the parent checkout's commit. Use isolation "shared" to work in the parent's checkout.`,
                 ),
-              );
-          }
-          workspaceStrategy = { type: "worktree", baseRef: base.commitSha, startFromOrigin: false };
+              ),
+            );
         }
-        // ThreadManagementService.dispatch is the chokepoint for this command
-        // type's own enablement check, using the same command id and its
-        // receipt-replay exemption, so no separate assert runs here.
-        // Fork: another project and/or its own worktree (threadOrchestration/DelegatedWorkspace.ts).
-        const delegatedWorkspace = yield* Effect.serviceOption(DelegatedWorkspace);
-        if (input.workspace !== undefined && Option.isNone(delegatedWorkspace)) {
-          return yield* failure(
-            "invalid_request",
-            "This server cannot delegate into another workspace.",
-          );
-        }
-        const workspacePlan =
-          input.workspace === undefined || Option.isNone(delegatedWorkspace)
-            ? undefined
-            : yield* delegatedWorkspace.value.plan(parent.thread, input.workspace);
-        // Fork: files for the child's first message (toolkits/threads/attachments.ts).
-        const attachments = yield* claimDelegatedAttachments(
-          scope.thread.threadId,
-          input.attachments,
+        workspaceStrategy = { type: "worktree", baseRef: base.commitSha, startFromOrigin: false };
+      }
+      // ThreadManagementService.dispatch is the chokepoint for this command
+      // type's own enablement check, using the same command id and its
+      // receipt-replay exemption, so no separate assert runs here.
+      // Fork: another project and/or its own worktree (threadOrchestration/DelegatedWorkspace.ts).
+      const delegatedWorkspace = yield* Effect.serviceOption(DelegatedWorkspace);
+      if (input.workspace !== undefined && Option.isNone(delegatedWorkspace)) {
+        return yield* failure(
+          "invalid_request",
+          "This server cannot delegate into another workspace.",
         );
-        const result = yield* threadManagement
-          .dispatch({
-            type: "delegated_task.request",
-            createdBy: "agent",
-            creationSource: "mcp",
+      }
+      const workspacePlan =
+        input.workspace === undefined || Option.isNone(delegatedWorkspace)
+          ? undefined
+          : yield* delegatedWorkspace.value.plan(parent.thread, input.workspace);
+      // Fork: files for the child's first message (toolkits/threads/attachments.ts).
+      const attachments = yield* claimDelegatedAttachments(
+        scope.thread.threadId,
+        input.attachments,
+      );
+      const result = yield* threadManagement
+        .dispatch({
+          type: "delegated_task.request",
+          createdBy: "agent",
+          creationSource: "mcp",
+          commandId,
+          parentThreadId: scope.thread.threadId,
+          parentRunId: parentRun.id,
+          parentNodeId: parentRun.rootNodeId,
+          task: taskPrompt(input),
+          ...(input.title === undefined ? {} : { title: input.title }),
+          modelSelection: target.modelSelection,
+          runtimeMode,
+          interactionMode,
+          ...(workspaceStrategy === undefined ? {} : { workspaceStrategy }),
+          // Async delegations wake the parent on every child terminal; wait
+          // delegations deliver through the blocking tool call, so a wake is
+          // only needed if the parent settled first (timeout, disconnect).
+          completionWake: input.mode === "wait" ? "settled_only" : "always",
+          ...(workspacePlan === undefined ? {} : { workspace: workspacePlan.command }),
+          ...(attachments.length === 0 ? {} : { attachments }),
+        })
+        .pipe(
+          Effect.mapError((error) =>
+            error._tag === "ThreadManagementProviderInstanceDisabledError"
+              ? threadManagementFailure(error)
+              : failure(
+                  "orchestration_error",
+                  `Unable to create delegated task: ${errorMessage(error)}`,
+                ),
+          ),
+          Effect.tapError(() => releaseDelegatedAttachments(attachments)), // Fork
+        );
+      const taskEvent = result.storedEvents.find(
+        (stored) =>
+          stored.event.type === "subagent.updated" && stored.event.payload.origin === "app_owned",
+      );
+      if (taskEvent?.event.type !== "subagent.updated") {
+        return yield* failure(
+          "orchestration_error",
+          "Delegated task command did not produce a task projection.",
+        );
+      }
+      const taskId = taskEvent.event.payload.id;
+      // Fork: provision the child's worktree; its first run waits for it.
+      if (workspacePlan?.worktree != null && Option.isSome(delegatedWorkspace)) {
+        const childThreadId = taskEvent.event.payload.childThreadId;
+        const childRun = result.storedEvents.find(
+          (stored) =>
+            stored.event.type === "run.created" && stored.event.threadId === childThreadId,
+        );
+        if (childThreadId !== null && childRun?.event.type === "run.created") {
+          yield* delegatedWorkspace.value.prepare({
             commandId,
-            parentThreadId: scope.thread.threadId,
-            parentRunId: parentRun.id,
-            parentNodeId: parentRun.rootNodeId,
-            task: taskPrompt(input),
-            ...(input.title === undefined ? {} : { title: input.title }),
+            plan: workspacePlan,
+            childThreadId,
+            childRunId: childRun.event.payload.id,
+            title: input.title ?? input.task,
+            task: input.task,
             modelSelection: target.modelSelection,
             runtimeMode,
             interactionMode,
-            ...(workspaceStrategy === undefined ? {} : { workspaceStrategy }),
-            // Async delegations wake the parent on every child terminal; wait
-            // delegations deliver through the blocking tool call, so a wake is
-            // only needed if the parent settled first (timeout, disconnect).
-            completionWake: input.mode === "wait" ? "settled_only" : "always",
-            ...(workspacePlan === undefined ? {} : { workspace: workspacePlan.command }),
-            ...(attachments.length === 0 ? {} : { attachments }),
-          })
-          .pipe(
-            Effect.mapError((error) =>
-              error._tag === "ThreadManagementProviderInstanceDisabledError"
-                ? threadManagementFailure(error)
-                : failure(
-                    "orchestration_error",
-                    `Unable to create delegated task: ${errorMessage(error)}`,
-                  ),
-            ),
-            Effect.tapError(() => releaseDelegatedAttachments(attachments)), // Fork
-          );
-        const taskEvent = result.storedEvents.find(
+          });
+        }
+      } else {
+        const childThreadId = taskEvent.event.payload.childThreadId;
+        const childRunEvent = result.storedEvents.find(
           (stored) =>
-            stored.event.type === "subagent.updated" && stored.event.payload.origin === "app_owned",
+            stored.event.type === "run.created" && stored.event.threadId === childThreadId,
         );
-        if (taskEvent?.event.type !== "subagent.updated") {
-          return yield* failure(
-            "orchestration_error",
-            "Delegated task command did not produce a task projection.",
-          );
+        if (
+          childThreadId !== null &&
+          childRunEvent?.event.type === "run.created" &&
+          childRunEvent.event.payload.workspacePreparation !== undefined
+        ) {
+          yield* threadLaunch.prepareRun({
+            commandId,
+            threadId: childThreadId,
+            runId: childRunEvent.event.payload.id,
+          });
         }
-        const taskId = taskEvent.event.payload.id;
-        // Fork: provision the child's worktree; its first run waits for it.
-        if (workspacePlan?.worktree != null && Option.isSome(delegatedWorkspace)) {
-          const childThreadId = taskEvent.event.payload.childThreadId;
-          const childRun = result.storedEvents.find(
-            (stored) =>
-              stored.event.type === "run.created" && stored.event.threadId === childThreadId,
-          );
-          if (childThreadId !== null && childRun?.event.type === "run.created") {
-            yield* delegatedWorkspace.value.prepare({
-              commandId,
-              plan: workspacePlan,
-              childThreadId,
-              childRunId: childRun.event.payload.id,
-              title: input.title ?? input.task,
-              task: input.task,
-              modelSelection: target.modelSelection,
-              runtimeMode,
-              interactionMode,
-            });
-          }
-        } else {
-          const childThreadId = taskEvent.event.payload.childThreadId;
-          const childRunEvent = result.storedEvents.find(
-            (stored) =>
-              stored.event.type === "run.created" && stored.event.threadId === childThreadId,
-          );
-          if (
-            childThreadId !== null &&
-            childRunEvent?.event.type === "run.created" &&
-            childRunEvent.event.payload.workspacePreparation !== undefined
-          ) {
-            yield* threadLaunch.prepareRun({
-              commandId,
-              threadId: childThreadId,
-              runId: childRunEvent.event.payload.id,
-            });
-          }
-        }
+      }
 
-        if (input.mode !== "wait") {
-          return yield* readTask(scope, taskId, false, true);
-        }
-        const timeoutMs = Math.min(
-          MAX_WAIT_TIMEOUT_MS,
-          Math.max(1, input.timeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS),
-        );
-        const waited = yield* waitForTask(scope, taskId, timeoutMs);
-        if (Option.isSome(waited) && isTerminalTaskStatus(waited.value.status)) {
-          return waited.value;
-        }
-        // An incomplete wait gives up delivery: upgrade so a later terminal
-        // wakes the parent even mid-turn.
-        yield* threadManagement
-          .dispatch({
-            type: "delegated_task.wake-policy",
-            commandId: stableCommandId({
-              scope,
-              requestKey: key,
-              operation: "delegate-task-wake-policy",
+      if (input.mode !== "wait") {
+        return yield* readTask(scope, taskId, false, true);
+      }
+      const timeoutMs = Math.min(
+        MAX_WAIT_TIMEOUT_MS,
+        Math.max(1, input.timeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS),
+      );
+      const waited = yield* waitForTask(scope, taskId, timeoutMs);
+      if (Option.isSome(waited) && isTerminalTaskStatus(waited.value.status)) {
+        return waited.value;
+      }
+      // An incomplete wait gives up delivery: upgrade so a later terminal
+      // wakes the parent even mid-turn.
+      yield* threadManagement
+        .dispatch({
+          type: "delegated_task.wake-policy",
+          commandId: stableCommandId({
+            scope,
+            requestKey: key,
+            operation: "delegate-task-wake-policy",
+          }),
+          parentThreadId: scope.thread.threadId,
+          taskId,
+          completionWake: "always",
+        })
+        .pipe(
+          Effect.catch((error) =>
+            Effect.logWarning("orchestrator-mcp.delegate-task.wake-policy-failed", {
+              taskId,
+              outcome:
+                error._tag === "OrchestratorCommandPreviouslyRejectedError"
+                  ? "previously_rejected"
+                  : "dispatch_failed",
+              error,
             }),
-            parentThreadId: scope.thread.threadId,
-            taskId,
-            completionWake: "always",
-          })
-          .pipe(
-            Effect.catch((error) =>
-              Effect.logWarning("orchestrator-mcp.delegate-task.wake-policy-failed", {
-                taskId,
-                outcome:
-                  error._tag === "OrchestratorCommandPreviouslyRejectedError"
-                    ? "previously_rejected"
-                    : "dispatch_failed",
-                error,
-              }),
-            ),
-            Effect.catchCause((cause) =>
-              Effect.logWarning("orchestrator-mcp.delegate-task.wake-policy-failed", {
-                taskId,
-                outcome: "defect",
-                cause,
-              }),
-            ),
-          );
-        return yield* readTask(scope, taskId, Option.isNone(waited), true);
-      }),
+          ),
+          Effect.catchCause((cause) =>
+            Effect.logWarning("orchestrator-mcp.delegate-task.wake-policy-failed", {
+              taskId,
+              outcome: "defect",
+              cause,
+            }),
+          ),
+        );
+      return yield* readTask(scope, taskId, Option.isNone(waited), true);
+    }),
     taskStatus: Effect.fn("OrchestratorMcpService.taskStatus")(function* (callerScope, taskId) {
       const scope = yield* requireThreadScope(callerScope, "task_status");
       return yield* readTask(scope, taskId, false, true);
@@ -2812,7 +2812,7 @@ const make = Effect.gen(function* () {
           { concurrency: 1 },
         );
         return { threads: created };
-      }),
+      },
     ),
     listThreads: Effect.fn("OrchestratorMcpService.listThreads")(function* (scope, input) {
       const { parent } = yield* loadCaller(scope);
