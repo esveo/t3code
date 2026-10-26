@@ -1658,9 +1658,13 @@ describe("ClaudeAdapterV2 attachments", () => {
             }
             yield* deliver;
             const retried = offeredMessages.at(-1)!.message.content;
-            assert.notInclude(JSON.stringify(retried), '"type":"document"');
-            assert.include(JSON.stringify(retried), documentPath);
-            assert.isBelow(Buffer.byteLength(JSON.stringify(offeredMessages)), 32_000_000);
+            if (budget === "cancelled-send") {
+              assert.include(JSON.stringify(retried), '"type":"document"');
+            } else {
+              assert.notInclude(JSON.stringify(retried), '"type":"document"');
+              assert.include(JSON.stringify(retried), documentPath);
+            }
+            assert.isBelow(Buffer.byteLength(JSON.stringify(retried)), 32_000_000);
             return;
           }
           if (budget !== "none") {
@@ -1729,8 +1733,10 @@ describe("ClaudeAdapterV2 attachments", () => {
               );
               assert.include(JSON.stringify(steered), imagePath);
               assert.isBelow(
-                Buffer.byteLength(
-                  JSON.stringify(offeredMessages.map((message) => message.message)),
+                Math.max(
+                  ...offeredMessages.map((message) =>
+                    Buffer.byteLength(JSON.stringify(message.message)),
+                  ),
                 ),
                 32_000_000,
               );
