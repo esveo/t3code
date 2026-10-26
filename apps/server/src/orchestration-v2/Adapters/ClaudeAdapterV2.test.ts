@@ -9420,8 +9420,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             origin: { kind: "task-notification" },
           }),
         );
-        let debrisYields = 0;
-        yield* harness.until(() => debrisYields++ >= 50);
+        yield* yieldTicks(50);
         yield* Deferred.succeed(closeGate, undefined);
         yield* harness.until(() => harness.terminalEvents().length === 1);
         assert.lengthOf(harness.terminalEvents(), 1);
