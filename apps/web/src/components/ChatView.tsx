@@ -441,7 +441,6 @@ export default function ChatView(props: ChatViewProps) {
   const canOperateTerminal = useEnvironmentScope(environmentId, AuthTerminalOperateScope);
   const draftId = routeKind === "draft" ? props.draftId : null;
   const handleNewThread = useNewThreadHandler();
-  const { settleThread, pinThread, confirmAndUnpinThread } = useThreadActions();
   const isActivePane = useIsActiveChatPane();
   const isActivePaneRef = useRef(isActivePane);
   useLayoutEffect(() => {
@@ -1965,6 +1964,10 @@ export default function ChatView(props: ChatViewProps) {
     terminalLabelsById: activeTerminalLabelsById,
   });
   const closeRightPanelSurfaceStable = closeRightPanelSurface;
+  const toggleForkRightPanelMaximized = useStableCallback(() => {
+    if (!canMaximizeRightPanel || !activeThreadRef) return;
+    useRightPanelStore.getState().setMaximized(activeThreadRef, !rightPanelMaximized);
+  });
   const forkSurfaces = useForkRightPanelSurfaces({
     threadRef: activeThreadRef,
     environmentId: activeThread?.environmentId,
@@ -1978,7 +1981,7 @@ export default function ChatView(props: ChatViewProps) {
       activeSurface: activeRightPanelSurface,
       canMaximize: canMaximizeRightPanel,
       maximized: rightPanelMaximized,
-      toggleMaximized: toggleRightPanelMaximized,
+      toggleMaximized: toggleForkRightPanelMaximized,
       closeSurface: closeRightPanelSurfaceStable,
     },
   });
@@ -1987,50 +1990,6 @@ export default function ChatView(props: ChatViewProps) {
     addGitGraphSurface,
     cycleGitGraphSurface,
   } = forkSurfaces;
-  const moveRightPanelSurface = (surfaceId: string, toIndex: number) => {
-    if (activeThreadRef)
-      useRightPanelStore.getState().moveSurface(activeThreadRef, surfaceId, toIndex);
-  };
-  const moveRightPanelSurfaceStable = useStableCallback(moveRightPanelSurface);
-  const copyRightPanelFilePath = (relativePath: string) => {
-    if (typeof window === "undefined" || !navigator.clipboard?.writeText) {
-      toastManager.add(
-        stackedThreadToast({
-          type: "error",
-          title: "Failed to copy path",
-          description: "Clipboard API unavailable.",
-        }),
-      );
-      return;
-    }
-
-    void navigator.clipboard.writeText(relativePath).then(
-      () => {
-        toastManager.add({
-          type: "success",
-          title: "Path copied",
-          description: relativePath,
-        });
-      },
-      (error) => {
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Failed to copy path",
-            description: error instanceof Error ? error.message : "An error occurred.",
-          }),
-        );
-      },
-    );
-  };
-  const copyRightPanelFilePathStable = useStableCallback(copyRightPanelFilePath);
-  useEffect(
-    () =>
-      subscribePreviewAction((action) => {
-        if (action === "toggle-panel" && isActivePaneRef.current) togglePreviewPanelStable();
-      }),
-    [togglePreviewPanelStable],
-  );
   const persistThreadSettingsForNextTurn = async (input: {
     threadId: ThreadId;
     createdAt: string;
@@ -2111,6 +2070,7 @@ export default function ChatView(props: ChatViewProps) {
     onTimelineAnchorSizeChangedStable,
     onToolOutputCollapsedAtEndStable,
     onIsAtEndChangeStable,
+    isTimelineLiveFollowLatched,
     anchorNewTurn,
   } = useTimelineFollow({
     legendListRef,
@@ -2535,331 +2495,6 @@ export default function ChatView(props: ChatViewProps) {
     scrollToEnd,
     persistThreadSettingsForNextTurn,
   });
-  const nextRevealedBranchMismatchKey = showBranchMismatchBanner
-    ? activeBranchMismatchKey
-    : revealedBranchMismatchKey !== activeBranchMismatchKey
-      ? null
-      : revealedBranchMismatchKey;
-  if (nextRevealedBranchMismatchKey !== revealedBranchMismatchKey) {
-    setRevealedBranchMismatchKey(nextRevealedBranchMismatchKey);
-  }
-  const handleSwitchCheckoutToThread = async () => {
-    if (!canWriteSourceControl) return;
-    if (
-      !activeProjectCwd ||
-      !activeThread ||
-      !localCheckoutBranchMismatch ||
-      isRestoringThreadBranch
-    ) {
-      return;
-    }
-    setIsRestoringThreadBranch(true);
-    const checkoutResult = await switchGitRef({
-      environmentId,
-      input: {
-        cwd: activeProjectCwd,
-        refName: localCheckoutBranchMismatch.threadBranch,
-      },
-    });
-    if (checkoutResult._tag === "Failure") {
-      setIsRestoringThreadBranch(false);
-      if (!isAtomCommandInterrupted(checkoutResult)) {
-        toastManager.add(
-          stackedThreadToast({
-            type: "error",
-            title: "Failed to switch checkout",
-            description: chatActionErrorMessage(squashAtomCommandFailure(checkoutResult)),
-          }),
-        );
-      }
-      return;
-    }
-
-    if (!readEnvironmentScope(environmentId, AuthSourceControlWriteScope)) {
-      setIsRestoringThreadBranch(false);
-      return;
-    }
-    const nextBranch = checkoutResult.value.refName ?? localCheckoutBranchMismatch.threadBranch;
-    if (nextBranch !== activeThread.branch) {
-      const updateResult = await updateThreadMetadata({
-        environmentId,
-        input: { threadId: activeThread.id, branch: nextBranch, worktreePath: null },
-      });
-      if (updateResult._tag === "Failure") {
-        setIsRestoringThreadBranch(false);
-        if (!isAtomCommandInterrupted(updateResult)) {
-          toastManager.add(
-            stackedThreadToast({
-              type: "error",
-              title: "Checkout switched, but the thread could not be updated",
-              description: chatActionErrorMessage(squashAtomCommandFailure(updateResult)),
-            }),
-          );
-        }
-        gitStatusQuery.refresh();
-        return;
-      }
-    }
-    gitStatusQuery.refresh();
-    setIsRestoringThreadBranch(false);
-    scheduleComposerFocus();
-  };
-  const handleSwitchCheckoutToThreadStable = useStableCallback(() => {
-    void handleSwitchCheckoutToThread();
-  });
-  // The interrupt path also accepts a completed run while its provider still
-  // has background work.
-  const activeBackgroundTasks = !isWorking && activeThread ? pendingBackgroundTasks : [];
-  const [stoppingBackgroundWorkKey, setStoppingBackgroundWorkKey] = useState<string | null>(null);
-  const isStoppingBackgroundWork =
-    stoppingBackgroundWorkKey === `${environmentId}:${activeThreadId}`;
-  const handleStopBackgroundWork = async () => {
-    if (!activeThread || !readEnvironmentScope(environmentId, AuthOrchestrationOperateScope))
-      return;
-    const requestKey = `${environmentId}:${activeThread.id}`;
-    setStoppingBackgroundWorkKey(requestKey);
-    const result = await interruptThreadTurn({
-      environmentId,
-      input: { threadId: activeThread.id },
-    });
-    // Acceptance does not confirm termination. Allow retry while the provider
-    // finishes stopping the tasks or reports a failure.
-    setStoppingBackgroundWorkKey((current) => (current === requestKey ? null : current));
-    if (result._tag === "Failure") {
-      if (!isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        setThreadError(
-          activeThread.id,
-          error instanceof Error ? error.message : "Failed to stop background work.",
-        );
-      }
-    }
-  };
-  const handleStopBackgroundWorkStable = useStableCallback(handleStopBackgroundWork);
-  const openThreadInPane = useOpenThreadInPane();
-  const onOpenRelatedThread = (threadId: ThreadId) =>
-    openThreadInPane(scopeThreadRef(environmentId, threadId));
-  const onOpenRelatedThreadStable = useStableCallback(onOpenRelatedThread);
-  const childThreadInputs = useChildThreadInputs(activeThreadRef);
-  const childInputBannerItem = (() => {
-    const first = childThreadInputs[0];
-    const parentAwaitingUser =
-      activePendingApproval || activePendingUserInput || activeThreadShell?.hasPendingUserInput;
-    if (!first || parentAwaitingUser) return null;
-    return {
-      id: `child-input:${first.id}`,
-      variant: "info",
-      priority: "activity",
-      icon: first.hasPendingApprovals ? <ShieldQuestionIcon /> : <MessageCircleIcon />,
-      title: childThreadInputsTitle(childThreadInputs),
-      description: childThreadInputs.map((child, index) => (
-        <Fragment key={child.id}>
-          {index > 0 ? " " : null}
-          <span className="whitespace-nowrap">
-            <InlineButton tone="muted" onClick={() => onOpenRelatedThreadStable(child.id)}>
-              {child.title}
-            </InlineButton>
-            {index < childThreadInputs.length - 1 ? "," : null}
-          </span>
-        </Fragment>
-      )),
-      actions: (
-        <Button size="xs" variant="ghost" onClick={() => onOpenRelatedThreadStable(first.id)}>
-          {first.hasPendingApprovals ? "Open approval" : "Open question"}
-        </Button>
-      ),
-    };
-  })() as ComposerBannerStackItem | null;
-
-  const sendStandaloneCommand = async (text: string, failureMessage: string) => {
-    if (!activeThread || !clientSettingsHydrated || sendInFlightRef.current) return;
-    const context = composerRef.current?.getSendContext();
-    if (!context?.providerAvailable) return;
-
-    const threadId = activeThread.id;
-    const messageId = newMessageId();
-    const createdAt = new Date().toISOString();
-    sendInFlightRef.current = true;
-    beginLocalDispatch();
-    setThreadError(threadId, null);
-    setOptimisticUserMessages((messages) => [
-      ...messages,
-      {
-        id: messageId,
-        role: "user",
-        text,
-        runId: null,
-        createdAt,
-        updatedAt: createdAt,
-        streaming: false,
-      },
-    ]);
-    scrollToEnd();
-    // Commands settle into a result, so this always runs.
-    const settingsResult = await persistThreadSettingsForNextTurn({
-      threadId,
-      createdAt,
-      ...(localCheckoutBranchMismatch ? { branch: localCheckoutBranchMismatch.currentBranch } : {}),
-      runtimeMode,
-      interactionMode: context.interactionMode,
-    });
-    const result =
-      settingsResult._tag === "Failure"
-        ? settingsResult
-        : await startThreadTurn({
-            environmentId,
-            input: {
-              threadId,
-              message: { messageId, role: "user", text, attachments: [] },
-              modelSelection: context.selectedModelSelection,
-              runtimeMode,
-              interactionMode: context.interactionMode,
-              createdAt,
-            },
-          });
-    if (result._tag === "Failure") {
-      setOptimisticUserMessages((messages) =>
-        messages.filter((message) => message.id !== messageId),
-      );
-      resetLocalDispatch();
-      if (!isAtomCommandInterrupted(result)) {
-        const error = squashAtomCommandFailure(result);
-        setThreadError(threadId, error instanceof Error ? error.message : failureMessage);
-      }
-    } else {
-      clearUsageLimitsFor(routeThreadKey);
-    }
-    sendInFlightRef.current = false;
-  };
-  const sendStandaloneCommandStable = useStableCallback(sendStandaloneCommand);
-  const activeGoal = activeThreadShell?.goal ?? null;
-  const goalBannerItem = (() => {
-    if (!activeThread || activeGoal === null) return null;
-    const presentation = presentProviderGoal(activeGoal, isWorking);
-    return {
-      id: `goal:${activeThread.id}`,
-      variant: "default",
-      priority: "activity",
-      icon: <TargetIcon />,
-      title:
-        presentation.usage === null
-          ? presentation.title
-          : `${presentation.title} · ${presentation.usage}`,
-      description: presentation.objective,
-      actions: isWorking ? undefined : (
-        <>
-          {presentation.canResume ? (
-            <Button
-              size="xs"
-              variant="ghost"
-              onClick={() =>
-                void sendStandaloneCommandStable("/goal resume", "Failed to resume goal.")
-              }
-            >
-              Resume
-            </Button>
-          ) : null}
-          <Button
-            size="xs"
-            variant="ghost"
-            onClick={() => void sendStandaloneCommandStable("/goal clear", "Failed to clear goal.")}
-          >
-            Clear
-          </Button>
-        </>
-      ),
-    };
-  })() as ComposerBannerStackItem | null;
-
-  const backgroundWorkBannerItem = (() => {
-    const presentation = presentPendingBackgroundWork(activeBackgroundTasks);
-    if (presentation === null || !activeThread) {
-      return null;
-    }
-    return {
-      id: `background-work:${activeThread.id}`,
-      variant: "default",
-      priority: "activity",
-      icon: (
-        <span
-          className={cn(
-            "size-1.5 rounded-full bg-foreground",
-            presentation.waiting && "animate-status-pulse",
-          )}
-          aria-hidden="true"
-        />
-      ),
-      title: presentation.title,
-      description:
-        presentation.items.length === 1 && presentation.items[0]?.childThreadId === undefined
-          ? undefined
-          : presentation.items.map((item, index) => {
-              const childThreadId = item.childThreadId;
-              const separator = index < presentation.items.length - 1 ? "," : null;
-              return (
-                <Fragment key={item.taskId}>
-                  {index > 0 ? " " : null}
-                  {childThreadId === undefined ? (
-                    <>
-                      {item.label}
-                      {separator}
-                    </>
-                  ) : (
-                    <span className="whitespace-nowrap">
-                      <InlineButton
-                        tone="muted"
-                        aria-label={`Open subagent ${item.label}`}
-                        onClick={() => onOpenRelatedThreadStable(childThreadId)}
-                      >
-                        {item.label}
-                      </InlineButton>
-                      {separator}
-                    </span>
-                  )}
-                </Fragment>
-              );
-            }),
-      actions: (
-        <Button
-          size="xs"
-          variant="ghost"
-          disabled={!canOperateThread || isStoppingBackgroundWork}
-          onClick={() => void handleStopBackgroundWorkStable()}
-        >
-          {isStoppingBackgroundWork ? "Stopping..." : "Stop"}
-        </Button>
-      ),
-    };
-  })() as ComposerBannerStackItem | null;
-  // The relative times read the clock; nowMinute re-renders them on the minute.
-  const snoozedUntil = activeThreadShell?.snoozedUntil ?? null;
-  const settledAt = activeThreadShell?.settledAt ?? null;
-  const threadStatusLine = activeThreadSnoozed ? (
-    <ThreadStatusLine
-      icon={<AlarmClockIcon />}
-      label={snoozedUntil ? `Snoozed, ${formatRelativeTimeUntilLabel(snoozedUntil)}` : "Snoozed"}
-      clockMinute={nowMinute}
-      actionLabel={isUnsnoozing ? "Waking..." : "Wake now"}
-      actionDisabled={!canOperateThread || isUnsnoozing}
-      onAction={() => void handleUnsnoozeActiveThreadStable()}
-    />
-  ) : activeThreadSettled ? (
-    <ThreadStatusLine
-      icon={<CheckCircle2Icon />}
-      label={settledAt ? `Settled ${formatRelativeTimeLabel(settledAt)}` : "Settled"}
-      clockMinute={nowMinute}
-      actionLabel={isUnsettling ? "Un-settling..." : "Un-settle"}
-      actionDisabled={!canOperateThread || isUnsettling}
-      onAction={() => void handleUnsettleActiveThreadStable()}
-    />
-  ) : activeThreadWokeVisible ? (
-    <ThreadStatusLine
-      icon={<AlarmClockIcon />}
-      label="Woke from snooze"
-      actionLabel="Dismiss"
-      onAction={acknowledgeActiveThreadWokeStable}
-    />
-  ) : null;
   const activeThreadHasCompactableConversation = serverVisibleTurnItems.some(
     ({ item }) =>
       item.type === "user_message" &&
@@ -3556,7 +3191,7 @@ export default function ChatView(props: ChatViewProps) {
       !rightPanelMaximized ? (
         <ThreadFindHeaderButton
           open={isThreadFindActive}
-          onOpen={openThreadFind}
+          onOpen={() => openThreadFind(routeThreadKey)}
           onClose={closeThreadFind}
           shortcutLabel={shortcutLabelForCommand(keybindings, "chat.find")}
         />

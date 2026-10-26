@@ -69,15 +69,8 @@ export function shouldTypeToFocusComposer(event: KeyboardEvent): boolean {
   if (event.metaKey || event.ctrlKey || event.altKey) return false;
   if (event.key.length !== 1) return false;
   if (!shouldRedirectInputToComposer(event)) return false;
-<<<<<<< ours
-  // Fork: typed keys stay with a focused control, which may act on them (Space
-  // and Enter activate a button). A paste is different: nothing outside an
-  // editable can receive one, so a paste after clicking a copy button still
-  // reaches the composer.
-  if (eventPathContainsSelector(event, TYPE_TO_FOCUS_INTERACTIVE_SELECTOR)) return false;
-=======
   if (isSurfaceLauncherKey(event.key)) return false;
->>>>>>> theirs
+  if (eventPathContainsSelector(event, TYPE_TO_FOCUS_INTERACTIVE_SELECTOR)) return false;
 
   return true;
 }

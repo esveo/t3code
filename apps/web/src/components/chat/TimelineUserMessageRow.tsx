@@ -74,6 +74,11 @@ import {
 } from "./TimelineRowParts";
 import { UserMessageContextReferenceChip } from "./UserMessageContextChips";
 import { resolvePreviewAnnotationImage } from "./TimelineUserMessageRow.logic";
+import {
+  IdleAutoCompactTimelineRow,
+  isIdleAutoCompactMessage,
+} from "../idleAutoCompact/IdleAutoCompactTimelineRow";
+import { TaggedThreadMessage } from "../threadOrchestration/TaggedThreadMessage";
 
 function UserVideoAttachment({ file }: { readonly file: ChatFileAttachment }) {
   const ctx = use(TimelineRowCtx);
@@ -121,7 +126,9 @@ function UserVideoAttachment({ file }: { readonly file: ChatFileAttachment }) {
 
 export function UserMessageRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
-  return ctx.workflowOpening?.messageId === row.message.id ? (
+  return isIdleAutoCompactMessage(row.message) ? (
+    <IdleAutoCompactTimelineRow />
+  ) : ctx.workflowOpening?.messageId === row.message.id ? (
     <WorkflowOpeningBlock
       opening={ctx.workflowOpening}
       environmentId={ctx.activeThreadEnvironmentId}
@@ -130,7 +137,13 @@ export function UserMessageRow({ row }: { row: Extract<TimelineRow, { kind: "mes
   ) : resolveUserMessagePresentation(row.message).attribution === "automation" ? (
     <AutomationMessageRow row={row} />
   ) : (
-    <UserTimelineRow row={row} />
+    <TaggedThreadMessage
+      row={row}
+      environmentId={ctx.activeThreadEnvironmentId}
+      threadRef={ctx.threadRef}
+      markdownCwd={ctx.markdownCwd}
+      renderUserRow={(tagged) => <UserTimelineRow row={tagged} />}
+    />
   );
 }
 

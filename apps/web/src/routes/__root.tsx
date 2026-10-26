@@ -1,3 +1,4 @@
+import { PermissionUpdateNotice } from "../components/PermissionUpdateNotice";
 import { LegacyPairingNotice } from "../components/esveoPairing/LegacyPairingNotice";
 import { type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
 import { scopedProjectKey, scopeProjectRef } from "@t3tools/client-runtime/environment";
@@ -229,10 +230,8 @@ function RootRouteView() {
     return (
       <ToastProvider>
         <AnchoredToastProvider>
-          <ContrastAppearanceSync />
+          <BrowserChromeThemeSync key={pathname} />
           <EnvironmentThemeSync />
-          <GlassAppearanceSync />
-          <FontAppearanceSync />
           <ConfirmDialogHost />
           <CustomSnoozeDialogHost />
           <Outlet />
@@ -274,12 +273,9 @@ function RootRouteView() {
           <CustomSnoozeDialogHost />
           <GuestShareDialogHost />
           <SlowRpcRequestToastCoordinator />
-<<<<<<< ours
-          <LegacyPairingNotice />
-=======
           <HostFreezeToastCoordinator />
           <PermissionUpdateNotice />
->>>>>>> theirs
+          <LegacyPairingNotice />
           {primaryEnvironmentAuthenticated ? <LegacyThreadMigrationToast /> : null}
           <ProjectCloneToastCoordinator />
           <AddProjectToMachineDialogHost />
@@ -288,12 +284,8 @@ function RootRouteView() {
           {primaryEnvironmentAuthenticated ? (
             <EventRouter skipInitialBootstrapNavigation={returningFromWelcome} />
           ) : null}
-<<<<<<< ours
-          {primaryEnvironmentAuthenticated ? <ProviderUpdateLaunchNotification /> : null}
           <ForkChangelogDialog />
           <ForkNotesCaptureDialog />
-=======
->>>>>>> theirs
           {isElectron ? <DesktopUpdateLaunchNotice /> : null}
           {appShell}
           {/* Keep the theme editor above the router so drafts survive navigation. */}

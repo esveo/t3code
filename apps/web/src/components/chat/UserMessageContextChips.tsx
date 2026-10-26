@@ -56,12 +56,14 @@ import {
   type ReviewCommentContext,
 } from "../../reviewCommentContext";
 import { TimelineRowCtx } from "./timelineRowContext";
+import { useFileContextMenuHandler } from "../../fileContextMenu";
 
 function UserMessageMentionChip(props: {
   record: Extract<KnownComposerContextRecord, { kind: "mention" }>;
   copyMarkdown: string;
 }) {
   const ctx = use(TimelineRowCtx);
+  const onFileContextMenu = useFileContextMenuHandler(ctx.activeThreadEnvironmentId);
   const accent = documentIconColorForFileName(props.record.path);
   return (
     <Tooltip>
@@ -76,6 +78,17 @@ function UserMessageMentionChip(props: {
             onClick={() => {
               if (ctx.threadRef)
                 useRightPanelStore.getState().openFile(ctx.threadRef, props.record.path);
+            }}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              onFileContextMenu(
+                {
+                  environmentId: ctx.activeThreadEnvironmentId,
+                  filePath: props.record.path,
+                  workspaceRoot: ctx.workspaceRoot,
+                },
+                event,
+              );
             }}
           >
             <WorkspaceEntryIcon

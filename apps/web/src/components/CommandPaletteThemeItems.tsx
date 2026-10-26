@@ -1,4 +1,4 @@
-import { BUILT_IN_THEMES } from "@t3tools/shared/themePalettes";
+import { BUILT_IN_THEMES, ESVEO_THEMES } from "@t3tools/shared/themePalettes";
 import { MonitorIcon, MoonIcon, PaletteIcon, SunIcon } from "lucide-react";
 
 import { useCustomThemes } from "../hooks/useCustomThemes";
@@ -40,8 +40,9 @@ export function notifyThemeSaveFailure(): void {
 function useThemeCards() {
   const customThemes = useCustomThemes();
   const environmentThemes = useEnvironmentThemeDefinitions();
-  const seen = new Set<string>();
+  const seen = new Set<string>(ESVEO_THEMES.map((definition) => definition.id));
   return [
+    ...ESVEO_THEMES.map(getThemeCardDefinition),
     ...STANDARD_THEME_CARDS.map((card) => ({ ...card, id: null })),
     ...[...BUILT_IN_THEMES, ...customThemes, ...environmentThemes]
       .filter((definition) => {

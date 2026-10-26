@@ -225,9 +225,6 @@ export function ThreadRelationshipsPanel(props: {
   const relationshipShells = useThreadRelationshipShells(ref);
   const allProjects = useProjects();
   const archived = useArchivedThreadSnapshots([props.environmentId]);
-<<<<<<< ours
-  const openThreadInPane = useOpenThreadInPane();
-=======
   const archivedShells = archived.snapshots.find(
     (entry) => entry.environmentId === props.environmentId,
   )?.snapshot.threads;
@@ -248,8 +245,7 @@ export function ThreadRelationshipsPanel(props: {
       ? scopeThreadRef(props.environmentId, parentShell.id)
       : null;
   const parentProjection = useThreadProjection(parentRef)?.projection;
-  const navigate = useNavigate();
->>>>>>> theirs
+  const openThreadInPane = useOpenThreadInPane();
   const mergeBack = useAtomCommand(threadEnvironment.mergeBack);
   const stopSession = useAtomCommand(threadEnvironment.stopSession);
   const interruptTurn = useAtomCommand(threadEnvironment.interruptTurn);

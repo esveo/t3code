@@ -449,6 +449,7 @@ export function PullRequestDetailPanel({
     setMergeMethodSelection({ pullRequestKey, method });
   };
   const [handoff, setHandoff] = useState<string | null>(null);
+  const turnRefresh = usePullRequestTurnRefresh(environmentId);
   const {
     canWriteSourceControl,
     detailQuery,

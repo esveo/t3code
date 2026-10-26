@@ -33,7 +33,8 @@ import type { ChatShortcutCommands } from "./useChatShortcuts";
 import { resolveThreadLastVisitedAt } from "../Sidebar.logic";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { type SetStateAction, useEffect, useRef, useState } from "react";
-import { useNavigate, useRouter } from "@tanstack/react-router";
+import { useRouter } from "@tanstack/react-router";
+import { useOpenThreadInPane } from "../split/useOpenThreadInPane";
 import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
@@ -152,7 +153,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     scrollToEnd,
     persistThreadSettingsForNextTurn,
   } = input;
-  const navigate = useNavigate();
+  const openThreadInPane = useOpenThreadInPane();
   const router = useRouter();
   const { settleThread, pinThread, confirmAndUnpinThread } = useThreadActions();
   const canWriteSourceControl = useEnvironmentScope(environmentId, AuthSourceControlWriteScope);
@@ -443,10 +444,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
       toastManager.add({ type: "info", title: "This thread is no longer available" });
       return;
     }
-    void navigate({
-      to: "/$environmentId/$threadId",
-      params: buildThreadRouteParams(threadRef),
-    });
+    openThreadInPane(threadRef);
   };
   const onOpenRelatedThreadStable = useStableCallback(onOpenRelatedThread);
   const childThreadInputs = useChildThreadInputs(activeThreadRef);

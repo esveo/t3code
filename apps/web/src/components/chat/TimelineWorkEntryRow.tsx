@@ -65,6 +65,7 @@ import {
   workEntryIconName,
   remarkThoughtPreview,
 } from "./TimelineWorkEntryRow.logic";
+import { DelegatedCompletionCards } from "../threadOrchestration/DelegatedCompletionCards";
 
 export function useThreadReadTarget(entry: TimelineWorkEntry, environmentId: EnvironmentId) {
   const rawThreadId = threadReadTargetId(entry);
@@ -178,8 +179,11 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
     workEntry.projectedItem?.item.type === "thread_created"
       ? workEntry.projectedItem.item
       : undefined;
+  const isDelegatedWake =
+    workEntry.projectedItem?.item.type === "notification" &&
+    workEntry.projectedItem.item.source.kind === "delegated_task";
   const notifiedSubagentThreadId =
-    workEntry.projectedItem?.item.type === "notification"
+    workEntry.projectedItem?.item.type === "notification" && !isDelegatedWake
       ? notificationChildThreadId(workEntry.projectedItem.item.source)
       : undefined;
   const groupView = use(WorkGroupViewCtx);
@@ -329,8 +333,9 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
     plainOutput !== undefined &&
     workEntry.projectedItem !== undefined &&
     turnItemNeedsDetailFetch(workEntry.projectedItem.item);
-  const canExpandProjectedItem =
-    plainOutput !== undefined
+  const canExpandProjectedItem = isDelegatedWake
+    ? false
+    : plainOutput !== undefined
       ? Boolean(plainOutput || viewedImage || workEntry.questionAnswer || plainOutputFetches)
       : workEntry.projectedItem === undefined
         ? canExpand
@@ -499,6 +504,15 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
         </>
       }
     >
+      {workEntry.projectedItem?.item.type === "notification" &&
+      workEntry.projectedItem.item.source.kind === "delegated_task" ? (
+        <DelegatedCompletionCards
+          environmentId={ctx.activeThreadEnvironmentId}
+          threadRef={threadRef}
+          taskIds={workEntry.projectedItem.item.source.taskIds}
+          markdownCwd={ctx.markdownCwd}
+        />
+      ) : null}
       {expanded && viewedImage && threadRef ? (
         <WorkLogDetails kind="media">
           <ChatMarkdownAssetImage

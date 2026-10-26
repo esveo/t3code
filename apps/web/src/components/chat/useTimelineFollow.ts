@@ -658,6 +658,9 @@ export function useTimelineFollow(input: TimelineFollowInput) {
     setShowScrollToBottom(false);
     setTimelineAnchor({ threadKey, messageId });
   };
+  const isTimelineLiveFollowLatched = useStableCallback(
+    () => liveFollowUserScrollGenerationRef.current === anchorUserScrollGenerationRef.current,
+  );
 
   return {
     showScrollToBottom,
@@ -673,6 +676,7 @@ export function useTimelineFollow(input: TimelineFollowInput) {
     onTimelineAnchorSizeChangedStable,
     onToolOutputCollapsedAtEndStable,
     onIsAtEndChangeStable,
+    isTimelineLiveFollowLatched,
     anchorNewTurn,
   };
 }

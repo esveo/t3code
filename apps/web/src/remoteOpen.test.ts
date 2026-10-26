@@ -1,4 +1,5 @@
 import {
+  BearerConnectionTarget,
   PrimaryConnectionTarget,
   RelayConnectionTarget,
   SshConnectionTarget,
@@ -61,7 +62,6 @@ describe("resolveRemoteOpenState", () => {
     ).toEqual({ mode: "local-exec" });
   });
 
-<<<<<<< ours
   it("keeps exec behavior for a saved connection to a loopback server", () => {
     expect(
       resolveRemoteOpenState({
@@ -70,7 +70,7 @@ describe("resolveRemoteOpenState", () => {
           label: "Service",
           connectionId: "saved-1",
         }),
-        sshAlias: null,
+        sshTarget: null,
         isDesktopRenderer: true,
         remoteOpenTargets: TAILSCALE_TARGETS,
         bearerHttpBaseUrl: "http://127.0.0.1:3773",
@@ -86,7 +86,7 @@ describe("resolveRemoteOpenState", () => {
           label: "sol",
           connectionId: "saved-1",
         }),
-        sshAlias: null,
+        sshTarget: null,
         isDesktopRenderer: true,
         remoteOpenTargets: TAILSCALE_TARGETS,
         bearerHttpBaseUrl: "https://sol.tail1234.ts.net",
@@ -97,8 +97,6 @@ describe("resolveRemoteOpenState", () => {
     });
   });
 
-  it("keeps exec behavior for desktop-local secondary backends", () => {
-=======
   it("leaves a bare desktop SSH alias for the editor to resolve through SSH config", () => {
     const state = resolveRemoteOpenState({
       target: new SshConnectionTarget({ environmentId, label: "sol", connectionId: "ssh-1" }),
@@ -110,7 +108,6 @@ describe("resolveRemoteOpenState", () => {
     });
     expect(state).toEqual({ mode: "remote-links", host: { kind: "ssh-alias", host: "sol" } });
     if (state.mode !== "remote-links") throw new Error("Expected a remote link");
->>>>>>> theirs
     expect(
       buildRemoteOpenUrl({ editor: "vscode", ...state.host, absolutePath: "/work/project" }),
     ).toBe("vscode://vscode-remote/ssh-remote+sol/work/project");

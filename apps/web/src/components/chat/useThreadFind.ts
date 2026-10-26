@@ -8,15 +8,6 @@ import { useEnvironmentQuery } from "~/state/query";
 import { useDebouncedValue } from "~/state/queries";
 import { type ThreadFindMatch, type ThreadFindStart, stepThreadFindIndex } from "./threadFind";
 import {
-<<<<<<< ours
-  type ThreadFindPositionReader,
-  type ThreadFindStart,
-  stepThreadFindIndex,
-} from "./threadFind";
-// Fork: the open bus reaches only the active split pane.
-import { useActivePaneThreadFindOpen } from "../chatFind/useActivePaneThreadFindOpen";
-import { toastManager } from "../ui/toast";
-=======
   CLOSED_THREAD_FIND,
   closeThreadFind,
   setThreadFindQuery,
@@ -25,7 +16,6 @@ import { toastManager } from "../ui/toast";
   type ThreadFindLocalSelection,
   type ThreadFindState,
 } from "./threadFindStore";
->>>>>>> theirs
 
 const EMPTY_SKILLS: readonly InlineSkill[] = [];
 
@@ -47,46 +37,6 @@ export function useThreadFind({
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshAfterSearchRef = useRef(false);
   const threadKey = thread ? scopedThreadKey(thread) : null;
-<<<<<<< ours
-  const [state, setState] = useState(CLOSED_FIND);
-  if (state.threadKey !== null && (!enabled || state.threadKey !== threadKey))
-    setState(CLOSED_FIND);
-  const isOpen = enabled && threadKey !== null && state.threadKey === threadKey;
-  const open = useStableCallback(() => {
-    if (threadKey === null) return;
-    if (!enabled) {
-      toastManager.add({
-        id: "thread-find-unavailable",
-        title: "Thread search is unavailable on this server.",
-        description: "Update the server to enable it.",
-      });
-      return;
-    }
-    const start =
-      state.threadKey === threadKey && state.query.trim()
-        ? positionReader.current?.(state.query.trim())
-        : undefined;
-    setState((previous) => {
-      const current = previous.threadKey === threadKey ? previous : CLOSED_FIND;
-      return {
-        ...current,
-        threadKey,
-        focusRequestId: previous.focusRequestId + 1,
-        ...(current.query.trim()
-          ? {
-              start,
-              offset: 0,
-              localSelection: null,
-              navigationId: current.navigationId + 1,
-              requestId: current.navigationId + 1,
-            }
-          : {}),
-      };
-    });
-  });
-  const close = useStableCallback(() => setState(CLOSED_FIND));
-  useActivePaneThreadFindOpen(open);
-=======
   const isOpen = useThreadFindOpen(thread, enabled);
   const stored = useThreadFindStore();
   const state = isOpen ? stored : CLOSED_THREAD_FIND;
@@ -94,7 +44,6 @@ export function useThreadFind({
     useThreadFindStore.setState((previous) =>
       previous.threadKey === threadKey ? update(previous) : previous,
     );
->>>>>>> theirs
 
   const remote = useServerResults(
     isOpen ? thread : null,

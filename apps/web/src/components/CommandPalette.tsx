@@ -45,9 +45,7 @@ import {
   type DesktopWslState,
   type EnvironmentId,
   type FilesystemBrowseResult,
-  type ProjectId,
   type ScopedThreadRef,
-  type SourceControlDiscoveryResult,
   SourceControlProviderKind,
   PRIMARY_LOCAL_ENVIRONMENT_ID,
   resolveEnvironmentMachineKind,
@@ -105,15 +103,6 @@ import {
 import { useClientSettings } from "../hooks/useSettings";
 import { useStableCallback } from "../hooks/useStableCallback";
 import { useTheme } from "../hooks/useTheme";
-import { useCustomThemes } from "../hooks/useCustomThemes";
-import { useEnvironmentThemeDefinitions } from "../hooks/useEnvironmentTheme";
-import { BUILT_IN_THEMES, ESVEO_THEMES } from "@t3tools/shared/themePalettes";
-import { getThemeDefinition } from "../themePalette";
-import {
-  STANDARD_THEME_CARDS,
-  getThemeCardDefinition,
-  ThemePreviewCircle,
-} from "./settings/ThemePreviewCircles";
 import { readLocalApi } from "../localApi";
 import { desktopLocalBackendId } from "../connection/desktopLocal";
 import { filesystemEnvironment, useFilesystemReadAccess } from "../state/filesystem";
@@ -169,6 +158,7 @@ import {
 } from "../lib/utils";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { buildThreadRouteParams } from "../threadRoutes";
+import { revealThreadInSplit } from "./split/splitPanes";
 import { useAvailableSettingsSearchItems } from "./settings/useAvailableSettingsSearchItems";
 import {
   applyWslEnvironmentConfiguration,
@@ -252,7 +242,6 @@ import { settingsForThisPlatform, SETTINGS_SECTION_LABELS } from "./settings/set
 import { primaryServerKeybindingsAtom } from "../state/server";
 import { resolveShortcutCommand, threadJumpIndexFromCommand } from "../keybindings";
 import { CommandDialog, CommandDialogPopup, CommandFooterAction } from "./ui/command";
-import { revealThreadInSplit } from "./split/splitPanes";
 import { Button } from "./ui/button";
 import { stackedThreadToast, toastManager } from "./ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
@@ -265,235 +254,6 @@ import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import { threadRecentUse } from "@t3tools/shared/paletteSearch";
 
 const EMPTY_BROWSE_ENTRIES: FilesystemBrowseResult["entries"] = [];
-
-function getEnvironmentBrowsePlatform(os: string | null | undefined): string {
-  if (os === "windows") {
-    return "Win32";
-  }
-  if (os === "darwin") {
-    return "MacIntel";
-  }
-  if (os === "linux") {
-    return "Linux";
-  }
-  return typeof navigator === "undefined" ? "" : navigator.platform;
-}
-
-interface AddProjectEnvironmentOption {
-  readonly environmentId: EnvironmentId;
-  readonly label: string;
-  readonly machine: EnvironmentMachineKind;
-  readonly isPrimary: boolean;
-  readonly isConnected: boolean;
-  readonly status: string;
-}
-
-type AddProjectCloneFlow =
-  | {
-      readonly step: "repository";
-      readonly environmentId: EnvironmentId;
-      readonly source: AddProjectRemoteSource;
-    }
-  | {
-      readonly step: "confirm";
-      readonly environmentId: EnvironmentId;
-      readonly source: AddProjectRemoteSource;
-      readonly repositoryInput: string;
-      readonly repository: SourceControlRepositoryInfo | null;
-      readonly remoteUrl: string;
-    };
-
-function remoteProjectSourceIcon(source: AddProjectRemoteSource, className: string): ReactNode {
-  if (source === "url") return <LinkIcon className={className} />;
-  const Icon = sourceControlIcon(sourceControlClients.get(source));
-  return <Icon className={className} />;
-}
-
-function sourceControlHostIcon(
-  definition: NewProjectPublishTarget["definition"],
-  className: string,
-): ReactNode {
-  const Icon = sourceControlIcon(definition);
-  return <Icon className={className} />;
-}
-
-function projectFaviconIcon(project: Project): ReactNode {
-  return <ProjectFavicon project={project} className={ITEM_ICON_CLASS} />;
-}
-
-function remoteProjectInputPlaceholder(flow: AddProjectCloneFlow | null): string | null {
-  if (!flow) return null;
-  if (flow.step === "confirm") return null;
-  if (flow.source === "url") {
-    return "Enter Git clone URL";
-  }
-  return `Enter ${addProjectRemoteSourceLabel(flow.source)} repository (${addProjectRemoteSourcePathHint(flow.source)})`;
-}
-
-function buildPaletteRemoteSourceReadiness(
-  discovery: SourceControlDiscoveryResult | null,
-): AddProjectRemoteSourceReadiness {
-  const readiness = buildAddProjectRemoteSourceReadiness(discovery);
-  return (source) => {
-    const entry = readiness(source);
-    return entry.hint === null
-      ? entry
-      : {
-          ...entry,
-          hint: entry.hint.replace(
-            "Open Source Control settings",
-            "Open Settings -> Source Control",
-          ),
-        };
-  };
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
-  }
-  return "An error occurred.";
-}
-
-const OVERLAY_MODE_BY_COMMAND = {
-  "commandPalette.toggle": "command",
-  "filePicker.toggle": "files",
-  "projectSearch.toggle": "content",
-} as const satisfies Partial<Record<string, SearchOverlayMode>>;
-
-function overlayModeForCommand(command: string | null): SearchOverlayMode | null {
-  if (command === null) return null;
-  return command in OVERLAY_MODE_BY_COMMAND
-    ? OVERLAY_MODE_BY_COMMAND[command as keyof typeof OVERLAY_MODE_BY_COMMAND]
-    : null;
-}
-
-const APPEARANCE_OPTIONS = [
-  { mode: "system", label: "System", icon: MonitorIcon },
-  { mode: "light", label: "Light", icon: SunIcon },
-  { mode: "dark", label: "Dark", icon: MoonIcon },
-] as const;
-
-function notifyThemeSaveFailure(): void {
-  toastManager.add(
-    stackedThreadToast({
-      type: "error",
-      title: "Couldn't save theme selection",
-      description: "Try again.",
-    }),
-  );
-}
-
-// Each helper reads its own source hook so the compiler caches the derived value on that
-// source. Taking the source as an argument instead leaves the helper hook-free, and the
-// compiler then treats it as a plain function and caches nothing.
-function useThemeCards() {
-  const customThemes = useCustomThemes();
-  const environmentThemes = useEnvironmentThemeDefinitions();
-  // Fork: the esveo themes lead the list, ahead of T3 Code's.
-  const seen = new Set<string>(ESVEO_THEMES.map((definition) => definition.id));
-  return [
-    ...ESVEO_THEMES.map(getThemeCardDefinition),
-    ...STANDARD_THEME_CARDS.map((card) => ({ ...card, id: null })),
-    ...[...BUILT_IN_THEMES, ...customThemes, ...environmentThemes]
-      .filter((definition) => {
-        if (seen.has(definition.id)) return false;
-        seen.add(definition.id);
-        return true;
-      })
-      .map(getThemeCardDefinition),
-  ];
-}
-
-function useThreadSearchWithContentMatches(
-  environmentIds: ReadonlyArray<EnvironmentId>,
-  query: string,
-) {
-  const threadSearch = useThreadSearch(environmentIds, query);
-  const contentMatchByKey = new Map(
-    threadSearch.matches.flatMap((match) =>
-      match.source === "user" || match.source === "assistant"
-        ? [[threadSearchMatchKey(match), match] as const]
-        : [],
-    ),
-  );
-  return { threadSearch, contentMatchByKey };
-}
-
-function useEnvironmentLookups() {
-  const { environments } = useEnvironments();
-  const environmentLabelById = new Map(
-    environments.map((environment) => [environment.environmentId, environment.label] as const),
-  );
-  const projectEnvironmentLocationById = new Map(
-    environments.map((environment) => {
-      const isPrimary = environment.entry.target._tag === "PrimaryConnectionTarget";
-      const isLocal = isPrimary || isDesktopLocalConnectionTarget(environment.entry.target);
-      return [
-        environment.environmentId,
-        {
-          kind: isLocal ? "local" : "remote",
-          label: isPrimary ? "Local" : isLocal ? `${environment.label} (Local)` : environment.label,
-          machine: resolveEnvironmentMachineKind(environment.serverConfig),
-        },
-      ] as const;
-    }),
-  );
-  return { environmentLabelById, projectEnvironmentLocationById };
-}
-
-function useProjectLookups() {
-  const projects = useProjects();
-  const projectCwdById = new Map<ProjectId, string>(
-    projects.map((project) => [project.id, project.workspaceRoot]),
-  );
-  const projectByKey = new Map(
-    projects.map((project) => [`${project.environmentId}:${project.id}`, project]),
-  );
-  const projectTitleById = new Map<ProjectId, string>(
-    projects.map((project) => [project.id, project.title]),
-  );
-  return { projectCwdById, projectByKey, projectTitleById };
-}
-
-const selectCommandPaletteClientSettings = (settings: ClientSettings) => ({
-  sidebarProjectGroupingMode: settings.sidebarProjectGroupingMode,
-  sidebarProjectGroupingOverrides: settings.sidebarProjectGroupingOverrides,
-  sidebarProjectSortOrder: settings.sidebarProjectSortOrder,
-  sidebarThreadSortOrder: settings.sidebarThreadSortOrder,
-});
-
-function useSortedProjectGroups(environmentLabelById: ReadonlyMap<EnvironmentId, string>) {
-  const projects = useProjects();
-  const threads = useThreadShells();
-  const projectOrder = useUiStateStore((store) => store.projectOrder);
-  const clientSettings = useClientSettings(selectCommandPaletteClientSettings);
-  const primaryEnvironmentId = usePrimaryEnvironmentId();
-  const projectGroupingSettings = {
-    sidebarProjectGroupingMode: clientSettings.sidebarProjectGroupingMode,
-    sidebarProjectGroupingOverrides: clientSettings.sidebarProjectGroupingOverrides,
-  };
-  const orderedProjects = orderItemsByPreferredIds({
-    items: projects,
-    preferredIds: projectOrder,
-    getId: getProjectOrderKey,
-    getPreferenceIds: (project) => [
-      getProjectOrderKey(project),
-      legacyProjectCwdPreferenceKey(project.workspaceRoot),
-    ],
-  });
-  const unsortedProjectGroups = buildSidebarProjectSnapshots({
-    projects: clientSettings.sidebarProjectSortOrder === "manual" ? orderedProjects : projects,
-    settings: projectGroupingSettings,
-    primaryEnvironmentId,
-    resolveEnvironmentLabel: (environmentId) => environmentLabelById.get(environmentId) ?? null,
-  });
-  return sortLogicalProjectsForSidebar(
-    unsortedProjectGroups,
-    threads,
-    clientSettings.sidebarProjectSortOrder,
-  );
-}
 
 export function CommandPalette({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
@@ -525,6 +285,10 @@ export function CommandPalette({ children }: { children: ReactNode }) {
       ? selectActiveRightPanel(state.byThreadKey, routeThreadRef) === "preview"
       : false,
   );
+
+  useEffect(() => {
+    if (!state.open) clearPendingProjectPick();
+  }, [state.open]);
 
   useEffect(() => {
     if (!state.open || state.mode === "command") return;
@@ -616,12 +380,6 @@ export function CommandPalette({ children }: { children: ReactNode }) {
     toggleMode,
     usagePageOpen,
   ]);
-
-  // Fork: a project pick someone asked for lasts one palette session. Actions
-  // close the palette without onOpenChange, so this follows the state itself.
-  useEffect(() => {
-    if (!state.open) clearPendingProjectPick();
-  }, [state.open]);
 
   useEffect(
     () =>
@@ -1524,7 +1282,6 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
-  // The graph reads the thread's worktree when it has one, the project root otherwise.
   const gitGraphCwd = activeThread?.worktreePath ?? currentProjectCwd;
   const gitGraphServerConfig =
     currentProjectEnvironmentId === null
@@ -1543,8 +1300,6 @@ function OpenCommandPaletteDialog(props: {
       icon: <GitCommitHorizontalIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "gitGraph.open",
       run: async () => {
-        // Beside the thread where there is one, so the graph joins that
-        // thread's tabs. The route is for the cases with no panel to open in.
         if (activeThread) {
           useRightPanelStore
             .getState()
@@ -1765,6 +1520,9 @@ function OpenCommandPaletteDialog(props: {
     },
   });
 
+  actionItems.push(forkChangelogCommandItem);
+  actionItems.push(...forkNotesCommandItems(activeThread));
+
   actionItems.push({
     kind: "action",
     value: "action:search-project-contents",
@@ -1924,9 +1682,6 @@ function OpenCommandPaletteDialog(props: {
       await navigate({ to: "/usage" });
     },
   });
-
-  actionItems.push(forkChangelogCommandItem);
-  actionItems.push(...forkNotesCommandItems(activeThread));
 
   actionItems.push({
     kind: "action",

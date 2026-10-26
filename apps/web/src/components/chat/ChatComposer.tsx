@@ -210,29 +210,8 @@ import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerPlanFollowUpBanner } from "./ComposerPlanFollowUpBanner";
 import { resolveComposerMenuActiveItemId } from "./composerMenuHighlight";
 import { buildPullRequestReferenceContext } from "../pullRequest/pullRequestDetail.logic";
-<<<<<<< ours
-import {
-  matchesPullRequestQuery,
-  rankPullRequestMatches,
-} from "../pullRequest/pullRequestList.logic";
-import {
-  searchSlashCommandItems,
-  slashCommandItemsForPromptPosition,
-} from "./composerSlashCommandSearch";
-import {
-  getComposerPromptInjectionState,
-  getComposerProviderState,
-  getComposerReasoningStep,
-  renderProviderTraitsMenuContent,
-  renderProviderTraitsPicker,
-} from "./composerProviderState";
-import { ContextWindowMeter, ContextWindowMeterPlaceholder } from "./ContextWindowMeter";
-import { ThreadUsageControl } from "~/components/threadUsage/ThreadUsageControl";
-import { PromptCacheControl } from "./PromptCacheControl";
-=======
 import { getComposerPromptInjectionState, getComposerReasoningStep } from "./composerProviderState";
 import { readPromptUltrathink } from "./TraitsPicker";
->>>>>>> theirs
 import {
   providerSupportsManualCompaction,
   resolveContextWindowModelDisplayName,
@@ -302,10 +281,6 @@ import { useStableCallback } from "../../hooks/useStableCallback";
 import { usePanelAnimationSettings } from "../../panelAnimations";
 import { readEnvironmentScope } from "../../state/session";
 import type { ReviewCommentContext } from "../../reviewCommentContext";
-<<<<<<< ours
-import { useIsActiveChatPane } from "../split/chatPane";
-import { ComposerVoiceInputControl } from "../voiceInput/ComposerVoiceInputControl";
-=======
 import { useComposerRestingTransition } from "./useComposerRestingTransition";
 import { ComposerCommandMenuLayer } from "./ComposerCommandMenuLayer";
 import { useRestingComposerControlsLayout } from "./useRestingComposerControlsLayout";
@@ -321,7 +296,7 @@ import {
 } from "./preparingComposerImages";
 import { ComposerControlsBar } from "./ComposerControlsBar";
 import { composerCommandKeyHandler } from "./composerCommandKey";
->>>>>>> theirs
+import { ComposerVoiceInputControl } from "../voiceInput/ComposerVoiceInputControl";
 
 function consumePasteAsTextShortcut(deadline: { current: number }): boolean {
   const armed = Date.now() <= deadline.current;
@@ -2560,266 +2535,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const iconOnlyBlockCount = composerControlsCollapsed
     ? restingControlsIconOnlyBlockCount
     : expandedControlsIconOnlyBlockCount;
-<<<<<<< ours
-  // Blocks leave the strip from the trailing end, so this adapts to provider-specific controls.
-  const contextWindowControl = settings.contextWindowControlEnabled ? activeContextWindow : null;
-  const promptCache = settings.promptCacheTimerEnabled
-    ? (activeContextWindow?.promptCache ?? null)
-    : null;
-  const restingBlockIds = [
-    ...(providerTraitsPicker ? ["traits"] : []),
-    "mode",
-    ...(contextWindowControl ? ["context"] : []),
-    ...(promptCache ? ["cache"] : []),
-  ];
-  const isRestingBlockHidden = (id: string) =>
-    composerControlsHidden ||
-    restingHiddenBlockCount > restingBlockIds.length - 1 - restingBlockIds.indexOf(id);
-  const restingProviderTraitsPicker = renderProviderTraitsPicker({
-    ...providerTraitsPickerInput,
-    size: composerControlsCollapsed ? "xs" : "sm",
-    hidden: isRestingBlockHidden("traits"),
-  });
-  const restingBlockDefs = [
-    ...(providerTraitsPicker
-      ? [
-          {
-            id: "traits",
-            content: (
-              <>
-                <ComposerControlSeparator size={composerControlsCollapsed ? "xs" : "sm"} />
-                {restingProviderTraitsPicker}
-              </>
-            ),
-          },
-        ]
-      : []),
-    {
-      id: "mode",
-      content: (
-        <ComposerFooterModeControls
-          showInteractionModeToggle={planModeUiEnabled}
-          interactionMode={interactionMode}
-          runtimeMode={compatibleRuntimeMode}
-          runtimeModeOptions={compatibleRuntimeModeOptions}
-          size={composerControlsCollapsed ? "xs" : "sm"}
-          hidden={isRestingBlockHidden("mode")}
-          onToggleInteractionMode={toggleInteractionMode}
-          onRuntimeModeChange={handleRuntimeModeChange}
-        />
-      ),
-    },
-    // Trailing, so the reading the user can recover from a hover is the first
-    // thing to leave a narrow footer.
-    ...(contextWindowControl
-      ? [
-          {
-            id: "context",
-            content: (
-              <>
-                <ComposerControlSeparator size={composerControlsCollapsed ? "xs" : "sm"} />
-                <ThreadUsageControl
-                  usage={contextWindowControl}
-                  environmentId={environmentId}
-                  threadId={activeThreadId}
-                  modelDisplayName={activeThreadModelDisplayName}
-                  size={composerControlsCollapsed ? "xs" : "sm"}
-                  hidden={isRestingBlockHidden("context")}
-                  compactDisabled={compactDisabled}
-                  compactDisabledReason={resolvedCompactDisabledReason}
-                  {...(compactCommandAvailable ? { onCompact: compactThreadContext } : {})}
-                />
-              </>
-            ),
-          },
-        ]
-      : []),
-    ...(promptCache
-      ? [
-          {
-            id: "cache",
-            content: (
-              <>
-                <ComposerControlSeparator size={composerControlsCollapsed ? "xs" : "sm"} />
-                <PromptCacheControl
-                  promptCache={promptCache}
-                  size={composerControlsCollapsed ? "xs" : "sm"}
-                />
-              </>
-            ),
-          },
-        ]
-      : []),
-  ];
-  const hiddenRestingBlockIds = restingBlockDefs
-    .slice(restingBlockDefs.length - restingHiddenBlockCount)
-    .map((def) => def.id);
-  const composerControls = props.hideThreadControls ? null : showProviderUnavailable ? (
-    <ComposerControl
-      type="button"
-      disabled={!providerSetupInstanceId}
-      onClick={() => {
-        if (providerSetupInstanceId) {
-          onOpenProviderSetup(providerSetupInstanceId);
-        }
-      }}
-      data-chat-provider-unavailable="true"
-      className="shrink-0"
-    >
-      <CircleAlertIcon className="size-4" />
-      {providerSetupInstanceId ? "Open provider settings" : "No provider available"}
-    </ComposerControl>
-  ) : (
-    <>
-      {composerControlsCollapsed &&
-      restingControlsHost !== null &&
-      restingControlsHaveLeadingContext ? (
-        <ComposerControlSeparator
-          size="xs"
-          className="@max-[400px]/composer-surface:hidden"
-          data-resting-controls-separator="true"
-        />
-      ) : null}
-      <ProviderModelPicker
-        environmentId={environmentId}
-        compact={false}
-        isComposerOwned
-        disabled={providerCatalogPending || isSendBusy}
-        {...(routeKind === "draft" && supportsMultipleModels
-          ? {
-              ...(multipleModelSelections !== null
-                ? { selectedModels: multipleModelSelections }
-                : {}),
-              onToggleModel: (instanceId: ProviderInstanceId, model: string) => {
-                const current = multipleModelSelections ?? [selectedModelSelection];
-                const matchesModel = (selection: ModelSelection) => {
-                  if (selection.instanceId !== instanceId) return false;
-                  const entry = providerInstanceEntries.find(
-                    (entry) => entry.instanceId === selection.instanceId,
-                  );
-                  const resolvedModel = resolveModelPickerSelectedModel({
-                    driverKind: entry?.driverKind,
-                    model: selection.model,
-                    options: modelOptionsByInstance.get(selection.instanceId) ?? [],
-                  });
-                  return (resolvedModel?.slug ?? selection.model) === model;
-                };
-                const exists = current.some(matchesModel);
-                const next = exists
-                  ? current.filter((selection) => !matchesModel(selection))
-                  : [...current, createModelSelection(instanceId, model)];
-                if (next.length > 1) {
-                  setMultipleModelSelections(next);
-                } else {
-                  setMultipleModelSelections(null);
-                  const remaining = next[0] ?? selectedModelSelection;
-                  onProviderModelSelect(remaining.instanceId, remaining.model, {
-                    focusComposer: false,
-                  });
-                }
-              },
-            }
-          : {})}
-        activeInstanceId={
-          providerCatalogPending
-            ? (activeThreadModelSelection?.instanceId ?? selectedInstanceId)
-            : selectedInstanceId
-        }
-        model={
-          providerCatalogPending
-            ? (activeThreadModelSelection?.model ?? selectedModelForPickerWithCustomFallback)
-            : selectedModelForPickerWithCustomFallback
-        }
-        lockedProvider={lockedProvider}
-        lockedContinuationGroupKey={lockedContinuationGroupKey}
-        instanceEntries={providerInstanceEntries}
-        keybindings={keybindings}
-        modelOptionsByInstance={modelOptionsByInstance}
-        size={composerControlsCollapsed ? "xs" : "sm"}
-        triggerClassName={
-          composerControlsCollapsed
-            ? cn(
-                "min-w-13 shrink text-xs!",
-                !showInlineRestingControls &&
-                  "@max-[640px]/composer-surface:[&_[data-chat-provider-model-picker-label]]:w-0 @max-[640px]/composer-surface:[&_[data-chat-provider-model-picker-label]]:flex-none",
-              )
-            : "-ms-2.5 min-w-13"
-        }
-        terminalOpen={terminalOpen}
-        open={isComposerModelPickerOpen}
-        instanceIndicatorBackground={
-          composerControlsCollapsed
-            ? "color-mix(in srgb, var(--chat-composer-glass-surface) var(--glass-opacity), transparent)"
-            : "var(--contrast-input)"
-        }
-        {...(composerProviderState.modelPickerIconClassName || composerControlsCollapsed
-          ? {
-              activeProviderIconClassName: cn(
-                composerProviderState.modelPickerIconClassName,
-                composerControlsCollapsed &&
-                  "fill-muted-foreground/70! text-muted-foreground/70! [&_path]:fill-muted-foreground/70! [&_rect]:fill-muted-foreground/70! [&_[data-icon-detail]]:fill-transparent! [&[data-provider-package-icon]]:opacity-70 [&[data-provider-package-icon]_path:not([data-icon-detail])]:fill-muted-foreground!",
-              ),
-            }
-          : {})}
-        onOpenChange={setIsComposerModelPickerOpen}
-        getModelDisabledReason={getModelDisabledReason}
-        onInstanceModelChange={(instanceId, model) => {
-          setMultipleModelSelections(null);
-          onProviderModelSelect(instanceId, model);
-        }}
-        onOpenProviderSetup={onOpenProviderSetup}
-      />
-
-      <>
-        {restingBlockDefs.map((def, index) => {
-          const hidden = index >= restingBlockDefs.length - restingHiddenBlockCount;
-          return (
-            <div
-              key={def.id}
-              data-resting-block={def.id}
-              data-composer-block-icon-only={
-                index >= restingBlockDefs.length - iconOnlyBlockCount ? "true" : "false"
-              }
-              aria-hidden={hidden || undefined}
-              inert={hidden || undefined}
-              className={cn(
-                "flex w-max min-w-max shrink-0 items-center gap-1",
-                hidden && "pointer-events-none invisible absolute",
-                index >= restingBlockDefs.length - iconOnlyBlockCount &&
-                  "[&_[data-composer-control-label]]:pointer-events-none [&_[data-composer-control-label]]:invisible [&_[data-composer-control-label]]:absolute [&_[data-composer-control-label]]:w-max [&_[data-composer-control-label]]:max-w-none [&_[data-composer-control-compact-icon]]:[visibility:inherit] [&_[data-composer-control-compact-icon]]:relative",
-              )}
-            >
-              {def.content}
-            </div>
-          );
-        })}
-        <div
-          data-resting-controls-overflow
-          aria-hidden={hiddenRestingBlockIds.length === 0 || undefined}
-          inert={hiddenRestingBlockIds.length === 0 || undefined}
-          className={cn(
-            "min-w-0 shrink-0",
-            hiddenRestingBlockIds.length === 0 && "pointer-events-none invisible absolute",
-          )}
-        >
-          <CompactComposerControlsMenu
-            interactionMode={interactionMode}
-            runtimeMode={compatibleRuntimeMode}
-            runtimeModeOptions={compatibleRuntimeModeOptions}
-            size={composerControlsCollapsed ? "xs" : "sm"}
-            hidden={composerControlsHidden || hiddenRestingBlockIds.length === 0}
-            showInteractionModeToggle={planModeUiEnabled && hiddenRestingBlockIds.includes("mode")}
-            traitsMenuContent={
-              hiddenRestingBlockIds.includes("traits") ? providerTraitsMenuContent : undefined
-            }
-            onToggleInteractionMode={toggleInteractionMode}
-            onRuntimeModeChange={handleRuntimeModeChange}
-          />
-        </div>
-      </>
-    </>
-=======
-  const composerControls = (
+  const composerControls = props.hideThreadControls ? null : (
     <ComposerControlsBar
       environmentId={environmentId}
       routeKind={routeKind}
@@ -2872,8 +2588,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       onModelPickerOpenChange={setIsComposerModelPickerOpen}
       modelPickerIconClassName={composerProviderState.modelPickerIconClassName}
       getModelDisabledReason={getModelDisabledReason}
+      contextWindowControl={settings.contextWindowControlEnabled ? activeContextWindow : null}
+      promptCache={
+        settings.promptCacheTimerEnabled ? (activeContextWindow?.promptCache ?? null) : null
+      }
+      activeThreadId={activeThreadId}
+      activeThreadModelDisplayName={activeThreadModelDisplayName}
+      compactDisabled={compactDisabled || noProviderAvailable || isSendBusy || isConnecting}
+      compactDisabledReason={resolvedCompactDisabledReason}
+      onCompact={compactCommandAvailable ? compactThreadContextStable : undefined}
     />
->>>>>>> theirs
   );
   const showTasksTab =
     !hasBannerItems &&
@@ -2917,61 +2641,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     setIsTasksDrawerOpen(false);
   }
   if (tasksDrawerThreadId !== activeThreadId) setTasksDrawerThreadId(activeThreadId);
-<<<<<<< ours
-
-  const [stashMenuClosesOn, setStashMenuClosesOn] = useState({ prompt, composerMenuOpen });
-  if (
-    stashMenuClosesOn.prompt !== prompt ||
-    stashMenuClosesOn.composerMenuOpen !== composerMenuOpen
-  ) {
-    setStashMenuClosesOn({ prompt, composerMenuOpen });
-    if (stashMenuClosesOn.prompt !== prompt || composerMenuOpen) setIsStashMenuOpen(false);
-  }
-
-  // Fork: split panes each render a composer; only the active one stashes.
-  const isActivePane = useIsActiveChatPane();
-  useEffect(() => {
-    const handler = (event: globalThis.KeyboardEvent) => {
-      const command = resolveShortcutCommand(event, keybindings, {
-        context: {
-          terminalFocus: getTerminalFocusOwner() !== null,
-          terminalOpen,
-          modelPickerOpen: isComposerModelPickerOpen,
-        },
-      });
-      if (command !== "composer.stash" || !isActivePane) return;
-      // Always claim the shortcut so the browser save dialog never opens,
-      // even when the composer is in a state that can't stash.
-      event.preventDefault();
-      event.stopPropagation();
-      if (isCommandPaletteOpen() || isRevertingCheckpoint) {
-        return;
-      }
-      if (pendingUserInputs.length > 0 && !isComposerApprovalState) {
-        setIsStashMenuOpen((open) => !open);
-        return;
-      }
-      if (isComposerApprovalState || projectSelectionRequired || activePendingProgress !== null) {
-        return;
-      }
-      void stashCurrentPromptStable();
-    };
-    window.addEventListener("keydown", handler, true);
-    return () => window.removeEventListener("keydown", handler, true);
-  }, [
-    isActivePane,
-    activePendingProgress,
-    isComposerApprovalState,
-    isComposerModelPickerOpen,
-    keybindings,
-    pendingUserInputs.length,
-    projectSelectionRequired,
-    stashCurrentPromptStable,
-    isRevertingCheckpoint,
-    terminalOpen,
-  ]);
-=======
->>>>>>> theirs
 
   const insertComposerText = (
     text: string,
@@ -4226,8 +3895,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   }
                   className="flex shrink-0 flex-nowrap items-center justify-end gap-2"
                 >
-<<<<<<< ours
-                  {/* Fork: dictation. */}
                   <ComposerVoiceInputControl
                     environmentId={environmentId}
                     draftKey={composerTargetKey(composerDraftTarget)}
@@ -4236,46 +3903,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                       insertComposerText(text, "cursor", { ensureLeadingBoundary: true })
                     }
                   />
-                  {showComposerAttachAction ? (
-                    <>
-                      <input
-                        ref={attachmentInputRef}
-                        type="file"
-                        multiple
-                        className="hidden"
-                        onChange={(event) => {
-                          const files = Array.from(event.currentTarget.files ?? []);
-                          event.currentTarget.value = "";
-                          // Inserting a chip refocuses the editor after the draft renders;
-                          // focusing synchronously here would report the editor's stale text
-                          // over the prompt that was just written.
-                          void addComposerAttachments(files).then((inserted) => {
-                            if (!inserted) focusComposer();
-                          });
-                        }}
-                      />
-                      <Tooltip>
-                        <TooltipTrigger
-                          render={
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon-sm"
-                              onPointerDown={(event) => event.preventDefault()}
-                              onClick={() => attachmentInputRef.current?.click()}
-                              aria-label="Attach files"
-                            />
-                          }
-                        >
-                          <PaperclipIcon />
-                        </TooltipTrigger>
-                        <TooltipPopup>Attach files</TooltipPopup>
-                      </Tooltip>
-                    </>
-                  ) : null}
-=======
                   {composerAttachButton}
->>>>>>> theirs
                   <ComposerFooterPrimaryActions
                     compact={isComposerResting || isComposerPrimaryActionsCompact}
                     canOperateThread={canOperateThread}

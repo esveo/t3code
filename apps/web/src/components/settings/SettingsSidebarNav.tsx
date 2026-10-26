@@ -126,8 +126,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
   useEsveoSettingsSearchRequest((esveoQuery) => {
     setQuery(esveoQuery);
     setActiveResultIndex(0);
-    if (isMobile) setOpenMobile(true);
-    else if (!open) setOpen(true);
+    setCompactSearchOpen(true);
   });
   const searchableItems = useAvailableSettingsSearchItems(scopeSearch);
   const results = searchSettings(query, searchableItems);

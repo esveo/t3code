@@ -281,16 +281,10 @@ export const OpenInPicker = memo(function OpenInPicker({
     "editor.openFavorite",
   );
 
-<<<<<<< ours
-  // Fork: split panes each render a picker; only the active one opens.
+  const backgroundThread = use(BackgroundThreadContext);
   const isActivePane = useIsActiveChatPane();
   useEffect(() => {
-    if (!enableShortcut || !isActivePane || !canOpenEditor) return;
-=======
-  const backgroundThread = use(BackgroundThreadContext);
-  useEffect(() => {
-    if (!enableShortcut || !canOpenEditor || backgroundThread) return;
->>>>>>> theirs
+    if (!enableShortcut || !canOpenEditor || backgroundThread || !isActivePane) return;
     const handler = (e: globalThis.KeyboardEvent) => {
       if (e.defaultPrevented || !isOpenFavoriteEditorShortcut(e, keybindings)) return;
       if (!openInCwd) return;

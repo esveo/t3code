@@ -120,14 +120,10 @@ export function findAssistantCitationText(
   return match ?? (quoteCount === 1 ? onlyQuote : null);
 }
 
-<<<<<<< ours
-export type RenderedTextChunk = { node: Text; start: number; end: number };
-=======
 /** A text node, or a whole rendered formula standing for its TeX. */
-type TextChunk = { node: Text | Element; start: number; end: number };
+export type RenderedTextChunk = { node: Text | Element; start: number; end: number };
 
 const isText = (node: Node): node is Text => node.nodeType === 3;
->>>>>>> theirs
 
 export function readAssistantText(root: HTMLElement) {
   const parts: string[] = [];

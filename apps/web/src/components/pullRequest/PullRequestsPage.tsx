@@ -1496,16 +1496,20 @@ export function PullRequestsPage() {
             onAddBrowserInProfile={() => undefined}
             onAddTerminal={() => undefined}
             onAddDiff={() => undefined}
+            onAddGitGraph={() => undefined}
             onAddFiles={() => undefined}
             onAddPullRequest={() => undefined}
             onAddPullRequests={() => undefined}
+            onAddAgentStage={() => undefined}
             onAddDevice={() => undefined}
             browserAvailable={false}
             terminalAvailable={false}
             diffAvailable={false}
+            gitGraphAvailable={false}
             filesAvailable={false}
             pullRequestAvailable={false}
             pullRequestsAvailable={false}
+            agentStageAvailable={false}
             deviceAvailable={false}
             pullRequestStatusSeeds={listedPullRequestTabStatuses}
           >

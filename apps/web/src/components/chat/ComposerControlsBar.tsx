@@ -25,6 +25,10 @@ import {
   renderProviderTraitsPicker,
 } from "./composerProviderState";
 import type { useComposerProviderModel } from "./useComposerProviderModel";
+import type { ContextWindowSnapshot } from "../../lib/contextWindow";
+import { ThreadUsageControl } from "../threadUsage/ThreadUsageControl";
+import { PromptCacheControl } from "./PromptCacheControl";
+import type { ThreadId } from "@t3tools/contracts";
 
 /**
  * The composer footer controls: model picker, traits, mode controls and the overflow menu for
@@ -78,6 +82,13 @@ export function ComposerControlsBar(props: {
   onModelPickerOpenChange: (open: boolean) => void;
   modelPickerIconClassName: string | undefined;
   getModelDisabledReason: ChatComposerProps["getModelDisabledReason"];
+  contextWindowControl: ContextWindowSnapshot | null;
+  promptCache: ContextWindowSnapshot["promptCache"] | null;
+  activeThreadId: ThreadId | null;
+  activeThreadModelDisplayName: string | null;
+  compactDisabled: boolean;
+  compactDisabledReason: string | null;
+  onCompact: (() => void) | undefined;
 }) {
   const {
     environmentId,
@@ -127,6 +138,13 @@ export function ComposerControlsBar(props: {
     onModelPickerOpenChange,
     modelPickerIconClassName,
     getModelDisabledReason,
+    contextWindowControl,
+    promptCache,
+    activeThreadId,
+    activeThreadModelDisplayName,
+    compactDisabled,
+    compactDisabledReason,
+    onCompact,
   } = props;
   const providerTraitsMenuContent = renderProviderTraitsMenuContent({
     provider: selectedProvider,
@@ -156,10 +174,19 @@ export function ComposerControlsBar(props: {
     isComposerOwned: true,
   } satisfies Parameters<typeof renderProviderTraitsPicker>[0];
   const providerTraitsPicker = renderProviderTraitsPicker(providerTraitsPickerInput);
+  const restingBlockIds = [
+    ...(providerTraitsPicker ? ["traits"] : []),
+    "mode",
+    ...(contextWindowControl ? ["context"] : []),
+    ...(promptCache ? ["cache"] : []),
+  ];
+  const isRestingBlockHidden = (id: string) =>
+    composerControlsHidden ||
+    restingHiddenBlockCount > restingBlockIds.length - 1 - restingBlockIds.indexOf(id);
   const restingProviderTraitsPicker = renderProviderTraitsPicker({
     ...providerTraitsPickerInput,
     size: composerControlsCollapsed ? "xs" : "sm",
-    hidden: composerControlsHidden || restingHiddenBlockCount > 1,
+    hidden: isRestingBlockHidden("traits"),
   });
   const restingBlockDefs = [
     ...(providerTraitsPicker
@@ -179,12 +206,51 @@ export function ComposerControlsBar(props: {
           runtimeMode={compatibleRuntimeMode}
           runtimeModeOptions={compatibleRuntimeModeOptions}
           size={composerControlsCollapsed ? "xs" : "sm"}
-          hidden={composerControlsHidden || restingHiddenBlockCount > 0}
+          hidden={isRestingBlockHidden("mode")}
           onToggleInteractionMode={toggleInteractionMode}
           onRuntimeModeChange={handleRuntimeModeChange}
         />
       ),
     },
+    ...(contextWindowControl
+      ? [
+          {
+            id: "context",
+            content: (
+              <>
+                <ComposerControlSeparator size={composerControlsCollapsed ? "xs" : "sm"} />
+                <ThreadUsageControl
+                  usage={contextWindowControl}
+                  environmentId={environmentId}
+                  threadId={activeThreadId}
+                  modelDisplayName={activeThreadModelDisplayName}
+                  size={composerControlsCollapsed ? "xs" : "sm"}
+                  hidden={isRestingBlockHidden("context")}
+                  compactDisabled={compactDisabled}
+                  compactDisabledReason={compactDisabledReason}
+                  onCompact={onCompact}
+                />
+              </>
+            ),
+          },
+        ]
+      : []),
+    ...(promptCache
+      ? [
+          {
+            id: "cache",
+            content: (
+              <>
+                <ComposerControlSeparator size={composerControlsCollapsed ? "xs" : "sm"} />
+                <PromptCacheControl
+                  promptCache={promptCache}
+                  size={composerControlsCollapsed ? "xs" : "sm"}
+                />
+              </>
+            ),
+          },
+        ]
+      : []),
   ];
   const hiddenRestingBlockIds = restingBlockDefs
     .slice(restingBlockDefs.length - restingHiddenBlockCount)

@@ -43,6 +43,7 @@ import {
   type WorkEntryIconName,
   ToolActivityIconView,
 } from "./TimelineToolActivityIcon";
+import { useSubagentProgress } from "../subagentProgress/useSubagentProgress";
 import {
   useThreadReadTarget,
   threadReadLabel,
@@ -363,8 +364,11 @@ function CompactingLabel({ label }: { label: string }) {
 export function ThinkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "thinking" }> }) {
   const ctx = use(TimelineRowCtx);
   const { isCompacting, isPreparingWorktree } = use(TimelineRowActivityCtx);
+  const subagentProgress = useSubagentProgress(ctx.threadRef);
   if (isPreparingWorktree || isCompacting) return <WorkLogRow label="" />;
-  const activity = <LiveActivityRow label="Thinking" iconName="brain" active shimmer />;
+  const activity = (
+    <LiveActivityRow label={subagentProgress ?? "Thinking"} iconName="brain" active shimmer />
+  );
   const { groupId } = row;
   if (groupId === undefined) return activity;
   return (

@@ -834,19 +834,8 @@ function deriveSupersededAttemptFolds(
   return foldsByAnchorEntryId;
 }
 
-<<<<<<< ours
-/**
- * This is deliberately keyed on the turn's own lifecycle rather than transient
- * working state: right after the user sends a message, the previous turn is
- * still the "active" one until the server creates the new turn, and folding
- * must not flicker through that window.
- */
-// Fork: exported for the thought trail.
-export function deriveUnsettledRunId(
-=======
 // After send, the previous turn stays active until the server creates its replacement.
-function deriveUnsettledRunId(
->>>>>>> theirs
+export function deriveUnsettledRunId(
   latestRun: TimelineLatestRun | null,
   runningRunId: RunId | null = null,
 ): RunId | null {

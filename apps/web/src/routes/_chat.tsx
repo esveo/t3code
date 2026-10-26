@@ -5,15 +5,11 @@ import { useAtomValue } from "@effect/atom-react";
 import { useEffect, useState } from "react";
 
 import { isCommandPaletteOpen } from "../commandPaletteBus";
-<<<<<<< ours
 import { SplitThreadLayout } from "../components/SplitThreadLayout";
-=======
-import { ThreadRouteView } from "../components/ThreadRouteView";
 import { isAppModalPage } from "../components/sidebar/mainAppLocation";
 import { SidebarInset } from "../components/ui/sidebar";
 import { resolveThreadRouteTarget, type ThreadRouteTarget } from "../threadRoutes";
 import { retainThreadFindForRoute } from "../components/chat/threadFindStore";
->>>>>>> theirs
 import { ThreadLinkPrompt } from "../components/promptLinks/ThreadLinkPrompt";
 import { useClientSettings, useLegacySidebarEnabled } from "../hooks/useSettings";
 import { openCommandPalette } from "../commandPaletteBus";
@@ -226,18 +222,14 @@ function ChatRouteLayout() {
       {shownTarget?.kind === "server" && !modalOpen ? (
         <ThreadLinkPrompt threadRef={shownTarget.threadRef} />
       ) : null}
-<<<<<<< ours
-      {threadTarget ? <SplitThreadLayout target={threadTarget} /> : <Outlet />}
-=======
       {shownTarget ? (
-        <ThreadRouteView target={shownTarget} background={modalOpen} />
+        <SplitThreadLayout target={shownTarget} background={modalOpen} />
       ) : modalOpen ? (
         <SidebarInset className="h-dvh" />
       ) : (
         <Outlet />
       )}
       {modalOpen ? <Outlet /> : null}
->>>>>>> theirs
     </>
   );
 }

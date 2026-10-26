@@ -475,6 +475,7 @@ function GuestThread({
           contentInsetEndAdjustment={0}
           emptyPlaceholderInset={0}
           liveFollowEnabled={follow.timelineLiveFollowEnabled}
+          isLiveFollowLatched={follow.isTimelineLiveFollowLatched}
           onIsAtEndChange={follow.onIsAtEndChangeStable}
           onManualNavigation={follow.cancelTimelineLiveFollowForUserNavigationStable}
           cancelPositionRestoreRef={follow.cancelPositionRestoreRef}

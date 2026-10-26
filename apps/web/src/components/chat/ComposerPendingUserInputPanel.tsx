@@ -146,15 +146,11 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
 
   const selectOptionFromShortcut = useEffectEvent(handleOptionSelection);
   const backgroundThread = use(BackgroundThreadContext);
-
-  // Fork: split panes each render their questions; only the active one answers.
   const isActivePane = useIsActiveChatPane();
+
   useEffect(() => {
-<<<<<<< ours
-    if (!activeQuestion || responseDisabled || isCollapsed || !isActivePane) return;
-=======
-    if (!activeQuestion || responseDisabled || isCollapsed || backgroundThread) return;
->>>>>>> theirs
+    if (!activeQuestion || responseDisabled || isCollapsed || backgroundThread || !isActivePane)
+      return;
     const handler = (event: globalThis.KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey) return;
       const target = event.target;
@@ -178,11 +174,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
     };
     document.addEventListener("keydown", handler);
     return () => document.removeEventListener("keydown", handler);
-<<<<<<< ours
-  }, [activeQuestion, isActivePane, isCollapsed, responseDisabled]);
-=======
-  }, [activeQuestion, backgroundThread, isCollapsed, responseDisabled]);
->>>>>>> theirs
+  }, [activeQuestion, backgroundThread, isActivePane, isCollapsed, responseDisabled]);
 
   if (!activeQuestion) {
     return null;
