@@ -482,7 +482,7 @@ export const makeForkUpdates = (input: { readonly root: string; readonly script:
         }),
       ),
       emitState,
-      disabledReason: Effect.succeed(Option.none()),
+      disabledReason: Effect.succeedNone,
       configure: Effect.all([
         refresh(false).pipe(Effect.repeat(Schedule.spaced(POLL_INTERVAL)), Effect.forkScoped),
         watchPass.pipe(Effect.repeat(Schedule.spaced(WATCH_INTERVAL)), Effect.forkScoped),
