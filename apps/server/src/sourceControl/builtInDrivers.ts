@@ -2,6 +2,7 @@ import type {
   SourceControlDriver,
   SourceControlDriverInstance,
 } from "@t3tools/source-control-core/server/driver";
+import * as AzureDevOpsCli from "@t3tools/source-control-azure-devops/server/AzureDevOpsCli";
 import * as SourceControlRateLimit from "@t3tools/source-control-core/server/SourceControlRateLimit";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -24,8 +25,10 @@ export class SourceControlDrivers extends Context.Service<
 const make = Effect.forEach(BUILT_IN_SOURCE_CONTROL_DRIVER_LIST, (driver) =>
   driver.make.pipe(Effect.map((instance) => ({ driver, instance }))),
 );
+const azureDevOpsCliLayer = AzureDevOpsCli.layer.pipe(Layer.provide(ServerSourceControlHost.layer));
 
 export const layer = Layer.effect(SourceControlDrivers, make).pipe(
   Layer.provideMerge(ServerSourceControlHost.layer),
   Layer.provideMerge(SourceControlRateLimit.layer),
+  Layer.provideMerge(azureDevOpsCliLayer),
 );
