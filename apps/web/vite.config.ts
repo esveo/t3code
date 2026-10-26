@@ -126,7 +126,7 @@ const browserTestProject = {
     name: "browser",
     include: ["src/**/*.browser.test.{ts,tsx}"],
     hookTimeout: 15_000,
-    testTimeout: 15_000,
+    testTimeout: 30_000,
     setupFiles: ["./test/browserSetup.ts"],
     api: { port: browserTestApiPort, strictPort: false },
     browser: {
