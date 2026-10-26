@@ -97,10 +97,10 @@ describe("Codex tool context", () => {
 
   it("prefers the product-native preview tools when attached", () => {
     const instructions = toolInstructions(runtime, true);
-    NodeAssert.match(instructions, /t3-code/);
+    NodeAssert.match(instructions, /esveo code/);
     NodeAssert.match(instructions, /preview_status/);
     NodeAssert.match(instructions, /preview_open/);
-    NodeAssert.match(instructions, /Do not switch to global browser skills/);
+    NodeAssert.match(instructions, /Switch browsers only if/);
   });
 
   it("omits the browser block when preview tools are not attached", () => {

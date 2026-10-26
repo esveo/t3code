@@ -394,9 +394,9 @@ function assertReinjectedInstructions(
   request: string,
 ) {
   const text = blocks[0]?.text ?? "";
-  assert.include(text, "T3 Code interaction mode: Default");
-  assert.include(text, "## T3 Code browser");
-  assert.include(text, "T3 Code orchestration");
+  assert.include(text, "esveo code interaction mode: Default");
+  assert.include(text, "## esveo code browser");
+  assert.include(text, "esveo code orchestration");
   assert.include(text, `<user_request>\n${request}\n</user_request>`);
 }
 

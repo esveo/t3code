@@ -304,7 +304,7 @@ describe("OrchestratorMcpService", () => {
       let pendingRequest = false;
       const parentProjection = () =>
         ({
-          thread: { id: parentThreadId },
+          thread: { id: parentThreadId, projectId: ProjectId.make("project:mcp-test") },
           runs: [],
           contextTransfers: [],
           subagents: [
@@ -329,7 +329,11 @@ describe("OrchestratorMcpService", () => {
       });
       const childProjection = () =>
         ({
-          thread: { id: childThreadId, title: "Child task" },
+          thread: {
+            id: childThreadId,
+            projectId: ProjectId.make("project:mcp-test"),
+            title: "Child task",
+          },
           runs: [childRun()],
           contextTransfers: [],
           messages: [],
