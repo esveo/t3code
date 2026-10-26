@@ -265,11 +265,9 @@ const make = Effect.gen(function* () {
                 (candidate) => candidate.id === input.id && candidate.sourceThreadId !== child.id,
               );
               if (taken) {
-                return yield* Effect.fail(
-                  new ThreadDecisionsError({
-                    message: `The id ${input.id} is already used in your coordinator's Inbox; choose another one.`,
-                  }),
-                );
+                return yield* new ThreadDecisionsError({
+                  message: `The id ${input.id} is already used in your coordinator's Inbox; choose another one.`,
+                });
               }
             }
             const decision = yield* decisions.upsert(coordinator.id, {
@@ -295,11 +293,9 @@ const make = Effect.gen(function* () {
             if (child) {
               const own = ownDecisions(yield* decisions.list(coordinator.id), child);
               if (!own.some((decision) => decision.id === input.id)) {
-                return yield* Effect.fail(
-                  new ThreadDecisionsError({
-                    message: `No decision ${input.id} of yours. Call list_decisions for the ids of yours.`,
-                  }),
-                );
+                return yield* new ThreadDecisionsError({
+                  message: `No decision ${input.id} of yours. Call list_decisions for the ids of yours.`,
+                });
               }
             }
             return yield* decisions.resolve(coordinator.id, input.id, input.reason);

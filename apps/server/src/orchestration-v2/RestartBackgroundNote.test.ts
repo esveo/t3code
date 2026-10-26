@@ -14,6 +14,7 @@ import {
   isAwaitedWork,
   isRestartNoteContinuation,
   pendingRestartCancelledBackgroundWork,
+  restartCancelledBackgroundWorkNote,
   restartContinuationNote,
   mergeRestartCancelledBackgroundWork,
 } from "./RestartBackgroundNote.ts";

@@ -696,7 +696,7 @@ it.effect("terminates HTTP MCP sessions with DELETE", () =>
       });
       expect(reusedSessionResponse.status).toBe(404);
     }),
-  ).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  ).pipe(Effect.provide(NodeHttpServer.layerTest.pipe(Layer.provide(ServerSettings.layerTest())))),
 );
 
 it.effect("admits provider and OAuth client credentials and points only clients at OAuth", () =>
@@ -819,7 +819,7 @@ it.effect("admits provider and OAuth client credentials and points only clients 
       expect(deadProvider.status).toBe(401);
       expect(deadProvider.headers["www-authenticate"]).toBe('Bearer error="invalid_token"');
     }),
-  ).pipe(Effect.provide(NodeHttpServer.layerTest)),
+  ).pipe(Effect.provide(NodeHttpServer.layerTest.pipe(Layer.provide(ServerSettings.layerTest())))),
 );
 
 it.effect("lists pull request watch tools only to threads that are not delegated children", () =>
@@ -847,6 +847,7 @@ it.effect("lists pull request watch tools only to threads that are not delegated
       ]);
       const serverLayer = McpHttpServer.layerPullRequestsToolkit.pipe(
         Layer.provideMerge(McpHttpServer.layerMcpTransport),
+        Layer.provide(ServerSettings.layerTest()),
         Layer.provide(
           Layer.mock(McpSessionRegistry.McpSessionRegistry)({
             resolve: (token) => Effect.succeed(scopes.get(token)),

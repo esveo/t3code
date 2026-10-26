@@ -8,7 +8,6 @@ import * as Duration from "effect/Duration";
 import * as Base64 from "effect/encoding/Base64";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
-import * as Context from "effect/Context";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
@@ -589,9 +588,7 @@ type SplitWsRpc = Extract<
 >;
 const isSplitWsRpc = (rpc: UpstreamServerWsRpc): rpc is SplitWsRpc =>
   SPLIT_WS_RPC_PREFIXES.some((prefix) => rpc._tag.startsWith(`${prefix}.`));
-const isOtherWsRpc = (
-  rpc: UpstreamServerWsRpc,
-): rpc is Exclude<UpstreamServerWsRpc, SplitWsRpc> =>
+const isOtherWsRpc = (rpc: UpstreamServerWsRpc): rpc is Exclude<UpstreamServerWsRpc, SplitWsRpc> =>
   !isSplitWsRpc(rpc);
 const upstreamServerWsRpcs = Array.from(UpstreamServerWsRpcGroup.requests.values());
 const SplitWsRpcGroup = RpcGroup.make(...upstreamServerWsRpcs.filter(isSplitWsRpc));
@@ -3342,10 +3339,8 @@ export const layerWsRpc = (
         [AGENT_TIME_WS_METHODS.summary]: (input) => AgentTime.summaryRpc(input),
       });
       const splitHandlers: Pick<typeof handlers, SplitWsRpc["_tag"]> = handlers;
-      const otherHandlers: Pick<
-        typeof handlers,
-        Exclude<UpstreamServerWsRpc, SplitWsRpc>["_tag"]
-      > = handlers;
+      const otherHandlers: Pick<typeof handlers, Exclude<UpstreamServerWsRpc, SplitWsRpc>["_tag"]> =
+        handlers;
       return Context.merge(
         Context.merge(
           yield* SplitWsRpcGroup.toHandlers(splitHandlers),

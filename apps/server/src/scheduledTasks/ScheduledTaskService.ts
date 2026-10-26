@@ -829,11 +829,14 @@ export const layer = Layer.effect(
         // thread instead of posting there (forkSubthreadRun.ts).
         const sendToBoundThread = (input: ThreadManagementService.ThreadManagementSendInput) =>
           Effect.gen(function* () {
-            if (!spawnsAsSubthread(active)) return yield* threadManagement.sendToThread(input);
-            return yield* launchScheduledSubthread(
+            if (!spawnsAsSubthread(active)) {
+              return yield* threadManagement.sendToThread(input).pipe(Effect.as(input.threadId));
+            }
+            const launched = yield* launchScheduledSubthread(
               { threadLaunch, threadManagement, coordinators: forkCoordinators },
               { task: active, threadId: input.threadId, commandId, messageId, prompt },
             );
+            return launched.threadId;
           });
 
         // Capture defects and interrupts too so dispatch failures still reach markCompleted.
@@ -869,7 +872,6 @@ export const layer = Layer.effect(
                   scheduledTaskId: active.id,
                   text: prompt,
                   attachments: [],
-                  modelSelection: active.modelSelection,
                   // Scheduled prompts must not interrupt tools in the bound thread.
                   mode: "queue",
                   createdBy: active.createdBy,
@@ -976,11 +978,12 @@ export const layer = Layer.effect(
       yield* Effect.forEach(
         due,
         ({ task, dueAt }) =>
-          (isMissedFixedTimeRun(task.schedule, dueAt, now)
-            ? catchesUpMissedRuns(task.schedule)
-              ? catchUpMissedRun(task, runTask)
-              : rescheduleMissedRun(task, now)
-            : runTask(task, "scheduled")
+          Effect.suspend(() =>
+            isMissedFixedTimeRun(task.schedule, dueAt, now)
+              ? catchesUpMissedRuns(task.schedule)
+                ? catchUpMissedRun(task, (scheduledTask) => runTask(scheduledTask, "scheduled"))
+                : rescheduleMissedRun(task, now)
+              : runTask(task, "scheduled"),
           ).pipe(
             Effect.catch((cause) =>
               Effect.logWarning("Scheduled task run failed", { taskId: task.id, cause }),
