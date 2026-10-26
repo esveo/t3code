@@ -1,269 +1,12 @@
-import {
-  applyPullRequestDraftFilterChange,
-  parsePullRequestQuery,
-} from "@t3tools/client-runtime/pull-request-query";
-import { RefreshIcon } from "~/components/ui/refresh-icon";
-import { Spinner } from "~/components/ui/spinner";
-import { useShortcutModifierState } from "~/shortcutModifierState";
-import type { PullRequestSpeedActionResult } from "~/components/pullRequest/PullRequestSpeedActions";
-import { usePullRequestCloseBatch } from "~/components/pullRequest/usePullRequestActions";
-import { SidebarPointerSensor } from "~/components/Sidebar.pointer";
-import { resolveSidebarSweepKeys } from "~/components/Sidebar.logic";
-import { sortProjectsByGroupOrder } from "@t3tools/client-runtime/state/project-grouping";
-import { pullRequestHostOf, resolveEnvironmentMachineKind } from "@t3tools/contracts";
-import type {
-  EnvironmentId,
-  ProjectId,
-  PullRequestAction,
-  PullRequestInvolvement,
-  PullRequestListCursors,
-  PullRequestListFilters,
-  PullRequestListInput,
-  PullRequestListResult,
-  PullRequestListState,
-  SourceControlProviderKind,
-} from "@t3tools/contracts";
-import { useAtomValue } from "@effect/atom-react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import {
-  ArrowDownUpIcon,
-  CalendarArrowDownIcon,
-  CalendarArrowUpIcon,
-  ChevronDownIcon,
-  ClockIcon,
-  EyeIcon,
-  LayersIcon,
-  ListChecksIcon,
-  PenLineIcon,
-  UsersIcon,
-  Plug2Icon,
-  Maximize2Icon,
-  Minimize2Icon,
-  SearchIcon,
-  UserLockIcon,
-  type LucideIcon,
-} from "lucide-react";
-import {
-  useEffect,
-  useEffectEvent,
-  useRef,
-  useState,
-  type ComponentProps,
-  type ReactNode,
-  type RefObject,
-} from "react";
+import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import { createFileRoute } from "@tanstack/react-router";
 
-import {
-  filterPullRequestsByInvolvement,
-  findScopedProject,
-  collectPullRequestListFacets,
-  groupPullRequestsByInvolvement,
-  matchesPullRequestFilters,
-  matchesPullRequestQuery,
-  narrowPullRequestsToFilters,
-  mergePullRequestDiffStats,
-  partitionPullRequestsWithPriority,
-  pullRequestDiffStatKey,
-  pullRequestEntryKey,
-  pullRequestEntryViewer,
-  rankPullRequestMatches,
-  sortPullRequestGroups,
-  pullRequestEnvironmentSetKey,
-  readPullRequestListSnapshot,
-  resolveProjectScope,
-  resolveQueryEnvironmentIds,
-  resolveSelectedEnvironmentId,
-  withDiffStat,
-  writePullRequestListSnapshot,
-  scorePullRequestMatch,
-  pullRequestStatsRefreshBatches,
-  pullRequestStatsRequestBatches,
-  retainVisiblePullRequestStatsBatches,
-  type EnvironmentPullRequestEntry,
-  type MergedPullRequestList,
-  type PullRequestDiffStats,
-  type PullRequestGroup,
-  type PullRequestStatsBatch,
-  type PullRequestStatsPolicy,
-  type PullRequestStatsScope,
-  type PullRequestPartitionsSnapshot,
-  applyPullRequestOverrides,
-  type PullRequestListOverride,
-  pullRequestOverrideAfterAction,
-  reusePullRequestEntries,
-  settlePullRequestOverrides,
-  pullRequestHostActions,
-  largestPullRequestReadCount,
-} from "../components/pullRequest/pullRequestList.logic";
-import {
-  pullRequestListPreferences,
-  type PullRequestListPreferencePatch,
-  type PullRequestListPreferences,
-  type PullRequestListSort,
-  writePullRequestListPreferences,
-} from "../components/pullRequest/pullRequestListPreferences";
-import { assignProjectsToEnvironments } from "../components/pullRequest/pullRequestProjectAssignment.logic";
-import { pullRequestFilterProjects } from "../components/pullRequest/pullRequestProjectFilter.logic";
-import { environmentMachineIcon } from "../components/EnvironmentMachineIcon";
-import { PullRequestDetailPanel } from "../components/pullRequest/PullRequestDetailPanel";
-import {
-  PullRequestFiltersMenu,
-  PullRequestFilterOptionIcon,
-  PullRequestSearchInput,
-  pullRequestHostLabel,
-  pullRequestProjectKey,
-  type PullRequestExpectedHost,
-  type PullRequestFilterOption,
-} from "../components/pullRequest/PullRequestListFilters";
-import { PullRequestListEmptyState } from "../components/pullRequest/PullRequestListEmptyState";
-import { PullRequestListGhost } from "../components/pullRequest/PullRequestGhosts";
-import {
-  PullRequestRow,
-  type PullRequestRowTarget,
-} from "../components/pullRequest/PullRequestRow";
-import { PullRequestsUnavailableState } from "../components/pullRequest/PullRequestsUnavailableState";
-import { RightPanelTabs, type PullRequestTabStatusSeed } from "../components/RightPanelTabs";
-import {
-  WorkspaceBreadcrumb,
-  WorkspaceBreadcrumbItem,
-  WorkspaceBreadcrumbSeparator,
-} from "../components/WorkspaceBreadcrumb";
-import { WorkspacePageContainer } from "../components/WorkspacePageContainer";
-import { WorkspacePageHeader } from "../components/WorkspacePageHeader";
-import { isCommandPaletteOpen } from "../commandPaletteBus";
-import { isElectron } from "../env";
-import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
-import { isTerminalFocused } from "../lib/terminalFocus";
-import {
-  PanelLayoutControls,
-  RightPanelMaximizeControl,
-} from "../components/chat/PanelLayoutControls";
-import { Button } from "../components/ui/button";
-import { Menu, MenuPopup, MenuRadioGroup, MenuRadioItem, MenuTrigger } from "../components/ui/menu";
-import { SidebarInset } from "../components/ui/sidebar";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../components/ui/tooltip";
-import { useLiveRefresh } from "../hooks/useLiveRefresh";
-import { useStableCallback } from "../hooks/useStableCallback";
-import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
-import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
-import { toastManager } from "../components/ui/toast";
-import { useEscapeToGoBack } from "../hooks/useNavigateBack";
-import { usePanelAnimationSettings, usePanelPresence } from "../panelAnimations";
-import {
-  PULL_REQUESTS_PANEL_REF,
-  pullRequestSurfaceId,
-  selectActiveRightPanelSurface,
-  selectSelectedRightPanelSurface,
-  selectThreadRightPanelState,
-  useRightPanelStore,
-  type PullRequestSurface,
-} from "../rightPanelStore";
-import { useDebouncedValue } from "../state/queries";
-import { useAllEnvironmentShellsBootstrapped, useProjects } from "../state/entities";
-import { useSidebarProjectGroups } from "../hooks/useSidebarProjectGroups";
-import { useEnvironments } from "../state/environments";
-import {
-  pullRequestEnvironment,
-  usePullRequestList,
-  usePullRequestListStats,
-  usePullRequestTurnRefreshes,
-  type EnvironmentQueryTarget,
-} from "../state/pullRequests";
-import { useAtomCommand } from "../state/use-atom-command";
-import { cn } from "~/lib/utils";
-import { Separator } from "~/components/ui/separator";
-import { primaryServerKeybindingsAtom } from "~/state/server";
-import { getSourceControlPresentationForKind } from "~/sourceControlPresentation";
-import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
+import { type PullRequestListSort } from "../components/pullRequest/pullRequestListPreferences";
+import { SORT_OPTIONS } from "../components/pullRequest/pullRequestListOptions";
+import { type PullRequestsSearch } from "../components/pullRequest/usePullRequestListView";
+import { PullRequestsPage } from "../components/pullRequest/PullRequestsPage";
 
-function getShortcutContext() {
-  return {
-    terminalFocus: isTerminalFocused(),
-    terminalOpen: false,
-    previewFocus: false,
-    previewOpen: false,
-    modelPickerOpen: false,
-    isWeb: !isElectron,
-    isDesktop: isElectron,
-  };
-}
-
-export interface PullRequestsSearch extends PullRequestListPreferences {
-  readonly environmentId?: EnvironmentId;
-  readonly projectId?: ProjectId;
-  readonly host?: string;
-  readonly repository?: string;
-  readonly number?: number;
-  readonly selectedProjectId?: ProjectId;
-  readonly selectedHost?: string;
-  readonly selectedEnvironmentId?: EnvironmentId;
-}
-
-const GROUP_ICONS: Record<string, LucideIcon> = {
-  authored: PenLineIcon,
-  reviewRequested: EyeIcon,
-  others: UsersIcon,
-};
-
-function PullRequestGroupHeader({
-  group,
-}: {
-  group: { key: string; label: string; entries: ReadonlyArray<unknown> };
-}) {
-  const Icon = GROUP_ICONS[group.key] ?? LayersIcon;
-  return (
-    <div className="flex items-center gap-2 px-3 pb-1 text-xs font-medium text-muted-foreground/70">
-      <Icon aria-hidden className="size-3.5 shrink-0" />
-      <h2 className="shrink-0">{group.label}</h2>
-      <span className="shrink-0 tabular-nums text-muted-foreground/50">{group.entries.length}</span>
-      <Separator className="min-w-2 flex-1" />
-    </div>
-  );
-}
-
-const INVOLVEMENT_TABS = [
-  { value: "all", label: "All", Icon: LayersIcon },
-  { value: "reviewing", label: "Reviewing", Icon: EyeIcon },
-  { value: "authored", label: "Authored", Icon: PenLineIcon },
-] as const satisfies ReadonlyArray<PullRequestFilterOption<PullRequestInvolvement>>;
-
-const STATE_TABS = [
-  { value: "all", label: "All", Icon: LayersIcon },
-  { value: "open", label: "Open", Icon: PullRequestGlyph.pullRequest },
-  { value: "closed", label: "Closed", Icon: PullRequestGlyph.closed },
-  { value: "merged", label: "Merged", Icon: PullRequestGlyph.merged },
-] as const satisfies ReadonlyArray<PullRequestFilterOption<PullRequestListState>>;
-
-const SORT_OPTIONS = [
-  { value: "ready", label: "Merge readiness", Icon: ListChecksIcon },
-  { value: "blocked", label: "Blocked on me", Icon: UserLockIcon },
-  { value: "updated", label: "Recently updated", Icon: ClockIcon },
-  { value: "newest", label: "Newest shown", Icon: CalendarArrowDownIcon },
-  { value: "oldest", label: "Oldest shown", Icon: CalendarArrowUpIcon },
-  { value: "largest", label: "Largest shown", Icon: Maximize2Icon },
-  { value: "smallest", label: "Smallest shown", Icon: Minimize2Icon },
-] as const satisfies ReadonlyArray<PullRequestFilterOption<PullRequestListSort>>;
-
-const SEARCH_DEBOUNCE_MS = 250;
-const MATCHED_ELSEWHERE_SCORE = 10;
-/**
- * One whole page from the host and no more: every provider asks for one row beyond the page as
- * its "is there more" probe, and GitHub serves a hundred per request — so asking for ninety-nine
- * costs one round trip where a hundred costs two.
- */
-const PAGE_SIZE = 99;
-const MAX_PAGE_SIZE = 500;
-const EMPTY_VIEWERS: PullRequestListResult["viewers"] = {};
-const EMPTY_PARTITIONS: PullRequestPartitionsSnapshot = { authored: [], reviewing: [] };
-const NO_LIST_TARGETS: ReadonlyArray<EnvironmentQueryTarget<PullRequestListInput>> = [];
-const EMPTY_PREVIEW_SESSIONS = {};
-const EMPTY_PREVIEW_DESKTOP_STATE = {};
-const EMPTY_TERMINAL_LABELS = new Map<string, string>();
-const EMPTY_PENDING_SURFACES = new Set<string>();
 const MAX_SEARCH_LABEL_CANDIDATES = 100;
-
-const pullRequestListEntryId = (target: Parameters<typeof pullRequestSurfaceId>[0]) =>
-  pullRequestSurfaceId({ ...target, repository: target.repository.toLowerCase() });
 
 function pullRequestSearchLabels(raw: unknown): Partial<Pick<PullRequestsSearch, "labels">> {
   const values = (Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : []).slice(
@@ -315,8 +58,7 @@ export const Route = createFileRoute("/_chat/pull-requests")({
     ...(typeof raw.selectedEnvironmentId === "string" && raw.selectedEnvironmentId
       ? { selectedEnvironmentId: raw.selectedEnvironmentId as EnvironmentId }
       : {}),
-    // Always an own key: the router lays this result over the parent route's unvalidated
-    // search, so leaving out a `q` the URL parser made a number would let the number through.
+    // Always include q to override numeric values in the parent route's unvalidated search.
     q: typeof raw.q === "string" && raw.q ? raw.q.slice(0, 200) : undefined,
     ...(raw.draft === "only" || raw.draft === "hide" ? { draft: raw.draft } : {}),
     ...(raw.review === "approved" ||
@@ -331,8 +73,9 @@ export const Route = createFileRoute("/_chat/pull-requests")({
       : {}),
     ...pullRequestSearchLabels(raw.labels),
   }),
-  component: PullRequestsRouteView,
+  component: PullRequestsPage,
 });
+<<<<<<< ours
 
 function PullRequestsRouteView() {
   useEscapeToGoBack();
@@ -2509,3 +2252,5 @@ function PullRequestRefreshControl({
     </Button>
   );
 }
+=======
+>>>>>>> theirs

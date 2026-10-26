@@ -14,7 +14,6 @@ import {
   isAwaitedWork,
   isRestartNoteContinuation,
   pendingRestartCancelledBackgroundWork,
-  restartCancelledBackgroundWorkNote,
   restartContinuationNote,
   mergeRestartCancelledBackgroundWork,
 } from "./RestartBackgroundNote.ts";
@@ -117,6 +116,7 @@ it("bounds roster task labels including a long task id", () => {
   assert.lengthOf(idOnly.label, 160);
 });
 
+// regression: #19750 wake threads whose subagents' background work a restart cut
 it("names a lost subagent by the id the agent resumes it with", () => {
   const ownShell = cancelledRosterTaskWork({
     kind: "command",
@@ -124,7 +124,6 @@ it("names a lost subagent by the id the agent resumes it with", () => {
     description: "sleep 150",
     parentTaskId: "agent-1",
   });
-  // The agent waits on the subagent, which waits on its shell.
   assert.deepEqual(ownShell, {
     kind: "subagent",
     label: "sleep 150 (subagent agent-1)",
@@ -146,6 +145,13 @@ it("names a lost subagent by the id the agent resumes it with", () => {
   }).label;
   assert.lengthOf(longId, 160);
   assert.isFalse(isAwaitedWork(cancelledRosterTaskWork({ kind: "command", taskId: "shell-2" })));
+  assert.isTrue(
+    isAwaitedWork(cancelledRosterTaskWork({ kind: "command", taskId: "tests", awaited: true })),
+  );
+  assert.isFalse(isAwaitedWork(cancelledRosterTaskWork({ kind: "monitor", taskId: "watchdog" })));
+  assert.isTrue(
+    isAwaitedWork(cancelledRosterTaskWork({ kind: "monitor", taskId: "ci", awaited: true })),
+  );
   assert.equal(
     cancelledTurnItemWork({
       id: "item-1",
