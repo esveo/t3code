@@ -512,6 +512,7 @@ function OpenCommandPaletteDialog(props: {
   const { query, views: viewStack } = searchState;
   const setQuery = (query: string) => dispatchSearch({ type: "query", query });
   const [linkedThreadSearch, setLinkedThreadSearch] = useState(initialSearch.linkedThreadSearch);
+  const agentStageEnabled = useAgentStageStore((state) => state.enabled);
   const deferredQuery = useDeferredValue(query);
   const isActionsOnly = deferredQuery.startsWith(">");
   const [highlightedItemValue, setHighlightedItemValue] = useState<string | null>(null);
@@ -1319,7 +1320,7 @@ function OpenCommandPaletteDialog(props: {
     });
   }
 
-  if (activeThread && useAgentStageStore.getState().enabled) {
+  if (activeThread && agentStageEnabled) {
     actionItems.push({
       kind: "action",
       value: "action:open-agent-stage",

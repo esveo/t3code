@@ -281,6 +281,10 @@ vi.mock("../features/layout/AdaptiveWorkspaceLayout", () => ({
 }));
 vi.mock("../features/threads/thread-workflow-opening", () => ({ useWorkflowOpening: () => null }));
 vi.mock("../features/threads/useFileChipShare", () => ({ useFileChipShare: () => vi.fn() }));
+vi.mock("../features/esveoBrand/EsveoMidnight", () => ({
+  EsveoUserBubbleBackdrop: () => null,
+  useEsveoLiveUserMessage() {},
+}));
 vi.mock("../features/threads/ThreadMarkdownImage", async () => {
   const { createContext } = await import("react");
   return { MarkdownImageAvailableWidthContext: createContext(390) };

@@ -4,7 +4,8 @@ import esveoTheme from "../../../../../packages/shared/src/esveoTheme.ts?raw";
 import chatComposer from "../chat/ChatComposer.tsx?raw";
 import composerPrimaryActions from "../chat/ComposerPrimaryActions.tsx?raw";
 import messagesTimeline from "../chat/MessagesTimeline.tsx?raw";
-import sidebar from "../Sidebar.tsx?raw";
+import timelineUserMessageRow from "../chat/TimelineUserMessageRow.tsx?raw";
+import sidebarThreadRow from "../sidebar/SidebarThreadRow.tsx?raw";
 import toast from "../ui/toast.tsx?raw";
 
 // esveoMidnight.css styles upstream's markup through the classes and data
@@ -12,7 +13,7 @@ import toast from "../ui/toast.tsx?raw";
 // gradient silently disappears; this fails instead.
 describe("esveo Midnight gradient hooks", () => {
   it("finds the user's message bubble", () => {
-    expect(messagesTimeline).toMatch(/className="[^"]*\bbg-message\s/);
+    expect(timelineUserMessageRow).toMatch(/"[^"]*\bbg-message\s/);
   });
 
   it("finds the composer's send actions", () => {
@@ -22,7 +23,7 @@ describe("esveo Midnight gradient hooks", () => {
   });
 
   it("finds the current thread's sidebar row", () => {
-    expect(sidebar).toMatch(/"bg-sidebar-row-active\s/);
+    expect(sidebarThreadRow).toMatch(/"bg-sidebar-row-active\s/);
   });
 
   it("finds the stacked toast surface and its primary action", () => {

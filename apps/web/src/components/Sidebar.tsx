@@ -1190,10 +1190,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     ...baseSearchableThreads,
     ...[...childThreadGroups.childrenByParentKey.values()].flat(),
   ];
-  const handleRunHeaderNewThread = (project: SidebarProjectSnapshot) => {
+  const handleRunHeaderNewThread = useStableCallback((project: SidebarProjectSnapshot) => {
     if (isMobile) setOpenMobile(false);
     void handleNewThreadRef.current(scopeProjectRef(project.environmentId, project.id));
-  };
+  });
   const forkList = forkSidebarList({
     activeRuns,
     settledRuns,
