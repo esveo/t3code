@@ -38,6 +38,10 @@ import {
 } from "@t3tools/shared/projectFavicon";
 import { isNetworkPath } from "@t3tools/shared/path";
 import { MAX_TOOL_OUTPUT_IMAGE_BASE64_LENGTH, toolOutputImages } from "@t3tools/shared/toolOutput";
+import {
+  azureDevOpsMediaFetchUrl,
+  azureDevOpsMediaFileName,
+} from "@t3tools/shared/azureDevOpsMedia";
 import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
@@ -863,18 +867,18 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
       break;
     }
     case "azure-devops-media": {
-      const media = sourceControlDefinitions.mediaUrl(input.resource.url);
-      if (media === null || media.definition.kind !== "azure-devops") {
+      const fetchUrl = azureDevOpsMediaFetchUrl(input.resource.url);
+      if (fetchUrl === null) {
         return yield* new AssetAzureDevOpsMediaUrlValidationError({});
       }
       claims = {
         version: 1,
         kind: "azure-devops-media",
-        url: media.fetchUrl,
+        url: fetchUrl,
         cwd: input.resource.cwd,
         expiresAt,
       };
-      fileName = media.fileName;
+      fileName = azureDevOpsMediaFileName(fetchUrl);
       break;
     }
   }
@@ -983,7 +987,16 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
     return faviconPath === claims.filePath ? yield* projectFaviconAsset(faviconPath) : null;
   }
 
-  if (claims.kind === SOURCE_CONTROL_MEDIA_ASSET || claims.kind === "azure-devops-media") {
+  if (claims.kind === "azure-devops-media") {
+    return {
+      kind: "azure-devops-media",
+      url: claims.url,
+      cwd: claims.cwd,
+      expiresAt: claims.expiresAt,
+    } satisfies ResolvedAsset;
+  }
+
+  if (claims.kind === SOURCE_CONTROL_MEDIA_ASSET) {
     return {
       kind: "source-control-media",
       url: claims.url,

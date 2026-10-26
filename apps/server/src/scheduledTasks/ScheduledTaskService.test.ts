@@ -348,6 +348,12 @@ it.effect("thread cleanup notifies subscribers and a finishing run cannot recrea
         Layer.mergeAll(
           Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
           Layer.mock(ThreadManagementService.ThreadManagementService)({
+            getThreadShell: (threadId) =>
+              Effect.succeed({
+                id: threadId,
+                projectId: ProjectId.make("project:test"),
+                title: "Thread",
+              } as never),
             sendToThread: () =>
               Deferred.succeed(started, undefined).pipe(
                 Effect.andThen(Deferred.await(release)),
