@@ -362,7 +362,6 @@ patchedDependencies:
   expo-audio@58.0.9: patches/expo-audio@58.0.9.patch
   expo-video@58.0.11: patches/expo-video@58.0.11.patch
   expo-network@58.0.3: patches/expo-network@58.0.3.patch
-  "@clerk/expo-native-components@0.4.0": patches/@clerk__expo-native-components@0.4.0.patch
   "@effect/vitest@4.0.5": patches/@effect__vitest@4.0.5.patch
   "@expo/metro-config@58.0.14": patches/@expo__metro-config@58.0.14.patch
   expo-sharing@58.0.19: patches/expo-sharing@58.0.19.patch
@@ -395,6 +394,7 @@ patchedDependencies:
   # Observe the owned host exit independently of descendants retaining its stdio.
   "@muse-code/sdk@1.4.6": patches/@muse-code__sdk@1.4.6.patch
   app-builder-lib@26.16.1: patches/app-builder-lib@26.16.1.patch
+  "@clerk/expo-native-components@0.4.0": patches/@clerk__expo-native-components@0.4.0.patch
 
 peerDependencyRules:
   allowAny:
