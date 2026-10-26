@@ -307,7 +307,17 @@ const layerScheduledTasksTest = ScheduledTaskService.layer.pipe(
   Layer.provide(
     Layer.mergeAll(
       Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
-      Layer.mock(ThreadManagementService.ThreadManagementService)({}),
+      Layer.mock(ThreadManagementService.ThreadManagementService)({
+        getThreadShell: (threadId) =>
+          Effect.succeed({
+            projectId: threadId.includes("surviving")
+              ? ProjectId.make("automation-other-project")
+              : ProjectId.make(
+                  threadId.replace("automation-delete-thread", "automation-delete-project"),
+                ),
+            title: "Automation target",
+          } as never),
+      }),
       Layer.mock(SecretRequests.SecretRequests)({}),
       Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
         namedProjectsRoot: "/projects",
@@ -401,14 +411,19 @@ it.layer(layerProjectDeletionTest)("project deletion during thread commands", (i
             worktreePath: null,
           });
         }
-        const save = (name: string, target: ThreadId | null, webhook = false) =>
+        const save = (
+          name: string,
+          target: ThreadId | null,
+          webhook = false,
+          taskProjectId = projectId,
+        ) =>
           tasks.upsert({
             id: ScheduledTaskId.make(`automation:${deletion}:${name}`),
             title: name,
             prompt: "Check orchestration progress",
             enabled: !webhook,
             schedule: webhook ? { type: "webhook" } : { type: "interval", everyMs: 60_000 },
-            projectId,
+            projectId: taskProjectId,
             threadId: target,
             workspaceStrategy: { type: "root" },
             modelSelection,
@@ -423,8 +438,9 @@ it.layer(layerProjectDeletionTest)("project deletion during thread commands", (i
         yield* save("detached", threadId);
         const { task: detached } = yield* save("detached", null);
         yield* save("moved", threadId);
-        const { task: moved } = yield* save("moved", otherThreadId);
-        const { task: other } = yield* save("other", otherThreadId);
+        const otherProjectId = ProjectId.make("automation-other-project");
+        const { task: moved } = yield* save("moved", otherThreadId, false, otherProjectId);
+        const { task: other } = yield* save("other", otherThreadId, false, otherProjectId);
         yield* tasks.triggerWebhook({
           hookId: webhook.id,
           token: webhook.webhook!.path.split("/").at(-1)!,
