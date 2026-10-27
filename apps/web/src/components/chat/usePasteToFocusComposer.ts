@@ -7,6 +7,7 @@ import { isCommandPaletteOpen } from "../../commandPaletteBus";
 import { getTerminalFocusOwner } from "../../lib/terminalFocus";
 import type { ThreadId } from "@t3tools/contracts";
 import type { ComposerHandleRef } from "../../composerHandleContext";
+import { useIsActiveChatPane } from "../split/chatPane";
 /**
  * Paste-to-focus: the resting composer blurs on a click into the timeline, so a paste that
  * follows has no editable target and would be dropped. This sends it to the composer instead.
@@ -16,7 +17,10 @@ export function usePasteToFocusComposer(
   composerRef: ComposerHandleRef,
 ) {
   const pasteAsTextShortcutUntilRef = useRef(0);
+  // Fork: split panes each mount this; only the active pane takes the paste.
+  const isActivePane = useIsActiveChatPane();
   useEffect(() => {
+    if (!isActivePane) return;
     const keyHandler = (event: KeyboardEvent) => {
       if (
         shouldRedirectInputToComposer(event) &&
@@ -49,5 +53,5 @@ export function usePasteToFocusComposer(
       window.removeEventListener("keydown", keyHandler, true);
       window.removeEventListener("paste", handler, true);
     };
-  }, [activeThreadId, composerRef]);
+  }, [activeThreadId, composerRef, isActivePane]);
 }

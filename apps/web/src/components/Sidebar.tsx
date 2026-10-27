@@ -204,7 +204,7 @@ import {
 import { SidebarPointerSensor } from "./Sidebar.pointer";
 import { createSidebarListMotion } from "./Sidebar.motion";
 import { resolveSnoozePresets, snoozeWakeLabel, type SnoozePreset } from "./Sidebar.snooze";
-import { ProjectFavicon, type ProjectFaviconProject } from "./ProjectFavicon";
+import { ProjectFavicon } from "./ProjectFavicon";
 // Fork: per-project runs in the thread list.
 import {
   ThreadParentDialogHost,
@@ -216,31 +216,8 @@ import {
 } from "./threadOrchestration/childThreads.logic";
 import { useChildThreadGroups } from "./threadOrchestration/coordinatorLinks";
 import { forkSidebarList, useForkSidebarGroups } from "./sidebarProjectRuns/forkSidebarList";
-import {
-  SidebarCoordinatorIcon,
-  SidebarProjectRunRowLead,
-} from "./sidebarProjectRuns/SidebarProjectRunRowLead";
-import {
-  resolveProjectRunAccent,
-  sidebarProjectRunRowClassName,
-} from "./sidebarProjectRuns/sidebarProjectRunAccent";
-import {
-  sidebarRowLead,
-  type SidebarProjectRunPlacement,
-} from "./sidebarProjectRuns/sidebarProjectRuns.logic";
 import { useSidebarProjectRuns } from "./sidebarProjectRuns/useSidebarProjectRuns";
-import { threadCardLayout } from "./sidebarThreadCards/threadCardLayout";
-import { ThreadSearchMatchExcerpt } from "./ThreadSearchMatch";
-import { makeWorkspaceFileDropHandlers } from "./chat/workspaceFileDrop";
-import { ProviderInstanceIcon } from "./chat/ProviderInstanceIcon";
-import { getTriggerDisplayModelLabel } from "./chat/providerIconUtils";
-import {
-  deriveProviderEntriesByEnvironment,
-  shouldShowInstanceBadge,
-  type ProviderInstanceEntry,
-} from "../providerInstances";
-import { useThreadRunningTerminalIds } from "../state/terminalSessions";
-import { resolveDoneWhileWaitingStatus } from "./sidebarDoneWhileWaiting/doneWhileWaiting.logic";
+import { deriveProviderEntriesByEnvironment } from "../providerInstances";
 import { useStableCallback } from "../hooks/useStableCallback";
 import {
   resolveSidebarRouteReveal,
@@ -3329,14 +3306,10 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             olderSettledShelf.retry();
                             showMoreSettled();
                           }}
-                          className="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-sm text-sidebar-muted-foreground/55 hover:bg-sidebar-row-hover hover:text-sidebar-foreground disabled:cursor-default redesign:text-sidebar-muted-foreground"
+                          className="flex h-9 w-full cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-left text-sm text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground disabled:cursor-default"
                         >
-                          {/* The New design keeps plus for "add" and uses a chevron to reveal more. */}
-                          <PlusIcon aria-hidden className="size-4 shrink-0 redesign:hidden" />
-                          <ChevronDownIcon
-                            aria-hidden
-                            className="hidden size-4 shrink-0 redesign:block"
-                          />
+                          {/* Plus means "add", so revealing more uses a chevron. */}
+                          <ChevronDownIcon aria-hidden className="size-4 shrink-0" />
                           {olderSettledShelf.loading
                             ? "Loading"
                             : olderSettledShelf.failed

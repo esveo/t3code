@@ -59,6 +59,7 @@ export function resolveRemoteOpenState(input: {
   readonly sshTarget: { readonly alias: string; readonly username: string | null } | null;
   readonly remoteOpenTargets: ReadonlyArray<RemoteOpenTarget> | undefined;
   readonly isDesktopRenderer: boolean;
+  /** esveo fork: base URL of a saved bearer connection; null elsewhere. */
   readonly bearerHttpBaseUrl?: string | null;
 }): RemoteOpenState {
   const { target } = input;
@@ -77,6 +78,8 @@ export function resolveRemoteOpenState(input: {
   } else if (isDesktopLocalConnectionTarget(target)) {
     return LOCAL_EXEC;
   } else if (isLoopbackBearerConnection(input.bearerHttpBaseUrl)) {
+    // esveo fork: a saved connection to a loopback server (the background
+    // service the fork's desktop app pairs with) runs on this machine.
     return LOCAL_EXEC;
   }
 

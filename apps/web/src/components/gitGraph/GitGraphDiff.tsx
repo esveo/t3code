@@ -1,6 +1,5 @@
 import type { CodeViewDiffItem, FileDiffMetadata } from "@pierre/diffs";
 import type { EnvironmentId, ReviewDiffRange, VcsCommitGraphEntry } from "@t3tools/contracts";
-import * as DateTime from "effect/DateTime";
 import { ArrowRightIcon, ChevronDownIcon, ChevronRightIcon, XIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -17,14 +16,13 @@ import {
   buildFileDiffContentVersion,
   buildFileDiffIdentityKey,
   fnv1a32,
-  getDiffCollapseIconClassName,
   getDiffLineStat,
   getRenderablePatch,
   resolveDiffThemeName,
   resolveFileDiffPath,
 } from "~/lib/diffRendering";
 import { PREFERRED_HIGHLIGHTER } from "~/lib/syntaxHighlighting";
-import { cn, isMacPlatform } from "~/lib/utils";
+import { isMacPlatform } from "~/lib/utils";
 import { reviewEnvironment } from "~/state/review";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -70,11 +68,9 @@ export function GitGraphDiff({
   const { resolvedTheme } = useTheme();
   const settings = useClientSettings();
   const getDiffFileContents = useAtomCommand(reviewEnvironment.diffFileContents);
+  const previewInput = { cwd, range, ignoreWhitespace: settings.diffIgnoreWhitespace };
   const preview = useEnvironmentQuery(
-    reviewEnvironment.diffPreview({
-      environmentId,
-      input: { cwd, range, ignoreWhitespace: settings.diffIgnoreWhitespace },
-    }),
+    reviewEnvironment.diffPreview({ environmentId, input: previewInput }),
   );
   const source = preview.data?.sources.find((candidate) => candidate.kind === "commit-range");
 
@@ -105,7 +101,7 @@ export function GitGraphDiff({
       range,
       ignoreWhitespace: settings.diffIgnoreWhitespace,
       theme: resolvedTheme,
-      revision: preview.data ? DateTime.formatIso(preview.data.generatedAt) : undefined,
+      previewInput,
       preview: renderablePatch,
     },
   );
@@ -323,9 +319,9 @@ function CollapseButton({
       }}
     >
       {collapsed ? (
-        <ChevronRightIcon className={cn("size-4", getDiffCollapseIconClassName(fileDiff))} />
+        <ChevronRightIcon className="size-4 text-muted-foreground/80" />
       ) : (
-        <ChevronDownIcon className={cn("size-4", getDiffCollapseIconClassName(fileDiff))} />
+        <ChevronDownIcon className="size-4 text-muted-foreground/80" />
       )}
     </Button>
   );

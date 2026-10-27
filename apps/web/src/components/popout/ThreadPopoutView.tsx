@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import ChatView from "../ChatView";
 import { SidebarInset, SidebarProvider } from "../ui/sidebar";
 import { APP_DISPLAY_NAME } from "../../branding";
-import { setActiveEnvironmentId, useThreadShell } from "../../state/entities";
+import { useThreadShell } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
 import { environmentShell } from "../../state/shell";
 import { useEnvironmentThread } from "../../state/threads";
@@ -19,12 +19,6 @@ import { resolveThreadRouteRenderState } from "../../threadRoutes";
  * the chrome a popout has.
  */
 export function ThreadPopoutView({ threadRef }: { threadRef: ScopedThreadRef }) {
-  // This window is about one environment, so it is the active one here. The
-  // app shell, which normally decides that, does not run in a popout.
-  useEffect(() => {
-    setActiveEnvironmentId(threadRef.environmentId);
-  }, [threadRef.environmentId]);
-
   const shell = useEnvironmentQuery(environmentShell.stateAtom(threadRef.environmentId));
   const threadShell = useThreadShell(threadRef);
   const unlistedThreadDetail = useEnvironmentThread(

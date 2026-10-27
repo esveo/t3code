@@ -25,7 +25,7 @@ export function useVoiceInputController(input: {
   readonly fallbackTranscriber?: VoiceTranscriber | null;
 }) {
   const global = useGlobalVoiceInput();
-  const { setOwnerFocused, session } = global;
+  const { session } = global;
   const latestInput = useRef(input);
   // oxlint-disable-next-line react/refs -- Transcription finishes asynchronously and must reach the composer's current selection setter, not the one captured at start.
   latestInput.current = input;
@@ -41,9 +41,9 @@ export function useVoiceInputController(input: {
     useCallback(() => {
       const ownerKey = input.ownerKey;
       if (!ownerKey) return;
-      setOwnerFocused(ownerKey, true);
-      return () => setOwnerFocused(ownerKey, false);
-    }, [input.ownerKey, setOwnerFocused]),
+      session.setOwnerFocused(ownerKey, true);
+      return () => session.setOwnerFocused(ownerKey, false);
+    }, [input.ownerKey, session]),
   );
 
   const start = useCallback(() => {
