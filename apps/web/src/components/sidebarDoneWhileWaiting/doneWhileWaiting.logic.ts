@@ -18,5 +18,8 @@ export function resolveDoneWhileWaitingStatus(
 ): SidebarThreadStatus {
   if (status !== "waiting" || !isUnread) return status;
   if (thread.latestRun?.status !== "completed") return status;
-  return backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks) ? status : "ready";
+  return backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks) ||
+    thread.pendingBackgroundTasks.some((task) => task.kind === "monitor")
+    ? status
+    : "ready";
 }

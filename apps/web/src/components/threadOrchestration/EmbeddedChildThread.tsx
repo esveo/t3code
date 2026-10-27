@@ -14,6 +14,7 @@ import { cn } from "~/lib/utils";
 import { useThreadShell } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
 import { environmentShell } from "~/state/shell";
+import { useEnvironmentThread } from "~/state/threads";
 import { resolveThreadRouteRenderState } from "~/threadRoutes";
 import { CHILD_THREAD_DOT_CLASS } from "./childThreadStateVisuals";
 import { useOpenThread } from "./useOpenThread";
@@ -30,11 +31,16 @@ export function EmbeddedChildThread(props: { threadRef: ScopedThreadRef; onBack:
   const { threadRef } = props;
   const shell = useEnvironmentQuery(environmentShell.stateAtom(threadRef.environmentId));
   const threadShell = useThreadShell(threadRef);
+  const unlistedThreadDetail = useEnvironmentThread(
+    threadShell === null ? threadRef.environmentId : null,
+    threadShell === null ? threadRef.threadId : null,
+  );
   const openThread = useOpenThread();
   const renderState = resolveThreadRouteRenderState({
     bootstrapComplete: shell.data?.snapshot._tag === "Some",
     serverThreadExists: threadShell !== null,
     serverThreadDeleted: threadShell?.deletedAt != null,
+    unlistedThreadDetail,
     draftThreadExists: false,
   });
   const state = threadShell ? resolveChildThreadState(threadShell.source) : null;

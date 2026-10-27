@@ -21,6 +21,7 @@ const PROVIDER_BY_DRIVER: Readonly<Record<string, UsageProviderKind>> = {
   codex: "codex",
   cursor: "cursor",
   grok: "grok",
+  muse: "muse",
   opencode: "opencode",
 };
 
@@ -41,6 +42,7 @@ const SESSION_KEY_BY_PROVIDER: Readonly<Record<UsageProviderKind, string>> = {
   codex: "threadId",
   cursor: "sessionId",
   grok: "sessionId",
+  muse: "sessionId",
   opencode: "sessionId",
   // Pi resumes from the thread's native ref, not a cursor, and is not in
   // PROVIDER_BY_DRIVER, so this key is never read.

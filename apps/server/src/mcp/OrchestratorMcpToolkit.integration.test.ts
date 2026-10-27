@@ -521,6 +521,7 @@ const layerUnusedScheduledTaskStub = Layer.succeed(
     upsert: () => Effect.die("ScheduledTaskService.upsert is unused in this test"),
     setEnabled: () => Effect.die("ScheduledTaskService.setEnabled is unused in this test"),
     delete: () => Effect.die("ScheduledTaskService.delete is unused in this test"),
+    deleteForThread: () => Effect.die("unused in this test"),
     runNow: () => Effect.die("ScheduledTaskService.runNow is unused in this test"),
     rotateWebhookToken: () => Effect.die("unused in this test"),
     listWebhookDeliveries: () => Effect.die("unused in this test"),
@@ -680,6 +681,7 @@ describe("orchestrator MCP toolkit", () => {
                 Ref.update(scheduledStore, (all) =>
                   all.filter((candidate) => candidate.id !== input.id),
                 ).pipe(Effect.as({ id: input.id })),
+              deleteForThread: () => Effect.die("unused in this test"),
               runNow: () => Effect.die("ScheduledTaskService.runNow is unused in this test"),
               rotateWebhookToken: () => Effect.die("unused in this test"),
               listWebhookDeliveries: () => Effect.die("unused in this test"),
@@ -1478,7 +1480,12 @@ describe("orchestrator MCP toolkit", () => {
                   models: [
                     expect.objectContaining({
                       id: codexModel,
-                      options: [expect.objectContaining({ id: "reasoning", type: "select" })],
+                      options: [
+                        expect.objectContaining({
+                          id: "reasoning",
+                          values: ["low", "medium", "high"],
+                        }),
+                      ],
                     }),
                   ],
                 }),
@@ -1758,10 +1765,10 @@ describe("orchestrator MCP toolkit", () => {
               hasPendingChildRuns: false,
               latestTerminalRunId: delegated.childRunId,
               latestTerminalStatus: "completed",
-              latestTerminalSummary: delegatedResult,
+              latestTerminalSummary: null,
             });
             expect(delegatedStatus.resultContextTransferId).not.toBeNull();
-            expect(delegatedStatus.latestTerminalResultContextTransferId).not.toBeNull();
+            expect(delegatedStatus.latestTerminalResultContextTransferId).toBeNull();
 
             yield* expectOffersToStay(0);
 
@@ -4125,12 +4132,10 @@ describe("orchestrator MCP toolkit", () => {
             hasPendingChildRuns: false,
             latestTerminalRunId: delegated.childRunId,
             latestTerminalStatus: "completed",
-            latestTerminalSummary: delegatedResult,
+            latestTerminalSummary: null,
           });
           expect(delegated.resultContextTransferId).not.toBeNull();
-          expect(delegated.latestTerminalResultContextTransferId).toBe(
-            delegated.resultContextTransferId,
-          );
+          expect(delegated.latestTerminalResultContextTransferId).toBeNull();
 
           const delegatedChild = yield* orchestrator.getThreadProjection(delegated.childThreadId);
           expect(delegatedChild.thread.lineage.relationshipToParent).toBe("subagent");
@@ -4224,8 +4229,8 @@ describe("orchestrator MCP toolkit", () => {
             hasPendingChildRuns: true,
             latestTerminalRunId: delegated.childRunId,
             latestTerminalStatus: "completed",
-            latestTerminalSummary: delegatedResult,
-            latestTerminalResultContextTransferId: delegated.resultContextTransferId,
+            latestTerminalSummary: null,
+            latestTerminalResultContextTransferId: null,
           });
 
           const finalSequence = yield* orchestrator.getThreadEventSequence(delegated.childThreadId);

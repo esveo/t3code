@@ -1,0 +1,33 @@
+diff --git a/android/src/main/java/expo/modules/clerk/ClerkExpoModule.kt b/android/src/main/java/expo/modules/clerk/ClerkExpoModule.kt
+index 27055ffdaf4247a2c4caf147dccc951c82439d2b..210050f6ee06c158f09b4b59d3f099b79b936aea 100644
+--- a/android/src/main/java/expo/modules/clerk/ClerkExpoModule.kt
++++ b/android/src/main/java/expo/modules/clerk/ClerkExpoModule.kt
+@@ -148,6 +148,20 @@ class ClerkExpoModule : Module() {
+ 
+     // MARK: - single-token client sync
+ 
++    // esveo code uses Clerk's registered callback while shipping under its own package id.
++    private fun applyApplicationIdOverride(context: Context) {
++        val applicationId = runCatching {
++            context.packageManager
++                .getApplicationInfo(context.packageName, android.content.pm.PackageManager.GET_META_DATA)
++                .metaData
++                ?.getString("esveo.clerkApplicationId")
++        }.getOrNull() ?: return
++        runCatching {
++            Clerk::class.java.getMethod("setApplicationId\$api", String::class.java)
++                .invoke(Clerk, applicationId)
++        }.onFailure { Log.w(TAG, "Could not override the Clerk application id: ${it.message}") }
++    }
++
+     private fun configureNative(pubKey: String, seedDeviceToken: String?, proxyUrl: String?, promise: Promise) {
+         val context = reactContext ?: run {
+             promise.reject("E_CONFIGURE_FAILED", "React context is not available", null)
+@@ -171,6 +185,7 @@ class ClerkExpoModule : Module() {
+                     else -> false
+                 }
+                 if (didConfigure) {
++                    applyApplicationIdOverride(context)
+                     configuredPublishableKey = pubKey
+                     configuredProxyUrl = normalizedProxyUrl
+                     appContext.currentActivity?.let { Clerk.attachActivity(it) }

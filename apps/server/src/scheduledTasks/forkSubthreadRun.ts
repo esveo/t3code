@@ -48,7 +48,7 @@ export function resolveSpawnAsSubthread(
  * changed binding is checked, so a task whose thread was deleted later can
  * still be edited (its runs fail and say why).
  */
-export const validateThreadBinding = (
+export const validateThreadBinding = Effect.fn("forkSubthreadRun.validateThreadBinding")(function* (
   threadManagement: Pick<
     ThreadManagementService.ThreadManagementService["Service"],
     "getThreadShell"
@@ -59,22 +59,21 @@ export const validateThreadBinding = (
     readonly threadId: string | null;
   },
   existing: Pick<ScheduledTask, "projectId" | "threadId"> | null,
-) =>
-  Effect.gen(function* () {
-    if (input.threadId === null) return;
-    if (existing?.threadId === input.threadId && existing.projectId === input.projectId) return;
-    const shell = yield* threadManagement
-      .getThreadShell(ThreadId.make(input.threadId))
-      .pipe(Effect.orElseSucceed(() => null));
-    if (shell?.projectId === input.projectId) return;
-    return yield* new ScheduledTaskError({
-      message:
-        shell === null
-          ? `Thread '${input.threadId}' does not exist.`
-          : `'${shell.title}' belongs to another project.`,
-      taskId: input.id,
-    });
+) {
+  if (input.threadId === null) return;
+  if (existing?.threadId === input.threadId && existing.projectId === input.projectId) return;
+  const shell = yield* threadManagement
+    .getThreadShell(ThreadId.make(input.threadId))
+    .pipe(Effect.orElseSucceed(() => null));
+  if (shell?.projectId === input.projectId) return;
+  return yield* new ScheduledTaskError({
+    message:
+      shell === null
+        ? `Thread '${input.threadId}' does not exist.`
+        : `'${shell.title}' belongs to another project.`,
+    taskId: input.id,
   });
+});
 
 export const launchScheduledSubthread = (
   services: {
@@ -90,7 +89,18 @@ export const launchScheduledSubthread = (
     readonly messageId: MessageId;
     readonly prompt: string;
   },
-) =>
+): Effect.Effect<
+  Effect.Success<ReturnType<ThreadLaunchService.ThreadLaunchService["Service"]["launch"]>>,
+  | ScheduledTaskError
+  | Effect.Error<
+      ReturnType<
+        ThreadManagementService.ThreadManagementService["Service"]["getProjectThreadRecords"]
+      >
+    >
+  | Effect.Error<ReturnType<ThreadCoordinators["Service"]["claim"]>>
+  | Effect.Error<ReturnType<ThreadCoordinators["Service"]["unclaim"]>>
+  | Effect.Error<ReturnType<ThreadLaunchService.ThreadLaunchService["Service"]["launch"]>>
+> =>
   Effect.gen(function* () {
     const { task } = input;
     if (Option.isNone(services.coordinators)) {

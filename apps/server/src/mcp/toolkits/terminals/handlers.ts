@@ -23,10 +23,9 @@ const make = Effect.gen(function* () {
   const threadShell = (threadId: ThreadId) =>
     orchestrator.getThreadShell(threadId).pipe(
       Effect.mapError((cause) => new TerminalLookupFailedError({ cause })),
-      Effect.flatMap((thread) =>
-        thread === null
-          ? Effect.fail(new TerminalThreadNotFoundError({ threadId }))
-          : Effect.succeed(thread),
+      Effect.filterOrFail(
+        (thread) => thread !== null,
+        () => new TerminalThreadNotFoundError({ threadId }),
       ),
     );
 

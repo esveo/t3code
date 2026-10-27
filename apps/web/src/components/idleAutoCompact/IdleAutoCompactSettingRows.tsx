@@ -22,7 +22,7 @@ const KEYS = [
   "idleAutoCompactMinContextTokens",
 ] as const;
 
-/** Fork: idle auto-compact for Claude threads, in Settings → General. */
+/** Fork: idle auto-compact for Claude threads, in Settings → Threads. */
 export function IdleAutoCompactSettingRows() {
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
