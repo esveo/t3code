@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { cn } from "~/lib/utils";
 import { useEnvironmentQuery } from "~/state/query";
 import type { TimelineEntry } from "../../session-logic";
-import { useScopedSettings } from "../settings/useScopedSettings";
+import { useEnvironmentSettings } from "~/hooks/useSettings";
 import { Button } from "../ui/button";
 import {
   type DiagramData,
@@ -126,7 +126,10 @@ interface VoiceCallTimelineProps {
 }
 
 export function VoiceCallTimeline(props: VoiceCallTimelineProps) {
-  const enabled = useScopedSettings((settings) => settings.voiceCallEnabled);
+  const enabled = useEnvironmentSettings(
+    props.environmentId,
+    (settings) => settings.voiceCallEnabled,
+  );
   return enabled ? <VoiceCallLanes {...props} /> : null;
 }
 

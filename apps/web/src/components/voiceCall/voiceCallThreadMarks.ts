@@ -3,18 +3,20 @@
  * a compaction divider. They carry no run, so they stay out of turn folds and of
  * everything the agent sees.
  */
-import type { ScopedThreadRef, VoiceCallThreadSpan } from "@t3tools/contracts";
-import { AsyncResult } from "effect/reactivity";
+import type { ScopedThreadRef, ServerSettings, VoiceCallThreadSpan } from "@t3tools/contracts";
+import { useAtomValue } from "@effect/atom-react";
+import { AsyncResult, Atom } from "effect/reactivity";
 import * as Option from "effect/Option";
 import { useEffect } from "react";
 
 import { useEnvironmentQuery, useEnvironmentQuerySelector } from "~/state/query";
+import { serverEnvironment } from "~/state/server";
 import type { TimelineEntry } from "../../session-logic";
-import { useScopedSettings } from "../settings/useScopedSettings";
 import { formatDuration } from "../agentTime/agentTimeChart";
 import { voiceCallClientId, voiceCallEnvironment, type VoiceCallView } from "./voiceCallState";
 
 const MARK_ID_PREFIX = "voice-call-mark:";
+const noThreadSettingsAtom = Atom.make<ServerSettings | null>(null);
 
 export const isVoiceCallMarkId = (id: string) => id.startsWith(MARK_ID_PREFIX);
 
@@ -74,7 +76,10 @@ export function useVoiceCallMarks(
   threadRef: ScopedThreadRef | null,
   entries: ReadonlyArray<TimelineEntry>,
 ) {
-  const enabled = useScopedSettings((settings) => settings.voiceCallEnabled);
+  const settings = useAtomValue(
+    threadRef ? serverEnvironment.settingsValueAtom(threadRef.environmentId) : noThreadSettingsAtom,
+  );
+  const enabled = settings?.voiceCallEnabled ?? false;
   const ref = enabled ? threadRef : null;
   const environmentId = ref?.environmentId ?? null;
   const { data: spans, refresh } = useEnvironmentQuery(

@@ -7,12 +7,11 @@ import { PauseIcon, PhoneIcon, PhoneIncomingIcon, PlayIcon } from "lucide-react"
 import type { ReactNode } from "react";
 
 import { subscribeAtomChanges } from "~/rpc/atomRegistry";
-import { useEnvironmentIdentificationMode } from "~/hooks/useSettings";
+import { useEnvironmentIdentificationMode, useEnvironmentSettings } from "~/hooks/useSettings";
 import { useThreadShell } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { ComposerControl, ComposerControlIcon } from "../chat/ComposerControl";
-import { useScopedSettings } from "../settings/useScopedSettings";
 import { StageBackdropButtonArt, useSidebarStageBackdropVariant } from "../SidebarStageBackdrop";
 import { Spinner } from "../ui/spinner";
 import { toastManager } from "../ui/toast";
@@ -60,7 +59,10 @@ interface VoiceCallButtonProps {
  * action gives way to stop, unless `keepPrimary` needs it.
  */
 export function VoiceCallButton(props: VoiceCallButtonProps) {
-  const enabled = useScopedSettings((settings) => settings.voiceCallEnabled);
+  const enabled = useEnvironmentSettings(
+    props.environmentId,
+    (settings) => settings.voiceCallEnabled,
+  );
   // Stays until the peer stops: switching off ends the call, and the controls stop the peer.
   return enabled || isVoiceCallPeerActive() ? <VoiceCallControls {...props} /> : props.primary;
 }
