@@ -1,9 +1,6 @@
 /**
- * Fork: voice call. A realtime voice model (GPT-Live on the user's ChatGPT
- * login) talks with the user, hands real work to the thread open on screen and
- * reads the result back. The client owns the microphone, the speaker and the
- * WebRTC peer; the server creates the call, holds the event sideband and is
- * the only one that reads or writes realtime events.
+ * Fork: voice call. The client owns the microphone, the speaker and the WebRTC
+ * peer; the server creates the call and alone reads or writes realtime events.
  * See docs/internals/voice-call.md.
  */
 import * as Schema from "effect/Schema";
@@ -16,7 +13,10 @@ export const VOICE_CALL_WS_METHODS = {
   subscribe: "voiceCall.subscribe",
   connect: "voiceCall.connect",
   setTarget: "voiceCall.setTarget",
+  pause: "voiceCall.pause",
   hangUp: "voiceCall.hangUp",
+  usage: "voiceCall.usage",
+  threadSpans: "voiceCall.threadSpans",
 } as const;
 
 /**
@@ -65,7 +65,6 @@ export const VoiceCallPersona = Schema.String.check(
 
 /** Why a call cannot start, so the UI can say so. */
 export const VoiceCallUnavailableReason = Schema.Literals([
-  "disabled",
   "codex-not-logged-in",
   "codex-api-key",
   "codex-login-expired",
@@ -81,9 +80,10 @@ export type VoiceCallAvailability = typeof VoiceCallAvailability.Type;
 
 /**
  * `connecting`: a segment is being created. `live`: a realtime session is open.
+ * `paused`: the session is closed so it stops using quota; resuming connects a new one.
  * `ended`: hung up. `error`: the last segment failed and no retry is running.
  */
-export const VoiceCallState = Schema.Literals(["connecting", "live", "ended", "error"]);
+export const VoiceCallState = Schema.Literals(["connecting", "live", "paused", "ended", "error"]);
 export type VoiceCallState = typeof VoiceCallState.Type;
 
 export const VoiceCallStatus = Schema.Struct({
@@ -140,7 +140,6 @@ export const VoiceCallEvent = Schema.Union([
     call: Schema.NullOr(VoiceCallStatus),
     delegations: Schema.Array(VoiceCallDelegation),
   }),
-  Schema.Struct({ type: Schema.Literal("availability"), availability: VoiceCallAvailability }),
   Schema.Struct({ type: Schema.Literal("call"), call: Schema.NullOr(VoiceCallStatus) }),
   /** A transcript delta while a turn runs, then its full text once with `done`. */
   Schema.Struct({
@@ -182,21 +181,43 @@ export const VoiceCallSetTargetInput = Schema.Struct({
 });
 export type VoiceCallSetTargetInput = typeof VoiceCallSetTargetInput.Type;
 
-export class VoiceCallDisabledError extends Schema.TaggedError<VoiceCallDisabledError>()(
-  "VoiceCallDisabledError",
-  { message: Schema.String },
-) {}
+/** esveo code's own count of connected time, an estimate; the limit is OpenAI's published figure. */
+export const VoiceCallUsage = Schema.Struct({
+  last24HoursSeconds: Schema.Number,
+  last30DaysSeconds: Schema.Number,
+  planLabel: Schema.NullOr(Schema.String),
+  /** Null when the plan is unknown, or has no limit or no published one. */
+  limitSeconds: Schema.NullOr(Schema.Number),
+  /** False without a ChatGPT login for Codex, when the call button is hidden too. */
+  offered: Schema.Boolean,
+});
+export type VoiceCallUsage = typeof VoiceCallUsage.Type;
+
+/** One realtime session on one thread, in epoch ms; a pause or move ends it. */
+export const VoiceCallThreadSpan = Schema.Struct({
+  startedAt: Schema.Number,
+  endedAt: Schema.NullOr(Schema.Number),
+});
+export type VoiceCallThreadSpan = typeof VoiceCallThreadSpan.Type;
 
 export class VoiceCallError extends Schema.TaggedError<VoiceCallError>()("VoiceCallError", {
   message: Schema.String,
   reason: Schema.optionalKey(VoiceCallUnavailableReason),
 }) {}
 
-const VoiceCallRpcError = Schema.Union([
-  VoiceCallDisabledError,
-  VoiceCallError,
-  EnvironmentAuthorizationError,
-]);
+const VoiceCallRpcError = Schema.Union([VoiceCallError, EnvironmentAuthorizationError]);
+
+export const WsVoiceCallUsageRpc = Rpc.make(VOICE_CALL_WS_METHODS.usage, {
+  payload: Schema.Struct({}),
+  success: VoiceCallUsage,
+  error: VoiceCallRpcError,
+});
+
+export const WsVoiceCallThreadSpansRpc = Rpc.make(VOICE_CALL_WS_METHODS.threadSpans, {
+  payload: Schema.Struct({ threadId: ThreadId }),
+  success: Schema.Array(VoiceCallThreadSpan),
+  error: VoiceCallRpcError,
+});
 
 export const WsVoiceCallSubscribeRpc = Rpc.make(VOICE_CALL_WS_METHODS.subscribe, {
   payload: VoiceCallSubscribeInput,
@@ -213,6 +234,12 @@ export const WsVoiceCallConnectRpc = Rpc.make(VOICE_CALL_WS_METHODS.connect, {
 
 export const WsVoiceCallSetTargetRpc = Rpc.make(VOICE_CALL_WS_METHODS.setTarget, {
   payload: VoiceCallSetTargetInput,
+  success: Schema.Struct({}),
+  error: VoiceCallRpcError,
+});
+
+export const WsVoiceCallPauseRpc = Rpc.make(VOICE_CALL_WS_METHODS.pause, {
+  payload: Schema.Struct({}),
   success: Schema.Struct({}),
   error: VoiceCallRpcError,
 });

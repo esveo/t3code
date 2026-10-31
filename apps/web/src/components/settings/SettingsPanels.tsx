@@ -104,6 +104,11 @@ import { IdleAutoCompactSettingRows } from "../idleAutoCompact/IdleAutoCompactSe
 import { SidebarChildThreadsSettingRow } from "../threadOrchestration/SidebarChildThreadsSetting";
 import { AgentStageSettingRow } from "../agentStage/AgentStageSetting";
 import { VoiceInputSettingRow } from "../voiceInput/VoiceInputSettingRow";
+import {
+  VoiceCallEnabledSettingRow,
+  VoiceCallFollowUpSettingRow,
+  VoiceCallVoiceSettingRow,
+} from "../voiceCall/VoiceCallVoiceSettingRow";
 import { EasterEggsSettingRow } from "../easterEggs/EasterEggsSettingRow";
 import { EsveoComposerReadoutSettingRows } from "../esveoSettings/EsveoSettingRows";
 
@@ -889,6 +894,9 @@ export function GeneralSettingsPanel() {
         />
         <AgentStageSettingRow />
         <VoiceInputSettingRow />
+        <VoiceCallEnabledSettingRow />
+        <VoiceCallVoiceSettingRow />
+        <VoiceCallFollowUpSettingRow />
         <EasterEggsSettingRow />
         <SettingsRow
           {...searchableSetting("archive-confirmation")}

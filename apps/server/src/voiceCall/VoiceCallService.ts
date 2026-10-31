@@ -1,7 +1,7 @@
 /**
  * Fork: one voice call per environment. The client's WebRTC peer carries the
  * audio; this service creates each realtime session (a segment), holds its
- * sideband, hands the voice's delegations to the thread on screen and tells
+ * sideband, hands the voice's delegations to the call's thread and tells
  * every client how the call stands. See docs/internals/voice-call.md.
  */
 import {
@@ -14,16 +14,18 @@ import {
   type VoiceCallConnectInput,
   type VoiceCallConnectResult,
   VoiceCallDelegation,
-  VoiceCallDisabledError,
   VoiceCallError,
   type VoiceCallEvent,
   type VoiceCallStatus,
+  type VoiceCallThreadSpan,
+  type VoiceCallUsage,
 } from "@t3tools/contracts";
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -32,12 +34,11 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
-import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
-import * as SqlClient from "effect/sql/SqlClient";
 import * as Stream from "effect/Stream";
 
+import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { RealtimeCallClient, type RealtimeSideband } from "./RealtimeCallClient.ts";
@@ -48,16 +49,29 @@ import {
   type RealtimeSpeaker,
   sessionUpdateEvents,
 } from "./realtimeEvents.ts";
-import { readVoiceCallAuth } from "./VoiceCallAuth.ts";
+import { readVoiceCallAuth, readVoiceCallPlanType } from "./VoiceCallAuth.ts";
+import { makeVoiceCallThreadSpans } from "./VoiceCallThreadSpans.ts";
+import { makeVoiceCallUsageTracker } from "./VoiceCallUsage.ts";
 import {
+  alreadyForwardedAnswer,
   archivedTargetAnswer,
   BACKEND_HINT,
   dispatchFailedAnswer,
   frontEndInstructions,
+  type VoiceCallFollowUpBehavior,
+  type VoiceCallRecapTurn,
   noTargetAnswer,
+  completeVoiceDelegation,
+  parseVoiceDelegation,
+  stripLeadingMarks,
+  targetMovedContext,
+  voiceCallSendMode,
+  voiceSayContext,
 } from "./voiceCallPrompt.ts";
 
 export const VOICE_CALL_CONTEXT_KIND = "voice-call";
+
+const VOICE_CALLS_OFF = "Voice calls are off in Settings.";
 
 export interface VoiceCallSegmentHandle {
   readonly id: string;
@@ -70,9 +84,12 @@ export class VoiceCallService extends Context.Service<
     readonly subscribe: (clientId: string) => Stream.Stream<VoiceCallEvent>;
     readonly connect: (
       input: VoiceCallConnectInput,
-    ) => Effect.Effect<VoiceCallConnectResult, VoiceCallError | VoiceCallDisabledError>;
+    ) => Effect.Effect<VoiceCallConnectResult, VoiceCallError>;
     readonly setTarget: (target: ThreadId | null) => Effect.Effect<void>;
+    readonly pause: Effect.Effect<void>;
     readonly hangUp: Effect.Effect<void>;
+    readonly usage: Effect.Effect<VoiceCallUsage>;
+    readonly threadSpans: (threadId: ThreadId) => Effect.Effect<ReadonlyArray<VoiceCallThreadSpan>>;
     /**
      * Answers a delegation once the user is quiet. With no live segment the
      * answer waits for the next one, also across a hang-up or a restart.
@@ -80,6 +97,10 @@ export class VoiceCallService extends Context.Service<
     readonly answerDelegation: (delegationId: string, text: string) => Effect.Effect<void>;
     /** Something the voice should say unprompted; dropped when no call is live. */
     readonly speak: (text: string) => Effect.Effect<void>;
+    /** `voice_say`: returns when the voice said it or the user's interruption reached the thread. */
+    readonly say: (threadId: ThreadId, text: string) => Effect.Effect<VoiceSayStatus>;
+    /** Whether the thread used `voice_say` since the last call; then its answer is not read back. */
+    readonly takeSaid: (threadId: ThreadId) => Effect.Effect<boolean>;
     readonly delegations: Effect.Effect<ReadonlyArray<VoiceCallDelegation>>;
     readonly targetThreadId: Effect.Effect<ThreadId | null>;
     readonly live: Effect.Effect<boolean>;
@@ -99,6 +120,19 @@ interface Segment {
   readonly openTurns: Map<string, number>;
   lastUserSpeechAt: number;
   wakeAt: number | null;
+  /** The user turn that broke into a `voice_say`, until it ended. */
+  interruption: { readonly turnId: string; delegated: boolean } | null;
+  /** When an interruption went to the thread; the voice may still delegate the same words. */
+  forwardedAt: number | null;
+  /** The user's words since the last delegation or real answer, across pauses that split turns. */
+  heard: string;
+}
+
+export type VoiceSayStatus = "spoken" | "interrupted" | "call_ended" | "no_call" | "timed_out";
+
+interface Say {
+  readonly deferred: Deferred.Deferred<VoiceSayStatus>;
+  injected: boolean;
 }
 
 /** Something waiting for the speaking gate; `delegation` null is an unprompted update. */
@@ -106,19 +140,23 @@ interface Injection {
   readonly delegation: VoiceCallDelegation | null;
   readonly text: string;
   readonly queuedAt: number;
+  readonly say?: Say;
 }
+
+const RECAP_TURNS = 8;
+/** A context payload over 64,000 characters is dropped whole, so the oldest lines go first. */
+const TRANSCRIPT_MAX_CHARS = 32_000;
+const SAY_TIMEOUT_MS = 120_000;
+const FORWARDED_DELEGATION_WINDOW_MS = 20_000;
 
 /** Answering a held delegation works for at least 180 s (spike); later ones go out unprompted. */
 const DELEGATION_ANSWER_WINDOW_MS = 180_000;
-/** The user may pause mid-sentence; nothing is injected until they have been quiet this long. */
-const QUIET_AFTER_USER_MS = 1_000;
-/** A turn that never reports done must not hold the queue forever. */
+/** Tuning value: the user may pause mid-sentence; nothing is injected until they were quiet this long. */
+const QUIET_AFTER_USER_MS = 1_500;
+/** A turn that never reports done must not hold the queue forever; counted from the user's last word. */
 const STALE_TURN_MS = 30_000;
 /** Results nobody heard within this time are dropped instead of opening the next call. */
 const PENDING_MAX_AGE_MS = 60 * 60_000;
-
-const encodeDelegation = Schema.encodeSync(Schema.fromJsonString(VoiceCallDelegation));
-const decodeDelegation = Schema.decodeUnknownOption(Schema.fromJsonString(VoiceCallDelegation));
 
 const contextIdFor = (delegationId: string) =>
   `voice-${delegationId.replace(/[^a-z0-9_-]/gi, "").slice(-100)}`;
@@ -128,6 +166,7 @@ export const voiceDelegationMessage = (input: {
   readonly callId: string;
   readonly delegationId: string;
   readonly text: string;
+  readonly transcript: string;
 }): { readonly text: string; readonly context: OrchestrationMessageContext } => {
   const contextId = contextIdFor(input.delegationId);
   const reference = formatComposerContextReference({
@@ -145,7 +184,12 @@ export const voiceDelegationMessage = (input: {
           contextId: contextId as never,
           label: "Voice",
           kind: VOICE_CALL_CONTEXT_KIND,
-          payload: { hint: BACKEND_HINT, callId: input.callId, delegationId: input.delegationId },
+          payload: {
+            hint: BACKEND_HINT,
+            callId: input.callId,
+            delegationId: input.delegationId,
+            ...(input.transcript.length > 0 ? { transcript: input.transcript } : {}),
+          },
         },
       ],
     },
@@ -155,35 +199,34 @@ export const voiceDelegationMessage = (input: {
 const make = Effect.gen(function* () {
   const settingsService = yield* ServerSettingsService;
   const threads = yield* ThreadManagementService;
+  const projections = yield* ProjectionStore.ProjectionStoreV2;
   const realtime = yield* RealtimeCallClient;
   const crypto = yield* Crypto.Crypto;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const lifecycle = yield* Semaphore.make(1);
+  const usageTracker = yield* makeVoiceCallUsageTracker;
+  const threadSpans = yield* makeVoiceCallThreadSpans;
   const changes = yield* Effect.acquireRelease(PubSub.unbounded<VoiceCallEvent>(), (pubsub) =>
     PubSub.shutdown(pubsub),
   );
-  const sql = yield* SqlClient.SqlClient;
 
   let call: VoiceCallStatus | null = null;
   let segment: Segment | null = null;
   let pending: Array<Injection> = [];
+  let says: Array<Say> = [];
+  let followUpBehavior: VoiceCallFollowUpBehavior = "steer";
+  /** A new session after a pause knows nothing of the call, so it is told the last turns. */
+  let recap: ReadonlyArray<VoiceCallRecapTurn> = [];
+  /** What was said since the last delegation; it rides along, as in Codex's `transcript_delta`. */
+  let unsentTranscript: ReadonlyArray<string> = [];
+  /** The delegation can arrive before its own turn ends; that turn must not ride on the next one. */
+  let lastSteeredText: string | null = null;
+  /** A paused call owes its results too; they wait for the next segment. */
+  const carriesCall = () => segment !== null || call?.state === "paused";
+  const saidThreads = new Set<ThreadId>();
   const delegations = new Map<string, VoiceCallDelegation>();
   const subscriptions = new Map<string, number>();
-
-  // Open delegations outlive the call and the process: their answers are still owed.
-  const stored = yield* sql<{ readonly delegation_json: string }>`
-    SELECT delegation_json FROM fork_voice_call_delegations WHERE status = 'open'
-  `.pipe(
-    Effect.catch((error) =>
-      Effect.as(Effect.logWarning("voice call: loading delegations failed", error), []),
-    ),
-  );
-  for (const row of stored) {
-    for (const delegation of Option.toArray(decodeDelegation(row.delegation_json))) {
-      delegations.set(delegation.id, delegation);
-    }
-  }
 
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
   const uuid = crypto.randomUUIDv4().pipe(Effect.orDie);
@@ -195,30 +238,19 @@ const make = Effect.gen(function* () {
       call = { ...call, ...patch };
       return publishCall;
     });
-  const persist = (delegation: VoiceCallDelegation) =>
-    Effect.gen(function* () {
-      const updatedAt = yield* nowIso;
-      yield* sql`
-        INSERT INTO fork_voice_call_delegations
-          (delegation_id, call_id, status, delegation_json, updated_at)
-        VALUES (${delegation.id}, ${call?.callId ?? ""}, ${delegation.status},
-          ${encodeDelegation(delegation)}, ${updatedAt})
-        ON CONFLICT (delegation_id) DO UPDATE SET status = excluded.status,
-          delegation_json = excluded.delegation_json, updated_at = excluded.updated_at
-      `;
-    }).pipe(
-      Effect.catch((error) => Effect.logWarning("voice call: saving a delegation failed", error)),
-    );
   const recordDelegation = (delegation: VoiceCallDelegation) =>
     Effect.suspend(() => {
       delegations.set(delegation.id, delegation);
-      return Effect.andThen(publish({ type: "delegation", delegation }), persist(delegation));
+      return publish({ type: "delegation", delegation });
     });
 
   const readAuth = Effect.gen(function* () {
     const settings = yield* settingsService.getSettings.pipe(
       Effect.mapError(() => new VoiceCallError({ message: "Could not read the settings." })),
     );
+    if (!settings.voiceCallEnabled) {
+      return yield* new VoiceCallError({ message: VOICE_CALLS_OFF });
+    }
     const auth = yield* readVoiceCallAuth(settings).pipe(
       Effect.provideService(FileSystem.FileSystem, fs),
       Effect.provideService(Path.Path, path),
@@ -244,11 +276,29 @@ const make = Effect.gen(function* () {
       );
     });
 
+  const settleSays = (status: VoiceSayStatus, matches: (say: Say) => boolean = () => true) =>
+    Effect.suspend(() => {
+      const settled = says.filter(matches);
+      says = says.filter((say) => !matches(say));
+      pending = pending.filter((item) => item.say === undefined || !settled.includes(item.say));
+      return Effect.forEach(settled, (say) => Deferred.succeed(say.deferred, status), {
+        discard: true,
+      });
+    });
+
   /** Closing the scope sends `session.close`; the realtime session stops billing. */
   const closeSegment = Effect.suspend(() => {
     const current = segment;
     segment = null;
-    return current === null ? Effect.void : Scope.close(current.scope, Exit.void);
+    return Effect.andThen(
+      settleSays("call_ended"),
+      current === null
+        ? Effect.void
+        : usageTracker.segmentClosed.pipe(
+            Effect.andThen(threadSpans.closed),
+            Effect.andThen(Scope.close(current.scope, Exit.void)),
+          ),
+    );
   });
 
   /** An answer older than the window, or from a closed segment, can only go out unprompted. */
@@ -272,7 +322,9 @@ const make = Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
     const readyAt = Math.max(
       current.lastUserSpeechAt + QUIET_AFTER_USER_MS,
-      ...[...current.openTurns.values()].map((openedAt) => openedAt + STALE_TURN_MS),
+      ...[...current.openTurns.values()].map(
+        (openedAt) => Math.max(openedAt, current.lastUserSpeechAt) + STALE_TURN_MS,
+      ),
     );
     if (now < readyAt) {
       // Events re-check the gate; this timer covers the quiet rule and stale turns.
@@ -292,24 +344,47 @@ const make = Effect.gen(function* () {
     }
     const due = pending.filter((item) => now - item.queuedAt <= PENDING_MAX_AGE_MS);
     pending = [];
+    for (const item of due) if (item.say !== undefined) item.say.injected = true;
     yield* sendAll(due.flatMap((item) => injectionEvents(current, item, now)));
   });
 
-  const enqueue = (delegation: VoiceCallDelegation | null, text: string) =>
-    Effect.gen(function* () {
-      pending.push({ delegation, text, queuedAt: yield* Clock.currentTimeMillis });
-      yield* flush;
-    });
+  const enqueue = Effect.fn("VoiceCallService.enqueue")(function* (
+    delegation: VoiceCallDelegation | null,
+    text: string,
+  ) {
+    pending.push({ delegation, text, queuedAt: yield* Clock.currentTimeMillis });
+    yield* flush;
+  });
 
-  const endCall = (error: string | null) =>
-    Effect.gen(function* () {
-      yield* closeSegment;
-      // Answers stay owed to the next call; unprompted updates are stale by then.
-      pending = pending.filter((item) => item.delegation !== null);
-      if (call !== null && (call.state === "connecting" || call.state === "live")) {
-        yield* setCall({ state: error === null ? "ended" : "error", segmentId: null, error });
-      }
+  const say = Effect.fn("VoiceCallService.say")(function* (threadId: ThreadId, text: string) {
+    if (segment === null || call?.targetThreadId !== threadId) return "no_call" as const;
+    const item: Say = { deferred: yield* Deferred.make<VoiceSayStatus>(), injected: false };
+    says.push(item);
+    saidThreads.add(threadId);
+    pending.push({
+      delegation: null,
+      text: voiceSayContext(text),
+      queuedAt: yield* Clock.currentTimeMillis,
+      say: item,
     });
+    yield* flush;
+    return yield* Deferred.await(item.deferred).pipe(
+      Effect.timeoutOption(Duration.millis(SAY_TIMEOUT_MS)),
+      Effect.map(Option.getOrElse((): VoiceSayStatus => "timed_out")),
+      // The agent's run may stop while it waits.
+      Effect.ensuring(settleSays("timed_out", (other) => other === item)),
+    );
+  });
+
+  const endCall = Effect.fn("VoiceCallService.endCall")(function* (error: string | null) {
+    yield* closeSegment;
+    if (
+      call !== null &&
+      (call.state === "connecting" || call.state === "live" || call.state === "paused")
+    ) {
+      yield* setCall({ state: error === null ? "ended" : "error", segmentId: null, error });
+    }
+  });
 
   const threadTitle = (threadId: ThreadId) =>
     threads.getThreadShell(threadId).pipe(
@@ -325,70 +400,100 @@ const make = Effect.gen(function* () {
       return Effect.andThen(recordDelegation(answered), enqueue(answered, text));
     });
 
-  const steer = (callId: string, segmentId: string, delegationId: string, text: string) =>
-    Effect.gen(function* () {
-      if (delegations.has(delegationId)) return;
-      const targetThreadId = call?.targetThreadId ?? null;
-      const base: VoiceCallDelegation = {
-        id: delegationId,
-        segmentId,
-        text,
-        threadId: targetThreadId,
-        messageId: null,
-        runId: null,
-        status: "open",
-        answer: null,
-        createdAt: yield* nowIso,
-      };
-      const fail = (answer: string) => {
-        const failed: VoiceCallDelegation = { ...base, status: "failed", answer };
-        return Effect.andThen(recordDelegation(failed), enqueue(failed, answer));
-      };
-      if (targetThreadId === null) return yield* fail(noTargetAnswer);
-      const shell = yield* threads
-        .getThreadShell(targetThreadId)
-        .pipe(Effect.orElseSucceed(() => null));
-      if (shell === null) return yield* fail(noTargetAnswer);
-      if (shell.archivedAt !== null) return yield* fail(archivedTargetAnswer(shell.title));
-      const message = voiceDelegationMessage({ callId, delegationId, text });
-      const sent = yield* threads
-        .sendToThread({
-          projectId: shell.projectId,
-          commandId: CommandId.make(`voice-call:${callId}:${delegationId}`),
-          threadId: targetThreadId,
-          messageId: MessageId.make(`voice-call-message:${callId}:${delegationId}`),
-          text: message.text,
-          context: message.context,
-          attachments: [],
-          mode: "auto",
-          createdBy: "user",
-          creationSource: "server",
-        })
-        .pipe(Effect.option);
-      if (Option.isNone(sent)) return yield* fail(dispatchFailedAnswer(shell.title));
-      yield* recordDelegation({
-        ...base,
-        messageId: sent.value.message.id,
-        runId: sent.value.run.id,
-      });
+  const steer = Effect.fn("VoiceCallService.steer")(function* (
+    callId: string,
+    segmentId: string,
+    delegationId: string,
+    text: string,
+    mode: "queue" | "auto",
+  ) {
+    if (delegations.has(delegationId)) return;
+    const targetThreadId = call?.targetThreadId ?? null;
+    const base: VoiceCallDelegation = {
+      id: delegationId,
+      segmentId,
+      text,
+      threadId: targetThreadId,
+      messageId: null,
+      runId: null,
+      status: "open",
+      answer: null,
+      createdAt: yield* nowIso,
+    };
+    const fail = (answer: string) => {
+      const failed: VoiceCallDelegation = { ...base, status: "failed", answer };
+      return Effect.andThen(recordDelegation(failed), enqueue(failed, answer));
+    };
+    if (targetThreadId === null) return yield* fail(noTargetAnswer);
+    const shell = yield* threads
+      .getThreadShell(targetThreadId)
+      .pipe(Effect.orElseSucceed(() => null));
+    if (shell === null) return yield* fail(noTargetAnswer);
+    if (shell.archivedAt !== null) return yield* fail(archivedTargetAnswer(shell.title));
+    const message = voiceDelegationMessage({
+      callId,
+      delegationId,
+      text,
+      transcript: unsentTranscript.join("\n").slice(-TRANSCRIPT_MAX_CHARS),
     });
+    const sent = yield* threads
+      .sendToThread({
+        projectId: shell.projectId,
+        commandId: CommandId.make(`voice-call:${callId}:${delegationId}`),
+        threadId: targetThreadId,
+        messageId: MessageId.make(`voice-call-message:${callId}:${delegationId}`),
+        text: message.text,
+        context: message.context,
+        attachments: [],
+        mode,
+        createdBy: "user",
+        creationSource: "server",
+      })
+      .pipe(Effect.option);
+    if (Option.isNone(sent)) return yield* fail(dispatchFailedAnswer(shell.title));
+    unsentTranscript = [];
+    lastSteeredText = text.trim();
+    yield* recordDelegation({
+      ...base,
+      messageId: sent.value.message.id,
+      runId: sent.value.run.id,
+    });
+  });
 
-  const handleEvent = (callId: string, current: Segment, event: RealtimeEvent) =>
-    Effect.gen(function* () {
+  // Untraced: the span below carries the event's attributes.
+  const handleEvent = Effect.fnUntraced(
+    function* (callId: string, current: Segment, event: RealtimeEvent) {
       const now = yield* Clock.currentTimeMillis;
       switch (event.type) {
         case "turn.created":
           current.turnSpeakers.set(event.turnId, event.speaker);
           current.openTurns.set(event.turnId, now);
-          if (event.speaker === "user") current.lastUserSpeechAt = now;
-          return;
+          if (event.speaker === "user") {
+            current.lastUserSpeechAt = now;
+            current.forwardedAt = null;
+            current.heard += ` ${event.text}`;
+            if (says.length > 0 && current.interruption === null) {
+              current.interruption = { turnId: event.turnId, delegated: false };
+            }
+          }
+          // An empty event marks when the turn began; its text arrives later.
+          return yield* publish({
+            type: "transcript",
+            speaker: event.speaker,
+            turnId: event.turnId,
+            text: event.text,
+            done: false,
+          });
         case "transcript":
           if (event.speaker === "user") current.lastUserSpeechAt = now;
           return;
         case "turn.delta": {
           const speaker = current.turnSpeakers.get(event.turnId);
           if (speaker === undefined) return;
-          if (speaker === "user") current.lastUserSpeechAt = now;
+          if (speaker === "user") {
+            current.lastUserSpeechAt = now;
+            current.heard += event.text;
+          }
           return yield* publish({
             type: "transcript",
             speaker,
@@ -400,6 +505,44 @@ const make = Effect.gen(function* () {
         case "turn.done":
           current.turnSpeakers.delete(event.turnId);
           current.openTurns.delete(event.turnId);
+          // The voice's reply opens its turn a few ms later; nothing may slip in between.
+          if (event.speaker === "user") current.lastUserSpeechAt = now;
+          // A voice turn cut off before its first word, a lone ".", did not answer anything.
+          if (event.speaker === "voice" && stripLeadingMarks(event.text) !== "") current.heard = "";
+          if (event.speaker === "voice" && current.interruption === null) {
+            yield* settleSays("spoken", (other) => other.injected);
+          }
+          if (current.interruption?.turnId === event.turnId) {
+            const { delegated } = current.interruption;
+            current.interruption = null;
+            const words = event.text.trim();
+            if (!delegated && words.length > 0) {
+              yield* steer(
+                callId,
+                current.id,
+                `interruption-${event.turnId}`,
+                words,
+                voiceCallSendMode(followUpBehavior),
+              );
+              current.forwardedAt = now;
+              current.heard = "";
+            }
+            // Only now: the agent must not carry on before the steer reached its thread.
+            yield* settleSays("interrupted");
+          }
+          if (event.text.trim().length > 0) {
+            recap = [...recap, { speaker: event.speaker, text: event.text.trim() }].slice(
+              -RECAP_TURNS,
+            );
+            if (
+              event.speaker === "voice" ||
+              lastSteeredText === null ||
+              !lastSteeredText.includes(stripLeadingMarks(event.text.trim()))
+            ) {
+              const role = event.speaker === "voice" ? "assistant" : "user";
+              unsentTranscript = [...unsentTranscript, `${role}: ${event.text.trim()}`];
+            }
+          }
           return yield* publish({
             type: "transcript",
             speaker: event.speaker,
@@ -407,8 +550,24 @@ const make = Effect.gen(function* () {
             text: event.text,
             done: true,
           });
-        case "delegation.created":
-          return yield* steer(callId, current.id, event.itemId, event.text);
+        case "delegation.created": {
+          if (
+            current.forwardedAt !== null &&
+            now - current.forwardedAt <= FORWARDED_DELEGATION_WINDOW_MS
+          ) {
+            return yield* sendAll(delegationAnswerEvents(event.itemId, alreadyForwardedAnswer));
+          }
+          if (current.interruption !== null) current.interruption.delegated = true;
+          const { mode, text } = parseVoiceDelegation(event.text, followUpBehavior);
+          yield* Effect.logInfo("voice call: delegation", {
+            mode,
+            followUpBehavior,
+            marked: text !== event.text,
+          });
+          const whole = completeVoiceDelegation(text, current.heard);
+          current.heard = "";
+          return yield* steer(callId, current.id, event.itemId, whole, mode);
+        }
         case "error":
           yield* Effect.logWarning("voice call: realtime error", event.code, event.message);
           if (event.code === "forbidden") yield* setCall({ error: event.message });
@@ -416,7 +575,22 @@ const make = Effect.gen(function* () {
         default:
           return;
       }
-    }).pipe(Effect.andThen(flush));
+    },
+    (effect, _callId, _current, event) =>
+      effect.pipe(
+        Effect.andThen(flush),
+        // Logs of this forked fiber reach no span, so the trace would not show the event otherwise.
+        Effect.withSpan("VoiceCallService.handleEvent", {
+          attributes: {
+            "voiceCall.event": event.type,
+            "voiceCall.speaker": "speaker" in event ? event.speaker : "",
+            ...(event.type === "error"
+              ? { "voiceCall.errorCode": event.code, "voiceCall.errorMessage": event.message }
+              : {}),
+          },
+        }),
+      ),
+  );
 
   /** The sideband ended on its own: the session closed or the socket dropped. */
   const segmentEnded = (current: Segment, reason: string | null) =>
@@ -442,9 +616,6 @@ const make = Effect.gen(function* () {
         }
         const { settings, auth } = yield* readAuth;
         if (auth._tag === "unavailable") {
-          if (auth.availability.reason === "disabled") {
-            return yield* new VoiceCallDisabledError({ message: auth.availability.message });
-          }
           return yield* new VoiceCallError({
             message: auth.availability.message,
             reason: auth.availability.reason,
@@ -453,11 +624,17 @@ const make = Effect.gen(function* () {
         // A retry, a takeover by another client and a fresh start all replace
         // the segment; only a call that already ended starts over.
         yield* closeSegment;
-        const continuing = call !== null && (call.state === "connecting" || call.state === "live");
+        const continuing =
+          call !== null &&
+          (call.state === "connecting" || call.state === "live" || call.state === "paused");
         if (!continuing) {
-          for (const [id, delegation] of delegations) {
-            if (delegation.status !== "open") delegations.delete(id);
-          }
+          // A new call starts empty: nothing of an ended one reaches it, not even owed answers.
+          recap = [];
+          unsentTranscript = [];
+          lastSteeredText = null;
+          pending = [];
+          saidThreads.clear();
+          delegations.clear();
         }
         const callId = continuing && call !== null ? call.callId : `vc-${yield* uuid}`;
         call = {
@@ -471,7 +648,20 @@ const make = Effect.gen(function* () {
         };
         yield* publishCall;
 
+        // ponytail: read at connect, so a settings change applies from the next call or resume on.
+        followUpBehavior = settings.voiceCallFollowUpBehavior ?? "steer";
         const targetTitle = input.target === null ? null : yield* threadTitle(input.target);
+        const threadContext =
+          input.target === null
+            ? []
+            : yield* projections
+                .getThreadRecords(input.target, ["messages"], {
+                  messageRoles: ["user", "assistant"],
+                })
+                .pipe(
+                  Effect.map(({ messages }) => messages),
+                  Effect.orElseSucceed(() => []),
+                );
         const created = yield* realtime
           .createCall({
             auth: auth.auth,
@@ -482,6 +672,9 @@ const make = Effect.gen(function* () {
                 persona: settings.voiceCallPersona,
                 targetTitle,
                 nowIso: yield* nowIso,
+                followUpBehavior,
+                threadContext,
+                recap,
               }),
               voice: settings.voiceCallVoice ?? DEFAULT_VOICE_CALL_VOICE,
             },
@@ -508,8 +701,13 @@ const make = Effect.gen(function* () {
           openTurns: new Map(),
           lastUserSpeechAt: Number.NEGATIVE_INFINITY,
           wakeAt: null,
+          interruption: null,
+          forwardedAt: null,
+          heard: "",
         };
         segment = current;
+        yield* usageTracker.segmentOpened;
+        if (input.target !== null) yield* threadSpans.opened(input.target);
         yield* sideband.events.pipe(
           Stream.runForEach((event) =>
             event.type === "session.closed"
@@ -521,13 +719,57 @@ const make = Effect.gen(function* () {
         );
         yield* setCall({ state: "live", segmentId: current.id });
         yield* Effect.logInfo("voice call: segment live", { callId, segmentId: current.id });
+        // Whatever finished during a pause is told now, not at the next word.
+        yield* flush;
         return { callId, segmentId: current.id, answerSdp: created.answerSdp };
       }),
     );
 
   const hangUp = lifecycle.withPermits(1)(endCall(null));
 
-  const setTarget = (target: ThreadId | null) => setCall({ targetThreadId: target });
+  const pause = lifecycle.withPermits(1)(
+    Effect.suspend(() =>
+      call?.state === "live"
+        ? Effect.andThen(closeSegment, setCall({ state: "paused", segmentId: null }))
+        : Effect.void,
+    ),
+  );
+
+  const usage = Effect.gen(function* () {
+    const planType = yield* settingsService.getSettings.pipe(
+      Effect.flatMap(readVoiceCallPlanType),
+      Effect.provideService(FileSystem.FileSystem, fs),
+      Effect.provideService(Path.Path, path),
+      Effect.orElseSucceed(() => null),
+    );
+    const { reason, message } = yield* availability;
+    return {
+      ...(yield* usageTracker.summary(planType)),
+      offered:
+        message !== VOICE_CALLS_OFF &&
+        reason !== "codex-not-logged-in" &&
+        reason !== "codex-api-key",
+    };
+  });
+
+  // Under `lifecycle`, so a move during a connect sees the segment instead of stale instructions.
+  const setTarget = (target: ThreadId | null) =>
+    lifecycle.withPermits(1)(
+      Effect.gen(function* () {
+        const moved = call !== null && call.targetThreadId !== target;
+        if (moved && segment !== null) {
+          yield* threadSpans.closed;
+          if (target !== null) yield* threadSpans.opened(target);
+        }
+        yield* setCall({ targetThreadId: target });
+        if (!moved || segment === null || target === null) return;
+        const shell = yield* threads.getThreadShell(target).pipe(Effect.orElseSucceed(() => null));
+        // A thread that cannot take work gets its answer at the delegation.
+        if (shell !== null && shell.archivedAt === null) {
+          yield* enqueue(null, targetMovedContext(shell.title));
+        }
+      }),
+    );
 
   const subscribe = (clientId: string): Stream.Stream<VoiceCallEvent> =>
     Stream.unwrap(
@@ -552,37 +794,38 @@ const make = Effect.gen(function* () {
           }
           subscriptions.delete(clientId);
           // The owner's peer died with its last subscription: stop paying for the session.
-          return call?.ownerClientId === clientId && segment !== null
+          return call?.ownerClientId === clientId && carriesCall()
             ? lifecycle.withPermits(1)(endCall("The client carrying the call went away."))
             : Effect.void;
         }),
       ),
     );
 
-  // A call must not outlive the flag: turning it off hangs up and tells every client.
-  yield* settingsService.streamChanges.pipe(
-    Stream.map((settings) => settings.enableVoiceCall),
-    Stream.changes,
-    Stream.runForEach((enabled) =>
-      Effect.gen(function* () {
-        if (!enabled) yield* hangUp;
-        yield* publish({ type: "availability", availability: yield* availability });
-      }),
+  yield* Effect.addFinalizer(() => closeSegment);
+
+  // Switching the feature off ends a running call.
+  yield* (yield* settingsService.subscribeChanges).pipe(
+    Stream.runForEach((next) =>
+      next.voiceCallEnabled ? Effect.void : lifecycle.withPermits(1)(endCall(null)),
     ),
     Effect.forkScoped,
   );
-  yield* Effect.addFinalizer(() => closeSegment);
 
   return VoiceCallService.of({
     subscribe,
     connect,
     setTarget,
+    pause,
     hangUp,
+    usage,
+    threadSpans: threadSpans.forThread,
     answerDelegation,
-    speak: (text) => Effect.suspend(() => (segment === null ? Effect.void : enqueue(null, text))),
+    speak: (text) => Effect.suspend(() => (carriesCall() ? enqueue(null, text) : Effect.void)),
+    say,
+    takeSaid: (threadId) => Effect.sync(() => saidThreads.delete(threadId)),
     delegations: Effect.sync(() => [...delegations.values()]),
     targetThreadId: Effect.sync(() => call?.targetThreadId ?? null),
-    live: Effect.sync(() => segment !== null),
+    live: Effect.sync(carriesCall),
     updateDelegation: (delegationId, patch) =>
       Effect.suspend(() => {
         const existing = delegations.get(delegationId);
@@ -593,14 +836,15 @@ const make = Effect.gen(function* () {
 
 export const layer = Layer.effect(VoiceCallService, make);
 
-const withService = <A, E>(use: (service: VoiceCallService["Service"]) => Effect.Effect<A, E>) =>
-  Effect.gen(function* () {
-    const service = yield* Effect.serviceOption(VoiceCallService);
-    if (Option.isNone(service)) {
-      return yield* new VoiceCallError({ message: "This server does not offer voice calls." });
-    }
-    return yield* use(service.value);
-  });
+const withService = Effect.fn("VoiceCallService.withService")(function* <A, E>(
+  use: (service: VoiceCallService["Service"]) => Effect.Effect<A, E>,
+) {
+  const service = yield* Effect.serviceOption(VoiceCallService);
+  if (Option.isNone(service)) {
+    return yield* new VoiceCallError({ message: "This server does not offer voice calls." });
+  }
+  return yield* use(service.value);
+});
 
 export const subscribeRpc = (input: { readonly clientId: string }) =>
   Stream.unwrap(withService((service) => Effect.succeed(service.subscribe(input.clientId))));
@@ -613,4 +857,11 @@ export const connectRpc = (input: VoiceCallConnectInput) =>
 export const setTargetRpc = (input: { readonly target: ThreadId | null }) =>
   withService((service) => service.setTarget(input.target)).pipe(Effect.as({}));
 
+export const pauseRpc = () => withService((service) => service.pause).pipe(Effect.as({}));
+
 export const hangUpRpc = () => withService((service) => service.hangUp).pipe(Effect.as({}));
+
+export const usageRpc = () => withService((service) => service.usage);
+
+export const threadSpansRpc = (threadId: ThreadId) =>
+  withService((service) => service.threadSpans(threadId));

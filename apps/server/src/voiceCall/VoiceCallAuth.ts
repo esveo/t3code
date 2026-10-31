@@ -54,20 +54,43 @@ const unavailable = (reason: VoiceCallUnavailableReason, message: string): Voice
   availability: { available: false, reason, message },
 });
 
-export const jwtExpiresAtMs = (token: string): number | null => {
+const jwtClaims = (token: string): unknown => {
   const payload = token.split(".")[1];
   if (!payload) return null;
   try {
-    const claims: unknown = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
-    return typeof claims === "object" &&
-      claims !== null &&
-      "exp" in claims &&
-      typeof claims.exp === "number"
-      ? claims.exp * 1000
-      : null;
+    return JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
   } catch {
     return null;
   }
+};
+
+export const jwtExpiresAtMs = (token: string): number | null => {
+  const claims = jwtClaims(token);
+  return typeof claims === "object" &&
+    claims !== null &&
+    "exp" in claims &&
+    typeof claims.exp === "number"
+    ? claims.exp * 1000
+    : null;
+};
+
+const decodePlanClaims = Schema.decodeUnknownOption(
+  Schema.Struct({
+    "https://api.openai.com/auth": Schema.Struct({ chatgpt_plan_type: Schema.String }),
+  }),
+);
+
+/** Only the plan claim leaves here, never a token. */
+export const codexPlanTypeFromFile = (contents: string): string | null => {
+  const file = Option.getOrNull(decodeCodexAuthFile(contents));
+  const accessToken = file?.tokens?.access_token;
+  if (file?.auth_mode !== "chatgpt" || !accessToken) return null;
+  return Option.getOrNull(
+    Option.map(
+      decodePlanClaims(jwtClaims(accessToken)),
+      (claims) => claims["https://api.openai.com/auth"].chatgpt_plan_type,
+    ),
+  );
 };
 
 export const codexAuthFromFile = (contents: string, nowMs: number): VoiceCallAuthResult => {
@@ -118,12 +141,18 @@ const codexAuthPath = Effect.fn("VoiceCallAuth.codexAuthPath")(function* (
   return path.join(layout.effectiveHomePath ?? layout.sharedHomePath, "auth.json");
 });
 
+/** Unlike the login itself, the plan is still worth showing once the token has expired. */
+export const readVoiceCallPlanType = Effect.fn("VoiceCallAuth.readPlanType")(function* (
+  settings: ServerSettings,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const contents = yield* fs.readFileString(yield* codexAuthPath(settings)).pipe(Effect.option);
+  return Option.isNone(contents) ? null : codexPlanTypeFromFile(contents.value);
+});
+
 export const readVoiceCallAuth = Effect.fn("VoiceCallAuth.read")(function* (
   settings: ServerSettings,
 ) {
-  if (!settings.enableVoiceCall) {
-    return unavailable("disabled", "Voice calls are turned off in Settings.");
-  }
   const fs = yield* FileSystem.FileSystem;
   const authPath = yield* codexAuthPath(settings);
   const contents = yield* fs.readFileString(authPath).pipe(Effect.option);

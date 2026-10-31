@@ -647,7 +647,7 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   // Fork: voice call with GPT-Live.
   VoiceCallReadBack.startedLayer.pipe(
     Layer.provideMerge(VoiceCall.layer),
-    Layer.provide(RealtimeCallClient.layer),
+    Layer.provide(Layer.merge(RealtimeCallClient.layer, ProjectionStoreV2.layer)),
   ),
   Layer.effectDiscard(ProjectSettingsOverrideSweep.sweep),
 ).pipe(

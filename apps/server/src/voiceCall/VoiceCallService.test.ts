@@ -18,10 +18,13 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Queue from "effect/Queue";
+import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
+import * as Clock from "effect/Clock";
 import * as TestClock from "effect/testing/TestClock";
 import * as NodeFS from "node:fs";
 
+import { ServerConfig } from "../config.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import {
@@ -69,6 +72,13 @@ const settledRun = (status: "completed" | "failed") =>
     payload: { id: "run-1", threadId: TARGET, status },
   }) as unknown as OrchestrationV2DomainEvent;
 
+const settledRunOf = (id: string, status: "completed" | "cancelled", startedAt: string | null) =>
+  ({
+    type: "run.updated",
+    threadId: TARGET,
+    payload: { id, threadId: TARGET, status, startedAt },
+  }) as unknown as OrchestrationV2DomainEvent;
+
 /**
  * A realtime session the test feeds events into and reads sent events from,
  * and a thread whose run `run-1` answers with `ANSWER`. The SQL database
@@ -78,10 +88,14 @@ const makeHarness = Effect.gen(function* () {
   const inbound = yield* Queue.unbounded<RealtimeEvent, Cause.Done>();
   const outbound = yield* Queue.unbounded<RealtimeOutbound | "closed">();
   const sent: Array<ThreadManagementSendInput> = [];
+  const instructions: Array<string> = [];
   let calls = 0;
   const realtime = Layer.succeed(RealtimeCallClient)({
-    createCall: () =>
-      Effect.sync(() => ({ answerSdp: "v=0 answer", realtimeCallId: `rtc_${++calls}` })),
+    createCall: (input) =>
+      Effect.sync(() => {
+        instructions.push(input.session.instructions);
+        return { answerSdp: "v=0 answer", realtimeCallId: `rtc_${++calls}` };
+      }),
     openSideband: () =>
       Effect.acquireRelease(
         Effect.succeed({
@@ -115,10 +129,27 @@ const makeHarness = Effect.gen(function* () {
       tokens: { access_token: fakeJwt(4_000_000_000), account_id: "account-1" },
     }),
   );
-  const settings = ServerSettingsService.layerTest({
-    enableVoiceCall: true,
-    providerInstances: { codex: { driver: "codex", config: { homePath: codexHome } } },
-  } as Partial<ServerSettings> as never);
+  // Announces every update, as the real service does.
+  const settings = Layer.effect(
+    ServerSettingsService,
+    Effect.gen(function* () {
+      const base = yield* ServerSettingsService.pipe(
+        Effect.provide(
+          ServerSettingsService.layerTest({
+            voiceCallEnabled: true,
+            providerInstances: { codex: { driver: "codex", config: { homePath: codexHome } } },
+          } as Partial<ServerSettings> as never),
+        ),
+      );
+      const changes = yield* PubSub.unbounded<ServerSettings>();
+      return {
+        ...base,
+        updateSettings: (patch) =>
+          base.updateSettings(patch).pipe(Effect.tap((next) => PubSub.publish(changes, next))),
+        subscribeChanges: PubSub.subscribe(changes).pipe(Effect.map(Stream.fromSubscription)),
+      } satisfies ServerSettingsService["Service"];
+    }),
+  );
   const projections = Layer.mock(ProjectionStore.ProjectionStoreV2)({
     getThreadRecords: ((_threadId: ThreadId, fields: ReadonlyArray<string>) =>
       Effect.succeed(
@@ -130,11 +161,15 @@ const makeHarness = Effect.gen(function* () {
   const engine = Layer.mock(Orchestrator.OrchestratorV2)({ streamDomainEvents: Stream.never });
   const layer = VoiceCallReadBack.layer.pipe(
     Layer.provideMerge(VoiceCall.layer),
-    Layer.provide(
-      Layer.mergeAll(realtime, management, settings, projections, engine, NodeServices.layer),
+    Layer.provideMerge(
+      ServerConfig.layerTest(process.cwd(), { prefix: "voice-call-test-" }).pipe(
+        Layer.provideMerge(
+          Layer.mergeAll(realtime, management, settings, projections, engine, NodeServices.layer),
+        ),
+      ),
     ),
   );
-  return { inbound, outbound, sent, layer };
+  return { inbound, outbound, sent, instructions, layer };
 });
 
 /** Subscribes as `clientId` and waits for the snapshot, so the server counts the subscription. */
@@ -188,7 +223,7 @@ const callStates = (events: Queue.Queue<VoiceCallEvent>) =>
   );
 
 describe("VoiceCallService", () => {
-  it.effect("steers the thread on screen once per delegation, marked as voice", () =>
+  it.effect("steers the call's thread once per delegation, marked as voice", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness;
       yield* Effect.gen(function* () {
@@ -229,7 +264,223 @@ describe("VoiceCallService", () => {
     ),
   );
 
-  it.effect("answers at once when no thread or an archived one is on screen", () =>
+  it.effect("a delegation carries what was said since the last one", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      yield* Effect.gen(function* () {
+        const service = yield* VoiceCall.VoiceCallService;
+        const client = yield* subscribeAs("tab-1");
+        yield* service.connect({ clientId: "tab-1", offerSdp: "v=0 offer", target: TARGET });
+        const transcriptOf = (index: number) =>
+          (harness.sent[index]?.context?.records[0] as { payload?: { transcript?: string } })
+            ?.payload?.transcript;
+
+        yield* Queue.offerAll(harness.inbound, [
+          { type: "turn.created", turnId: "split-1", speaker: "user", text: "" },
+          { type: "turn.delta", turnId: "split-1", text: "Können wir das in der" },
+          { type: "turn.done", turnId: "split-1", speaker: "user", text: "Können wir das in der" },
+          { type: "turn.created", turnId: "cut-off", speaker: "voice", text: "" },
+          { type: "turn.done", turnId: "cut-off", speaker: "voice", text: "." },
+          { type: "turn.created", turnId: "split-2", speaker: "user", text: "" },
+          { type: "turn.delta", turnId: "split-2", text: "Sidebar sehen?" },
+          { type: "delegation.created", itemId: "item_split", text: "Sidebar sehen?" },
+          { type: "turn.done", turnId: "split-2", speaker: "user", text: "Sidebar sehen?" },
+        ]);
+        yield* nextOf(client.events, "delegation");
+        assert.match(harness.sent[0]!.text, /\) Können wir das in der Sidebar sehen\?$/);
+        harness.sent.length = 0;
+
+        yield* processed(harness, client.events, "How about a scene around it?");
+        yield* Queue.offerAll(harness.inbound, [
+          { type: "turn.created", turnId: "user-1", speaker: "user", text: "" },
+          { type: "delegation.created", itemId: "item_one", text: "Yes, do that" },
+          { type: "turn.done", turnId: "user-1", speaker: "user", text: " Yes, do that " },
+        ]);
+        yield* nextOf(client.events, "delegation");
+        assert.equal(transcriptOf(0), "assistant: How about a scene around it?");
+
+        // Its own turn ended after the delegation and must not ride on the next one.
+        yield* processed(harness, client.events, "Added.");
+        yield* Queue.offer(harness.inbound, {
+          type: "delegation.created",
+          itemId: "item_two",
+          text: "Thanks",
+        });
+        yield* nextOf(client.events, "delegation");
+        assert.equal(transcriptOf(1), "assistant: Added.");
+
+        yield* Queue.offer(harness.inbound, {
+          type: "delegation.created",
+          itemId: "item_three",
+          text: "Again",
+        });
+        yield* nextOf(client.events, "delegation");
+        assert.isUndefined(transcriptOf(2));
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(
+      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.scoped,
+    ),
+  );
+
+  it.effect("a [queue] delegation queues without its marker; a plain one steers", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      yield* Effect.gen(function* () {
+        const service = yield* VoiceCall.VoiceCallService;
+        const client = yield* subscribeAs("tab-1");
+        yield* service.connect({ clientId: "tab-1", offerSdp: "v=0 offer", target: TARGET });
+        yield* Queue.offerAll(harness.inbound, [
+          { type: "turn.created", turnId: "user-1", speaker: "user", text: "" },
+          { type: "delegation.created", itemId: "item_queue", text: "  [QUEUE] Run the tests" },
+          { type: "turn.done", turnId: "user-1", speaker: "user", text: "Run the tests" },
+        ]);
+        const queued = yield* nextOf(client.events, "delegation");
+        assert.equal(queued.delegation.text, "Run the tests");
+        assert.equal(harness.sent[0]?.mode, "queue");
+        assert.match(harness.sent[0]?.text ?? "", /^\[Voice\]\([^)]*\) Run the tests$/);
+
+        yield* processed(harness, client.events, "Queued.");
+        yield* Queue.offer(harness.inbound, {
+          type: "delegation.created",
+          itemId: "item_plain",
+          text: "Deploy it",
+        });
+        yield* nextOf(client.events, "delegation");
+        assert.equal(harness.sent[1]?.mode, "auto");
+        // The queued words were sent, so they must not ride along as transcript.
+        const record = harness.sent[1]?.context?.records[0] as {
+          payload?: { transcript?: string };
+        };
+        assert.equal(record.payload?.transcript, "assistant: Queued.");
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(
+      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.scoped,
+    ),
+  );
+
+  it.effect("a queued delegation is answered by its own later run", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      yield* Effect.gen(function* () {
+        const service = yield* VoiceCall.VoiceCallService;
+        const readBack = yield* VoiceCallReadBack.VoiceCallReadBack;
+        const client = yield* subscribeAs("tab-1");
+        yield* service.connect({ clientId: "tab-1", offerSdp: "v=0 offer", target: TARGET });
+        yield* Queue.offer(harness.inbound, {
+          type: "delegation.created",
+          itemId: "item_queue",
+          text: "[queue] Run the tests",
+        });
+        yield* nextOf(client.events, "delegation");
+
+        // The run in front of it settles first and is no answer to the delegation.
+        yield* readBack.handle(settledRunOf("run-0", "completed", "2026-10-30T12:00:00.000Z"));
+        assert.include(spokenText(yield* Queue.take(harness.outbound)), "Update from Alpha:");
+        assert.equal((yield* service.delegations)[0]?.status, "open");
+
+        yield* readBack.handle(settledRunOf("run-1", "completed", "2026-10-30T12:01:00.000Z"));
+        const answer = spokenText(yield* Queue.take(harness.outbound));
+        assert.include(answer, "delegation.context.append");
+        assert.include(answer, "item_queue");
+        assert.equal((yield* service.delegations)[0]?.status, "answered");
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(
+      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.scoped,
+    ),
+  );
+
+  it.effect("a queued run that never started says so and leaves the running run's voice_say", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      yield* Effect.gen(function* () {
+        const service = yield* VoiceCall.VoiceCallService;
+        const readBack = yield* VoiceCallReadBack.VoiceCallReadBack;
+        const client = yield* subscribeAs("tab-1");
+        yield* service.connect({ clientId: "tab-1", offerSdp: "v=0 offer", target: TARGET });
+        const saying = yield* service.say(TARGET, "Ich schaue nach").pipe(Effect.forkScoped);
+        yield* Queue.take(harness.outbound);
+        yield* Queue.offerAll(harness.inbound, [
+          { type: "turn.created", turnId: "v1", speaker: "voice", text: "" },
+          { type: "turn.done", turnId: "v1", speaker: "voice", text: "Ich schaue nach" },
+          { type: "delegation.created", itemId: "item_queue", text: "[queue] Run the tests" },
+        ]);
+        yield* Fiber.join(saying);
+        yield* nextOf(client.events, "delegation");
+
+        yield* readBack.handle(settledRunOf("run-1", "cancelled", null));
+        assert.include(spokenText(yield* Queue.take(harness.outbound)), "left the queue");
+
+        // The running run used voice_say, so its answer still is not read back.
+        yield* readBack.handle(settledRunOf("run-0", "completed", "2026-10-30T12:00:00.000Z"));
+        assert.isTrue(Option.isNone(yield* Queue.poll(harness.outbound)));
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(
+      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.scoped,
+    ),
+  );
+
+  it.effect("voice_say returns once spoken, and is not read back again", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      yield* Effect.gen(function* () {
+        const service = yield* VoiceCall.VoiceCallService;
+        const readBack = yield* VoiceCallReadBack.VoiceCallReadBack;
+        yield* subscribeAs("tab-1");
+        assert.equal(yield* service.say(TARGET, "Zu früh"), "no_call");
+        yield* service.connect({ clientId: "tab-1", offerSdp: "v=0 offer", target: TARGET });
+        const saying = yield* service.say(TARGET, "Ich schaue nach").pipe(Effect.forkScoped);
+        assert.include(spokenText(yield* Queue.take(harness.outbound)), "Ich schaue nach");
+        yield* Queue.offerAll(harness.inbound, [
+          { type: "turn.created", turnId: "v1", speaker: "voice", text: "" },
+          { type: "turn.done", turnId: "v1", speaker: "voice", text: "Ich schaue nach" },
+        ]);
+        assert.equal(yield* Fiber.join(saying), "spoken");
+        yield* readBack.handle(settledRun("completed"));
+        assert.equal(Option.isNone(yield* Queue.poll(harness.outbound)), true);
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(
+      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.scoped,
+    ),
+  );
+
+  it.effect("an interruption steers the user's words first, then ends voice_say", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      yield* Effect.gen(function* () {
+        const service = yield* VoiceCall.VoiceCallService;
+        yield* subscribeAs("tab-1");
+        yield* service.connect({ clientId: "tab-1", offerSdp: "v=0 offer", target: TARGET });
+        const saying = yield* service.say(TARGET, "Die Tabelle zeigt").pipe(
+          Effect.map((status) => ({ status, steered: harness.sent.length })),
+          Effect.forkScoped,
+        );
+        yield* Queue.take(harness.outbound);
+        yield* Queue.offerAll(harness.inbound, [
+          { type: "turn.created", turnId: "v1", speaker: "voice", text: "" },
+          { type: "turn.created", turnId: "u1", speaker: "user", text: "" },
+          { type: "turn.done", turnId: "v1", speaker: "voice", text: "Die Tab" },
+          { type: "turn.done", turnId: "u1", speaker: "user", text: "Woher kommt die Zahl?" },
+          { type: "delegation.created", itemId: "item_dup", text: "Woher kommt die Zahl?" },
+        ]);
+        assert.deepEqual(yield* Fiber.join(saying), { status: "interrupted", steered: 1 });
+        assert.include(harness.sent[0]!.text, "Woher kommt die Zahl?");
+        assert.equal(harness.sent[0]!.mode, "auto");
+        // The voice delegating the same words gets told, and nothing reaches the thread twice.
+        assert.include(spokenText(yield* Queue.take(harness.outbound)), "item_dup");
+        assert.equal(harness.sent.length, 1);
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(
+      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.scoped,
+    ),
+  );
+
+  it.effect("answers at once when the call has no thread or an archived one", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness;
       yield* Effect.gen(function* () {
@@ -267,6 +518,43 @@ describe("VoiceCallService", () => {
     ),
   );
 
+  it.effect("tells the voice when the call moves to another thread", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      yield* Effect.gen(function* () {
+        const service = yield* VoiceCall.VoiceCallService;
+        yield* subscribeAs("tab-1");
+        yield* service.connect({ clientId: "tab-1", offerSdp: "v=0 offer", target: null });
+
+        yield* service.setTarget(TARGET);
+        const note = spokenText(yield* Queue.take(harness.outbound));
+        assert.include(note, "moved this call");
+        assert.include(note, "Alpha");
+
+        // Setting the same thread again is no move.
+        yield* service.setTarget(TARGET);
+        yield* service.speak("Nothing before this");
+        assert.include(spokenText(yield* Queue.take(harness.outbound)), "Nothing before this");
+
+        // A paused call has no session to tell; the next one's instructions name the thread.
+        yield* service.pause;
+        assert.equal(yield* Queue.take(harness.outbound), "closed");
+        yield* service.setTarget(null);
+        yield* service.setTarget(TARGET);
+        yield* service.connect({ clientId: "tab-1", offerSdp: "v=0 offer", target: TARGET });
+        assert.include(harness.instructions[1] ?? "", '"Alpha"');
+        yield* service.speak("Nothing before this either");
+        assert.include(
+          spokenText(yield* Queue.take(harness.outbound)),
+          "Nothing before this either",
+        );
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(
+      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.scoped,
+    ),
+  );
+
   it.effect("closes the session when the owning client goes away", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness;
@@ -279,6 +567,100 @@ describe("VoiceCallService", () => {
         assert.equal(yield* Queue.take(harness.outbound), "closed");
         const states = yield* callStates(watcher.events);
         assert.deepEqual(states, ["connecting", "live", "error"]);
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(
+      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.scoped,
+    ),
+  );
+
+  it.effect("counts connected time per segment, not the pause between them", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      yield* Effect.gen(function* () {
+        const service = yield* VoiceCall.VoiceCallService;
+        yield* subscribeAs("tab-1");
+        const connect = service.connect({
+          clientId: "tab-1",
+          offerSdp: "v=0 offer",
+          target: TARGET,
+        });
+        yield* connect;
+        yield* TestClock.adjust("60 seconds");
+        yield* service.pause;
+        yield* TestClock.adjust("1000 seconds");
+        yield* connect;
+        yield* TestClock.adjust("30 seconds");
+        // The open segment counts too, while the call runs.
+        assert.equal((yield* service.usage).last24HoursSeconds, 90);
+        yield* service.hangUp;
+        yield* TestClock.adjust("500 seconds");
+        const usage = yield* service.usage;
+        assert.equal(usage.last24HoursSeconds, 90);
+        assert.equal(usage.last30DaysSeconds, 90);
+        assert.isTrue(usage.offered);
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(
+      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.scoped,
+    ),
+  );
+
+  it.effect("records one span per segment on the thread it talked to", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      yield* Effect.gen(function* () {
+        const service = yield* VoiceCall.VoiceCallService;
+        yield* subscribeAs("tab-1");
+        const start = yield* Clock.currentTimeMillis;
+        yield* service.connect({ clientId: "tab-1", offerSdp: "v=0 offer", target: TARGET });
+        yield* TestClock.adjust("10 seconds");
+        yield* service.setTarget(ARCHIVED);
+        yield* TestClock.adjust("20 seconds");
+        // The running span shows without an end while the call lasts.
+        assert.deepEqual(yield* service.threadSpans(ARCHIVED), [
+          { startedAt: start + 10_000, endedAt: null },
+        ]);
+        yield* service.pause;
+        yield* TestClock.adjust("100 seconds");
+        yield* service.setTarget(TARGET);
+        yield* service.connect({ clientId: "tab-1", offerSdp: "v=0 offer", target: TARGET });
+        yield* TestClock.adjust("5 seconds");
+        yield* service.hangUp;
+
+        assert.deepEqual(yield* service.threadSpans(TARGET), [
+          { startedAt: start, endedAt: start + 10_000 },
+          { startedAt: start + 130_000, endedAt: start + 135_000 },
+        ]);
+        assert.deepEqual(yield* service.threadSpans(ARCHIVED), [
+          { startedAt: start + 10_000, endedAt: start + 30_000 },
+        ]);
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(
+      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.scoped,
+    ),
+  );
+
+  it.effect("switching the feature off ends the call and refuses a new one", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      yield* Effect.gen(function* () {
+        const service = yield* VoiceCall.VoiceCallService;
+        const settings = yield* ServerSettingsService;
+        yield* subscribeAs("tab-1");
+        const connect = service.connect({
+          clientId: "tab-1",
+          offerSdp: "v=0 offer",
+          target: TARGET,
+        });
+        yield* connect;
+        assert.isTrue((yield* service.usage).offered);
+        yield* settings.updateSettings({ voiceCallEnabled: false });
+        assert.equal(yield* Queue.take(harness.outbound), "closed");
+        assert.isFalse((yield* service.usage).offered);
+        const refused = yield* Effect.flip(connect);
+        assert.include(refused.message, "off in Settings");
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
       Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
@@ -344,7 +726,7 @@ describe("VoiceCallService", () => {
     ),
   );
 
-  it.effect("reads back an undelegated run of the thread on screen once", () =>
+  it.effect("reads back an undelegated run of the call's thread once", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness;
       yield* Effect.gen(function* () {
@@ -391,7 +773,171 @@ describe("VoiceCallService", () => {
         assert.isTrue(Option.isNone(yield* Queue.poll(harness.outbound)), "user just spoke");
 
         yield* TestClock.adjust("1 second");
+        yield* processed(harness, client.events, "filler-3");
+        assert.isTrue(
+          Option.isNone(yield* Queue.poll(harness.outbound)),
+          "within the grace period",
+        );
+
+        yield* TestClock.adjust("500 millis");
         assert.include(spokenText(yield* Queue.take(harness.outbound)), noTargetAnswer);
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(
+      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.scoped,
+    ),
+  );
+
+  it.effect(
+    "a user turn longer than the stale limit still holds an injection while they talk",
+    () =>
+      Effect.gen(function* () {
+        const harness = yield* makeHarness;
+        yield* Effect.gen(function* () {
+          const service = yield* VoiceCall.VoiceCallService;
+          const client = yield* subscribeAs("tab-1");
+          yield* service.connect({ clientId: "tab-1", offerSdp: "v=0 offer", target: TARGET });
+          yield* Queue.offer(harness.inbound, {
+            type: "turn.created",
+            turnId: "user-1",
+            speaker: "user",
+            text: "Also",
+          });
+          yield* processed(harness, client.events, "marker-1");
+          yield* service.speak("Update from the agent");
+
+          yield* TestClock.adjust("20 seconds");
+          yield* Queue.offer(harness.inbound, {
+            type: "turn.delta",
+            turnId: "user-1",
+            text: " noch",
+          });
+          yield* processed(harness, client.events, "marker-2");
+
+          // Thinking mid-sentence, 32 s into the turn.
+          yield* TestClock.adjust("12 seconds");
+          yield* processed(harness, client.events, "marker-3");
+          assert.isTrue(Option.isNone(yield* Queue.poll(harness.outbound)), "user mid-sentence");
+
+          yield* Queue.offer(harness.inbound, {
+            type: "turn.done",
+            turnId: "user-1",
+            speaker: "user",
+            text: "Also noch",
+          });
+          yield* processed(harness, client.events, "marker-4");
+          yield* TestClock.adjust("1499 millis");
+          yield* processed(harness, client.events, "marker-5");
+          assert.isTrue(Option.isNone(yield* Queue.poll(harness.outbound)), "turn just ended");
+
+          yield* TestClock.adjust("1 millis");
+          assert.include(spokenText(yield* Queue.take(harness.outbound)), "Update from the agent");
+        }).pipe(Effect.provide(harness.layer));
+      }).pipe(
+        Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+        Effect.scoped,
+      ),
+  );
+
+  it.effect("a user turn that goes silent and never ends stops holding the gate", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      yield* Effect.gen(function* () {
+        const service = yield* VoiceCall.VoiceCallService;
+        const client = yield* subscribeAs("tab-1");
+        yield* service.connect({ clientId: "tab-1", offerSdp: "v=0 offer", target: TARGET });
+        yield* Queue.offer(harness.inbound, {
+          type: "turn.created",
+          turnId: "user-1",
+          speaker: "user",
+          text: "Also",
+        });
+        yield* processed(harness, client.events, "marker");
+        yield* service.speak("Update from the agent");
+        yield* TestClock.adjust("30 seconds");
+        assert.include(spokenText(yield* Queue.take(harness.outbound)), "Update from the agent");
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(
+      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.scoped,
+    ),
+  );
+
+  it.effect("voice_say times out while the user keeps talking and is then never spoken", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      yield* Effect.gen(function* () {
+        const service = yield* VoiceCall.VoiceCallService;
+        const client = yield* subscribeAs("tab-1");
+        yield* service.connect({ clientId: "tab-1", offerSdp: "v=0 offer", target: TARGET });
+        yield* Queue.offer(harness.inbound, {
+          type: "turn.created",
+          turnId: "user-1",
+          speaker: "user",
+          text: "Also",
+        });
+        yield* processed(harness, client.events, "marker-1");
+        const saying = yield* service.say(TARGET, "Zu spät").pipe(Effect.forkScoped);
+        yield* processed(harness, client.events, "marker-2");
+        for (const index of [3, 4, 5, 6]) {
+          yield* TestClock.adjust("29 seconds");
+          yield* Queue.offer(harness.inbound, {
+            type: "turn.delta",
+            turnId: "user-1",
+            text: " und",
+          });
+          yield* processed(harness, client.events, `marker-${index}`);
+        }
+        yield* TestClock.adjust("4 seconds");
+        assert.equal(yield* Fiber.join(saying), "timed_out");
+
+        yield* Queue.offer(harness.inbound, {
+          type: "turn.done",
+          turnId: "user-1",
+          speaker: "user",
+          text: "Also und",
+        });
+        yield* processed(harness, client.events, "marker-7");
+        yield* TestClock.adjust("1500 millis");
+        yield* processed(harness, client.events, "marker-8");
+        assert.isTrue(Option.isNone(yield* Queue.poll(harness.outbound)));
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(
+      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.scoped,
+    ),
+  );
+
+  it.effect("pausing closes the session; resuming recaps the call and tells what finished", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      yield* Effect.gen(function* () {
+        const service = yield* VoiceCall.VoiceCallService;
+        const readBack = yield* VoiceCallReadBack.VoiceCallReadBack;
+        const client = yield* subscribeAs("tab-1");
+        yield* service.connect({ clientId: "tab-1", offerSdp: "v=0 offer", target: TARGET });
+        yield* Queue.offer(harness.inbound, {
+          type: "delegation.created",
+          itemId: "item_one",
+          text: "Run the tests",
+        });
+        yield* nextOf(client.events, "delegation");
+        yield* processed(harness, client.events, "Said before the pause");
+
+        yield* service.pause;
+        assert.equal(yield* Queue.take(harness.outbound), "closed");
+        assert.equal((yield* nextOf(client.events, "call")).call?.state, "paused");
+        yield* readBack.handle(settledRun("completed"));
+
+        const resumed = yield* service.connect({
+          clientId: "tab-1",
+          offerSdp: "v=0 offer",
+          target: TARGET,
+        });
+        assert.equal(resumed.segmentId, "rtc_2");
+        assert.include(harness.instructions[1] ?? "", "Said before the pause");
+        assert.notInclude(harness.instructions[0] ?? "", "Said before the pause");
+        assert.include(spokenText(yield* Queue.take(harness.outbound)), "From Alpha:");
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
       Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
@@ -431,12 +977,12 @@ describe("VoiceCallService", () => {
     ),
   );
 
-  it.effect("answers a delegation whose run settled while the server was down", () =>
+  it.effect("a new call knows nothing of the call that was hung up", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness;
-      // First server: the voice delegates, then the server goes away.
       yield* Effect.gen(function* () {
         const service = yield* VoiceCall.VoiceCallService;
+        const readBack = yield* VoiceCallReadBack.VoiceCallReadBack;
         const client = yield* subscribeAs("tab-1");
         yield* service.connect({ clientId: "tab-1", offerSdp: "v=0 offer", target: TARGET });
         yield* Queue.offer(harness.inbound, {
@@ -445,26 +991,16 @@ describe("VoiceCallService", () => {
           text: "Run the tests",
         });
         yield* nextOf(client.events, "delegation");
-      }).pipe(Effect.provide(harness.layer), Effect.scoped);
-      assert.equal(yield* Queue.take(harness.outbound), "closed");
+        yield* processed(harness, client.events, "Said in the old call");
 
-      // Second server on the same database: the run has settled meanwhile.
-      yield* Effect.gen(function* () {
-        const service = yield* VoiceCall.VoiceCallService;
-        const readBack = yield* VoiceCallReadBack.VoiceCallReadBack;
-        const client = yield* subscribeAs("tab-1");
-        yield* readBack.start();
-        const answered = yield* nextOf(client.events, "delegation");
-        assert.equal(answered.delegation.status, "answered");
+        yield* service.hangUp;
+        assert.equal(yield* Queue.take(harness.outbound), "closed");
+        yield* readBack.handle(settledRun("completed"));
+
         yield* service.connect({ clientId: "tab-1", offerSdp: "v=0 offer", target: TARGET });
-        yield* Queue.offer(harness.inbound, {
-          type: "session.started",
-          sessionId: "rtc_2",
-          expiresAt: 0,
-        });
-        const answer = spokenText(yield* Queue.take(harness.outbound));
-        assert.include(answer, "session.context.append");
-        assert.include(answer, "From Alpha: All 128 tests pass.");
+        assert.notInclude(harness.instructions[1] ?? "", "Said in the old call");
+        yield* service.speak("First thing the new call hears");
+        assert.include(spokenText(yield* Queue.take(harness.outbound)), "First thing");
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
       Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),

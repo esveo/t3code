@@ -157,7 +157,7 @@ import {
 } from "../rightPanelStore";
 import { useIsActiveChatPane } from "./split/chatPane";
 import { ThreadFindHeaderButton } from "./chatFind/ThreadFindHeaderButton";
-import { VoiceCallButton } from "./voiceCall/VoiceCallButton";
+import { VoiceCallTimeline, voiceCallStepTimes } from "./voiceCall/VoiceCallTimeline";
 import { installDesktopClipboardPasteFallback } from "../lib/desktopClipboardPaste";
 import { isPreviewSupportedInRuntime, useThreadPreviewState } from "../previewStateStore";
 import { previewRuntimeTabId } from "../browser/previewRuntimeTabId";
@@ -3179,10 +3179,6 @@ export default function ChatView(props: ChatViewProps) {
     // Fork: find in thread sits in front of the panel toggles; a maximized
     // panel hides the timeline it searches.
     <span className="flex h-full shrink-0 items-center gap-1">
-      {/* Fork: voice call with the thread on screen. */}
-      {isServerThread && canOperateThread ? (
-        <VoiceCallButton environmentId={environmentId} threadId={threadId} active={isActivePane} />
-      ) : null}
       {isServerThread && serverConfig?.threadFind === true && !rightPanelMaximized ? (
         <ThreadFindHeaderButton
           open={isThreadFindActive}
@@ -3466,6 +3462,16 @@ export default function ChatView(props: ChatViewProps) {
                         : undefined
                     }
                   >
+                    {isServerThread && canOperateThread ? (
+                      <VoiceCallTimeline
+                        environmentId={environmentId}
+                        threadId={threadId}
+                        modelLabel={
+                          providerSubagentCatalogModel?.name ?? providerSubagentModelLabel
+                        }
+                        stepTimes={voiceCallStepTimes(timelineEntries)}
+                      />
+                    ) : null}
                     <ComposerSurface.Shell
                       contextStrip={showComposerContextStrip || showComposerModelStrip}
                     >

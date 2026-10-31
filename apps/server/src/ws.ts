@@ -3336,7 +3336,10 @@ export const layerWsRpc = (
         [VOICE_CALL_WS_METHODS.subscribe]: (input) => VoiceCall.subscribeRpc(input),
         [VOICE_CALL_WS_METHODS.connect]: (input) => VoiceCall.connectRpc(input),
         [VOICE_CALL_WS_METHODS.setTarget]: (input) => VoiceCall.setTargetRpc(input),
+        [VOICE_CALL_WS_METHODS.pause]: (_input) => VoiceCall.pauseRpc(),
         [VOICE_CALL_WS_METHODS.hangUp]: (_input) => VoiceCall.hangUpRpc(),
+        [VOICE_CALL_WS_METHODS.usage]: (_input) => VoiceCall.usageRpc(),
+        [VOICE_CALL_WS_METHODS.threadSpans]: (input) => VoiceCall.threadSpansRpc(input.threadId),
         // stop and message a provider subagent from its thread.
         [PROVIDER_SUBAGENT_CONTROL_WS_METHODS.target]: (input) =>
           ProviderSubagentControl.target(providerSubagentControlDeps, input),

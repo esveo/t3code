@@ -44,18 +44,19 @@ Phase 1:
   managed mode are left for a later phase; PAD's setup does not need them.
 - **The subscription needs the operate scope** as well, since it keeps a
   billed session alive.
-- **Transcripts** go to the browser console (`[voice call] …` via
-  `Effect.logInfo`) until the panel exists.
+- **Transcripts** also go to the browser console (`[voice call] …` via
+  `Effect.logInfo`).
 
 Phase 2:
 
 - **Questions and approvals are only announced** (PAD, 2026-10-23); see
   [Later](#later).
 - **The gate and its queue live in `VoiceCallService`**, next to the segment
-  state they read, not in a module of their own. A turn open for more than
-  30 s stops holding the gate, so a lost `turn.done` cannot block it.
-- **One table only.** `fork_voice_call_delegations` holds what the restart
-  re-arm needs; the call and transcript tables wait for history in phase 4.
+  state they read, not in a module of their own. A turn stops holding the gate
+  30 s after it opened or after the user's last word, whichever is later, so a
+  lost `turn.done` cannot block it but a long monologue still holds it.
+- **No call tables yet.** The call and transcript tables wait for history in
+  phase 4.
 - **The three open protocol points were settled by rule, not by probing**;
   see [Protocol](#protocol).
 - **The offer SDP is not trimmed.** ChatGPT rejects an offer without its
@@ -67,25 +68,27 @@ Phase 2:
 Goal for v1:
 
 - Start a call from the open thread on desktop (Electron) or web. Everything
-  the voice delegates goes to the thread on screen: it steers the active run,
-  or starts a normal turn when the thread is idle.
+  the voice delegates goes to the call's thread: it steers the active run
+  or, when the user asks it to wait, queues behind it; an idle thread starts a
+  normal turn either way.
 - The backend is the thread's own provider and model. The voice is only the
   front end; no extra model hop sits between them.
 - Results of that thread come back as speech. A new question or approval
   in the target thread is announced, but answered on screen only (see
   [Later](#later)).
-- The call survives thread switches (the target follows the screen), pauses
+- The call stays on the thread it started in while the user reads other
+  threads, and moves only through "Call hierher holen" (PAD, 2026-10-30:
+  following the screen sent requests to the wrong thread). It pauses
   itself when it is quiet because open time is billed, and wakes on speech
   or on a result.
 - A voice panel with both transcripts and a card per delegated message, a
   global call bar, and past calls stored on the server.
-- Behind a feature flag, off by default.
 
 Non-goals for v1:
 
-- Routing: no "send this to thread 2", no new threads by voice, no queueing,
-  no promote-to-steer, no request header format. See [Later](#later).
-- An overview of all threads for the voice. It sees only the open thread.
+- Routing: no "send this to thread 2", no new threads by voice, no
+  promote-to-steer, no request header format. See [Later](#later).
+- An overview of all threads for the voice. It sees only the call's thread.
 - Mobile, multi-device handover, other voice vendors, sound effects.
 - The classic Realtime protocol with function tools (works in the spike, but
   its quota pool and terms are unclear).
@@ -299,17 +302,20 @@ is the template for the service, its table and its PubSub stream.
 
 On `delegation.created`:
 
-1. No target (draft, settings page, no thread open) or an archived thread:
+1. No target (a call cannot start on a draft, so this means the target thread
+   is gone or `setTarget(null)` was called) or an archived thread:
    answer the delegation at once with one sentence saying so.
-2. Otherwise call `ThreadManagementService.sendToThread` with `mode: "auto"`.
-   It already is the v1 rule: it steers a steerable run and otherwise starts
-   one. Ids follow
+2. Otherwise call `ThreadManagementService.sendToThread` with `mode: "auto"`:
+   it steers a steerable run and otherwise starts one. A delegation carries
+   only text, so the voice asks for queueing by beginning it with the marker
+   `[queue]`, which the server strips and turns into `mode: "queue"`.
+   Interruptions the server forwards itself always use `auto`. Ids follow
    [`ScheduledTaskService`](../../apps/server/src/scheduledTasks/ScheduledTaskService.ts):
    `CommandId` `voice-call:<callId>:<delegationItemId>`, `MessageId`
    `voice-call-message:<callId>:<delegationItemId>`, so a retried event cannot
    dispatch twice. `createdBy: "user"`, `creationSource: "server"`.
 3. Record the delegation `{ delegationItemId, segmentId, threadId, messageId,
-runId, status: open }` and push a card to the panel.
+   runId, status: open }` and push a card to the panel.
 
 The voice has already said a filler ("On it.") and stays conversational; the
 answer follows when the run settles. A dispatch failure is answered at once
@@ -336,7 +342,9 @@ and add a small fork chip if it looks wrong.
   `delegation.context.append` on the newest open delegation of that run.
   Older open delegations of the same run (steered twice) are marked
   superseded and get nothing. A failed or interrupted run answers with one
-  sentence and the error.
+  sentence and the error. A queued delegation holds its own run's id from the
+  start, so the run in front of it does not answer it; it usually settles past
+  the 180 s window and then goes out unprompted.
 - **Unprompted events** in the thread that is the target _when the event
   fires_: a run that settles with no open delegation, a new user-input
   question, a new approval request. They go out as `session.context.append`
@@ -344,7 +352,7 @@ and add a small fork chip if it looks wrong.
   triggers an unprompted update.
 - **Speaking gate.** Injections wait in a queue until no user turn is open
   (every `turn.created role:user` has its `turn.done`), no assistant turn is
-  open, and the last input transcript delta is at least 1 s old. Answers to
+  open, and the user's last word or turn end is at least 1.5 s old. Answers to
   delegations pass the same gate. Codex has no such gate and relies on the
   model; we add it because PAD wants events held until he is done talking.
 - **Segment gone.** A delegation id belongs to its segment. If that segment
@@ -352,18 +360,16 @@ and add a small fork chip if it looks wrong.
   on the next segment. While the call is auto-paused, a result wakes it (see
   [Pause](#pause-resume-expiry-and-quota)); while manually paused, results
   queue and are spoken after resume.
-- **Server restart.** Open delegations are persisted. On start, each one is
-  checked against its run in `ProjectionStoreV2`; a run that settled while
-  the server was down is delivered as an unprompted result on the next
-  segment. `streamDomainEvents` is live-tail only, so there is no replay to
-  rely on.
+- **A new call starts empty (PAD, 2026-10-30).** Nothing of an ended call
+  reaches the next one: not its recap, not its queued items, not the answers
+  to its open delegations, since the next call may be about another thread.
+  The answers stay in the thread. A server restart ends the call too, so
+  delegations are not persisted and `fork_voice_call_delegations` is unused.
 - **Built in phase 2:** the gate and its queue live in `VoiceCallService`
   (the segment state is there); `VoiceCallReadBack.ts` follows
-  `DelegatedTaskQuestionReactor`. Open delegations survive a hang-up as well
-  as a restart: their answers wait for the next segment, which flushes them
-  on its first event (`session.started`). Queued items older than an hour are
-  dropped; unprompted updates are dropped at hang-up. A turn open for more
-  than 30 s no longer holds the gate, so a lost `turn.done` cannot block it.
+  `DelegatedTaskQuestionReactor`. Queued items older than an hour are dropped.
+  A turn with no user word for 30 s no longer holds the gate, so a lost
+  `turn.done` cannot block it.
 
 **Questions and approvals** are not answered by voice in v1 (PAD,
 2026-10-23). A new pending request in the target thread may be announced as
@@ -376,17 +382,24 @@ to the screen. Anything the user says in reply is a normal steer.
 plugin is the reference for tone and for the doze notes.
 
 - **Front-end instructions** (POST `instructions`): you are the voice of
-  esveo code talking to the user; chat on your own, but hand every request
-  about code, files, the thread or its agent to the client as a cleaned-up
-  instruction in your own words; the client sends it to the thread open on
-  screen; say a short filler and stay responsive while it runs; read results
+  esveo code talking to the user; every delegation becomes a visible message
+  in the thread, so delegate only when the user clearly wants the agent to act
+  or to find something out, and answer questions about the call or the app
+  yourself; a delegation passes along the user's own words, not rephrased (the
+  model does this anyway; Codex's `background_agent` tool demands it), so the
+  context comes from `payload.transcript`, the turns since the last delegation,
+  mirroring Codex's `<transcript_delta>`; after delegating say only that it was passed on, never what the agent will do, and stay responsive while it runs; read results
   back short and without Markdown; when told about a question or approval,
   tell the user it waits on screen; do not invent results. Plus the language line (`auto`: answer in the user's
   language; `de`: always German, from the first sentence), the persona text,
-  the current target thread's title, the time, and on resume a recap.
+  the current target thread's title, the time, and on resume a recap. A move
+  during a live segment is sent as speakable context, the only channel known
+  to work, so the voice says it aloud; a paused call learns it from the next
+  segment's instructions.
 - **Backend hint** (the `voice-call` context record), modelled on Codex's
-  `realtime_start.md`: this message comes from a live voice call, written by
-  the voice assistant from speech, so it may contain recognition errors; your
+  `realtime_start.md`: this message comes from a live voice call, a transcript
+  of speech, so it may contain recognition errors; `transcript` explains short
+  replies; your
   final answer is read aloud by that assistant; keep it short and
   action-oriented; leave long output, code and lists in the thread and say
   that they are there.
@@ -407,10 +420,10 @@ the controller stays in the web app instead of `packages/client-runtime`.
   remote audio playback. Needs a secure context, like dictation.
 - **`useVoiceCallController.ts`**: connect, retry, pause and wake (see
   below), takeover, hang-up.
-- **`useVoiceCallTarget.ts`**: the thread on screen, sent with `setTarget` on
-  change. In split view that is the focused pane (`activeLeafId` in
-  `splitThreadStore`, `"route"` meaning the route thread); otherwise
-  `useThreadRouteRef()`. A draft has no target.
+- **The target**: set by `connect` when a call starts, and by `setTarget` only
+  from "Call hierher holen", shown in every composer (each split pane on its
+  own) whose thread is not the target. Resuming or taking over from another
+  thread resends the current target, because `connect` replaces it.
 - **`VoiceCallButton.tsx`**: start, and stop while live. Mounted with one
   `// Fork:` line in the `panelToggleControls` span of `ChatView.tsx`, next to
   `ThreadFindHeaderButton`. Also a command palette action.
@@ -421,8 +434,8 @@ the controller stays in the web app instead of `packages/client-runtime`.
 - **`VoiceCallPanel.tsx`**: a `voice-call` right-panel surface registered
   through `useForkRightPanelSurfaces` (model: the Instructions tab, commit
   `f0373c7ffc`). The right-panel store is per thread, so the panel opens on
-  the focused thread and follows to the new thread when the target changes
-  while it is open. The content reads the call store, so it is the same
+  the target thread and follows to the new thread when the call moves while
+  it is open. The content reads the call store, so it is the same
   everywhere. It shows the user and voice transcripts and a card per
   delegation (thread, text, status, answer excerpt), plus the past calls list.
 - **`voiceCallJump.ts`**: clicking a card navigates to
@@ -431,7 +444,7 @@ the controller stays in the web app instead of `packages/client-runtime`.
   pages in earlier history like `useAssistantCitationTarget`, and calls
   `scrollToIndex`. Citations stay as they are; they only target assistant
   messages.
-- **`VoiceCallSettingRows.tsx`**: see [Settings](#settings-and-feature-flag).
+- **`VoiceCallSettingRows.tsx`**: see [Settings](#settings).
 
 **Desktop.** Dictation already records in the desktop app (see "Dictation" in
 `docs/fork/setup.md`), so check first whether WebRTC needs more. If it does,
@@ -457,22 +470,47 @@ not orchestration events: a call is not thread state.
   run id, delegation status, timestamps.
 
 Transcript turns are written on `turn.done`, never per delta. Live deltas only
-go over the stream. Delegations are written when they arrive, because the
-read-back needs them after a restart.
+go over the stream.
 
 Phase 2 built only `fork_voice_call_delegations` (delegation id, call id,
 status, the delegation as JSON); the other tables come with history in
 phase 4.
 
-## Settings and feature flag
+The "Voice call started/ended" lines in the chat come from
+`voice-call-thread-spans.json` in the state dir, one span per segment, so a
+pause or a move also ends and starts a line. They are merged into the timeline
+on the client and never reach the agent.
 
-Server settings, because the server builds the session. They follow the
-`enable*` fork pattern in `packages/contracts/src/settings.ts` (commit
-`57befeadb1` has the touch list): a field with a decoding default plus the
-matching optional key in `ServerSettingsPatch`.
+## Settings
 
-- `enableVoiceCall: boolean`, default `false`. Off: the RPCs fail with
-  `VoiceCallDisabledError`, the button, bar and panel are hidden.
+`voiceCallEnabled` is the feature's global switch, off by default. Off hides the
+button, the lanes and the chat lines, refuses a connect, ends a running call and
+takes `voice_say` out of `tools/list` live (`McpOrchestrationTools.ts`).
+
+There is no feature flag (PAD, 2026-10-30): the button sits next to the send
+button in the composer and shows whenever Codex has a ChatGPT login. It stays
+hidden without one or with an API key. An expired login keeps the button,
+disabled, with the renewal hint. While a call runs, a timeline with lanes for
+the user, the voice and the thread shows above the composer of the thread it
+talks to. Of the settings below, only the voice has a row so far.
+
+## `voice_say`
+
+The agent of the thread on the call can speak while it works (MCP tool
+`voice_say`), and the tool returns once the voice said it. The next voice
+`turn.done` after the injection counts as said, since the speaking gate only
+injects with no turn open. If the user talks meanwhile, their finished turn is
+steered into the thread first and the tool returns `interrupted` only after
+that, so the agent cannot carry on in between. The voice may delegate the same
+words on its own: if that comes first it is the steer, if it comes later it
+gets an answer and does not reach the thread. A completed run that used
+`voice_say` is not read back.
+
+Server settings, because the server builds the session. They follow the fork
+pattern in `packages/contracts/src/settings.ts` (commit `57befeadb1` has the
+touch list): a field with a decoding default plus the matching optional key in
+`ServerSettingsPatch`.
+
 - `voiceCallVoice`: one of the 25 v3 voices (a constant list in the contract:
   juniper, maple, spruce, ember, vale, breeze, arbor, sol, cove, aube,
   bubbie, haetsal, hanul, himari, leher, miko, neer, porto, rindo, rio,
@@ -482,10 +520,10 @@ matching optional key in `ServerSettingsPatch`.
 - `voiceCallPersona: string`, default empty, capped in length.
 
 Rows sit in Settings next to `VoiceInputSettingRow`, use
-`esveoSearchableSetting`, and their search items set `fork: true`. The voice,
-language and persona rows show only when the flag is on. The subscription
-reports availability, so the UI can explain why a call cannot start: flag
-off, no Codex instance, Codex logged in with an API key, login expired.
+`esveoSearchableSetting`, and their search items set `fork: true`. The
+subscription reports availability, so the UI can hide the button or explain why
+a call cannot start: no Codex instance, Codex logged in with an API key, login
+expired.
 
 ## Pause, resume, expiry and quota
 
@@ -511,8 +549,10 @@ quota. Pausing therefore closes the realtime session; the call itself stays.
   queued answer is spoken once the new segment has started. With no client
   subscribed, it stays queued.
 - **Manual pause ("lazy hang-up").** Closes the session and releases the mic.
-  No auto-wake. Results queue and are spoken after resume. Resume works from
-  the call bar on any route of the same app; no cross-device resume.
+  No auto-wake. Results queue and are spoken after resume, and the new
+  session's instructions carry the last 8 turns, because it knows nothing of
+  the call. The diagram's clock stands still meanwhile, so waves and sections
+  continue without a gap. A running `voice_say` ends as `call_ended`.
 - **Expiry.** `expires_at` is about 2 h. From 5 minutes before, the next quiet
   moment (the speaking gate) triggers a close and an immediate new segment
   with a recap; at 1 minute before it is forced.
@@ -522,27 +562,28 @@ quota. Pausing therefore closes the realtime session; the call itself stays.
   client calls `connect` with `retryOf`; the server closes the old call and
   mints a new one. Three attempts, then an error state. Each attempt is
   logged.
-- **Quota.** `session.usage.updated` gives segment minutes; the bar shows this
-  call's minutes and the last 24 h from the segments table. The plan limit is
-  not known reliably (help-center figures conflict), so show minutes used,
-  not minutes left. When `usage_limit.status` is not null, show it and
+- **Quota.** The Usage page shows esveo code's own count of connected segment
+  time per server (`VoiceCallUsage.ts`), against the plan's rolling 24-hour
+  allowance from OpenAI's help center. It is an estimate: ChatGPT-app use is
+  invisible, and nothing confirms these sessions draw on that allowance, so it
+  must never read as OpenAI's figure. It lives in a JSON file under the state
+  directory, not a SQL table, because a migration would conflict with upstream's
+  and history is not needed. When `usage_limit.status` is not null, show it and
   `reset_seconds` as a warning.
 
 ## Phases
 
-Each phase is one reviewable PR on the feature branch, behind the flag.
+Each phase is one reviewable PR on the feature branch.
 
 1. **Server call and steer path.** Contract and RPC wiring, `VoiceCallAuth`
    (existing mode first), `RealtimeCallClient` with the sideband,
    `VoiceCallService` with `connect` / `setTarget` / `hangUp` / `subscribe`,
-   the steer path with the voice context record, the front-end prompt, the
-   flag and voice/language/persona settings (no rows yet), connect retry. A
-   bare `VoiceCallButton` behind the flag (start and stop, transcript in the
-   browser console) is the end-to-end check; no panel, bar or pause yet.
+   the steer path with the voice context record, the front-end prompt,
+   voice/language/persona settings (no rows yet), connect retry. A bare
+   `VoiceCallButton` (start and stop, transcript in the browser console) is the end-to-end check; no panel, bar or pause yet.
    Desktop mic only if the check shows it is needed.
 2. **Read-back.** `VoiceCallReadBack`, delegation answers with cap and
-   chunking, unprompted events for the target, the speaking gate, the
-   delegations table and restart re-arm. Questions and approvals are only
+   chunking, unprompted events for the target, the speaking gate. Questions and approvals are only
    announced. Settles the untested protocol points listed above.
 3. **Pause, resume, expiry, quota.** Auto-pause, client level gate and
    replay buffer, wake on result, manual pause, recap, 2 h rollover, usage
@@ -562,7 +603,7 @@ Each phase is one reviewable PR on the feature branch, behind the flag.
   `OrchestrationEffectWorkerV2.drain` or await the persisted run event, never
   sleep. Cover steer twice then one answer, unprompted versus delegated
   dedupe, the speaking gate holding an injection until `turn.done`, segment
-  gone, restart re-arm.
+  gone.
 - Pause logic with a test clock: silence timer, expiry window, retry limit.
 - `VoiceCallAuth`: existing mode never writes `auth.json`; expired token
   path; managed mode account id from the id token.
@@ -591,8 +632,8 @@ Each phase is one reviewable PR on the feature branch, behind the flag.
   `auth.json` fresh. The token must never be logged or sent to the client.
 - **Unclear quota pool.** Whether voice minutes draw on the ChatGPT voice
   allowance or the Codex limits is unknown.
-- **Recognition errors.** Without routing, every delegation steers the thread
-  on screen. A misheard request lands in whatever thread PAD is looking at.
+- **Recognition errors.** Without routing, every delegation steers the call's
+  thread. A misheard request lands there, whichever thread PAD is looking at.
 - **Untested protocol points** listed under [Protocol](#protocol).
 
 ## Later
@@ -607,13 +648,14 @@ Each phase is one reviewable PR on the feature branch, behind the flag.
   how many and point to the screen. The alternative is a request header
   format (see routing).
 - Routing: send to another thread (and switch the UI there), open a new
-  thread with project and model inference, queue instead of steer, promote
-  the last queued message to a steer. Options: a fixed request header the
+  thread with project and model inference, promote the last queued message
+  to a steer. Options: a fixed request header the
   voice writes and the server parses, a cheap router model as fallback, or
   the classic Realtime protocol with real function tools once its quota and
   terms are clear.
 - An overview of all active and recent threads for the voice.
-- A silent context channel for target-change notes, once one is verified.
+- A silent context channel for target-change notes, once one is verified, so
+  a move need not be spoken.
 - Mobile (react-native-webrtc, as in #14865).
 - A choice of Codex instance when there are several.
 - A health check that starts a 1.1-only voice to confirm the revision.

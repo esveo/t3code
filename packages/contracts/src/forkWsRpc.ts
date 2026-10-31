@@ -26,8 +26,11 @@ import {
   VOICE_CALL_WS_METHODS,
   WsVoiceCallConnectRpc,
   WsVoiceCallHangUpRpc,
+  WsVoiceCallPauseRpc,
   WsVoiceCallSetTargetRpc,
   WsVoiceCallSubscribeRpc,
+  WsVoiceCallThreadSpansRpc,
+  WsVoiceCallUsageRpc,
 } from "./voiceCall.ts";
 import {
   VOICE_INPUT_WS_METHODS,
@@ -60,7 +63,10 @@ export const ForkWsRpcGroup = RpcGroup.make(
   WsVoiceCallSubscribeRpc,
   WsVoiceCallConnectRpc,
   WsVoiceCallSetTargetRpc,
+  WsVoiceCallPauseRpc,
   WsVoiceCallHangUpRpc,
+  WsVoiceCallUsageRpc,
+  WsVoiceCallThreadSpansRpc,
   // Stop and message a provider subagent from its thread.
   WsProviderSubagentTargetRpc,
   WsProviderSubagentStopRpc,
@@ -83,7 +89,10 @@ export const FORK_WS_RPC_TAGS = [
   VOICE_CALL_WS_METHODS.subscribe,
   VOICE_CALL_WS_METHODS.connect,
   VOICE_CALL_WS_METHODS.setTarget,
+  VOICE_CALL_WS_METHODS.pause,
   VOICE_CALL_WS_METHODS.hangUp,
+  VOICE_CALL_WS_METHODS.usage,
+  VOICE_CALL_WS_METHODS.threadSpans,
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS.target,
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS.stop,
   AGENT_TIME_WS_METHODS.summary,

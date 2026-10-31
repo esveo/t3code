@@ -1,6 +1,6 @@
 /**
  * Fork: reads results back into a voice call. A run that settles answers the
- * voice's open delegations on it; a run of the thread on screen that nobody
+ * voice's open delegations on it; a run of the call's thread that nobody
  * delegated, and a new question or approval there, become unprompted
  * updates. See docs/internals/voice-call.md, "Read-back".
  */
@@ -14,7 +14,6 @@ import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Scope from "effect/Scope";
-import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
@@ -94,8 +93,6 @@ const make = Effect.gen(function* () {
   const threads = yield* ThreadManagementService;
   const voice = yield* VoiceCallService;
   const spoken = new Set<string>();
-  // The live stream and the re-arm scan may see the same run settle.
-  const settling = yield* Semaphore.make(1);
 
   const titleOf = (threadId: ThreadId) =>
     threads.getThreadShell(threadId).pipe(
@@ -103,44 +100,58 @@ const make = Effect.gen(function* () {
       Effect.orElseSucceed(() => "the thread"),
     );
 
-  const resultOf = (run: OrchestrationV2Run) =>
-    Effect.gen(function* () {
-      if (run.status === "failed") return "The run failed. The details are on screen.";
-      if (run.status !== "completed") return "The run was stopped before it finished.";
-      const { messages } = yield* projections
-        .getThreadRecords(run.threadId, ["messages"], {
-          messageRoles: ["assistant"],
-          messageRunIds: [run.id],
-        })
-        .pipe(Effect.orElseSucceed(() => ({ messages: [] })));
-      const last = messages.findLast((message) => message.text.trim().length > 0);
-      return last === undefined ? "It finished without a written answer." : readBackText(last.text);
-    });
+  const resultOf = Effect.fn("VoiceCallReadBack.resultOf")(function* (run: OrchestrationV2Run) {
+    if (run.status === "failed") return "The run failed. The details are on screen.";
+    // A queued run that the user cancelled or promoted to a steer.
+    if (run.startedAt === null) return "The queued message left the queue before it ran.";
+    if (run.status !== "completed") return "The run was stopped before it finished.";
+    const { messages } = yield* projections
+      .getThreadRecords(run.threadId, ["messages"], {
+        messageRoles: ["assistant"],
+        messageRunIds: [run.id],
+      })
+      .pipe(Effect.orElseSucceed(() => ({ messages: [] })));
+    const last = messages.findLast((message) => message.text.trim().length > 0);
+    return last === undefined ? "It finished without a written answer." : readBackText(last.text);
+  });
 
-  const runSettled = (run: OrchestrationV2Run) =>
-    Effect.gen(function* () {
-      const open = (yield* voice.delegations).filter(
-        (delegation) => delegation.status === "open" && delegation.runId === run.id,
-      );
-      if (open.length > 0) {
-        spoken.add(`run:${run.id}`);
-        // Steered twice: the newest request gets the answer, the older ones nothing.
-        const [newest, ...older] = open.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt));
-        for (const delegation of older) {
-          yield* voice.updateDelegation(delegation.id, { status: "superseded" });
-        }
-        const title = yield* titleOf(run.threadId);
-        yield* voice.answerDelegation(newest!.id, `From ${title}: ${yield* resultOf(run)}`);
-        return;
+  const runSettled = Effect.fn("VoiceCallReadBack.runSettled")(function* (run: OrchestrationV2Run) {
+    const open = (yield* voice.delegations).filter(
+      (delegation) => delegation.status === "open" && delegation.runId === run.id,
+    );
+    // The agent already spoke for itself with voice_say; a failure is still worth hearing.
+    // A queued run that never started must not use up the voice_say of the run in front of it.
+    if (
+      run.startedAt !== null &&
+      (yield* voice.takeSaid(run.threadId)) &&
+      run.status === "completed"
+    ) {
+      spoken.add(`run:${run.id}`);
+      for (const delegation of open) {
+        yield* voice.updateDelegation(delegation.id, { status: "answered" });
       }
-      if (run.threadId !== (yield* voice.targetThreadId) || !(yield* voice.live)) return;
-      if (!rememberOnce(spoken, `run:${run.id}`)) return;
+      return;
+    }
+    if (open.length > 0) {
+      spoken.add(`run:${run.id}`);
+      // Steered twice: the newest request gets the answer, the older ones nothing.
+      const [newest, ...older] = open.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt));
+      for (const delegation of older) {
+        yield* voice.updateDelegation(delegation.id, { status: "superseded" });
+      }
       const title = yield* titleOf(run.threadId);
-      yield* voice.speak(`Update from ${title}: ${yield* resultOf(run)}`);
-    }).pipe(settling.withPermits(1));
+      yield* voice.answerDelegation(newest!.id, `From ${title}: ${yield* resultOf(run)}`);
+      return;
+    }
+    if (run.threadId !== (yield* voice.targetThreadId) || !(yield* voice.live)) return;
+    if (!rememberOnce(spoken, `run:${run.id}`)) return;
+    const title = yield* titleOf(run.threadId);
+    yield* voice.speak(`Update from ${title}: ${yield* resultOf(run)}`);
+  });
 
-  const handle: VoiceCallReadBack["Service"]["handle"] = (event) =>
-    Effect.gen(function* () {
+  // Untraced: this runs for every domain event of every thread, with or without a call.
+  const handle = Effect.fnUntraced(
+    function* (event: OrchestrationV2DomainEvent) {
       if (event.type === "run.updated") {
         if (SETTLED.has(event.payload.status)) yield* runSettled(event.payload);
         return;
@@ -157,47 +168,23 @@ const make = Effect.gen(function* () {
           ? `The agent in ${title} asks a question. It waits on screen.`
           : `The agent in ${title} needs an approval. It waits on screen.`,
       );
-    }).pipe(
-      Effect.catchCause((cause) =>
-        Effect.logWarning("voice call: read-back failed", { threadId: event.threadId, cause }),
+    },
+    (effect, event) =>
+      effect.pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("voice call: read-back failed", { threadId: event.threadId, cause }),
+        ),
       ),
-    );
-
-  /**
-   * Runs that settled while the server was down. `streamDomainEvents` only
-   * tails live events, so the open delegations are checked against the
-   * projection once the stream runs.
-   */
-  const reArm = Effect.gen(function* () {
-    for (const delegation of yield* voice.delegations) {
-      if (delegation.status !== "open" || delegation.threadId === null) continue;
-      if (delegation.runId === null) continue;
-      const { runs } = yield* projections
-        .getThreadRecords(delegation.threadId, ["runs"], { runIds: [delegation.runId] })
-        .pipe(Effect.orElseSucceed(() => ({ runs: [] })));
-      const run = runs.find((candidate) => candidate.id === delegation.runId);
-      if (run === undefined) {
-        yield* voice.updateDelegation(delegation.id, { status: "failed" });
-      } else if (SETTLED.has(run.status)) {
-        yield* runSettled(run);
-      }
-    }
-  }).pipe(Effect.catchCause((cause) => Effect.logWarning("voice call: re-arm failed", { cause })));
+  );
 
   const start: VoiceCallReadBack["Service"]["start"] = () =>
     forkParked(
-      Effect.gen(function* () {
-        yield* Stream.runForEach(engine.streamDomainEvents, handle).pipe(
-          Effect.catchCause((cause) =>
-            Effect.logWarning("voice call: read-back event stream failed", { cause }),
-          ),
-          Effect.forkScoped,
-        );
-        // A run settling between the subscription and the scan is answered once:
-        // whichever settles it second finds the delegation no longer open.
-        yield* Effect.yieldNow;
-        yield* reArm;
-      }),
+      Stream.runForEach(engine.streamDomainEvents, handle).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("voice call: read-back event stream failed", { cause }),
+        ),
+        Effect.forkScoped,
+      ),
     );
 
   return { start, handle } satisfies VoiceCallReadBack["Service"];

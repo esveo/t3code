@@ -38,6 +38,7 @@ import { TerminalManager } from "../terminal/Manager.ts"; // Fork: the terminals
 import { buildCodexAdditionalContext } from "./CodexDeveloperInstructions.ts";
 import { DocumentText } from "./DocumentText.ts";
 import { ProviderRegistry } from "./ProviderRegistry.ts";
+import { VoiceCallService } from "../voiceCall/VoiceCallService.ts";
 // Fork: the fork adds MCP tools and instructions, so it keeps its own budget.
 import budget from "./agentContextBudget.fork.json" with { type: "json" };
 
@@ -65,6 +66,7 @@ const toolHandlerServices = Layer.mergeAll(
   Layer.mock(ServerSecretStore)({}),
   Layer.mock(ServerSettingsService)({}),
   Layer.mock(SourceControlRepositoryService)({}),
+  Layer.mock(VoiceCallService)({}),
   Layer.mock(ThreadLaunchService)({}),
   Layer.mock(ThreadManagementService)({}),
   Layer.mock(ThreadSearch)({}),

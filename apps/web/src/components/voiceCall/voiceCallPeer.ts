@@ -1,5 +1,11 @@
 import type { VoiceCallConnectResult } from "@t3tools/contracts";
 
+import {
+  setVoiceCallLevelSource,
+  startVoiceCallLevels,
+  stopVoiceCallLevels,
+} from "./voiceCallLevels";
+
 /**
  * Fork: the browser side of a voice call, one per tab. It owns the
  * microphone, the speaker and the WebRTC peer; the server owns everything
@@ -26,6 +32,7 @@ let starting = false;
 export const isVoiceCallPeerActive = () => active !== null || starting;
 
 function closePeer() {
+  stopVoiceCallLevels();
   if (active === null) return;
   active.peer.close();
   for (const track of active.microphone.getTracks()) track.stop();
@@ -63,14 +70,17 @@ export async function startVoiceCallPeer(
   starting = true;
   const speaker = document.createElement("audio");
   speaker.autoplay = true;
+  startVoiceCallLevels();
   try {
     const microphone = await navigator.mediaDevices.getUserMedia({ audio: true });
+    setVoiceCallLevelSource("user", microphone);
     let retryOf: string | undefined;
     for (let attempt = 1; attempt <= CONNECT_ATTEMPTS; attempt++) {
       const peer = new RTCPeerConnection();
       active = { peer, microphone, speaker };
       peer.addEventListener("track", (event) => {
         speaker.srcObject = event.streams[0] ?? null;
+        if (event.streams[0]) setVoiceCallLevelSource("voice", event.streams[0]);
       });
       for (const track of microphone.getAudioTracks()) peer.addTrack(track, microphone);
       // The session expects this channel; the server holds the events, so it stays unused.

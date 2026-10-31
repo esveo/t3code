@@ -81,11 +81,11 @@ const encodeJson = Schema.encodeSync(JsonString);
 
 const excerpt = (text: string) => text.replace(/\s+/g, " ").slice(0, 200);
 
-const createCall = (
-  http: HttpClient.HttpClient,
-  { auth, offerSdp, session }: Parameters<RealtimeCallClient["Service"]["createCall"]>[0],
-) =>
-  Effect.gen(function* () {
+const createCall = Effect.fn("RealtimeCallClient.createCall")(
+  function* (
+    http: HttpClient.HttpClient,
+    { auth, offerSdp, session }: Parameters<RealtimeCallClient["Service"]["createCall"]>[0],
+  ) {
     const response = yield* http.execute(
       HttpClientRequest.post(CALLS_URL).pipe(
         HttpClientRequest.setHeaders(codexHeaders(auth)),
@@ -118,19 +118,17 @@ const createCall = (
       return yield* new VoiceCallError({ message: "ChatGPT answered the call without a session." });
     }
     return { answerSdp: body, realtimeCallId };
-  }).pipe(
-    Effect.timeoutOrElse({
-      duration: "20 seconds",
-      orElse: () =>
-        Effect.fail(new VoiceCallError({ message: "ChatGPT did not answer the call." })),
-    }),
-    Effect.mapError((error) =>
-      isVoiceCallError(error)
-        ? error
-        : new VoiceCallError({ message: `Could not reach ChatGPT (${errorTag(error)}).` }),
-    ),
-    Effect.withSpan("RealtimeCallClient.createCall"),
-  );
+  },
+  Effect.timeoutOrElse({
+    duration: "20 seconds",
+    orElse: () => Effect.fail(new VoiceCallError({ message: "ChatGPT did not answer the call." })),
+  }),
+  Effect.mapError((error) =>
+    isVoiceCallError(error)
+      ? error
+      : new VoiceCallError({ message: `Could not reach ChatGPT (${errorTag(error)}).` }),
+  ),
+);
 
 const errorTag = (error: unknown) =>
   typeof error === "object" && error !== null && "_tag" in error ? String(error._tag) : "unknown";
@@ -144,66 +142,68 @@ type HeaderWebSocketConstructor = new (
   options: { readonly headers: Record<string, string> },
 ) => WebSocket;
 
-const openSideband: RealtimeCallClient["Service"]["openSideband"] = ({ auth, realtimeCallId }) =>
-  Effect.gen(function* () {
-    const events = yield* Queue.unbounded<RealtimeEvent, Cause.Done>();
-    const socket = yield* Effect.acquireRelease(
-      Effect.callback<WebSocket, VoiceCallError>((resume) => {
-        const socket = new (WebSocket as unknown as HeaderWebSocketConstructor)(
-          sidebandUrl(realtimeCallId),
-          { headers: codexHeaders(auth) },
-        );
-        socket.addEventListener("message", (message) => {
-          if (typeof message.data !== "string") return;
-          const event = Option.flatMap(decodeJson(message.data), decodeRealtimeEvent);
-          if (Option.isSome(event)) Queue.offerUnsafe(events, event.value);
-        });
-        socket.addEventListener("close", () => {
-          Queue.endUnsafe(events);
-        });
-        socket.addEventListener("open", () => resume(Effect.succeed(socket)), { once: true });
-        socket.addEventListener(
-          "error",
-          () => {
-            if (socket.readyState !== WebSocket.OPEN) {
-              resume(
-                Effect.fail(
-                  new VoiceCallError({ message: "The voice session sideband did not open." }),
-                ),
-              );
-            }
-          },
-          { once: true },
-        );
-        return Effect.sync(() => socket.close());
-      }).pipe(
-        Effect.timeoutOrElse({
-          duration: "15 seconds",
-          orElse: () =>
-            Effect.fail(new VoiceCallError({ message: "The voice session sideband timed out." })),
-        }),
-      ),
-      (socket) =>
-        Effect.sync(() => {
-          if (socket.readyState === WebSocket.OPEN) {
-            socket.send(encodeJson({ type: "session.close" } satisfies RealtimeOutbound));
-          }
-          socket.close();
-          Queue.endUnsafe(events);
-        }),
-    );
-    return {
-      events: Stream.fromQueue(events),
-      send: (event) =>
-        Effect.suspend(() => {
+const openSideband = Effect.fn("RealtimeCallClient.openSideband")(function* ({
+  auth,
+  realtimeCallId,
+}: Parameters<RealtimeCallClient["Service"]["openSideband"]>[0]) {
+  const events = yield* Queue.unbounded<RealtimeEvent, Cause.Done>();
+  const socket = yield* Effect.acquireRelease(
+    Effect.callback<WebSocket, VoiceCallError>((resume) => {
+      const socket = new (WebSocket as unknown as HeaderWebSocketConstructor)(
+        sidebandUrl(realtimeCallId),
+        { headers: codexHeaders(auth) },
+      );
+      socket.addEventListener("message", (message) => {
+        if (typeof message.data !== "string") return;
+        const event = Option.flatMap(decodeJson(message.data), decodeRealtimeEvent);
+        if (Option.isSome(event)) Queue.offerUnsafe(events, event.value);
+      });
+      socket.addEventListener("close", () => {
+        Queue.endUnsafe(events);
+      });
+      socket.addEventListener("open", () => resume(Effect.succeed(socket)), { once: true });
+      socket.addEventListener(
+        "error",
+        () => {
           if (socket.readyState !== WebSocket.OPEN) {
-            return Effect.fail(new VoiceCallError({ message: "The voice session has ended." }));
+            resume(
+              Effect.fail(
+                new VoiceCallError({ message: "The voice session sideband did not open." }),
+              ),
+            );
           }
-          socket.send(encodeJson(event));
-          return Effect.void;
-        }),
-    } satisfies RealtimeSideband;
-  });
+        },
+        { once: true },
+      );
+      return Effect.sync(() => socket.close());
+    }).pipe(
+      Effect.timeoutOrElse({
+        duration: "15 seconds",
+        orElse: () =>
+          Effect.fail(new VoiceCallError({ message: "The voice session sideband timed out." })),
+      }),
+    ),
+    (socket) =>
+      Effect.sync(() => {
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(encodeJson({ type: "session.close" } satisfies RealtimeOutbound));
+        }
+        socket.close();
+        Queue.endUnsafe(events);
+      }),
+  );
+  return {
+    events: Stream.fromQueue(events),
+    send: (event) =>
+      Effect.suspend(() => {
+        if (socket.readyState !== WebSocket.OPEN) {
+          return Effect.fail(new VoiceCallError({ message: "The voice session has ended." }));
+        }
+        socket.send(encodeJson(event));
+        return Effect.void;
+      }),
+  } satisfies RealtimeSideband;
+});
 
 export const layer = Layer.effect(
   RealtimeCallClient,

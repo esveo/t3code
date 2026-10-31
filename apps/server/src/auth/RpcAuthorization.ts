@@ -239,7 +239,11 @@ export const RPC_REQUIRED_SCOPES = {
   [VOICE_CALL_WS_METHODS.subscribe]: AuthOrchestrationOperateScope,
   [VOICE_CALL_WS_METHODS.connect]: AuthOrchestrationOperateScope,
   [VOICE_CALL_WS_METHODS.setTarget]: AuthOrchestrationOperateScope,
+  [VOICE_CALL_WS_METHODS.pause]: AuthOrchestrationOperateScope,
   [VOICE_CALL_WS_METHODS.hangUp]: AuthOrchestrationOperateScope,
+  // Fork: voice minutes on the Usage page; reading them keeps nothing alive.
+  [VOICE_CALL_WS_METHODS.usage]: AuthDiagnosticsReadScope,
+  [VOICE_CALL_WS_METHODS.threadSpans]: AuthOrchestrationReadScope,
   // Fork: provider subagent controls.
   [PROVIDER_SUBAGENT_CONTROL_WS_METHODS.target]: AuthOrchestrationReadScope,
   [PROVIDER_SUBAGENT_CONTROL_WS_METHODS.stop]: AuthOrchestrationOperateScope,
