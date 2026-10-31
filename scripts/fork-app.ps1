@@ -408,6 +408,8 @@ function Invoke-Watch {
     git -C $ScriptRepo worktree add --detach $WatchSource $remote | Out-Null
   }
   git -C $WatchSource checkout --detach --force $remote 2>&1 | Out-Null
+  # .env is gitignored, so the worktree has none; without it the build has no T3 Connect login.
+  Copy-Item (Join-Path $ScriptRepo ".env") $WatchSource -ErrorAction SilentlyContinue
   Write-Host "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') origin/$WatchBranch is at $($remote.Substring(0, 7)); preparing ..."
   $env:T3CODE_FORK_REPO = $WatchSource
   $env:T3CODE_FORK_BUILD_BRANCH = $WatchBranch
