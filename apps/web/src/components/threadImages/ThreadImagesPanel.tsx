@@ -7,7 +7,7 @@ import {
   type ScopedThreadRef,
   type ThreadId,
 } from "@t3tools/contracts";
-import { ImageIcon, ImageOffIcon } from "lucide-react";
+import { ImageIcon, ImageOffIcon, PlayIcon } from "lucide-react";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { type CSSProperties, useEffect, useState } from "react";
@@ -117,9 +117,11 @@ function ThreadImagesGrid(props: {
   const treeKey = useAtomValue(
     threadTreeKeyAtom(JSON.stringify([environmentId, threadId, props.workspaceRoot])),
   );
-  const { images, loading } = useAtomValue(
+  const { images: listed, loading } = useAtomValue(
     threadTreeImagesAtom(JSON.stringify([environmentId, treeKey])),
   );
+  const [missing, setMissing] = useState<ReadonlySet<string>>(() => new Set());
+  const images = missing.size === 0 ? listed : listed.filter(({ key }) => !missing.has(key));
 
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
   const [scrollTop, setScrollTop] = useState(0);
@@ -159,7 +161,11 @@ function ThreadImagesGrid(props: {
     const previewIndex = available.findIndex(({ image }) => image === clicked);
     if (previewIndex < 0) return;
     openExpandedImagePreview(scopedThreadKey(props.threadRef), {
-      images: available.map(({ image, src }) => ({ src, name: image.name })),
+      images: available.map(({ image, src }) => ({
+        src,
+        name: image.name,
+        ...(image.kind === "video" ? { type: "video" as const } : {}),
+      })),
       index: previewIndex,
     });
   };
@@ -183,6 +189,7 @@ function ThreadImagesGrid(props: {
         image={image}
         style={style}
         onOpen={() => void openPreview(index)}
+        onMissing={() => setMissing((keys) => new Set(keys).add(image.key))}
       />
     ) : (
       <div key={`placeholder:${index}`} className={TILE_CLASS} style={style}>
@@ -202,7 +209,7 @@ function ThreadImagesGrid(props: {
       }}
     >
       {count === 0 ? (
-        <p className="p-4 text-sm text-muted-foreground">No images in this thread yet.</p>
+        <p className="p-4 text-sm text-muted-foreground">No images or videos in this thread yet.</p>
       ) : (
         <div className="relative m-2" style={{ height: grid.totalHeight }}>
           {tiles}
@@ -210,7 +217,7 @@ function ThreadImagesGrid(props: {
       )}
       {loading ? (
         <p className="sticky bottom-0 bg-background/90 px-3 py-1.5 text-xs text-muted-foreground">
-          Loading images… {images.length} so far
+          Loading media… {images.length} so far
         </p>
       ) : null}
     </div>
@@ -222,9 +229,12 @@ function ThreadImageTile(props: {
   readonly image: ThreadImage;
   readonly style: CSSProperties;
   readonly onOpen: () => void;
+  readonly onMissing: () => void;
 }) {
-  const { image } = props;
-  const [thumbnail, setThumbnail] = useState(() => cachedThumbnail(image.key));
+  const { image, onMissing } = props;
+  const [thumbnail, setThumbnail] = useState<string | null | undefined>(() =>
+    cachedThumbnail(image.key),
+  );
   const asset = useAssetUrlState(
     props.environmentId,
     image.source._tag === "asset" && thumbnail === undefined ? image.source.resource : null,
@@ -235,17 +245,22 @@ function ThreadImageTile(props: {
   useEffect(() => {
     if (src === null || thumbnail !== undefined) return;
     let current = true;
-    void loadThumbnail(image.key, src).then((url) => {
+    void loadThumbnail(image.key, src, image.kind).then((url) => {
       if (current) setThumbnail(url);
     });
     return () => {
       current = false;
     };
-  }, [image.key, src, thumbnail]);
+  }, [image.key, image.kind, src, thumbnail]);
+  const assetFailed =
+    image.source._tag === "asset" && thumbnail === undefined && asset._tag === "Failure";
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- the asset query's failure only exists in its state, and the grid owns the list.
+  useEffect(() => {
+    if (assetFailed && image.mentioned) onMissing();
+  }, [assetFailed, image.mentioned, onMissing]);
   const [status, setStatus] = useState<"loading" | "loaded" | "failed">("loading");
-  const failed =
-    status === "failed" ||
-    (image.source._tag === "asset" && thumbnail === undefined && asset._tag === "Failure");
+  const failed = status === "failed" || assetFailed;
+  const isGif = image.name.toLowerCase().endsWith(".gif");
   return (
     <button
       type="button"
@@ -262,7 +277,7 @@ function ThreadImageTile(props: {
         <ImageOffIcon aria-hidden className="size-5 text-icon-muted opacity-40" />
       ) : (
         <>
-          {status === "loading" ? (
+          {status === "loading" && image.kind === "image" ? (
             <ImageIcon aria-hidden className="size-5 text-icon-muted opacity-40" />
           ) : null}
           {thumbnail ? (
@@ -275,8 +290,22 @@ function ThreadImageTile(props: {
                 status === "loaded" ? "opacity-100" : "opacity-0",
               )}
               onLoad={() => setStatus("loaded")}
-              onError={() => setStatus("failed")}
+              onError={() => {
+                setStatus("failed");
+                if (image.mentioned) onMissing();
+              }}
             />
+          ) : null}
+          {image.kind === "video" ? (
+            <span className="absolute inset-0 flex items-center justify-center">
+              <span className="rounded-full bg-black/60 p-1.5 text-white">
+                <PlayIcon aria-hidden className="size-4 fill-current" />
+              </span>
+            </span>
+          ) : isGif ? (
+            <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 text-3xs font-medium text-white">
+              GIF
+            </span>
           ) : null}
         </>
       )}

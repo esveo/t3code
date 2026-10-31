@@ -4,7 +4,6 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   collectThreadImages,
   gridWindow,
-  markdownImageSources,
   mergeThreadImages,
   threadTreeIds,
   type ThreadImage,
@@ -26,17 +25,17 @@ describe("threadTreeIds", () => {
   });
 });
 
-describe("markdownImageSources", () => {
-  it("finds plain and bracketed sources, not those inside code fences", () => {
-    const text = "![a](./a.png) ![b](<./my b.png> 'title')\n```\n![c](./c.png)\n```";
-    expect(markdownImageSources(text)).toEqual(["./a.png", "./my b.png"]);
-  });
-});
-
 describe("collectThreadImages", () => {
   it("collects attachments, viewed files and omitted tool output by source ids", () => {
     const list = {
-      messages: [{ text: "", createdAtMs: 1, attachments: [{ id: "img-1", name: "shot.png" }] }],
+      messages: [
+        {
+          embeds: ["./clip.mp4"],
+          mentions: ["out/maybe.gif"],
+          createdAtMs: 1,
+          attachments: [{ id: "img-1", name: "shot.png", kind: "image" }],
+        },
+      ],
       toolItems: [
         {
           sourceThreadId: "parent",
@@ -59,11 +58,15 @@ describe("collectThreadImages", () => {
     const images = collectThreadImages(list, threadId, "/repo");
     expect(images.map((image) => image.key)).toEqual([
       "attachment:img-1",
+      "file:thread-1:./clip.mp4",
+      "file:thread-1:out/maybe.gif",
       "tool:parent:item-1:0",
       "tool:parent:item-1:1",
       "viewed:thread-1:item-2",
     ]);
-    expect(images[2]?.source).toEqual({
+    expect(images[1]).toMatchObject({ kind: "video" });
+    expect(images[2]).toMatchObject({ kind: "image", mentioned: true });
+    expect(images[4]?.source).toEqual({
       _tag: "asset",
       resource: { _tag: "tool-output-image", threadId: "parent", itemId: "item-1", index: 1 },
     });
@@ -73,7 +76,13 @@ describe("collectThreadImages", () => {
 describe("mergeThreadImages", () => {
   it("sorts newest first and keeps inherited images once", () => {
     const image = (key: string, createdAtMs: number) =>
-      ({ key, createdAtMs, name: key, source: { _tag: "direct", src: key } }) as ThreadImage;
+      ({
+        key,
+        createdAtMs,
+        name: key,
+        kind: "image",
+        source: { _tag: "direct", src: key },
+      }) as ThreadImage;
     const merged = mergeThreadImages([
       [image("old", 1), image("shared", 2)],
       [image("shared", 2), image("new", 3)],

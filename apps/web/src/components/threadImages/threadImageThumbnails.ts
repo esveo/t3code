@@ -1,20 +1,57 @@
 const THUMBNAIL_WIDTH = 320;
 const MAX_CONCURRENT = 4;
+const VIDEO_TIMEOUT_MS = 15_000;
 // ponytail: fixed cap of small webps; tie it to memory if huge galleries need more.
 const MAX_CACHED = 500;
 
 const cache = new Map<string, string>();
-const inFlight = new Map<string, Promise<string>>();
+const inFlight = new Map<string, Promise<string | null>>();
 const waiting: Array<() => void> = [];
 let running = 0;
 
-async function createThumbnail(src: string): Promise<string> {
+async function firstVideoFrame(src: string): Promise<ImageBitmap> {
+  const video = document.createElement("video");
+  video.crossOrigin = "anonymous";
+  video.muted = true;
+  video.preload = "auto";
+  try {
+    await new Promise<void>((resolve, reject) => {
+      // A stalled or undecodable video must not hold its slot.
+      const timeout = setTimeout(
+        () => reject(new Error("Video frame timed out.")),
+        VIDEO_TIMEOUT_MS,
+      );
+      video.onerror = () => reject(new Error("Video could not be decoded."));
+      video.onloadeddata = () => {
+        video.currentTime = Math.min(0.1, video.duration / 2 || 0);
+      };
+      video.onseeked = () => {
+        clearTimeout(timeout);
+        resolve();
+      };
+      video.src = src;
+    });
+    return await createImageBitmap(video, {
+      resizeWidth: THUMBNAIL_WIDTH,
+      resizeQuality: "medium",
+    });
+  } finally {
+    video.removeAttribute("src");
+    video.load();
+  }
+}
+
+async function imageBitmap(src: string): Promise<ImageBitmap> {
   const response = await fetch(src);
   if (!response.ok) throw new Error(`Thumbnail source answered ${response.status}.`);
-  const bitmap = await createImageBitmap(await response.blob(), {
+  return createImageBitmap(await response.blob(), {
     resizeWidth: THUMBNAIL_WIDTH,
     resizeQuality: "medium",
   });
+}
+
+async function createThumbnail(src: string, kind: "image" | "video"): Promise<string> {
+  const bitmap = await (kind === "video" ? firstVideoFrame(src) : imageBitmap(src));
   try {
     const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
     canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
@@ -42,8 +79,15 @@ export function cachedThumbnail(key: string): string | undefined {
   return url;
 }
 
-/** A small copy decoded off the main thread; the original when it cannot be fetched or decoded. */
-export function loadThumbnail(key: string, src: string): Promise<string> {
+/**
+ * A small still decoded off the main thread: an image or GIF's first frame, or a video's. When that
+ * fails an image falls back to its original; a video has nothing an `<img>` could show.
+ */
+export function loadThumbnail(
+  key: string,
+  src: string,
+  kind: "image" | "video",
+): Promise<string | null> {
   const pending = inFlight.get(key);
   if (pending) return pending;
   const promise = (async () => {
@@ -51,11 +95,11 @@ export function loadThumbnail(key: string, src: string): Promise<string> {
     if (running >= MAX_CONCURRENT) await new Promise<void>((resolve) => waiting.push(resolve));
     else running++;
     try {
-      const url = await createThumbnail(src);
+      const url = await createThumbnail(src, kind);
       remember(key, url);
       return url;
     } catch {
-      return src;
+      return kind === "video" ? null : src;
     } finally {
       inFlight.delete(key);
       const next = waiting.pop();

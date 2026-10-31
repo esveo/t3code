@@ -238,7 +238,7 @@ const SURFACE_DISABLED_REASONS = {
   threadInbox: "Turn on coordinator decisions in Settings > General.",
   notes: "Notes are only available from a thread.",
   instructions: "Instructions are only available from a thread.",
-  threadImages: "Images are only available from a thread.",
+  threadImages: "Media is only available from a thread.",
   device: "Devices are only available from a thread.",
   sideChat: "Side chats start after the first message.",
 } as const;
