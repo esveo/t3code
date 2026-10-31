@@ -21,9 +21,17 @@ export type ThreadImagesListInput = typeof ThreadImagesListInput.Type;
 
 export const ThreadImagesMessage = Schema.Struct({
   createdAtMs: Schema.Number,
-  /** Empty unless the text embeds an image. */
-  text: Schema.String,
-  attachments: ForwardCompatibleArray(Schema.Struct({ id: Schema.String, name: Schema.String })),
+  /** Markdown embeds in the text. */
+  embeds: ForwardCompatibleArray(Schema.String),
+  /** Media paths and links the text only names; they may not exist. */
+  mentions: ForwardCompatibleArray(Schema.String),
+  attachments: ForwardCompatibleArray(
+    Schema.Struct({
+      id: Schema.String,
+      name: Schema.String,
+      kind: Schema.Literals(["image", "video"]),
+    }),
+  ),
 });
 export type ThreadImagesMessage = typeof ThreadImagesMessage.Type;
 

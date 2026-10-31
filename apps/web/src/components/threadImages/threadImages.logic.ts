@@ -19,6 +19,9 @@ export interface ThreadImage {
   readonly key: string;
   readonly name: string;
   readonly createdAtMs: number;
+  readonly kind: "image" | "video";
+  /** Only named in a message's text, so the file may not exist; the gallery drops it then. */
+  readonly mentioned?: boolean;
   readonly source: ThreadImageSource;
 }
 
@@ -39,38 +42,34 @@ export function threadTreeIds(
   return ids;
 }
 
-const MARKDOWN_IMAGE = /!\[[^\]]*\]\(\s*(?:<([^>\n]+)>|([^)\s]+))/g;
-const FENCED_CODE = /```[\s\S]*?(?:```|$)/g;
-
-export function markdownImageSources(text: string): ReadonlyArray<string> {
-  if (!text.includes("![")) return [];
-  const sources: string[] = [];
-  for (const match of text.replace(FENCED_CODE, "").matchAll(MARKDOWN_IMAGE)) {
-    const source = match[1] ?? match[2];
-    if (source) sources.push(source);
-  }
-  return sources;
-}
-
-function markdownImage(
+function sourceImage(
   source: string,
   threadId: ThreadId,
   workspaceRoot: string | undefined,
   createdAtMs: number,
+  mentioned: boolean,
 ): ThreadImage | null {
-  const media = resolveMediaSource(source, { threadId, workspaceRoot, imageEmbed: true });
-  if (media === null || media.kind !== "image" || media.access === "unavailable") return null;
+  const media = resolveMediaSource(source, {
+    threadId,
+    workspaceRoot,
+    ...(mentioned ? {} : { imageEmbed: true }),
+  });
+  if (media === null || media.access === "unavailable") return null;
+  const common = {
+    name: media.name,
+    createdAtMs,
+    kind: media.kind,
+    ...(mentioned ? { mentioned } : {}),
+  };
   return media.access === "direct"
     ? {
+        ...common,
         key: `direct:${media.uri}`,
-        name: media.name,
-        createdAtMs,
         source: { _tag: "direct", src: resolveProtocolRelativeMediaUrl(media.uri) },
       }
     : {
+        ...common,
         key: `file:${threadId}:${source}`,
-        name: media.name,
-        createdAtMs,
         source: { _tag: "asset", resource: media.resource },
       };
 }
@@ -89,11 +88,16 @@ export function collectThreadImages(
         key: `attachment:${attachment.id}`,
         name: attachment.name,
         createdAtMs,
+        kind: attachment.kind,
         source: { _tag: "asset", resource: { _tag: "attachment", attachmentId: attachment.id } },
       });
     }
-    for (const source of markdownImageSources(message.text)) {
-      const image = markdownImage(source, threadId, workspaceRoot, createdAtMs);
+    for (const source of message.embeds) {
+      const image = sourceImage(source, threadId, workspaceRoot, createdAtMs, false);
+      if (image) images.push(image);
+    }
+    for (const source of message.mentions) {
+      const image = sourceImage(source, threadId, workspaceRoot, createdAtMs, true);
       if (image) images.push(image);
     }
   }
@@ -108,6 +112,7 @@ export function collectThreadImages(
         key: `viewed:${sourceThreadId}:${sourceItemId}`,
         name: viewed.alt,
         createdAtMs,
+        kind: "image",
         source: { _tag: "asset", resource: viewed.resource },
       });
     }
@@ -116,6 +121,7 @@ export function collectThreadImages(
         key: `tool:${sourceThreadId}:${sourceItemId}:${index}`,
         name,
         createdAtMs,
+        kind: "image",
         source: {
           _tag: "asset",
           resource: {

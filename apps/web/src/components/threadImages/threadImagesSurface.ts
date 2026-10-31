@@ -17,8 +17,8 @@ export const ThreadImagesTabIcon = ImagesIcon;
 
 /** Fork: the Images tab's entry in the right panel's launcher. */
 export const THREAD_IMAGES_ACTION = {
-  label: "Images",
-  description: "Every image in this thread, its subagents and its sub-threads.",
+  label: "Media",
+  description: "Every image and video in this thread, its subagents and its sub-threads.",
   icon: ImagesIcon,
   shortcut: "A",
 };
