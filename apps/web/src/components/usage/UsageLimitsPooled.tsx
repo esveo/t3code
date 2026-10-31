@@ -567,7 +567,16 @@ function PoolWindowCard({
   );
 }
 
-function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: number }) {
+function PoolSection({
+  pool,
+  now,
+  extra,
+}: {
+  readonly pool: LimitPool;
+  readonly now: number;
+  /** Fork: more cards below this provider's windows. */
+  readonly extra?: ReactNode;
+}) {
   const color = barColor(pool.driver);
   const label = providerClients.get(pool.driver)?.label ?? String(pool.driver);
   const windows = displayLimitWindows(pool);
@@ -596,6 +605,7 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
           />
         );
       })}
+      {extra}
     </section>
   );
 }
@@ -604,10 +614,12 @@ export function UsageLimitsPooled({
   presentations,
   now,
   cursorPrompt,
+  codexExtra,
 }: {
   readonly presentations: Parameters<typeof collectLimitAccounts>[0];
   readonly now: number;
   readonly cursorPrompt?: ReactNode;
+  readonly codexExtra?: ReactNode;
 }) {
   const [segmentPopover] = useState(() => PopoverCreateHandle<SegmentPayload>());
   const segmentPopoverActions = useRef<PopoverPrimitive.Root.Actions | null>(null);
@@ -630,7 +642,11 @@ export function UsageLimitsPooled({
         {pools.map((pool, index) => (
           <Fragment key={pool.driver}>
             {index === cursorPromptAt ? cursorPrompt : null}
-            <PoolSection pool={pool} now={now} />
+            <PoolSection
+              pool={pool}
+              now={now}
+              extra={pool.driver === "codex" ? codexExtra : null}
+            />
           </Fragment>
         ))}
       </SegmentPopoverContext>

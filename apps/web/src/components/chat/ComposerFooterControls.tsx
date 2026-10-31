@@ -177,7 +177,40 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
   compactBeforeSendTokens: number | null;
   keepFullHistory: boolean;
   onToggleKeepFullHistory: () => void;
+  /** Fork: the call controls take the send button's place during a call. */
+  renderVoiceCall?: (primary: React.ReactNode, keepPrimary: boolean) => React.ReactNode;
 }) {
+  const primary = (
+    <ComposerPrimaryActions
+      compact={props.compact}
+      canOperateThread={props.canOperateThread}
+      pendingAction={props.pendingAction}
+      isRunning={props.isRunning}
+      canInterrupt={props.canInterrupt}
+      followUpBehavior={props.followUpBehavior}
+      canSteer={props.canSteer}
+      alternateShortcutLabel={props.alternateShortcutLabel}
+      showPlanFollowUpPrompt={props.showPlanFollowUpPrompt}
+      promptHasText={props.promptHasText}
+      isSendBusy={props.isSendBusy}
+      sendDisabledReason={props.sendDisabledReason}
+      isConnecting={props.isConnecting}
+      isEnvironmentUnavailable={props.isEnvironmentUnavailable}
+      isPreparingWorktree={props.isPreparingWorktree}
+      hasSendableContent={props.hasSendableContent}
+      canResume={props.canResume}
+      preserveComposerFocusOnPointerDown={props.preserveComposerFocusOnPointerDown ?? false}
+      isEditingQueuedMessage={props.isEditingQueuedMessage}
+      onSubmitMessage={props.onSubmitMessage}
+      onResume={props.onResume}
+      onPreviousPendingQuestion={props.onPreviousPendingQuestion}
+      onInterrupt={props.onInterrupt}
+      onImplementPlanInNewThread={props.onImplementPlanInNewThread}
+      compactBeforeSendTokens={props.compactBeforeSendTokens}
+      keepFullHistory={props.keepFullHistory}
+      onToggleKeepFullHistory={props.onToggleKeepFullHistory}
+    />
+  );
   return (
     <>
       {props.activeContextWindow ? (
@@ -191,35 +224,9 @@ export const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryA
       ) : props.reserveContextWindowMeter ? (
         <ContextWindowMeterPlaceholder />
       ) : null}
-      <ComposerPrimaryActions
-        compact={props.compact}
-        canOperateThread={props.canOperateThread}
-        pendingAction={props.pendingAction}
-        isRunning={props.isRunning}
-        canInterrupt={props.canInterrupt}
-        followUpBehavior={props.followUpBehavior}
-        canSteer={props.canSteer}
-        alternateShortcutLabel={props.alternateShortcutLabel}
-        showPlanFollowUpPrompt={props.showPlanFollowUpPrompt}
-        promptHasText={props.promptHasText}
-        isSendBusy={props.isSendBusy}
-        sendDisabledReason={props.sendDisabledReason}
-        isConnecting={props.isConnecting}
-        isEnvironmentUnavailable={props.isEnvironmentUnavailable}
-        isPreparingWorktree={props.isPreparingWorktree}
-        hasSendableContent={props.hasSendableContent}
-        canResume={props.canResume}
-        preserveComposerFocusOnPointerDown={props.preserveComposerFocusOnPointerDown ?? false}
-        isEditingQueuedMessage={props.isEditingQueuedMessage}
-        onSubmitMessage={props.onSubmitMessage}
-        onResume={props.onResume}
-        onPreviousPendingQuestion={props.onPreviousPendingQuestion}
-        onInterrupt={props.onInterrupt}
-        onImplementPlanInNewThread={props.onImplementPlanInNewThread}
-        compactBeforeSendTokens={props.compactBeforeSendTokens}
-        keepFullHistory={props.keepFullHistory}
-        onToggleKeepFullHistory={props.onToggleKeepFullHistory}
-      />
+      {props.renderVoiceCall
+        ? props.renderVoiceCall(primary, props.pendingAction !== null || props.promptHasText)
+        : primary}
     </>
   );
 });

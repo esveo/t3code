@@ -1,0 +1,93 @@
+{"type": "session.started", "session": {"id": "rtc_fixture", "status": "active", "expires_at": 1792677779}}
+{"type": "input_transcript.added", "end_ms": 2200, "item": {"id": "item_Eblnace3qgStyxjB4c6YO", "type": "input_transcript", "text": "Please"}, "start_ms": 2000}
+{"type": "turn.created", "turn": {"id": "turn_EblnaoTCinA9dOtWSoHHk", "end_ms": 2200, "role": "user", "start_ms": 2000, "transcript": "Please"}}
+{"type": "input_transcript.added", "end_ms": 2400, "item": {"id": "item_Eblnaf77tDKQi8Ag1xFTy", "type": "input_transcript", "text": " tell"}, "start_ms": 2200}
+{"type": "turn.delta", "delta": " tell", "end_ms": 2400, "start_ms": 2200, "turn_id": "turn_EblnaoTCinA9dOtWSoHHk"}
+{"type": "input_transcript.added", "end_ms": 2600, "item": {"id": "item_Eblnaz1R6lPX7qSf6GSmp", "type": "input_transcript", "text": " the"}, "start_ms": 2400}
+{"type": "turn.delta", "delta": " the", "end_ms": 2600, "start_ms": 2400, "turn_id": "turn_EblnaoTCinA9dOtWSoHHk"}
+{"type": "input_transcript.added", "end_ms": 3000, "item": {"id": "item_EblnbqgYaGE3kEDfGszXB", "type": "input_transcript", "text": " coding"}, "start_ms": 2800}
+{"type": "turn.delta", "delta": " coding", "end_ms": 3000, "start_ms": 2800, "turn_id": "turn_EblnaoTCinA9dOtWSoHHk"}
+{"type": "input_transcript.added", "end_ms": 3400, "item": {"id": "item_EblnbNOcK1OvEbRKsrU1g", "type": "input_transcript", "text": " agent in"}, "start_ms": 3200}
+{"type": "turn.delta", "delta": " agent in", "end_ms": 3400, "start_ms": 3200, "turn_id": "turn_EblnaoTCinA9dOtWSoHHk"}
+{"type": "input_transcript.added", "end_ms": 3800, "item": {"id": "item_Eblnc49T6QoQbA2KegjlU", "type": "input_transcript", "text": " thread"}, "start_ms": 3600}
+{"type": "turn.delta", "delta": " thread", "end_ms": 3800, "start_ms": 3600, "turn_id": "turn_EblnaoTCinA9dOtWSoHHk"}
+{"type": "input_transcript.added", "end_ms": 4000, "item": {"id": "item_Eblncb6Dg8KZPQJVzHh2E", "type": "input_transcript", "text": " alpha"}, "start_ms": 3800}
+{"type": "turn.delta", "delta": " alpha", "end_ms": 4000, "start_ms": 3800, "turn_id": "turn_EblnaoTCinA9dOtWSoHHk"}
+{"type": "input_transcript.added", "end_ms": 4200, "item": {"id": "item_EblncPZmhesmaNkMHuN3I", "type": "input_transcript", "text": " to"}, "start_ms": 4000}
+{"type": "turn.delta", "delta": " to", "end_ms": 4200, "start_ms": 4000, "turn_id": "turn_EblnaoTCinA9dOtWSoHHk"}
+{"type": "input_transcript.added", "end_ms": 4400, "item": {"id": "item_EblncvacIwEJtBMv4cWsA", "type": "input_transcript", "text": " run"}, "start_ms": 4200}
+{"type": "turn.delta", "delta": " run", "end_ms": 4400, "start_ms": 4200, "turn_id": "turn_EblnaoTCinA9dOtWSoHHk"}
+{"type": "input_transcript.added", "end_ms": 4600, "item": {"id": "item_EblnciIun6Wm57c5mbrxR", "type": "input_transcript", "text": " the"}, "start_ms": 4400}
+{"type": "turn.delta", "delta": " the", "end_ms": 4600, "start_ms": 4400, "turn_id": "turn_EblnaoTCinA9dOtWSoHHk"}
+{"type": "input_transcript.added", "end_ms": 4800, "item": {"id": "item_Eblnd7NzVBxp91jFI2vuO", "type": "input_transcript", "text": " unit"}, "start_ms": 4600}
+{"type": "turn.delta", "delta": " unit", "end_ms": 4800, "start_ms": 4600, "turn_id": "turn_EblnaoTCinA9dOtWSoHHk"}
+{"type": "input_transcript.added", "end_ms": 5400, "item": {"id": "item_EblndEHHkJ0oDPRFyttps", "type": "input_transcript", "text": " tests"}, "start_ms": 5200}
+{"type": "turn.delta", "delta": " tests", "end_ms": 5400, "start_ms": 5200, "turn_id": "turn_EblnaoTCinA9dOtWSoHHk"}
+{"type": "input_transcript.added", "end_ms": 6000, "item": {"id": "item_EblneXkocsfxUqwKma9CK", "type": "input_transcript", "text": "; send it"}, "start_ms": 5800}
+{"type": "turn.delta", "delta": "; send it", "end_ms": 6000, "start_ms": 5800, "turn_id": "turn_EblnaoTCinA9dOtWSoHHk"}
+{"type": "input_transcript.added", "end_ms": 6200, "item": {"id": "item_EblnerYJ6IP6OdMw4Ty0f", "type": "input_transcript", "text": " as a"}, "start_ms": 6000}
+{"type": "turn.delta", "delta": " as a", "end_ms": 6200, "start_ms": 6000, "turn_id": "turn_EblnaoTCinA9dOtWSoHHk"}
+{"type": "input_transcript.added", "end_ms": 7200, "item": {"id": "item_Eblnfurs6nzDExqiaHZFY", "type": "input_transcript", "text": " queued message"}, "start_ms": 7000}
+{"type": "turn.delta", "delta": " queued message", "end_ms": 7200, "start_ms": 7000, "turn_id": "turn_EblnaoTCinA9dOtWSoHHk"}
+{"type": "delegation.created", "item": {"id": "item_Eblngey9L7Mxg91SDSMZ6", "type": "delegation", "content": [{"type": "input_text", "text": "Please tell the coding agent in thread alpha to run the unit tests; send it as a queued message"}], "handoff_id": "handoff_1", "target": "client", "user_bidi_turn_id": "turn_EblnaoTCinA9dOtWSoHHk"}, "offset_ms": 7600}
+{"type": "output_transcript.added", "end_ms": 8000, "item": {"id": "item_Eblng31tAQBdTUSNLw9Ot", "type": "output_transcript", "text": "On"}, "start_ms": 7800}
+{"type": "turn.done", "turn": {"id": "turn_EblnaoTCinA9dOtWSoHHk", "end_ms": 8000, "role": "user", "start_ms": 2000, "transcript": "Please tell the coding agent in thread alpha to run the unit tests; send it as a queued message"}}
+{"type": "turn.created", "turn": {"id": "turn_EblngRap0jY0Kuim48t6t", "end_ms": 8000, "role": "assistant", "start_ms": 7800, "transcript": "On"}}
+{"type": "output_transcript.added", "end_ms": 8400, "item": {"id": "item_EblngxdPFbp63KJLflbFR", "type": "output_transcript", "text": " that"}, "start_ms": 8200}
+{"type": "turn.delta", "delta": " that", "end_ms": 8400, "start_ms": 8200, "turn_id": "turn_EblngRap0jY0Kuim48t6t"}
+{"type": "output_transcript.added", "end_ms": 8600, "item": {"id": "item_EblnhZgh4gjNWj8c5oJVi", "type": "output_transcript", "text": ", checking"}, "start_ms": 8400}
+{"type": "turn.delta", "delta": ", checking", "end_ms": 8600, "start_ms": 8400, "turn_id": "turn_EblngRap0jY0Kuim48t6t"}
+{"type": "output_transcript.added", "end_ms": 9000, "item": {"id": "item_EblnhGWm2Q9HEX3hPeCPY", "type": "output_transcript", "text": "."}, "start_ms": 8800}
+{"type": "turn.delta", "delta": ".", "end_ms": 9000, "start_ms": 8800, "turn_id": "turn_EblngRap0jY0Kuim48t6t"}
+{"type": "delegation.context.appended", "delegation_item_id": "item_Eblngey9L7Mxg91SDSMZ6", "end_ms": 11200, "start_ms": 11000}
+{"type": "turn.done", "turn": {"id": "turn_EblngRap0jY0Kuim48t6t", "end_ms": 11200, "role": "assistant", "start_ms": 7800, "transcript": "On that, checking."}}
+{"type": "output_transcript.added", "end_ms": 11400, "item": {"id": "item_Eblnj7IoBdRine7Hmry9j", "type": "output_transcript", "text": "Done"}, "start_ms": 11200}
+{"type": "turn.created", "turn": {"id": "turn_EblnjEfWpRmWfEi9y205n", "end_ms": 11400, "role": "assistant", "start_ms": 11200, "transcript": "Done"}}
+{"type": "output_transcript.added", "end_ms": 11600, "item": {"id": "item_EblnktFA5MtnOwkITI6uZ", "type": "output_transcript", "text": "\u2014queued"}, "start_ms": 11400}
+{"type": "turn.delta", "delta": "\u2014queued", "end_ms": 11600, "start_ms": 11400, "turn_id": "turn_EblnjEfWpRmWfEi9y205n"}
+{"type": "output_transcript.added", "end_ms": 12200, "item": {"id": "item_Eblnkep6ON8uzfMy0L9OL", "type": "output_transcript", "text": " as"}, "start_ms": 12000}
+{"type": "turn.delta", "delta": " as", "end_ms": 12200, "start_ms": 12000, "turn_id": "turn_EblnjEfWpRmWfEi9y205n"}
+{"type": "output_transcript.added", "end_ms": 12600, "item": {"id": "item_EblnlNUJxtmqmnV5mQ3Tv", "type": "output_transcript", "text": " item"}, "start_ms": 12400}
+{"type": "turn.delta", "delta": " item", "end_ms": 12600, "start_ms": 12400, "turn_id": "turn_EblnjEfWpRmWfEi9y205n"}
+{"type": "output_transcript.added", "end_ms": 12800, "item": {"id": "item_Eblnld4q70wQu0hkGkZmK", "type": "output_transcript", "text": " "}, "start_ms": 12600}
+{"type": "turn.delta", "delta": " ", "end_ms": 12800, "start_ms": 12600, "turn_id": "turn_EblnjEfWpRmWfEi9y205n"}
+{"type": "output_transcript.added", "end_ms": 13000, "item": {"id": "item_EblnlxAC33tUl3JdImkMM", "type": "output_transcript", "text": "42"}, "start_ms": 12800}
+{"type": "turn.delta", "delta": "42", "end_ms": 13000, "start_ms": 12800, "turn_id": "turn_EblnjEfWpRmWfEi9y205n"}
+{"type": "output_transcript.added", "end_ms": 13600, "item": {"id": "item_EblnmRxOHH0Fi8sg7vJIM", "type": "output_transcript", "text": " in"}, "start_ms": 13400}
+{"type": "turn.delta", "delta": " in", "end_ms": 13600, "start_ms": 13400, "turn_id": "turn_EblnjEfWpRmWfEi9y205n"}
+{"type": "output_transcript.added", "end_ms": 13800, "item": {"id": "item_EblnmSRk3ZseBjKgSiJWV", "type": "output_transcript", "text": " thread"}, "start_ms": 13600}
+{"type": "turn.delta", "delta": " thread", "end_ms": 13800, "start_ms": 13600, "turn_id": "turn_EblnjEfWpRmWfEi9y205n"}
+{"type": "output_transcript.added", "end_ms": 14200, "item": {"id": "item_EblnmbUE94cMEji5WhtTj", "type": "output_transcript", "text": " alpha"}, "start_ms": 14000}
+{"type": "turn.delta", "delta": " alpha", "end_ms": 14200, "start_ms": 14000, "turn_id": "turn_EblnjEfWpRmWfEi9y205n"}
+{"type": "session.usage.updated", "usage": {"audio_duration_ms": 14200, "backend_model_usage": []}, "usage_limit": {"status": null, "reset_seconds": null}}
+{"type": "output_transcript.added", "end_ms": 14600, "item": {"id": "item_Eblnn2n3ZK9Am7eaz1S9W", "type": "output_transcript", "text": "."}, "start_ms": 14400}
+{"type": "turn.delta", "delta": ".", "end_ms": 14600, "start_ms": 14400, "turn_id": "turn_EblnjEfWpRmWfEi9y205n"}
+{"type": "turn.done", "turn": {"id": "turn_EblnjEfWpRmWfEi9y205n", "end_ms": 16800, "role": "assistant", "start_ms": 11200, "transcript": "Done\u2014queued as item 42 in thread alpha."}}
+{"type": "session.context.appended", "end_ms": 21400, "start_ms": 21200}
+{"type": "output_transcript.added", "end_ms": 21800, "item": {"id": "item_EblnuSzXCJMLuRcQzooVI", "type": "output_transcript", "text": " Update"}, "start_ms": 21600}
+{"type": "turn.created", "turn": {"id": "turn_Eblnub16LQlluTz6kEJQl", "end_ms": 21800, "role": "assistant", "start_ms": 21600, "transcript": " Update"}}
+{"type": "output_transcript.added", "end_ms": 22000, "item": {"id": "item_EblnueiUhSxcXW9dVfFFy", "type": "output_transcript", "text": ":"}, "start_ms": 21800}
+{"type": "turn.delta", "delta": ":", "end_ms": 22000, "start_ms": 21800, "turn_id": "turn_Eblnub16LQlluTz6kEJQl"}
+{"type": "output_transcript.added", "end_ms": 22200, "item": {"id": "item_Eblnu2sDryaVsP9Q3deeb", "type": "output_transcript", "text": " unit"}, "start_ms": 22000}
+{"type": "turn.delta", "delta": " unit", "end_ms": 22200, "start_ms": 22000, "turn_id": "turn_Eblnub16LQlluTz6kEJQl"}
+{"type": "output_transcript.added", "end_ms": 22400, "item": {"id": "item_EblnuFcYeqrEgjodggyF7", "type": "output_transcript", "text": " tests"}, "start_ms": 22200}
+{"type": "turn.delta", "delta": " tests", "end_ms": 22400, "start_ms": 22200, "turn_id": "turn_Eblnub16LQlluTz6kEJQl"}
+{"type": "output_transcript.added", "end_ms": 22800, "item": {"id": "item_EblnvMzzyrETeV7QA7mL4", "type": "output_transcript", "text": " finished"}, "start_ms": 22600}
+{"type": "turn.delta", "delta": " finished", "end_ms": 22800, "start_ms": 22600, "turn_id": "turn_Eblnub16LQlluTz6kEJQl"}
+{"type": "output_transcript.added", "end_ms": 23200, "item": {"id": "item_EblnvpV6vhkjOpyUZOfbN", "type": "output_transcript", "text": "\u2014"}, "start_ms": 23000}
+{"type": "turn.delta", "delta": "\u2014", "end_ms": 23200, "start_ms": 23000, "turn_id": "turn_Eblnub16LQlluTz6kEJQl"}
+{"type": "output_transcript.added", "end_ms": 23400, "item": {"id": "item_EblnvYBjs5NKBuZKWCH8W", "type": "output_transcript", "text": "128"}, "start_ms": 23200}
+{"type": "turn.delta", "delta": "128", "end_ms": 23400, "start_ms": 23200, "turn_id": "turn_Eblnub16LQlluTz6kEJQl"}
+{"type": "output_transcript.added", "end_ms": 24200, "item": {"id": "item_EblnwumjciZzAXYzA7Pew", "type": "output_transcript", "text": " passed"}, "start_ms": 24000}
+{"type": "turn.delta", "delta": " passed", "end_ms": 24200, "start_ms": 24000, "turn_id": "turn_Eblnub16LQlluTz6kEJQl"}
+{"type": "output_transcript.added", "end_ms": 24800, "item": {"id": "item_EblnxDML2hhPJVSatOY2W", "type": "output_transcript", "text": ","}, "start_ms": 24600}
+{"type": "turn.delta", "delta": ",", "end_ms": 24800, "start_ms": 24600, "turn_id": "turn_Eblnub16LQlluTz6kEJQl"}
+{"type": "output_transcript.added", "end_ms": 25000, "item": {"id": "item_EblnxHFufC9sOU05eS50P", "type": "output_transcript", "text": " 2"}, "start_ms": 24800}
+{"type": "turn.delta", "delta": " 2", "end_ms": 25000, "start_ms": 24800, "turn_id": "turn_Eblnub16LQlluTz6kEJQl"}
+{"type": "output_transcript.added", "end_ms": 25200, "item": {"id": "item_EblnxbXtmtLYelST2yVJT", "type": "output_transcript", "text": " failed"}, "start_ms": 25000}
+{"type": "turn.delta", "delta": " failed", "end_ms": 25200, "start_ms": 25000, "turn_id": "turn_Eblnub16LQlluTz6kEJQl"}
+{"type": "output_transcript.added", "end_ms": 25800, "item": {"id": "item_EblnyrbhspTWHtBGkJV8i", "type": "output_transcript", "text": "."}, "start_ms": 25600}
+{"type": "turn.delta", "delta": ".", "end_ms": 25800, "start_ms": 25600, "turn_id": "turn_Eblnub16LQlluTz6kEJQl"}
+{"type": "turn.done", "turn": {"id": "turn_Eblnub16LQlluTz6kEJQl", "end_ms": 28000, "role": "assistant", "start_ms": 21600, "transcript": " Update: unit tests finished\u2014128 passed, 2 failed."}}
+{"type": "session.usage.updated", "usage": {"audio_duration_ms": 29400, "backend_model_usage": []}, "usage_limit": {"status": null, "reset_seconds": null}}
+{"type": "session.closed", "reason": "client_request", "usage": {"audio_duration_ms": 36400, "backend_model_usage": []}}

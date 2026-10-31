@@ -64,6 +64,7 @@ import {
   THREAD_COORDINATORS_WS_METHODS,
   THREAD_DECISIONS_WS_METHODS,
   FORK_NOTES_WS_METHODS,
+  VOICE_CALL_WS_METHODS,
   FORK_INSTRUCTIONS_WS_METHODS,
   VOICE_INPUT_WS_METHODS,
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS,
@@ -215,6 +216,7 @@ import * as WorkspaceFileSystem from "./workspace/WorkspaceFileSystem.ts";
 import { readWorkflowScript } from "./orchestration-v2/workflowScriptQuery.ts";
 import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
 import * as ForkNotes from "./forkNotes/ForkNotes.ts";
+import * as VoiceCall from "./voiceCall/VoiceCallService.ts";
 import * as ForkInstructions from "./forkInstructions/ForkInstructions.ts";
 import * as ThreadCoordinators from "./threadOrchestration/ThreadCoordinators.ts";
 import * as VoiceInput from "./voiceInput/VoiceInput.ts";
@@ -3330,6 +3332,14 @@ export const layerWsRpc = (
         // dictation in the composer.
         [VOICE_INPUT_WS_METHODS.prepare]: (input) => VoiceInput.prepareRpc(input),
         [VOICE_INPUT_WS_METHODS.transcribe]: (input) => VoiceInput.transcribeRpc(input),
+        // voice call with GPT-Live.
+        [VOICE_CALL_WS_METHODS.subscribe]: (input) => VoiceCall.subscribeRpc(input),
+        [VOICE_CALL_WS_METHODS.connect]: (input) => VoiceCall.connectRpc(input),
+        [VOICE_CALL_WS_METHODS.setTarget]: (input) => VoiceCall.setTargetRpc(input),
+        [VOICE_CALL_WS_METHODS.pause]: (_input) => VoiceCall.pauseRpc(),
+        [VOICE_CALL_WS_METHODS.hangUp]: (_input) => VoiceCall.hangUpRpc(),
+        [VOICE_CALL_WS_METHODS.usage]: (_input) => VoiceCall.usageRpc(),
+        [VOICE_CALL_WS_METHODS.threadSpans]: (input) => VoiceCall.threadSpansRpc(input.threadId),
         // stop and message a provider subagent from its thread.
         [PROVIDER_SUBAGENT_CONTROL_WS_METHODS.target]: (input) =>
           ProviderSubagentControl.target(providerSubagentControlDeps, input),

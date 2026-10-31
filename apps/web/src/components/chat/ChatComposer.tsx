@@ -283,6 +283,7 @@ import {
 import { ComposerControlsBar } from "./ComposerControlsBar";
 import { composerCommandKeyHandler } from "./composerCommandKey";
 import { ComposerVoiceInputControl } from "../voiceInput/ComposerVoiceInputControl";
+import { VoiceCallButton } from "../voiceCall/VoiceCallButton";
 
 function consumePasteAsTextShortcut(deadline: { current: number }): boolean {
   const armed = Date.now() <= deadline.current;
@@ -3315,6 +3316,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         onRemoveFile={removeComposerFileFromDraft}
       />
     ) : null;
+  const renderVoiceCall = canOperateThread
+    ? (primary: React.ReactNode, keepPrimary: boolean) => (
+        <VoiceCallButton
+          environmentId={environmentId}
+          threadId={props.isServerThread ? activeThreadId : null}
+          primary={primary}
+          keepPrimary={keepPrimary}
+        />
+      )
+    : undefined;
   const composerAttachButton = showComposerAttachAction ? (
     <ComposerAttachButton
       addComposerAttachments={addComposerAttachments}
@@ -3794,6 +3805,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   />
                   {composerAttachButton}
                   <ComposerFooterPrimaryActions
+                    {...(renderVoiceCall ? { renderVoiceCall } : {})}
                     compact={isComposerResting || isComposerPrimaryActionsCompact}
                     canOperateThread={canOperateThread}
                     activeContextWindow={

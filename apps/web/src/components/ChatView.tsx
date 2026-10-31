@@ -157,6 +157,7 @@ import {
 } from "../rightPanelStore";
 import { useIsActiveChatPane } from "./split/chatPane";
 import { ThreadFindHeaderButton } from "./chatFind/ThreadFindHeaderButton";
+import { VoiceCallTimeline } from "./voiceCall/VoiceCallTimeline";
 import { installDesktopClipboardPasteFallback } from "../lib/desktopClipboardPaste";
 import { isPreviewSupportedInRuntime, useThreadPreviewState } from "../previewStateStore";
 import { previewRuntimeTabId } from "../browser/previewRuntimeTabId";
@@ -3461,6 +3462,16 @@ export default function ChatView(props: ChatViewProps) {
                         : undefined
                     }
                   >
+                    {isServerThread && canOperateThread ? (
+                      <VoiceCallTimeline
+                        environmentId={environmentId}
+                        threadId={threadId}
+                        modelLabel={
+                          providerSubagentCatalogModel?.name ?? providerSubagentModelLabel
+                        }
+                        timelineEntries={timelineEntries}
+                      />
+                    ) : null}
                     <ComposerSurface.Shell
                       contextStrip={showComposerContextStrip || showComposerModelStrip}
                     >

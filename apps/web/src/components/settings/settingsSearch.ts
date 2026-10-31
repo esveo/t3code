@@ -599,6 +599,27 @@ export const SETTINGS_SEARCH_ITEMS = [
     ],
   },
   {
+    id: "voice-call-enabled",
+    title: "Voice calls",
+    to: "/settings/general",
+    fork: true,
+    searchTerms: ["voice call phone gpt live feature flag anruf telefon schalter"],
+  },
+  {
+    id: "voice-call-voice",
+    title: "Voice call voice",
+    to: "/settings/general",
+    fork: true,
+    searchTerms: ["voice call phone gpt live speaker stimme anruf telefon"],
+  },
+  {
+    id: "voice-call-follow-up",
+    title: "Voice call follow-up",
+    to: "/settings/general",
+    fork: true,
+    searchTerms: ["voice call queue steer follow-up warteschlange anruf"],
+  },
+  {
     id: "provider-update-checks",
     title: "Provider update checks",
     to: "/settings/maintenance",

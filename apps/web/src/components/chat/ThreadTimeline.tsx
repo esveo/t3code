@@ -9,6 +9,7 @@ import {
   resolveThreadSwitchTimeline,
   timelineHasEphemeralPreviewUrls,
 } from "../ChatView.logic";
+import { useVoiceCallMarks } from "../voiceCall/voiceCallThreadMarks";
 import { MessagesTimeline } from "./MessagesTimeline";
 
 /**
@@ -52,5 +53,7 @@ export function ThreadTimeline({
     }
     rememberReadyThreadTimeline({ threadKey: activeThreadKey, entries });
   }, [activeThreadKey, detailLoading, entries]);
-  return <MessagesTimeline {...timelineProps} timelineEntries={displayedEntries} />;
+  // Fork: voice call start and end lines.
+  const markedEntries = useVoiceCallMarks(threadDetailRef, displayedEntries);
+  return <MessagesTimeline {...timelineProps} timelineEntries={markedEntries} />;
 }

@@ -79,6 +79,8 @@ import {
   DeviceScreenshotToolkit,
   DeviceStandardToolkit,
 } from "./toolkits/device/tools.ts";
+import * as VoiceCallHandlers from "./toolkits/voiceCall/handlers.ts";
+import { VoiceCallToolkit } from "./toolkits/voiceCall/tools.ts";
 import * as HtmlHandlers from "./toolkits/html/handlers.ts";
 import { HtmlPreviewTool, HtmlPreviewToolkit, HtmlRenderToolkit } from "./toolkits/html/tools.ts";
 
@@ -1097,6 +1099,11 @@ const TerminalsToolkitRegistrationLive = toolkitRegistration(
   TerminalsToolkit,
   TerminalsToolkitHandlersLive,
 );
+// Fork: voice_say.
+const VoiceCallToolkitRegistrationLive = toolkitRegistration(
+  VoiceCallToolkit,
+  VoiceCallHandlers.layer,
+);
 
 export const layerMcpTransport = McpServer.layerHttp({
   name: "T3 Code",
@@ -1121,6 +1128,7 @@ export const layerTools = Layer.mergeAll(
   layerHtmlToolkit,
   ThreadsToolkitRegistrationLive,
   TerminalsToolkitRegistrationLive,
+  VoiceCallToolkitRegistrationLive,
 );
 
 export const layer = layerTools.pipe(Layer.provideMerge(layerMcpTransport));

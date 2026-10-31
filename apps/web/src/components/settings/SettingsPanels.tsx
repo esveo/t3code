@@ -104,6 +104,7 @@ import { IdleAutoCompactSettingRows } from "../idleAutoCompact/IdleAutoCompactSe
 import { SidebarChildThreadsSettingRow } from "../threadOrchestration/SidebarChildThreadsSetting";
 import { AgentStageSettingRow } from "../agentStage/AgentStageSetting";
 import { VoiceInputSettingRow } from "../voiceInput/VoiceInputSettingRow";
+import { VoiceCallSettingsSection } from "../voiceCall/VoiceCallVoiceSettingRow";
 import { EasterEggsSettingRow } from "../easterEggs/EasterEggsSettingRow";
 import { EsveoComposerReadoutSettingRows } from "../esveoSettings/EsveoSettingRows";
 
@@ -982,6 +983,8 @@ export function GeneralSettingsPanel() {
           />
         ) : null}
       </SettingsSection>
+
+      <VoiceCallSettingsSection />
 
       <SettingsSection id="display" title="Display">
         <SettingsRow

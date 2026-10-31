@@ -24,6 +24,9 @@ describe("esveo settings search", () => {
         "thread-decisions",
         "thread-details-open-by-default",
         "two-line-thread-cards",
+        "voice-call-enabled",
+        "voice-call-follow-up",
+        "voice-call-voice",
         "voice-input",
       ].toSorted(),
     );

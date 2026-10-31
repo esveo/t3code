@@ -51,7 +51,8 @@ import {
 import { type TimelineEntry } from "../../session-logic";
 import type { CodexArtifactTemplate } from "@t3tools/shared/codexArtifactTemplates";
 import { type ChatFileAttachment, type TurnDiffSummary } from "../../types";
-import { ArrowRightIcon, BotIcon, CircleAlertIcon, Minimize2Icon } from "lucide-react";
+import { ArrowRightIcon, BotIcon, CircleAlertIcon, Minimize2Icon, PhoneIcon } from "lucide-react";
+import { isVoiceCallMarkId } from "../voiceCall/voiceCallThreadMarks";
 import { ChevronDown, ChevronRight } from "lucide";
 import { MorphIcon } from "~/components/MorphIcon";
 import { ExpandedImagePreview } from "./ExpandedImagePreview";
@@ -1572,6 +1573,8 @@ function ContextCompactionTimelineRow({
     <span className="flex min-w-0 items-center gap-1.5">
       {row.failed ? (
         <CircleAlertIcon aria-hidden="true" className="size-3 shrink-0" />
+      ) : isVoiceCallMarkId(row.id) ? (
+        <PhoneIcon aria-hidden="true" className="size-3" />
       ) : (
         <Minimize2Icon aria-hidden="true" className="size-3" />
       )}

@@ -44,6 +44,7 @@ import { isModelPickerOpen } from "../../modelPickerVisibility";
 import { shortcutLabelForCommand } from "../../keybindings";
 import { useUsage, type EnvironmentUsageStatus } from "../../state/usage";
 import { AgentTimeSection } from "../agentTime/AgentTimeSection";
+import { VoiceCallUsageSection } from "../voiceCall/VoiceCallUsageSection";
 import { useAtomCommand } from "../../state/use-atom-command";
 import {
   enumerateDays,
@@ -522,6 +523,7 @@ export function UsagePage() {
                 selectedEnvironmentIds={selectedEnvironmentIds}
                 hiddenProviders={hiddenProviders}
                 now={limitsNow}
+                codexExtra={<VoiceCallUsageSection environments={selectedEnvironments} />}
                 cursorPrompt={
                   cursorAccessEnvironments.length > 0 ? (
                     <CursorEnableLimits
