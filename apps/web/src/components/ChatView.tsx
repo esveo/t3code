@@ -157,7 +157,7 @@ import {
 } from "../rightPanelStore";
 import { useIsActiveChatPane } from "./split/chatPane";
 import { ThreadFindHeaderButton } from "./chatFind/ThreadFindHeaderButton";
-import { VoiceCallTimeline, voiceCallStepTimes } from "./voiceCall/VoiceCallTimeline";
+import { VoiceCallTimeline } from "./voiceCall/VoiceCallTimeline";
 import { installDesktopClipboardPasteFallback } from "../lib/desktopClipboardPaste";
 import { isPreviewSupportedInRuntime, useThreadPreviewState } from "../previewStateStore";
 import { previewRuntimeTabId } from "../browser/previewRuntimeTabId";
@@ -3469,7 +3469,7 @@ export default function ChatView(props: ChatViewProps) {
                         modelLabel={
                           providerSubagentCatalogModel?.name ?? providerSubagentModelLabel
                         }
-                        stepTimes={voiceCallStepTimes(timelineEntries)}
+                        timelineEntries={timelineEntries}
                       />
                     ) : null}
                     <ComposerSurface.Shell

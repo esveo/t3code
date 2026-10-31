@@ -1,9 +1,12 @@
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import * as Option from "effect/Option";
+import { AsyncResult } from "effect/reactivity";
 import { PauseIcon, PhoneIcon, PhoneIncomingIcon, PlayIcon } from "lucide-react";
-import { type ReactNode, useEffect } from "react";
+import type { ReactNode } from "react";
 
+import { subscribeAtomChanges } from "~/rpc/atomRegistry";
 import { useEnvironmentIdentificationMode } from "~/hooks/useSettings";
 import { useThreadShell } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
@@ -64,9 +67,11 @@ export function VoiceCallButton(props: VoiceCallButtonProps) {
 
 function VoiceCallControls(props: VoiceCallButtonProps) {
   const { environmentId, threadId } = props;
-  const view = useEnvironmentQuery(
-    voiceCallEnvironment.view({ environmentId, input: { clientId: voiceCallClientId } }),
-  ).data;
+  const viewAtom = voiceCallEnvironment.view({
+    environmentId,
+    input: { clientId: voiceCallClientId },
+  });
+  const view = useEnvironmentQuery(viewAtom).data;
   const connect = useAtomCommand(voiceCallEnvironment.connect, { reportFailure: false });
   const setTarget = useAtomCommand(voiceCallEnvironment.setTarget, { reportFailure: false });
   const hangUp = useAtomCommand(voiceCallEnvironment.hangUp, { reportFailure: false });
@@ -78,12 +83,6 @@ function VoiceCallControls(props: VoiceCallButtonProps) {
   const running = call !== null && isVoiceCallMoving(call);
   const mine = running && call.ownerClientId === voiceCallClientId;
   const paused = call?.state === "paused";
-
-  // The server ended the call, or another client took it over.
-  // oxlint-disable-next-line t3code/react-effect-budget -- syncs the WebRTC peer with the server's call state
-  useEffect(() => {
-    if (!mine && isVoiceCallPeerActive()) stopVoiceCallPeerUnlessStarting();
-  }, [mine]);
 
   const moveTo =
     threadId !== null && canBringVoiceCallHere(call, voiceCallClientId, threadId) ? threadId : null;
@@ -111,19 +110,35 @@ function VoiceCallControls(props: VoiceCallButtonProps) {
 
   const start = () => {
     if (!paused) clearVoiceCallLevels();
-    void startVoiceCallPeer(async (input) => {
-      const result = await connect({
-        environmentId,
-        input: {
-          clientId: voiceCallClientId,
-          target: voiceCallConnectTarget(call, threadId),
-          ...input,
-        },
-      });
-      if (result._tag === "Failure") throw new Error(failureMessage(result));
-      return result.value;
-    }, end).catch((error: unknown) => {
-      end();
+    let connected = false;
+    void startVoiceCallPeer(
+      async (input) => {
+        const result = await connect({
+          environmentId,
+          input: {
+            clientId: voiceCallClientId,
+            target: voiceCallConnectTarget(call, threadId),
+            ...input,
+          },
+        });
+        if (result._tag === "Failure") throw new Error(failureMessage(result));
+        connected = true;
+        return result.value;
+      },
+      end,
+      () =>
+        // Also holds the subscription: the server ends the call of a client whose last one closed.
+        subscribeAtomChanges(viewAtom, (result) => {
+          const latest = Option.getOrNull(AsyncResult.value(result))?.call ?? null;
+          const stillMine =
+            latest !== null &&
+            isVoiceCallMoving(latest) &&
+            latest.ownerClientId === voiceCallClientId;
+          if (!stillMine) stopVoiceCallPeerUnlessStarting();
+        }),
+    ).catch((error: unknown) => {
+      // A takeover or resume that never reached the server leaves the call as it was.
+      if (connected || !(running || paused)) end();
       toastManager.add({
         type: "error",
         title: "Voice call failed",

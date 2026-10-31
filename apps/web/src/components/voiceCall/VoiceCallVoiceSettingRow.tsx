@@ -1,15 +1,25 @@
 import { DEFAULT_VOICE_CALL_VOICE, VOICE_CALL_VOICES } from "@t3tools/contracts";
 
 import { esveoSearchableSetting } from "../esveoSettings/EsveoSettingBadge";
-import { SettingResetButton, SettingsRow } from "../settings/settingsLayout";
+import { SettingResetButton, SettingsRow, SettingsSection } from "../settings/settingsLayout";
 import { useScopedSettings, useUpdateScopedSettings } from "../settings/useScopedSettings";
 import { Select, SelectItem, SelectPopup, SelectTrigger, SelectValue } from "../ui/select";
 import { Switch } from "../ui/switch";
 
 const voiceLabel = (voice: string) => voice.charAt(0).toUpperCase() + voice.slice(1);
 
+export function VoiceCallSettingsSection() {
+  return (
+    <SettingsSection id="voice-calls" title="Voice calls">
+      <VoiceCallEnabledSettingRow />
+      <VoiceCallVoiceSettingRow />
+      <VoiceCallFollowUpSettingRow />
+    </SettingsSection>
+  );
+}
+
 /** Fork: the switch for the whole feature, including the agents' `voice_say`. */
-export function VoiceCallEnabledSettingRow() {
+function VoiceCallEnabledSettingRow() {
   const enabled = useScopedSettings((settings) => settings.voiceCallEnabled);
   const updateSettings = useUpdateScopedSettings();
   return (
@@ -36,7 +46,7 @@ export function VoiceCallEnabledSettingRow() {
 }
 
 /** Fork: what a voice message does while the agent works, apart from the chat's follow-up behavior. */
-export function VoiceCallFollowUpSettingRow() {
+function VoiceCallFollowUpSettingRow() {
   const behavior = useScopedSettings((settings) => settings.voiceCallFollowUpBehavior);
   const updateSettings = useUpdateScopedSettings();
   return (
@@ -74,7 +84,7 @@ export function VoiceCallFollowUpSettingRow() {
 }
 
 /** Fork: which voice speaks in voice calls. */
-export function VoiceCallVoiceSettingRow() {
+function VoiceCallVoiceSettingRow() {
   const voice = useScopedSettings((settings) => settings.voiceCallVoice);
   const updateSettings = useUpdateScopedSettings();
   return (

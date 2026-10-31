@@ -8,9 +8,11 @@ import {
   type ServerSettings,
   ThreadId,
   type VoiceCallEvent,
+  type VoiceCallStatus,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
@@ -90,12 +92,15 @@ const makeHarness = Effect.gen(function* () {
   const sent: Array<ThreadManagementSendInput> = [];
   const instructions: Array<string> = [];
   let calls = 0;
+  const createCallGate = { held: Effect.void as Effect.Effect<void> };
   const realtime = Layer.succeed(RealtimeCallClient)({
     createCall: (input) =>
-      Effect.sync(() => {
-        instructions.push(input.session.instructions);
-        return { answerSdp: "v=0 answer", realtimeCallId: `rtc_${++calls}` };
-      }),
+      Effect.suspend(() => createCallGate.held).pipe(
+        Effect.map(() => {
+          instructions.push(input.session.instructions);
+          return { answerSdp: "v=0 answer", realtimeCallId: `rtc_${++calls}` };
+        }),
+      ),
     openSideband: () =>
       Effect.acquireRelease(
         Effect.succeed({
@@ -169,7 +174,7 @@ const makeHarness = Effect.gen(function* () {
       ),
     ),
   );
-  return { inbound, outbound, sent, instructions, layer };
+  return { inbound, outbound, sent, instructions, createCallGate, layer };
 });
 
 /** Subscribes as `clientId` and waits for the snapshot, so the server counts the subscription. */
@@ -194,6 +199,17 @@ const nextOf = <T extends VoiceCallEvent["type"]>(
     event.type === type
       ? Effect.succeed(event as Extract<VoiceCallEvent, { readonly type: T }>)
       : nextOf(events, type),
+  );
+
+const nextOfState = (
+  events: Queue.Queue<VoiceCallEvent>,
+  state: VoiceCallStatus["state"],
+): Effect.Effect<Extract<VoiceCallEvent, { readonly type: "call" }>> =>
+  nextOf(events, "call").pipe(
+    Effect.filterOrElse(
+      (event) => event.call?.state === state,
+      () => nextOfState(events, state),
+    ),
   );
 
 /** Waits until the call has processed `event`, using a voice transcript as the marker. */
@@ -353,6 +369,108 @@ describe("VoiceCallService", () => {
           payload?: { transcript?: string };
         };
         assert.equal(record.payload?.transcript, "assistant: Queued.");
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(
+      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.scoped,
+    ),
+  );
+
+  it.effect("a short reply is not mistaken for the words of an earlier delegation", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      yield* Effect.gen(function* () {
+        const service = yield* VoiceCall.VoiceCallService;
+        const client = yield* subscribeAs("tab-1");
+        yield* service.connect({ clientId: "tab-1", offerSdp: "v=0 offer", target: TARGET });
+        const transcriptOf = (index: number) =>
+          (harness.sent[index]?.context?.records[0] as { payload?: { transcript?: string } })
+            ?.payload?.transcript;
+
+        // The delegation's own turn ends after it, and only that turn is skipped.
+        yield* Queue.offerAll(harness.inbound, [
+          { type: "turn.created", turnId: "user-1", speaker: "user", text: "" },
+          { type: "delegation.created", itemId: "item_one", text: "Check the token" },
+          { type: "turn.done", turnId: "user-1", speaker: "user", text: "Check the token" },
+          { type: "turn.created", turnId: "user-2", speaker: "user", text: "" },
+          { type: "turn.done", turnId: "user-2", speaker: "user", text: "token" },
+          { type: "delegation.created", itemId: "item_two", text: "Next" },
+        ]);
+        yield* nextOf(client.events, "delegation");
+        yield* nextOf(client.events, "delegation");
+        assert.equal(transcriptOf(1), "user: token");
+
+        // The delegation's turn ended before it, so no later turn is skipped.
+        yield* Queue.offerAll(harness.inbound, [
+          { type: "turn.created", turnId: "user-3", speaker: "user", text: "" },
+          { type: "turn.done", turnId: "user-3", speaker: "user", text: "Run the build" },
+          { type: "delegation.created", itemId: "item_three", text: "Run the build" },
+          { type: "turn.created", turnId: "user-4", speaker: "user", text: "" },
+          { type: "turn.done", turnId: "user-4", speaker: "user", text: "build" },
+          { type: "delegation.created", itemId: "item_four", text: "Then deploy" },
+        ]);
+        yield* nextOf(client.events, "delegation");
+        yield* nextOf(client.events, "delegation");
+        assert.equal(transcriptOf(3), "user: build");
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(
+      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.scoped,
+    ),
+  );
+
+  it.effect("a repeat of a settled run leaves the voice_say of the thread's next run", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      yield* Effect.gen(function* () {
+        const service = yield* VoiceCall.VoiceCallService;
+        const readBack = yield* VoiceCallReadBack.VoiceCallReadBack;
+        yield* subscribeAs("tab-1");
+        yield* service.connect({ clientId: "tab-1", offerSdp: "v=0 offer", target: TARGET });
+        const started = "2026-10-30T12:00:00.000Z";
+        yield* readBack.handle(settledRunOf("run-a", "completed", started));
+        assert.include(spokenText(yield* Queue.take(harness.outbound)), "Update from Alpha:");
+
+        const saying = yield* service.say(TARGET, "Ich schaue nach").pipe(Effect.forkScoped);
+        yield* Queue.take(harness.outbound);
+        yield* Queue.offerAll(harness.inbound, [
+          { type: "turn.created", turnId: "v1", speaker: "voice", text: "" },
+          { type: "turn.done", turnId: "v1", speaker: "voice", text: "Ich schaue nach" },
+        ]);
+        yield* Fiber.join(saying);
+
+        yield* readBack.handle(settledRunOf("run-a", "completed", started));
+        yield* readBack.handle(settledRunOf("run-b", "completed", started));
+        assert.isTrue(Option.isNone(yield* Queue.poll(harness.outbound)));
+      }).pipe(Effect.provide(harness.layer));
+    }).pipe(
+      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.scoped,
+    ),
+  );
+
+  it.effect("an owner gone while connecting leaves no segment open", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness;
+      yield* Effect.gen(function* () {
+        const service = yield* VoiceCall.VoiceCallService;
+        const gate = yield* Deferred.make<void>();
+        harness.createCallGate.held = Deferred.await(gate);
+        const owner = yield* subscribeAs("tab-1");
+        const watcher = yield* subscribeAs("tab-2");
+        const connecting = yield* service
+          .connect({ clientId: "tab-1", offerSdp: "v=0 offer", target: TARGET })
+          .pipe(Effect.forkScoped);
+        yield* nextOf(watcher.events, "call");
+
+        // Its finalizer queues behind the connect, so this cannot be awaited before the gate opens.
+        yield* Fiber.interrupt(owner.fiber).pipe(Effect.forkScoped);
+        yield* Effect.yieldNow;
+        yield* Deferred.succeed(gate, undefined);
+        yield* Fiber.join(connecting);
+
+        assert.equal(yield* Queue.take(harness.outbound), "closed");
+        assert.equal((yield* nextOfState(watcher.events, "error")).call?.state, "error");
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
       Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
@@ -959,12 +1077,7 @@ describe("VoiceCallService", () => {
           text: "Run the tests",
         });
         yield* nextOf(client.events, "delegation");
-        yield* service.connect({
-          clientId: "tab-1",
-          offerSdp: "v=0 offer",
-          target: TARGET,
-          retryOf: "rtc_1",
-        });
+        yield* service.connect({ clientId: "tab-1", offerSdp: "v=0 offer", target: TARGET });
         assert.equal(yield* Queue.take(harness.outbound), "closed");
         yield* readBack.handle(settledRun("completed"));
         const answer = spokenText(yield* Queue.take(harness.outbound));

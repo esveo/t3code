@@ -81,54 +81,59 @@ const encodeJson = Schema.encodeSync(JsonString);
 
 const excerpt = (text: string) => text.replace(/\s+/g, " ").slice(0, 200);
 
-const createCall = Effect.fn("RealtimeCallClient.createCall")(
-  function* (
-    http: HttpClient.HttpClient,
-    { auth, offerSdp, session }: Parameters<RealtimeCallClient["Service"]["createCall"]>[0],
-  ) {
-    const response = yield* http.execute(
-      HttpClientRequest.post(CALLS_URL).pipe(
-        HttpClientRequest.setHeaders(codexHeaders(auth)),
-        HttpClientRequest.bodyJsonUnsafe({
-          sdp: offerSdp,
-          session: {
-            model: REALTIME_MODEL,
-            instructions: session.instructions,
-            audio: { output: { voice: session.voice } },
-            // The voice hands work to us instead of calling tools itself.
-            delegation: { type: "client" },
-          },
-        }),
-      ),
-    );
-    const body = yield* response.text;
-    if (response.status === 401 || response.status === 403) {
-      return yield* new VoiceCallError({
-        message: `ChatGPT refused the call (${response.status}). Renew the Codex login.`,
-        reason: "codex-login-expired",
-      });
-    }
-    if (response.status !== 200 && response.status !== 201) {
-      return yield* new VoiceCallError({
-        message: `ChatGPT refused the call (${response.status}): ${excerpt(body)}`,
-      });
-    }
-    const realtimeCallId = response.headers["location"]?.split("/").pop();
-    if (!realtimeCallId || !body.startsWith("v=")) {
-      return yield* new VoiceCallError({ message: "ChatGPT answered the call without a session." });
-    }
-    return { answerSdp: body, realtimeCallId };
-  },
-  Effect.timeoutOrElse({
-    duration: "20 seconds",
-    orElse: () => Effect.fail(new VoiceCallError({ message: "ChatGPT did not answer the call." })),
-  }),
-  Effect.mapError((error) =>
-    isVoiceCallError(error)
-      ? error
-      : new VoiceCallError({ message: `Could not reach ChatGPT (${errorTag(error)}).` }),
-  ),
-);
+const createCall = (http: HttpClient.HttpClient) =>
+  Effect.fn("RealtimeCallClient.createCall")(
+    function* ({
+      auth,
+      offerSdp,
+      session,
+    }: Parameters<RealtimeCallClient["Service"]["createCall"]>[0]) {
+      const response = yield* http.execute(
+        HttpClientRequest.post(CALLS_URL).pipe(
+          HttpClientRequest.setHeaders(codexHeaders(auth)),
+          HttpClientRequest.bodyJsonUnsafe({
+            sdp: offerSdp,
+            session: {
+              model: REALTIME_MODEL,
+              instructions: session.instructions,
+              audio: { output: { voice: session.voice } },
+              // The voice hands work to us instead of calling tools itself.
+              delegation: { type: "client" },
+            },
+          }),
+        ),
+      );
+      const body = yield* response.text;
+      if (response.status === 401 || response.status === 403) {
+        return yield* new VoiceCallError({
+          message: `ChatGPT refused the call (${response.status}). Renew the Codex login.`,
+          reason: "codex-login-expired",
+        });
+      }
+      if (response.status !== 200 && response.status !== 201) {
+        return yield* new VoiceCallError({
+          message: `ChatGPT refused the call (${response.status}): ${excerpt(body)}`,
+        });
+      }
+      const realtimeCallId = response.headers["location"]?.split("/").pop();
+      if (!realtimeCallId || !body.startsWith("v=")) {
+        return yield* new VoiceCallError({
+          message: "ChatGPT answered the call without a session.",
+        });
+      }
+      return { answerSdp: body, realtimeCallId };
+    },
+    Effect.timeoutOrElse({
+      duration: "20 seconds",
+      orElse: () =>
+        Effect.fail(new VoiceCallError({ message: "ChatGPT did not answer the call." })),
+    }),
+    Effect.mapError((error) =>
+      isVoiceCallError(error)
+        ? error
+        : new VoiceCallError({ message: `Could not reach ChatGPT (${errorTag(error)}).` }),
+    ),
+  );
 
 const errorTag = (error: unknown) =>
   typeof error === "object" && error !== null && "_tag" in error ? String(error._tag) : "unknown";
@@ -210,7 +215,7 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const http = yield* HttpClient.HttpClient;
     return RealtimeCallClient.of({
-      createCall: (input) => createCall(http, input),
+      createCall: createCall(http),
       openSideband,
     });
   }),

@@ -65,7 +65,7 @@ export const isVoiceCallMoving = (call: VoiceCallStatus) =>
 const isVoiceCallOpen = (call: VoiceCallStatus) =>
   isVoiceCallMoving(call) || call.state === "paused";
 
-/** The call stays on its thread until moved; the server lets only the owner or a paused call move. */
+/** The call stays on its thread until moved; only the owner, or anyone on a paused call, is offered that. */
 export const canBringVoiceCallHere = (
   call: VoiceCallStatus | null,
   clientId: string,
@@ -115,7 +115,14 @@ export function reduceVoiceCallEvent(
     case "call":
       // A retried segment keeps its call's startedAt, and with it the timeline.
       return event.call !== null && event.call.startedAt !== view.call?.startedAt
-        ? { ...view, call: event.call, transcript: [], timelineStartedAt: now, delegationSpans: {} }
+        ? {
+            ...view,
+            call: event.call,
+            delegations: [],
+            transcript: [],
+            timelineStartedAt: now,
+            delegationSpans: {},
+          }
         : { ...view, call: event.call };
     case "delegation": {
       const others = view.delegations.filter((entry) => entry.id !== event.delegation.id);

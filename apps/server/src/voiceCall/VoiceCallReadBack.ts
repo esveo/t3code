@@ -116,6 +116,8 @@ const make = Effect.gen(function* () {
   });
 
   const runSettled = Effect.fn("VoiceCallReadBack.runSettled")(function* (run: OrchestrationV2Run) {
+    // A repeat must not use up the voice_say of the thread's next run.
+    if (spoken.has(`run:${run.id}`)) return;
     const open = (yield* voice.delegations).filter(
       (delegation) => delegation.status === "open" && delegation.runId === run.id,
     );
@@ -126,14 +128,14 @@ const make = Effect.gen(function* () {
       (yield* voice.takeSaid(run.threadId)) &&
       run.status === "completed"
     ) {
-      spoken.add(`run:${run.id}`);
+      rememberOnce(spoken, `run:${run.id}`);
       for (const delegation of open) {
         yield* voice.updateDelegation(delegation.id, { status: "answered" });
       }
       return;
     }
     if (open.length > 0) {
-      spoken.add(`run:${run.id}`);
+      rememberOnce(spoken, `run:${run.id}`);
       // Steered twice: the newest request gets the answer, the older ones nothing.
       const [newest, ...older] = open.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt));
       for (const delegation of older) {

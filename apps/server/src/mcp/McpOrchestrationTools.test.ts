@@ -22,6 +22,8 @@ import * as McpSessionRegistry from "./McpSessionRegistry.ts";
 import * as McpToolAccess from "./McpToolAccess.ts";
 import * as McpToolAccessTestkit from "./McpToolAccess.testkit.ts";
 import { ThreadsToolkit } from "./toolkits/threads/tools.ts";
+import { VoiceCallToolkit } from "./toolkits/voiceCall/tools.ts";
+import { VoiceCallService } from "../voiceCall/VoiceCallService.ts";
 
 /** Test settings that announce every update, as the real service does. */
 const SettingsLive = Layer.effect(
@@ -57,9 +59,17 @@ const ThreadsToolkitStubLive = McpHttpServer.toolkitRegistration(
   ),
 );
 
-const TestLayer = Layer.mergeAll(ThreadsToolkitStubLive).pipe(
+const VoiceCallToolkitStubLive = McpHttpServer.toolkitRegistration(
+  VoiceCallToolkit,
+  McpToolAccess.toLayer(VoiceCallToolkit, {
+    voice_say: McpToolAccess.reads(() => Effect.succeed({ status: "no_call", message: "" })),
+  }),
+);
+
+const TestLayer = Layer.mergeAll(ThreadsToolkitStubLive, VoiceCallToolkitStubLive).pipe(
   Layer.provideMerge(McpHttpServer.layerMcpTransport),
   Layer.provide(McpToolAccessTestkit.liveThreadsLayer),
+  Layer.provide(Layer.mock(VoiceCallService)({})),
   Layer.provide(
     Layer.succeed(ServerEnvironment.ServerEnvironment, {
       getEnvironmentId: Effect.succeed(EnvironmentId.make("environment-1")),
@@ -183,6 +193,25 @@ it.effect("offers the decision tools only while their switch is on, live", () =>
       const after = yield* listTools;
       expect(after.filter((name) => name in ThreadsToolkit.tools)).toEqual(["adopt_thread"]);
       expect(yield* callListDecisions).toMatchObject({
+        error: { message: expect.stringMatching(/not found/) },
+      });
+
+      // Voice calls off (the default): voice_say is neither listed nor callable.
+      const callVoiceSay = rpc("tools/call", { name: "voice_say", arguments: { text: "Hi" } });
+      expect(after).not.toContain("voice_say");
+      expect(yield* callVoiceSay).toMatchObject({
+        error: { message: expect.stringMatching(/not found/) },
+      });
+
+      yield* settings.updateSettings({ voiceCallEnabled: true });
+      expect(yield* nextEvent).toBe(listChanged);
+      expect(yield* listTools).toContain("voice_say");
+      expect(yield* callVoiceSay).toMatchObject({ result: { isError: false } });
+
+      yield* settings.updateSettings({ voiceCallEnabled: false });
+      expect(yield* nextEvent).toBe(listChanged);
+      expect(yield* listTools).not.toContain("voice_say");
+      expect(yield* callVoiceSay).toMatchObject({
         error: { message: expect.stringMatching(/not found/) },
       });
       expect(yield* Queue.size(events)).toBe(0);

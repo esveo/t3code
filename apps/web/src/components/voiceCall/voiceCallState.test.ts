@@ -125,4 +125,10 @@ describe("reduceVoiceCallEvent", () => {
     expect(reduceVoiceCallEvent(first, call("t1")).transcript).toHaveLength(1);
     expect(reduceVoiceCallEvent(first, call("t2")).transcript).toEqual([]);
   });
+
+  it("forgets the delegations of the call before", () => {
+    const first = { ...reduce([call("t1")]), delegations: [{ id: "d" } as VoiceCallDelegation] };
+    expect(reduceVoiceCallEvent(first, call("t1")).delegations).toHaveLength(1);
+    expect(reduceVoiceCallEvent(first, call("t2")).delegations).toEqual([]);
+  });
 });

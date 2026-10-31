@@ -1,12 +1,11 @@
-# Voice call (plan)
+# Voice call
 
-Status: implementation plan for the fork; phases 1 and 2 are built (see
-[Deviations](#deviations-from-the-plan)). PAD's decisions of 2026-10-21/22/23
-are the source; the v1 scope cut and the gpt-live-1.1 findings override older
-notes. The plan is a guide, not a contract: where the code or a test showed a
-better way, the build deviates and says so below. When the feature lands,
-rewrite this page into the durable decisions and traps and drop the phase
-list.
+Status: live in the fork behind the global `voiceCallEnabled` setting, off by
+default; with it off `voice_say` is not offered to agents. Phases 1 and 2 are
+built. The rest of this page is still the plan: where the code differs,
+[Deviations](#deviations-from-the-plan) says so, and the code wins. PAD's
+decisions of 2026-10-21/22/23 are the source; the v1 scope cut and the
+gpt-live-1.1 findings override older notes.
 
 A voice call lets the user talk to esveo code. A realtime voice model
 (OpenAI's GPT-Live, on the user's ChatGPT subscription) holds the
@@ -276,7 +275,7 @@ existing `voiceInput/` dictation module), with the contract in
 
 ```ts
 voiceCall.subscribe: {} -> stream VoiceCallEvent   // snapshot, then deltas
-voiceCall.connect:   { offerSdp, target: ThreadRef | null, retryOf?: SegmentId }
+voiceCall.connect:   { offerSdp, target: ThreadRef | null }
                      -> { answerSdp, segmentId }    // start, resume and retry
 voiceCall.setTarget: { target: ThreadRef | null } -> void
 voiceCall.pause:     {} -> void                     // manual "lazy hang-up"
@@ -364,7 +363,7 @@ and add a small fork chip if it looks wrong.
   reaches the next one: not its recap, not its queued items, not the answers
   to its open delegations, since the next call may be about another thread.
   The answers stay in the thread. A server restart ends the call too, so
-  delegations are not persisted and `fork_voice_call_delegations` is unused.
+  delegations are not persisted.
 - **Built in phase 2:** the gate and its queue live in `VoiceCallService`
   (the segment state is there); `VoiceCallReadBack.ts` follows
   `DelegatedTaskQuestionReactor`. Queued items older than an hour are dropped.
@@ -472,9 +471,7 @@ not orchestration events: a call is not thread state.
 Transcript turns are written on `turn.done`, never per delta. Live deltas only
 go over the stream.
 
-Phase 2 built only `fork_voice_call_delegations` (delegation id, call id,
-status, the delegation as JSON); the other tables come with history in
-phase 4.
+None of these tables exist yet; they come with history in phase 4.
 
 The "Voice call started/ended" lines in the chat come from
 `voice-call-thread-spans.json` in the state dir, one span per segment, so a
@@ -559,8 +556,8 @@ quota. Pausing therefore closes the realtime session; the call itself stays.
 - **Retry.** The data channel sometimes never opens (one of 17 v3 calls in
   the 1.1 spike; worse on the classic route). If the peer is not connected
   and the channel not open within 15 s, or the sideband fails to connect, the
-  client calls `connect` with `retryOf`; the server closes the old call and
-  mints a new one. Three attempts, then an error state. Each attempt is
+  client calls `connect` again; the server closes the old call and mints a
+  new one. Three attempts, then an error state. Each attempt is
   logged.
 - **Quota.** The Usage page shows esveo code's own count of connected segment
   time per server (`VoiceCallUsage.ts`), against the plan's rolling 24-hour

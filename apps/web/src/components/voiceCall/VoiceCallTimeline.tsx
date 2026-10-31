@@ -39,7 +39,7 @@ const jumpToMessage = (messageId: string) =>
     ?.scrollIntoView({ block: "center" });
 
 /** When the agent's work steps began, for the pills of the thread lane. */
-export const voiceCallStepTimes = (entries: ReadonlyArray<TimelineEntry>) =>
+const voiceCallStepTimes = (entries: ReadonlyArray<TimelineEntry>) =>
   entries.flatMap((entry) => (entry.kind === "work" ? [Date.parse(entry.createdAt)] : []));
 
 const threadDelegations = (view: VoiceCallView, threadId: ThreadId) =>
@@ -122,7 +122,7 @@ interface VoiceCallTimelineProps {
   environmentId: EnvironmentId;
   threadId: ThreadId;
   modelLabel: string;
-  stepTimes: ReadonlyArray<number>;
+  timelineEntries: ReadonlyArray<TimelineEntry>;
 }
 
 export function VoiceCallTimeline(props: VoiceCallTimelineProps) {
@@ -131,7 +131,7 @@ export function VoiceCallTimeline(props: VoiceCallTimelineProps) {
 }
 
 function VoiceCallLanes(props: VoiceCallTimelineProps) {
-  const { environmentId, threadId, stepTimes } = props;
+  const { environmentId, threadId, timelineEntries } = props;
   const view = useEnvironmentQuery(
     voiceCallEnvironment.view({ environmentId, input: { clientId: voiceCallClientId } }),
   ).data;
@@ -155,7 +155,7 @@ function VoiceCallLanes(props: VoiceCallTimelineProps) {
   // Text deltas leave this unchanged, so they do not restart the canvas.
   const dataJson =
     shown && !collapsed && view
-      ? JSON.stringify(diagramData(view, threadId, startedAt, stepTimes))
+      ? JSON.stringify(diagramData(view, threadId, startedAt, voiceCallStepTimes(timelineEntries)))
       : null;
 
   // oxlint-disable-next-line t3code/react-effect-budget -- drives the canvas, which is outside React

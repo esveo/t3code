@@ -165,7 +165,6 @@ export const VoiceCallConnectInput = Schema.Struct({
   offerSdp: Schema.String.check(Schema.isNonEmpty(), Schema.isMaxLength(64_000)),
   target: Schema.NullOr(ThreadId),
   /** The segment whose peer never connected; the server closes it and starts a new one. */
-  retryOf: Schema.optionalKey(Schema.String),
 });
 export type VoiceCallConnectInput = typeof VoiceCallConnectInput.Type;
 
