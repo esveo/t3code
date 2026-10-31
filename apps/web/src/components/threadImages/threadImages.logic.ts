@@ -146,3 +146,47 @@ export function mergeThreadImages(
   }
   return [...byKey.values()].toSorted((a, b) => b.createdAtMs - a.createdAtMs);
 }
+
+const collectedByProjection = new WeakMap<object, ReadonlyArray<ThreadImage>>();
+
+/** A projection object only changes with its thread, so paging one thread rescans only it. */
+export function collectThreadImagesCached(
+  projection: Pick<OrchestrationV2ThreadProjection, "messages" | "visibleTurnItems">,
+  threadId: ThreadId,
+  workspaceRoot: string | undefined,
+): ReadonlyArray<ThreadImage> {
+  const cached = collectedByProjection.get(projection);
+  if (cached) return cached;
+  const images = collectThreadImages(projection, threadId, workspaceRoot);
+  collectedByProjection.set(projection, images);
+  return images;
+}
+
+const MIN_TILE_SIZE = 112;
+const TILE_GAP = 8;
+const GRID_MARGIN = 8;
+const OVERSCAN_ROWS = 2;
+
+/** Which tiles of a fixed square grid are near the viewport; offscreen images stay unmounted. */
+export function gridWindow(input: {
+  readonly width: number;
+  readonly height: number;
+  readonly scrollTop: number;
+  readonly count: number;
+}) {
+  const innerWidth = Math.max(0, input.width - GRID_MARGIN * 2);
+  const columns = Math.max(1, Math.floor((innerWidth + TILE_GAP) / (MIN_TILE_SIZE + TILE_GAP)));
+  const tileSize = Math.max(MIN_TILE_SIZE, (innerWidth - (columns - 1) * TILE_GAP) / columns);
+  const rowHeight = tileSize + TILE_GAP;
+  const rows = Math.ceil(input.count / columns);
+  const firstRow = Math.max(0, Math.floor(input.scrollTop / rowHeight) - OVERSCAN_ROWS);
+  const lastRow = Math.ceil((input.scrollTop + input.height) / rowHeight) + OVERSCAN_ROWS;
+  return {
+    columns,
+    tileSize,
+    gap: TILE_GAP,
+    first: Math.min(input.count, firstRow * columns),
+    last: input.width === 0 ? 0 : Math.min(input.count, lastRow * columns),
+    totalHeight: Math.max(0, rows * rowHeight - TILE_GAP),
+  };
+}

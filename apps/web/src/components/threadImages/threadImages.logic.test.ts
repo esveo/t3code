@@ -4,6 +4,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   collectThreadImages,
+  gridWindow,
   markdownImageSources,
   mergeThreadImages,
   threadTreeIds,
@@ -101,5 +102,21 @@ describe("mergeThreadImages", () => {
       [image("shared", 2), image("new", 3)],
     ]);
     expect(merged.map((entry) => entry.key)).toEqual(["new", "shared", "old"]);
+  });
+});
+
+describe("gridWindow", () => {
+  it("only includes tiles near the viewport", () => {
+    // 496 wide fits 4 tiles of 114px; rows are 122px, so scrolling 1220 starts at row 10.
+    const grid = gridWindow({ width: 496, height: 244, scrollTop: 1220, count: 400 });
+    expect(grid.columns).toBe(4);
+    expect(grid.first).toBe(8 * 4);
+    expect(grid.last).toBe(14 * 4);
+    expect(grid.totalHeight).toBe(100 * 122 - 8);
+  });
+
+  it("clamps to the image count and renders nothing before it is measured", () => {
+    expect(gridWindow({ width: 496, height: 800, scrollTop: 0, count: 3 }).last).toBe(3);
+    expect(gridWindow({ width: 0, height: 0, scrollTop: 0, count: 3 }).last).toBe(0);
   });
 });
