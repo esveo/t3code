@@ -159,6 +159,18 @@ describe("orchestration V2 wire projection", () => {
     expect(item.output).toEqual({ ok: true });
   });
 
+  it("reports how many images withheld tool output holds", () => {
+    const item = {
+      ...base,
+      output: { content: [{ type: "image", mimeType: "image/png", data: "AAAA" }] },
+    } satisfies OrchestrationV2TurnItem;
+    expect(projectTurnItemForWire(item)).toEqual({
+      ...base,
+      outputOmitted: true,
+      outputImageCount: 1,
+    });
+  });
+
   it("uses encoded JSON bytes for strings near the dynamic-value limit", () => {
     const small = '"'.repeat(8_191);
     const large = '"'.repeat(8_192);
