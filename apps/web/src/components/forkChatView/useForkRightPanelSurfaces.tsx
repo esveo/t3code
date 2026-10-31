@@ -12,6 +12,8 @@ import { forkInstructionsSurface } from "../forkInstructions/useForkInstructions
 import { nextGitGraphPanelStep } from "../gitGraph/gitGraphPanelLadder";
 import { ThreadInboxPanel } from "../threadInbox/ThreadInboxPanel";
 import { useThreadInboxSurface } from "../threadInbox/useThreadInboxSurface";
+import { ThreadImagesPanel } from "../threadImages/ThreadImagesPanel";
+import { threadImagesSurface } from "../threadImages/threadImagesSurface";
 import { ThreadOverviewPanel } from "../threadOrchestration/ThreadOverviewPanel";
 import { useThreadOverviewSurface } from "../threadOrchestration/useThreadOverviewSurface";
 
@@ -48,6 +50,7 @@ export function useForkRightPanelSurfaces(input: {
   const threadInbox = useThreadInboxSurface(threadRef);
   const notes = useForkNotesSurface(threadRef);
   const instructions = forkInstructionsSurface(threadRef);
+  const threadImages = threadImagesSurface(threadRef);
   const addAgentStageSurface = useCallback(() => {
     if (!threadRef || !agentStageEnabled) return;
     useRightPanelStore.getState().open(threadRef, "agent-stage");
@@ -103,6 +106,7 @@ export function useForkRightPanelSurfaces(input: {
       threadInbox,
       notes,
       instructions,
+      threadImages,
     }),
     [
       addAgentStageSurface,
@@ -111,6 +115,7 @@ export function useForkRightPanelSurfaces(input: {
       gitGraphAvailable,
       instructions,
       notes,
+      threadImages,
       threadInbox,
       threadOverview.available,
       threadOverview.open,
@@ -133,6 +138,8 @@ export function useForkRightPanelSurfaces(input: {
         );
       case "instructions":
         return <ForkInstructionsPanel threadRef={threadRef} />;
+      case "thread-images":
+        return <ThreadImagesPanel threadRef={threadRef} workspaceRoot={input.workspaceRoot} />;
       case "git-graph":
         if (gitGraphCwd === null || input.environmentId === undefined) return undefined;
         return (

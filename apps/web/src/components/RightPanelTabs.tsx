@@ -25,6 +25,12 @@ import {
   UNAVAILABLE_FORK_INSTRUCTIONS,
 } from "./forkInstructions/useForkInstructionsSurface";
 import {
+  THREAD_IMAGES_ACTION,
+  type ThreadImagesSurfaceProps,
+  ThreadImagesTabIcon,
+  UNAVAILABLE_THREAD_IMAGES,
+} from "./threadImages/threadImagesSurface";
+import {
   closestCenter,
   DndContext,
   type DragEndEvent,
@@ -168,6 +174,8 @@ export interface RightPanelTabsProps {
   notes?: ForkNotesSurfaceProps;
   /** Fork: the Instructions tab; absent where there is no thread. */
   instructions?: ForkInstructionsSurfaceProps;
+  /** Fork: the Images tab; absent where there is no thread. */
+  threadImages?: ThreadImagesSurfaceProps;
   children: ReactNode;
 }
 
@@ -213,6 +221,7 @@ const SURFACE_DISABLED_REASONS = {
   threadInbox: "Turn on coordinator decisions in Settings > General.",
   notes: "Notes are only available from a thread.",
   instructions: "Instructions are only available from a thread.",
+  threadImages: "Images are only available from a thread.",
   device: "Devices are only available from a thread.",
 } as const;
 
@@ -243,6 +252,7 @@ const SURFACE_UNAVAILABLE_HINTS = {
   threadInbox: "Turn on coordinator decisions in Settings.",
   notes: "Available from a thread.",
   instructions: "Available from a thread.",
+  threadImages: "Available from a thread.",
   device: "Available from a thread.",
 } as const;
 
@@ -379,6 +389,7 @@ function RightPanelEmptyState(props: {
   threadInbox: ThreadInboxSurfaceProps;
   notes: ForkNotesSurfaceProps;
   instructions: ForkInstructionsSurfaceProps;
+  threadImages: ThreadImagesSurfaceProps;
 }) {
   const [highlight, setHighlight] = useState(-1);
 
@@ -484,6 +495,13 @@ function RightPanelEmptyState(props: {
       available: props.instructions.available,
       disabledReason: SURFACE_UNAVAILABLE_HINTS.instructions,
       onClick: props.instructions.open,
+      badgeCount: 0,
+    },
+    {
+      ...THREAD_IMAGES_ACTION,
+      available: props.threadImages.available,
+      disabledReason: SURFACE_UNAVAILABLE_HINTS.threadImages,
+      onClick: props.threadImages.open,
       badgeCount: 0,
     },
     {
@@ -692,6 +710,8 @@ function surfaceTitle(
       return "Notes";
     case "instructions":
       return FORK_INSTRUCTIONS_ACTION.label;
+    case "thread-images":
+      return THREAD_IMAGES_ACTION.label;
     case "device":
       return surface.title ?? surface.target?.name ?? "Device";
     case "preview": {
@@ -794,6 +814,8 @@ function SurfaceIcon({
       return <PencilLineIcon className="size-3 shrink-0" />;
     case "instructions":
       return <ForkInstructionsTabIcon className="size-3 shrink-0" />;
+    case "thread-images":
+      return <ThreadImagesTabIcon className="size-3 shrink-0" />;
     case "device":
       return surface.target?.platform === "ios" ? (
         <AppleIcon className="size-3 shrink-0" />
@@ -1264,6 +1286,14 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       onClick: (props.instructions ?? UNAVAILABLE_FORK_INSTRUCTIONS).open,
     },
     {
+      label: THREAD_IMAGES_ACTION.label,
+      icon: THREAD_IMAGES_ACTION.icon,
+      shortcut: THREAD_IMAGES_ACTION.shortcut,
+      available: props.threadImages?.available ?? false,
+      disabledReason: SURFACE_DISABLED_REASONS.threadImages,
+      onClick: (props.threadImages ?? UNAVAILABLE_THREAD_IMAGES).open,
+    },
+    {
       label: "Device",
       icon: Smartphone,
       shortcut: "M",
@@ -1655,6 +1685,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             threadInbox={props.threadInbox ?? UNAVAILABLE_THREAD_INBOX}
             notes={props.notes ?? UNAVAILABLE_FORK_NOTES}
             instructions={props.instructions ?? UNAVAILABLE_FORK_INSTRUCTIONS}
+            threadImages={props.threadImages ?? UNAVAILABLE_THREAD_IMAGES}
           />
         ) : (
           props.children

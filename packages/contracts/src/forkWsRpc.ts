@@ -22,6 +22,7 @@ import {
   WsThreadDecisionsActRpc,
   WsThreadDecisionsSubscribeRpc,
 } from "./threadDecisions.ts";
+import { THREAD_IMAGES_WS_METHODS, WsThreadImagesListRpc } from "./threadImages.ts";
 import {
   VOICE_CALL_WS_METHODS,
   WsVoiceCallConnectRpc,
@@ -72,6 +73,8 @@ export const ForkWsRpcGroup = RpcGroup.make(
   WsProviderSubagentStopRpc,
   // Where agents spend their time (Usage page).
   WsAgentTimeSummaryRpc,
+  // The Images tab in the right panel.
+  WsThreadImagesListRpc,
 );
 
 /** The methods of `ForkWsRpcGroup`, for leaving them out of upstream's handler map. */
@@ -96,4 +99,5 @@ export const FORK_WS_RPC_TAGS = [
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS.target,
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS.stop,
   AGENT_TIME_WS_METHODS.summary,
+  THREAD_IMAGES_WS_METHODS.list,
 ] as const;

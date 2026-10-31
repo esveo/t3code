@@ -31,6 +31,8 @@ const RIGHT_PANEL_KINDS = [
   "notes",
   // Fork: the agent's instruction files.
   "instructions",
+  // Fork: every image of the thread and the threads below it.
+  "thread-images",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -96,7 +98,8 @@ export type RightPanelSurface =
   /** Fork: notes and todos of the thread, its project and the environment. */
   | { id: "notes"; kind: "notes" }
   /** Fork: the instruction file the thread's agent reads. */
-  | { id: "instructions"; kind: "instructions" };
+  | { id: "instructions"; kind: "instructions" }
+  | { id: "thread-images"; kind: "thread-images" };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 const RIGHT_PANEL_STORAGE_VERSION = 14;
@@ -260,6 +263,8 @@ const singletonSurface = (
       return { id: "notes", kind };
     case "instructions":
       return { id: "instructions", kind };
+    case "thread-images":
+      return { id: "thread-images", kind };
     case "device":
       return { id: "device", kind };
   }
