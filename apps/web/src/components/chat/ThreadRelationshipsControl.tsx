@@ -57,6 +57,7 @@ import {
 import { useRef, useState, type ReactNode } from "react";
 
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
+import { buildThreadRouteParams } from "../../threadRoutes";
 import { useOpenThreadInPane } from "../split/useOpenThreadInPane"; // Fork: split panes
 import {
   useProjects,

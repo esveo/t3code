@@ -6,13 +6,11 @@ import { ComposerContextLabel } from "./ComposerContextLabel";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, ProjectId, ThreadId } from "@t3tools/contracts";
 import {
-  ChevronDownIcon,
   FolderGit2Icon,
   FolderGitIcon,
   FolderIcon,
   PlusIcon,
   GitCommitHorizontalIcon,
-  HistoryIcon,
   ScaleIcon,
 } from "lucide-react";
 import {

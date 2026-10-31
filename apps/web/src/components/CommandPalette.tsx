@@ -294,6 +294,7 @@ export function CommandPalette({ children }: { children: ReactNode }) {
   const openChildSearch = (mode: "files" | "content", context: CommandPaletteReturnContext) =>
     dispatchCommandPalette({ _tag: "OpenChildSearch", mode, context });
   const composerHandleRef = useRef<ChatComposerHandle | null>(null);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- clears the pending external project pick when the palette closes
   useEffect(() => {
     if (!state.open) clearPendingProjectPick();
   }, [state.open]);

@@ -146,7 +146,6 @@ import { useWorkspaceMutationRefresh } from "../hooks/useWorkspaceMutationRefres
 import { DEFAULT_INTERACTION_MODE, type ChatMessage } from "../types";
 import { buildThreadRouteParams } from "../threadRoutes";
 import { useTheme } from "../hooks/useTheme";
-import { writeTextToClipboard } from "../hooks/useCopyToClipboard";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { copyThreadReference } from "../lib/copyThreadReference";
 import { subscribeSnapShotComposerFocus } from "../lib/desktopSnapShot";
@@ -440,6 +439,7 @@ export default function ChatView(props: ChatViewProps) {
   const handleNewThread = useNewThreadHandler();
   const isActivePane = useIsActiveChatPane();
   const isActivePaneRef = useRef(isActivePane);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- keeps the imperative desktop clipboard listener aligned with the active split pane
   useLayoutEffect(() => {
     isActivePaneRef.current = isActivePane;
   }, [isActivePane]);

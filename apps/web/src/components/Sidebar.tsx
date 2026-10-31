@@ -1336,7 +1336,6 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     renderedSettledThreads: shelfSettledThreads,
     projectFolders,
     toggleProjectFolder,
-    renderedSettledThreads: shelfSettledThreads,
     visibleSnoozedThreads,
     visibleWorkingThreads,
     orderedThreadKeys,

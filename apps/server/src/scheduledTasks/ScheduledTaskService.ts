@@ -878,20 +878,20 @@ export const layer = Layer.effect(
             createdBy: active.createdBy,
             creationSource: active.creationSource,
           }).pipe(
-              Effect.catchTags({
-                ThreadManagementThreadNotFoundError: (error) =>
-                  retries === 0
-                    ? Effect.fail(error)
-                    : threadManagement.getThreadShell(threadId).pipe(
-                        Effect.orElseSucceed(() => null),
-                        Effect.flatMap((shell) =>
-                          shell === null || shell.projectId === projectId
-                            ? Effect.fail(error)
-                            : sendBound(threadId, shell.projectId, retries - 1),
-                        ),
+            Effect.catchTags({
+              ThreadManagementThreadNotFoundError: (error) =>
+                retries === 0
+                  ? Effect.fail(error)
+                  : threadManagement.getThreadShell(threadId).pipe(
+                      Effect.orElseSucceed(() => null),
+                      Effect.flatMap((shell) =>
+                        shell === null || shell.projectId === projectId
+                          ? Effect.fail(error)
+                          : sendBound(threadId, shell.projectId, retries - 1),
                       ),
-              }),
-            );
+                    ),
+            }),
+          );
 
         // Capture defects and interrupts too so dispatch failures still reach markCompleted.
         const result =

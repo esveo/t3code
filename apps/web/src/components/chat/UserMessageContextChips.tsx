@@ -69,7 +69,6 @@ function UserMessageMentionChip(props: {
 }) {
   const ctx = use(TimelineRowCtx);
   const onFileContextMenu = useFileContextMenuHandler(ctx.activeThreadEnvironmentId);
-  const accent = documentIconColorForFileName(props.record.path);
   return (
     <Tooltip>
       <TooltipTrigger

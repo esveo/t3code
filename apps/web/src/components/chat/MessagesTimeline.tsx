@@ -482,6 +482,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const disclosureAnchorKeyRef = useRef<string | null>(null);
   const disclosureSettleFrameRef = useRef<number | null>(null);
   const disclosureSettleSecondFrameRef = useRef<number | null>(null);
+  const disclosureCollapsedRef = useRef(false);
   const normalizedFindQuery = findQuery.trim();
   const findActive = findExpanded;
 
@@ -508,12 +509,19 @@ const ConversationTimeline = memo(function ConversationTimeline({
         setDisclosureToggleSettling(false);
         disclosureSettleFrameRef.current = null;
         disclosureSettleSecondFrameRef.current = null;
+        if (
+          disclosureCollapsedRef.current &&
+          resolveTimelineIsAtEnd(listRef.current?.getState()) === true
+        ) {
+          onToolOutputCollapsedAtEnd?.();
+        }
       });
     });
   };
 
-  const suspendEndScrollMaintenanceForDisclosure = (anchorKey: string) => {
+  const suspendEndScrollMaintenanceForDisclosure = (anchorKey: string, collapsed = false) => {
     disclosureAnchorKeyRef.current = anchorKey;
+    disclosureCollapsedRef.current = collapsed;
     disclosurePinsEndRef.current = resolveTimelineIsAtEnd(listRef.current?.getState()) === true;
     setDisclosureToggleSettling(true);
     scheduleDisclosureSettle();
@@ -526,7 +534,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   };
 
   const onToggleTurnFold = (runId: RunId) => {
-    suspendEndScrollMaintenanceForDisclosure(`turn-fold:${runId}`);
+    suspendEndScrollMaintenanceForDisclosure(`turn-fold:${runId}`, expandedRunIds.has(runId));
     setExpandedRunIds((existing) => {
       const next = new Set(existing);
       if (next.has(runId)) {
@@ -538,7 +546,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     });
   };
   const onToggleWorkGroup = (groupId: string, anchorKey: string) => {
-    suspendEndScrollMaintenanceForDisclosure(anchorKey);
+    suspendEndScrollMaintenanceForDisclosure(anchorKey, expandedWorkGroupIds.has(groupId));
     setExpandedWorkGroupIds((existing) => {
       const next = new Set(existing);
       if (next.has(groupId)) {
@@ -550,7 +558,10 @@ const ConversationTimeline = memo(function ConversationTimeline({
     });
   };
   const onToggleAttemptFold = (attemptId: RunAttemptId) => {
-    suspendEndScrollMaintenanceForDisclosure(`attempt-fold:${attemptId}`);
+    suspendEndScrollMaintenanceForDisclosure(
+      `attempt-fold:${attemptId}`,
+      expandedAttemptIds.has(attemptId),
+    );
     setExpandedAttemptIds((existing) => {
       const next = new Set(existing);
       if (next.has(attemptId)) {
@@ -1028,6 +1039,10 @@ const ConversationTimeline = memo(function ConversationTimeline({
       setSettlingListIdentity((current) => (current === listIdentityKey ? null : current));
     }
     handleScroll();
+    const scrollNode = listRef.current?.getScrollableNode();
+    onContentOverflowChange?.(
+      scrollNode ? scrollNode.scrollHeight > scrollNode.clientHeight + 1 : false,
+    );
   });
   // The content lane only changes width with the viewport or the chat width
   // setting, never with streamed content; measuring per content frame would
@@ -1208,6 +1223,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     return () => {
       stopListeningToContentSize?.();
       stopRememberingRelease?.();
+      onContentOverflowChange?.(false);
       if (contentSizeFrame !== null) cancelAnimationFrame(contentSizeFrame);
       detachViewport?.();
       viewport?.dispose();

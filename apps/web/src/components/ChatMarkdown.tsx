@@ -415,7 +415,7 @@ const CHAT_MARKDOWN_LITERAL_HTML_REHYPE_PLUGINS = [
 function markdownUrlTransform(href: string) {
   if (parseAssistantCitationHref(href)) return href;
   if (parseComposerContextHref(href)) return href;
-  if (parseThreadLinkHref(href)) return href;
+  if (parseThreadLinkHref(href) || parseForkThreadLinkHref(href)) return href;
   if (isWindowsDrivePathHref(href)) return href;
   return rewriteMarkdownFileUriHref(href) ?? defaultUrlTransform(href);
 }
@@ -464,7 +464,12 @@ function fileLinkSourcesKey(
   imageBaseDir: string | undefined,
 ): string {
   const hrefs = extractMarkdownLinkHrefs(renderCodexInlineDirectivesAsMarkdown(text))
-    .filter((href) => !parseComposerContextHref(href))
+    .filter(
+      (href) =>
+        !parseComposerContextHref(href) &&
+        !parseThreadLinkHref(href) &&
+        !parseForkThreadLinkHref(href),
+    )
     .map(normalizeMarkdownLinkHrefKey)
     .filter((href) => resolveMarkdownFileLinkMeta(href, cwd, imageBaseDir ?? cwd));
   const spans = extractInlineCodeSpans(text).filter((span) =>
