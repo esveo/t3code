@@ -3,12 +3,10 @@ import { resolveViewedImageAsset } from "@t3tools/client-runtime/work-log/presen
 import { extractToolActivityPresentation } from "@t3tools/client-runtime/work-log/tool-presentation";
 import type {
   AssetResource,
-  OrchestrationV2ThreadProjection,
   OrchestrationV2ThreadShell,
   ThreadId,
+  ThreadImagesList,
 } from "@t3tools/contracts";
-import { turnItemOutputImages } from "@t3tools/client-runtime/work-log/item-detail";
-import * as DateTime from "effect/DateTime";
 
 import { shellParentThreadId } from "~/state/entities";
 import { resolveProtocolRelativeMediaUrl } from "../media/mediaContent";
@@ -77,17 +75,16 @@ function markdownImage(
       };
 }
 
-/** Every image one thread's loaded history shows: attachments, markdown, viewed files, tool output. */
+/** Every image of one thread's list: attachments, markdown, viewed files, tool output. */
 export function collectThreadImages(
-  projection: Pick<OrchestrationV2ThreadProjection, "messages" | "visibleTurnItems">,
+  list: ThreadImagesList,
   threadId: ThreadId,
   workspaceRoot: string | undefined,
 ): ReadonlyArray<ThreadImage> {
   const images: ThreadImage[] = [];
-  for (const message of projection.messages) {
-    const createdAtMs = DateTime.toEpochMillis(message.createdAt);
+  for (const message of list.messages) {
+    const { createdAtMs } = message;
     for (const attachment of message.attachments) {
-      if (attachment.type !== "image") continue;
       images.push({
         key: `attachment:${attachment.id}`,
         name: attachment.name,
@@ -100,9 +97,8 @@ export function collectThreadImages(
       if (image) images.push(image);
     }
   }
-  for (const { item, sourceThreadId, sourceItemId } of projection.visibleTurnItems) {
-    if (item.type !== "dynamic_tool") continue;
-    const createdAtMs = DateTime.toEpochMillis(item.startedAt ?? item.updatedAt);
+  for (const item of list.toolItems) {
+    const { sourceThreadId, sourceItemId, createdAtMs, name } = item;
     const viewedPath = extractToolActivityPresentation(item).viewedImagePath;
     const viewed = viewedPath
       ? resolveViewedImageAsset(viewedPath, { threadId, workspaceRoot })
@@ -115,11 +111,10 @@ export function collectThreadImages(
         source: { _tag: "asset", resource: viewed.resource },
       });
     }
-    const count = item.outputImageCount ?? turnItemOutputImages(item).length;
-    for (let index = 0; index < count; index++) {
+    for (let index = 0; index < item.outputImageCount; index++) {
       images.push({
         key: `tool:${sourceThreadId}:${sourceItemId}:${index}`,
-        name: item.title?.trim() || item.toolName || "Tool output",
+        name,
         createdAtMs,
         source: {
           _tag: "asset",
@@ -147,18 +142,18 @@ export function mergeThreadImages(
   return [...byKey.values()].toSorted((a, b) => b.createdAtMs - a.createdAtMs);
 }
 
-const collectedByProjection = new WeakMap<object, ReadonlyArray<ThreadImage>>();
+const collectedByList = new WeakMap<object, ReadonlyArray<ThreadImage>>();
 
-/** A projection object only changes with its thread, so paging one thread rescans only it. */
+/** An unchanged refetch keeps its object, so refreshing one thread rescans only that one. */
 export function collectThreadImagesCached(
-  projection: Pick<OrchestrationV2ThreadProjection, "messages" | "visibleTurnItems">,
+  list: ThreadImagesList,
   threadId: ThreadId,
   workspaceRoot: string | undefined,
 ): ReadonlyArray<ThreadImage> {
-  const cached = collectedByProjection.get(projection);
+  const cached = collectedByList.get(list);
   if (cached) return cached;
-  const images = collectThreadImages(projection, threadId, workspaceRoot);
-  collectedByProjection.set(projection, images);
+  const images = collectThreadImages(list, threadId, workspaceRoot);
+  collectedByList.set(list, images);
   return images;
 }
 

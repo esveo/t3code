@@ -1,5 +1,4 @@
-import type { OrchestrationV2ThreadProjection, ThreadId } from "@t3tools/contracts";
-import * as DateTime from "effect/DateTime";
+import type { ThreadId, ThreadImagesList } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -12,7 +11,6 @@ import {
 } from "./threadImages.logic";
 
 const threadId = "thread-1" as ThreadId;
-const at = (ms: number) => DateTime.makeUnsafe(ms);
 
 describe("threadTreeIds", () => {
   it("walks subagents and sub-threads below the thread, not siblings", () => {
@@ -37,49 +35,28 @@ describe("markdownImageSources", () => {
 
 describe("collectThreadImages", () => {
   it("collects attachments, viewed files and omitted tool output by source ids", () => {
-    const projection = {
-      messages: [
-        {
-          text: "",
-          createdAt: at(1),
-          attachments: [
-            { type: "image", id: "img-1", name: "shot.png", mimeType: "image/png", sizeBytes: 1 },
-            { type: "file", id: "doc-1", name: "doc.txt" },
-          ],
-        },
-      ],
-      visibleTurnItems: [
+    const list = {
+      messages: [{ text: "", createdAtMs: 1, attachments: [{ id: "img-1", name: "shot.png" }] }],
+      toolItems: [
         {
           sourceThreadId: "parent",
           sourceItemId: "item-1",
-          item: {
-            type: "dynamic_tool",
-            title: "Screenshot",
-            toolName: "shot",
-            startedAt: at(2),
-            updatedAt: at(2),
-            input: {},
-            outputOmitted: true,
-            outputImageCount: 2,
-          },
+          name: "Screenshot",
+          createdAtMs: 2,
+          outputImageCount: 2,
         },
         {
           sourceThreadId: "thread-1",
           sourceItemId: "item-2",
-          item: {
-            type: "dynamic_tool",
-            title: null,
-            toolName: "Read",
-            startedAt: at(3),
-            updatedAt: at(3),
-            input: {},
-            viewedImagePath: "/repo/view.png",
-          },
+          name: "Read",
+          createdAtMs: 3,
+          viewedImagePath: "/repo/view.png",
+          outputImageCount: 0,
         },
       ],
-    } as unknown as OrchestrationV2ThreadProjection;
+    } as unknown as ThreadImagesList;
 
-    const images = collectThreadImages(projection, threadId, "/repo");
+    const images = collectThreadImages(list, threadId, "/repo");
     expect(images.map((image) => image.key)).toEqual([
       "attachment:img-1",
       "tool:parent:item-1:0",

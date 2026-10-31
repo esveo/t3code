@@ -1,22 +1,24 @@
 import { useAtomValue } from "@effect/atom-react";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { createEnvironmentRpcQueryAtomFamily } from "@t3tools/client-runtime/state/runtime";
 import {
-  EMPTY_ENVIRONMENT_THREAD_STATE,
-  type EnvironmentThreadState,
-} from "@t3tools/client-runtime/state/threads";
-import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
+  THREAD_IMAGES_WS_METHODS,
+  type EnvironmentId,
+  type ScopedThreadRef,
+  type ThreadId,
+} from "@t3tools/contracts";
 import { ImageIcon, ImageOffIcon } from "lucide-react";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { type CSSProperties, useEffect, useState } from "react";
 
 import { resolveAssetUrl, useAssetUrlState } from "~/assets/assetUrls";
+import { connectionAtomRuntime } from "~/connection/runtime";
 import { observeResize } from "~/lib/observeResize";
 import { cn } from "~/lib/utils";
 import { assetEnvironment } from "~/state/assets";
 import { usePreparedConnection } from "~/state/session";
-import { environmentThreads, environmentThreadShells, threadEnvironment } from "~/state/threads";
-import { useAtomCommand } from "~/state/use-atom-command";
+import { environmentThreadShells } from "~/state/threads";
 import { useAtomQueryRunner } from "~/state/use-atom-query-runner";
 import { openExpandedImagePreview } from "../chat/ExpandedImageDialog";
 import {
@@ -26,8 +28,8 @@ import {
   threadTreeIds,
   type ThreadImage,
 } from "./threadImages.logic";
+import { cachedThumbnail, loadThumbnail } from "./threadImageThumbnails";
 
-const MAX_CONCURRENT_HISTORY_LOADS = 3;
 const PLACEHOLDER_ROWS_WHILE_LOADING = 2;
 // ponytail: the preview pages through this many neighbours per side, as each needs its own URL.
 const PREVIEW_NEIGHBOURS = 20;
@@ -35,19 +37,67 @@ const PREVIEW_NEIGHBOURS = 20;
 const TILE_CLASS =
   "absolute flex items-center justify-center overflow-hidden rounded-md border border-border/60 bg-muted/30";
 
-// Subscribes to each thread only while this tab shows: closed threads have no items otherwise.
-const threadTreeStatesAtom = Atom.family((key: string) => {
-  const [environmentId, ...threadIds] = key.split("\n");
-  return Atom.make((get): ReadonlyArray<EnvironmentThreadState> =>
-    threadIds.map((id) =>
-      Option.getOrElse(
-        AsyncResult.value(
-          get(environmentThreads.stateAtom(environmentId as EnvironmentId, id as ThreadId)),
-        ),
-        () => EMPTY_ENVIRONMENT_THREAD_STATE,
-      ),
+const threadImagesListAtom = createEnvironmentRpcQueryAtomFamily(connectionAtomRuntime, {
+  label: "environment-data:thread-images",
+  tag: THREAD_IMAGES_WS_METHODS.list,
+  // ponytail: refetches every few items and at run changes, not per image; push if that feels late.
+  refreshTrigger: ({ environmentId, input: { threadId } }) =>
+    Atom.map(environmentThreadShells.threadShellAtom({ environmentId, threadId }), (shell) =>
+      shell
+        ? [
+            shell.latestRun?.runId,
+            shell.latestRun?.status,
+            shell.runtime?.status,
+            Math.floor(shell.itemCount / 8),
+          ].join()
+        : null,
     ),
-  );
+});
+
+interface ThreadTreeEntry {
+  readonly id: ThreadId;
+  readonly root?: string;
+}
+
+// A string, so the panel skips the updates every running thread sends through the shells.
+const threadTreeKeyAtom = Atom.family((key: string) => {
+  const [environmentId, threadId, workspaceRoot] = JSON.parse(key) as [
+    EnvironmentId,
+    ThreadId,
+    string | undefined,
+  ];
+  return Atom.make((get) => {
+    const shells = get(environmentThreadShells.environmentThreadsAtom(environmentId));
+    const worktreeById = new Map(shells.map((shell) => [shell.id, shell.worktreePath]));
+    return JSON.stringify(
+      threadTreeIds(threadId, shells).map((id) => ({
+        id,
+        root: id === threadId ? workspaceRoot : (worktreeById.get(id) ?? workspaceRoot),
+      })),
+    );
+  });
+});
+
+const threadTreeImagesAtom = Atom.family((key: string) => {
+  const [environmentId, treeKey] = JSON.parse(key) as [EnvironmentId, string];
+  const tree = JSON.parse(treeKey) as ReadonlyArray<ThreadTreeEntry>;
+  return Atom.make((get) => {
+    const results = tree.map(({ id }) =>
+      get(threadImagesListAtom({ environmentId, input: { threadId: id } })),
+    );
+    return {
+      images: mergeThreadImages(
+        results.map((result, index) => {
+          const list = Option.getOrUndefined(AsyncResult.value(result));
+          const entry = tree[index];
+          return list && entry ? collectThreadImagesCached(list, entry.id, entry.root) : [];
+        }),
+      ),
+      loading: results.some(
+        (result) => Option.isNone(AsyncResult.value(result)) && !AsyncResult.isFailure(result),
+      ),
+    };
+  });
 });
 
 /** Fork: the right panel's gallery of every image in a thread and the threads below it. */
@@ -64,46 +114,11 @@ function ThreadImagesGrid(props: {
   readonly workspaceRoot: string | undefined;
 }) {
   const { environmentId, threadId } = props.threadRef;
-  const shells = useAtomValue(environmentThreadShells.environmentThreadsAtom(environmentId));
-  const treeKey = threadTreeIds(threadId, shells).join("\n");
-  const states = useAtomValue(threadTreeStatesAtom(`${environmentId}\n${treeKey}`));
-  const treeIds = treeKey.split("\n") as ThreadId[];
-
-  const loadEarlier = useAtomCommand(threadEnvironment.loadEarlierHistory, {
-    label: "load thread images history",
-    reportFailure: false,
-  });
-  const loadingCount = states.filter((state) => state.history.loading).length;
-  const pendingHistory = treeIds
-    .filter((_, index) => {
-      const history = states[index]?.history;
-      return history?.hasMoreHistory && !history.loading && history.error === null;
-    })
-    .slice(0, Math.max(0, MAX_CONCURRENT_HISTORY_LOADS - loadingCount))
-    .join("\n");
-  // oxlint-disable-next-line t3code/react-effect-budget -- pages the server's history in until complete; each page re-triggers this.
-  useEffect(() => {
-    if (!pendingHistory) return;
-    for (const id of pendingHistory.split("\n")) {
-      void loadEarlier({ environmentId, input: { threadId: id as ThreadId } });
-    }
-  }, [environmentId, loadEarlier, pendingHistory]);
-
-  const worktreeById = new Map(shells.map((shell) => [shell.id, shell.worktreePath]));
-  const images = mergeThreadImages(
-    states.map((state, index) => {
-      const id = treeIds[index];
-      if (id === undefined || Option.isNone(state.data)) return [];
-      const root =
-        id === threadId ? props.workspaceRoot : (worktreeById.get(id) ?? props.workspaceRoot);
-      return collectThreadImagesCached(state.data.value, id, root);
-    }),
+  const treeKey = useAtomValue(
+    threadTreeKeyAtom(JSON.stringify([environmentId, threadId, props.workspaceRoot])),
   );
-  const loading = states.some(
-    (state) =>
-      state.history.error === null &&
-      (state.history.hasMoreHistory ||
-        (Option.isNone(state.data) && state.status !== "deleted" && Option.isNone(state.error))),
+  const { images, loading } = useAtomValue(
+    threadTreeImagesAtom(JSON.stringify([environmentId, treeKey])),
   );
 
   const [viewport, setViewport] = useState({ width: 0, height: 0 });
@@ -197,7 +212,7 @@ function ThreadImagesGrid(props: {
       )}
       {loading ? (
         <p className="sticky bottom-0 bg-background/90 px-3 py-1.5 text-xs text-muted-foreground">
-          Loading older images… {images.length} so far
+          Loading images… {images.length} so far
         </p>
       ) : null}
     </div>
@@ -211,14 +226,28 @@ function ThreadImageTile(props: {
   readonly onOpen: () => void;
 }) {
   const { image } = props;
+  const [thumbnail, setThumbnail] = useState(() => cachedThumbnail(image.key));
   const asset = useAssetUrlState(
     props.environmentId,
-    image.source._tag === "asset" ? image.source.resource : null,
+    image.source._tag === "asset" && thumbnail === undefined ? image.source.resource : null,
   );
   const src =
     image.source._tag === "direct" ? image.source.src : asset._tag === "Success" ? asset.url : null;
+  // oxlint-disable-next-line t3code/react-effect-budget -- fetches and decodes outside React, only while this tile is on screen.
+  useEffect(() => {
+    if (src === null || thumbnail !== undefined) return;
+    let current = true;
+    void loadThumbnail(image.key, src).then((url) => {
+      if (current) setThumbnail(url);
+    });
+    return () => {
+      current = false;
+    };
+  }, [image.key, src, thumbnail]);
   const [status, setStatus] = useState<"loading" | "loaded" | "failed">("loading");
-  const failed = status === "failed" || (image.source._tag === "asset" && asset._tag === "Failure");
+  const failed =
+    status === "failed" ||
+    (image.source._tag === "asset" && thumbnail === undefined && asset._tag === "Failure");
   return (
     <button
       type="button"
@@ -238,9 +267,9 @@ function ThreadImageTile(props: {
           {status === "loading" ? (
             <ImageIcon aria-hidden className="size-5 text-icon-muted opacity-40" />
           ) : null}
-          {src ? (
+          {thumbnail ? (
             <img
-              src={src}
+              src={thumbnail}
               alt={image.name}
               decoding="async"
               className={cn(

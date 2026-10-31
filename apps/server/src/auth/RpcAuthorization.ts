@@ -25,6 +25,7 @@ import {
   ORCHESTRATION_V2_WS_METHODS,
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS,
   AGENT_TIME_WS_METHODS,
+  THREAD_IMAGES_WS_METHODS,
   THREAD_COORDINATORS_WS_METHODS,
   THREAD_DECISIONS_WS_METHODS,
   FORK_NOTES_WS_METHODS,
@@ -249,6 +250,8 @@ export const RPC_REQUIRED_SCOPES = {
   [PROVIDER_SUBAGENT_CONTROL_WS_METHODS.stop]: AuthOrchestrationOperateScope,
   // Fork: agent time on the Usage page, read like the usage summary.
   [AGENT_TIME_WS_METHODS.summary]: AuthDiagnosticsReadScope,
+  // Fork: the Images tab.
+  [THREAD_IMAGES_WS_METHODS.list]: AuthOrchestrationReadScope,
 } as const satisfies Readonly<Record<WsRpcMethod, AuthEnvironmentScope>>;
 
 export function requiredScopeForRpcMethod(method: string): AuthEnvironmentScope {

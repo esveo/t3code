@@ -69,6 +69,8 @@ import {
   VOICE_INPUT_WS_METHODS,
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS,
   AGENT_TIME_WS_METHODS,
+  THREAD_IMAGES_WS_METHODS,
+  ThreadImagesReadError,
   ForkWsRpcGroup,
   FORK_WS_RPC_TAGS,
   type OrchestrationV2ThreadStreamItem,
@@ -222,6 +224,7 @@ import * as ThreadCoordinators from "./threadOrchestration/ThreadCoordinators.ts
 import * as VoiceInput from "./voiceInput/VoiceInput.ts";
 import * as ProviderSubagentControl from "./providerSubagentControl/ProviderSubagentControl.ts";
 import * as AgentTime from "./agentTime/AgentTime.ts";
+import { threadImagesList } from "./threadImages/threadImagesList.ts";
 import * as WorkspacePaths from "./workspace/WorkspacePaths.ts";
 import * as VcsStatusBroadcaster from "./vcs/VcsStatusBroadcaster.ts";
 import * as VcsProvisioningService from "./vcs/VcsProvisioningService.ts";
@@ -3347,6 +3350,12 @@ export const layerWsRpc = (
           ProviderSubagentControl.stop(providerSubagentControlDeps, input),
         // where agents spend their time (Usage page).
         [AGENT_TIME_WS_METHODS.summary]: (input) => AgentTime.summaryRpc(input),
+        // the Images tab in the right panel.
+        [THREAD_IMAGES_WS_METHODS.list]: (input) =>
+          threadManagement.getThreadProjection(input.threadId).pipe(
+            Effect.map(threadImagesList),
+            Effect.mapError((cause) => new ThreadImagesReadError({ cause })),
+          ),
       });
       const splitHandlers: Pick<typeof handlers, SplitWsRpc["_tag"]> = handlers;
       const otherHandlers: Pick<typeof handlers, Exclude<UpstreamServerWsRpc, SplitWsRpc>["_tag"]> =

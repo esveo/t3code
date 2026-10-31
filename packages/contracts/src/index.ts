@@ -77,5 +77,6 @@ export * from "./voiceCall.ts";
 export * from "./providerSubagentControl.ts";
 export * from "./forkWsRpc.ts";
 export * from "./agentTime.ts";
+export * from "./threadImages.ts";
 export * from "./secretRequest.ts";
 export * from "./clientRpcPermissions.ts";
