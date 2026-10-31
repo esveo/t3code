@@ -2812,29 +2812,26 @@ export default function ChatView(props: ChatViewProps) {
 
   usePasteToFocusComposer(embedded ? null : activeThreadId, composerRef);
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- installs the desktop clipboard fallback for the active non-embedded split pane
-  useEffect(
-    () => {
-      if (embedded) return;
-      return installDesktopClipboardPasteFallback({
-        bridge: window.desktopBridge,
-        target: window,
-        macPlatform: isMacPlatform(navigator.platform),
-        shouldHandle: (event) =>
-          isActivePaneRef.current &&
-          Boolean(activeThreadId) &&
-          !isCommandPaletteOpen() &&
-          getTerminalFocusOwner() === null &&
-          composerRef.current?.isModelPickerOpen() !== true &&
-          shouldRedirectInputToComposer(event),
-        insertText: (text, { bypassAutoAttachment }) => {
-          if (!composerRef.current?.pasteTextAtEnd(text, { bypassAutoAttachment })) {
-            composerRef.current?.insertTextAtEnd(text);
-          }
-        },
-      });
-    },
-    [activeThreadId, composerRef, embedded],
-  );
+  useEffect(() => {
+    if (embedded) return;
+    return installDesktopClipboardPasteFallback({
+      bridge: window.desktopBridge,
+      target: window,
+      macPlatform: isMacPlatform(navigator.platform),
+      shouldHandle: (event) =>
+        isActivePaneRef.current &&
+        Boolean(activeThreadId) &&
+        !isCommandPaletteOpen() &&
+        getTerminalFocusOwner() === null &&
+        composerRef.current?.isModelPickerOpen() !== true &&
+        shouldRedirectInputToComposer(event),
+      insertText: (text, { bypassAutoAttachment }) => {
+        if (!composerRef.current?.pasteTextAtEnd(text, { bypassAutoAttachment })) {
+          composerRef.current?.insertTextAtEnd(text);
+        }
+      },
+    });
+  }, [activeThreadId, composerRef, embedded]);
   // A delegated task is a remote thread's subagent.
   const isSubagentThread =
     activeThread?.lineage.relationshipToParent === "subagent" || delegatedFrom !== null;
@@ -3577,8 +3574,6 @@ export default function ChatView(props: ChatViewProps) {
                 liveFollowEnabled={timelineLiveFollowEnabled}
                 onIsAtEndChange={onIsAtEndChangeStable}
                 isLiveFollowLatched={isTimelineLiveFollowLatched}
-                onContentOverflowChange={setTimelineOverflows}
-                onToolOutputCollapsedAtEnd={onToolOutputCollapsedAtEndStable}
                 onViewportAttach={attachTimelineViewport}
                 onFooterGrow={onTimelineFooterGrowStable}
                 hideEmptyPlaceholder={isDraftHeroState || threadDetailLoading}
@@ -3654,9 +3649,7 @@ export default function ChatView(props: ChatViewProps) {
                         timelineEntries={timelineEntries}
                       />
                     ) : null}
-                    <ComposerSurface.Shell
-                      contextRow={showComposerContextStrip || showComposerModelStrip}
-                    >
+                    <ComposerSurface.Shell contextRow={showComposerContextStrip}>
                       <ComposerSurface.Host
                         inert={queuedRunEdit.isSaving}
                         aria-busy={queuedRunEdit.isSaving}

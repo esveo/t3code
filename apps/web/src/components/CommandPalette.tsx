@@ -1305,7 +1305,7 @@ function OpenCommandPaletteDialog(props: {
             .open(scopeThreadRef(activeThread.environmentId, activeThread.id), "git-graph");
           return;
         }
-        const title = currentProjectId ? projectTitleById.get(currentProjectId) : undefined;
+        const title = projectByKey.get(`${currentProjectEnvironmentId}:${currentProjectId}`)?.title;
         await navigate({
           to: "/git-graph",
           search: {

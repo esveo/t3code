@@ -22,7 +22,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { cn } from "../../lib/cn";
 import { relativeTime } from "../../lib/time";
 import { useThreadShells } from "../../state/entities";
-import { threadListEnvironmentsAtom } from "../../state/server";
+import { threadListEnvironmentsAtom } from "../../state/presentation";
 import { useThreadPr } from "../../state/use-thread-pr";
 import { EsveoThreadRowContent } from "../esveoThreadRow/EsveoThreadRowContent";
 import { useThreadRowProviderInstanceResolver } from "../threads/thread-provider-instance";

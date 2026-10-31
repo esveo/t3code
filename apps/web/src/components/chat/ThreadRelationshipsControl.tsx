@@ -1,4 +1,5 @@
 import { useAtomValue } from "@effect/atom-react";
+import { useNavigate } from "@tanstack/react-router";
 import { ThreadDetailsControl } from "./ThreadDetailsControl";
 import { ThreadHoverCardPopup } from "../ThreadHoverCard";
 import { ThreadDetailsSection } from "./ThreadDetailsSection";

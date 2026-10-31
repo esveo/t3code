@@ -79,7 +79,7 @@ function VoiceCallControls(props: VoiceCallButtonProps) {
   const hangUp = useAtomCommand(voiceCallEnvironment.hangUp, { reportFailure: false });
   const pause = useAtomCommand(voiceCallEnvironment.pause, { reportFailure: false });
   const identificationMode = useEnvironmentIdentificationMode();
-  const stageVariant = useSidebarStageBackdropVariant(identificationMode === "artwork");
+  const stageVariant = useSidebarStageBackdropVariant(identificationMode);
 
   const call = view?.call ?? null;
   const running = call !== null && isVoiceCallMoving(call);

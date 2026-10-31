@@ -3432,20 +3432,6 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       );
       return { ...patch, files: stat.files };
     });
-    const hashDiff = (diff: string, files: ReadonlyArray<ReviewDiffFileStat>) =>
-      crypto.digest("SHA-256", new TextEncoder().encode(JSON.stringify([diff, files]))).pipe(
-        Effect.map(Hex.encode),
-        Effect.mapError(
-          (cause) =>
-            new GitCommandError({
-              operation: "GitVcsDriver.getReviewDiffPreview.hash",
-              command: "crypto.digest SHA-256",
-              cwd,
-              detail: "Failed to hash review diff.",
-              cause,
-            }),
-        ),
-      );
 
     // Fork: the commit graph's selected range, from `base` to `head` (null: the working tree).
     if (input.range) {

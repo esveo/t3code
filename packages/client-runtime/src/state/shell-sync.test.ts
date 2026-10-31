@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-polling-loop-in-tests -- fork coverage kept from before these rules. */
 import {
   EnvironmentId,
   ORCHESTRATION_V2_WS_METHODS,
@@ -1276,19 +1277,20 @@ describe("environment shell synchronization", () => {
       }
       expect(yield* Ref.get(capturedAfterSequences)).toEqual([10, 40, 40]);
 
-      yield* Queue.offer(wakeups, "application-active-reconnect");
-      for (let attempt = 0; attempt < 10; attempt += 1) {
-        yield* Effect.yieldNow;
-      }
-      expect((yield* Ref.get(capturedAfterSequences)).length).toBe(3);
-      expect(yield* Ref.get(loaderCalls)).toBe(1);
-
-      yield* SubscriptionRef.set(activeSession, Option.some(session(client)));
+      yield* Queue.offer(wakeups, "application-active-long");
       for (let attempt = 0; attempt < 100; attempt += 1) {
         if ((yield* Ref.get(capturedAfterSequences)).length >= 4) break;
         yield* Effect.yieldNow;
       }
-      expect(yield* Ref.get(capturedAfterSequences)).toEqual([10, 40, 40, 20]);
+      expect(yield* Ref.get(capturedAfterSequences)).toEqual([10, 40, 40, 40]);
+      expect(yield* Ref.get(loaderCalls)).toBe(1);
+
+      yield* SubscriptionRef.set(activeSession, Option.some(session(client)));
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        if ((yield* Ref.get(capturedAfterSequences)).length >= 5) break;
+        yield* Effect.yieldNow;
+      }
+      expect(yield* Ref.get(capturedAfterSequences)).toEqual([10, 40, 40, 40, 20]);
       expect(yield* Ref.get(loaderCalls)).toBe(2);
     }),
   );

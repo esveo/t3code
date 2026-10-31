@@ -315,9 +315,11 @@ const layerScheduledTasksTest = ScheduledTaskService.layer.pipe(
           Effect.succeed({
             projectId: threadId.includes("surviving")
               ? ProjectId.make("automation-other-project")
-              : ProjectId.make(
-                  threadId.replace("automation-delete-thread", "automation-delete-project"),
-                ),
+              : threadId.includes("automation-delete-thread")
+                ? ProjectId.make(
+                    threadId.replace("automation-delete-thread", "automation-delete-project"),
+                  )
+                : SCRATCH_PROJECT_ID, // Fork: the binding check also reads promoted threads.
             title: "Automation target",
           } as never),
       }),

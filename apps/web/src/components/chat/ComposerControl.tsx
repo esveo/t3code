@@ -1,9 +1,10 @@
 import { mergeProps } from "@base-ui/react/merge-props";
 import { Select as SelectPrimitive } from "@base-ui/react/select";
 import { useRender } from "@base-ui/react/use-render";
-import type { ComponentType, SVGProps } from "react";
+import type { ComponentProps, ComponentType, SVGProps } from "react";
 
 import { cn } from "~/lib/utils";
+import { Separator } from "../ui/separator"; // Fork
 
 export type ComposerControlSize = "sm" | "xs";
 
@@ -38,6 +39,23 @@ export function ComposerControl({
     props: mergeProps<"button">(defaultProps, props),
     render,
   });
+}
+
+// Fork: splits the usage and cache readouts from their neighbours.
+export function ComposerControlSeparator({
+  className,
+  size = "sm",
+  ...props
+}: Omit<ComponentProps<typeof Separator>, "orientation"> & {
+  size?: ComposerControlSize;
+}) {
+  return (
+    <Separator
+      orientation="vertical"
+      className={cn("mx-0.5 hidden sm:block", size === "xs" ? "h-3.5!" : "h-4", className)}
+      {...props}
+    />
+  );
 }
 
 export function ComposerControlIcon({

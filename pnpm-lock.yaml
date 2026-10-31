@@ -953,6 +953,9 @@ importers:
       '@effect/vitest':
         specifier: 4.0.5
         version: 4.0.5(patch_hash=2731c9c3761c595f25ddc625a7d61ca376b389d5b3049ecb837c8940f21cfa02)(@astrojs/compiler-rs@0.5.1)(@tsc-rs/typescript@0.8.0)(@types/node@24.12.4)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(@tsc-rs/typescript@0.8.0))(bufferutil@4.1.0)(effect@4.0.5)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(playwright@1.60.0)(terser@5.48.0)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
+      '@modelcontextprotocol/sdk':
+        specifier: 1.29.0
+        version: 1.29.0(supports-color@8.1.1)(zod@4.6.5)
       '@opencode-ai/sdk':
         specifier: ^1.3.15
         version: 1.15.13
@@ -1237,13 +1240,13 @@ importers:
         version: 11.0.5
       use-sync-external-store:
         specifier: ^1.6.0
-        version: 1.6.0(react@19.3.0)
+        version: 1.7.0(react@19.3.0)
       vfile:
         specifier: ^6.0.3
         version: 6.0.3
       zustand:
         specifier: ^5.0.11
-        version: 5.0.14(@types/react@19.3.0)(react@19.3.0)(use-sync-external-store@1.6.0(react@19.3.0))
+        version: 5.0.14(@types/react@19.3.0)(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0))
     devDependencies:
       '@effect/platform-node':
         specifier: 4.0.5
@@ -1359,7 +1362,7 @@ importers:
         version: 2.0.0-beta.84(24ce6902b7189b66a257867375b8f56d)
       '@alchemy.run/drizzle':
         specifier: 'catalog:'
-        version: 2.0.0-beta.84(e4cb2e0412ed70ab610880b59e7ca507)
+        version: 2.0.0-beta.84(3afdc7c5db73690c52be93586628205a)
       '@alchemy.run/planetscale':
         specifier: 'catalog:'
         version: 2.0.0-beta.84(1b64d144d22bc50b8239f5331dd49513)
@@ -1395,7 +1398,7 @@ importers:
         version: 2.0.0-beta.84(patch_hash=824006659fa28ca31e490ce1fc3611f77436005ce9fa0f638be46564133cf042)(@effect/platform-node@4.0.5(bufferutil@4.1.0)(effect@4.0.5)(redis@6.2.1)(utf-8-validate@6.0.6))(@effect/vitest@4.0.5(patch_hash=2731c9c3761c595f25ddc625a7d61ca376b389d5b3049ecb837c8940f21cfa02)(@astrojs/compiler-rs@0.5.1)(@tsc-rs/typescript@0.8.0)(@types/node@24.12.4)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(@tsc-rs/typescript@0.8.0))(bufferutil@4.1.0)(effect@4.0.5)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(playwright@1.60.0)(terser@5.48.0)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0))(@types/react@19.3.0)(@voidzero-dev/vite-plus-core@1.4.0(@tsc-rs/typescript@0.8.0)(@types/node@24.12.4)(@volar/typescript@2.4.28(@tsc-rs/typescript@0.8.0))(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(unrun@0.2.39)(yaml@2.9.0))(effect@4.0.5)(react-devtools-core@6.1.5(bufferutil@4.1.0)(utf-8-validate@6.0.6))(ws@8.22.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
       drizzle-orm:
         specifier: 1.0.0-rc.5-ab785fc
-        version: 1.0.0-rc.5-ab785fc(@cloudflare/workers-types@4.20260604.1)(@effect/sql-d1@4.1.0(effect@4.0.5))(@effect/sql-pg@4.0.5(effect@4.0.5))(@effect/sql-sqlite-bun@4.0.0-rc.112(effect@4.0.5))(@effect/sql-sqlite-do@4.0.5(effect@4.0.5))(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.3(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/sql.js@1.4.11)(bun-types@1.3.14)(effect@4.0.5)(expo-sqlite@58.0.13(expo@58.0.14)(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(react@19.3.0))(pg@8.23.0)(sql.js@1.15.0)(zod@4.4.3)
+        version: 1.0.0-rc.5-ab785fc(@cloudflare/workers-types@4.20260604.1)(@effect/sql-d1@4.1.0(effect@4.0.5))(@effect/sql-pg@4.0.5(effect@4.0.5))(@effect/sql-sqlite-bun@4.0.0-rc.112(effect@4.0.5))(@effect/sql-sqlite-do@4.0.5(effect@4.0.5))(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.3(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/sql.js@1.4.11)(bun-types@1.3.14)(effect@4.0.5)(expo-sqlite@58.0.13(expo@58.0.14)(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(react@19.3.0))(pg@8.23.0)(sql.js@1.15.0)(zod@4.6.5)
       effect:
         specifier: 4.0.5
         version: 4.0.5
@@ -1469,7 +1472,7 @@ importers:
     dependencies:
       '@oxlint/plugins':
         specifier: ^1.63.0
-        version: 1.68.0
+        version: 1.89.0
       effect:
         specifier: 4.0.5
         version: 4.0.5
@@ -3132,10 +3135,6 @@ packages:
     resolution: {integrity: sha512-EhlfNQtZ+NK22w5BM61ciuiq1m58ed33Wr1Xan//ZRTy6hgjnwyCffRYwzsGXdASJSUJ1guZILsErh1eQcl+zw==}
     engines: {node: '>=6.9.0'}
 
-  '@babel/types@7.29.7':
-    resolution: {integrity: sha512-4zBIxpPzowiZpusoFkyGVwakdRJUyuH5PxQ/PrqghfdFWWasvnCdPfQXHrenDai+gyLARulZjZowCOj6fjT4pA==}
-    engines: {node: '>=6.9.0'}
-
   '@babel/types@7.29.8':
     resolution: {integrity: sha512-Vj1jF3cPfxg7OAfoI7QnVKLoILlm2JF9pnVHrX8qx7AHMiYWT+NDAA7jChlNgRS4WTLc/fD1lXLmPixluj+3Gg==}
     engines: {node: '>=6.9.0'}
@@ -4441,14 +4440,8 @@ packages:
     cpu: [x64, arm64]
     os: [darwin, linux, win32, android]
 
-  '@floating-ui/core@1.7.5':
-    resolution: {integrity: sha512-1Ih4WTWyw0+lKyFMcBHGbb5U5FtuHJuujoyyr5zTaWS5EYMeT6Jb2AuDeftsCsEuchO+mM2ij5+q9crhydzLhQ==}
-
   '@floating-ui/core@1.8.0':
     resolution: {integrity: sha512-0CIZ5itps/8x7BG8dEIhs53BvCUH2PCoogtakwRTut+Arm58sJooJ0AuZhLw2HJYIR5cMLNPBSS728sPho2khQ==}
-
-  '@floating-ui/dom@1.7.6':
-    resolution: {integrity: sha512-9gZSAI5XM36880PPMm//9dfiEngYoC6Am2izES1FF406YFsjvyBMmeJ2g4SAju3xWwtuynNRFL2s9hgxpLI5SQ==}
 
   '@floating-ui/dom@1.8.0':
     resolution: {integrity: sha512-yXSrzeHZBTZadLOlfyhCkJHNeLJnHRnRInwdZ40L7ZiaAtrBwoYlsDrX3v5zB1Utk7CLfzcOVnVVWoXEky7Ceg==}
@@ -4458,9 +4451,6 @@ packages:
     peerDependencies:
       react: '>=16.8.0'
       react-dom: '>=16.8.0'
-
-  '@floating-ui/utils@0.2.11':
-    resolution: {integrity: sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg==}
 
   '@floating-ui/utils@0.2.12':
     resolution: {integrity: sha512-HpCo8tmWzLVad5s2d19EhAz5zqrrQ6s69qd6moPMQvkOuSwDT1YgRfWSVuc4ennqrgv3OHppiOGMQ7oC13yIww==}
@@ -5175,12 +5165,6 @@ packages:
   '@napi-rs/keyring@1.3.0':
     resolution: {integrity: sha512-WrOw/bcXm0f9qHkumlT1QlArXSTWqaY9sunsDpOk+yCCorCKMxvWT/a3xko4EYHVdeZoh00yI2TydXn6eyICDA==}
     engines: {node: '>= 10'}
-
-  '@napi-rs/wasm-runtime@1.1.6':
-    resolution: {integrity: sha512-ZLv/JdUfkvOy9eCnnBaGfiO+XimbjebAeO+MRQqD/B+FR1tnRN0tpKSJHRbE8sFfS6aqsXZ67TQjfwfsxULVbg==}
-    peerDependencies:
-      '@emnapi/core': ^1.7.1
-      '@emnapi/runtime': ^1.7.1
 
   '@napi-rs/wasm-runtime@1.2.4':
     resolution: {integrity: sha512-AJxoUD2/15ESHbvpcyjU274nsAPLuOtPHCk0vKJM5pj//Fg/B1FXNWjPnXTT9PymCYYiHo4zPj0ZomXBKhoy7g==}
@@ -6076,10 +6060,6 @@ packages:
     engines: {node: ^20.19.0 || >=22.12.0}
     cpu: [x64]
     os: [win32]
-
-  '@oxlint/plugins@1.68.0':
-    resolution: {integrity: sha512-titLmukUt/h8ho7Svlf0xSBjoy2ccZKrXjpXpZCj+v6V4CJccC2KyP45BLSCMx8YIpifMyiDyUptM4+5sruKbQ==}
-    engines: {node: ^12.22.0 || ^14.17.0 || >=16.0.0}
 
   '@oxlint/plugins@1.89.0':
     resolution: {integrity: sha512-TJBBNl4KIxbxrSk7gsqlz6iM1kxidfyTizEzfWqXvijF2Ou8/Da58GvjemBVmCmaUamwRij+JwsVc0kpBFuqfg==}
@@ -7139,9 +7119,6 @@ packages:
   '@tweenjs/tween.js@23.1.3':
     resolution: {integrity: sha512-vJmvvwFxYuGnF2axRtPYocag6Clbb5YS7kLL+SO/TeVFzHqDIWrNKYtcsPMibjDx9O+bu+psAy9NKfWklassUA==}
 
-  '@tybys/wasm-util@0.10.3':
-    resolution: {integrity: sha512-F3fo1MYrRJYL3zER0OUOmkutjr1Vp23m7OsSgp7nq4SP6OqX6C/56XFIPAl5bt3zaBRjmW7SGz3u/6LwFpYcOg==}
-
   '@tybys/wasm-util@0.10.4':
     resolution: {integrity: sha512-W3c4gRigFS0T/Ma4qIYF3GDAc5AQdHb1yL5znJT1Zv1YaD9Kitx656wBjvr19qbiosmZT8lWDM5BEMynUqX65A==}
 
@@ -7286,9 +7263,6 @@ packages:
   '@types/geojson@7946.0.16':
     resolution: {integrity: sha512-6C8nqWur3j98U6+lXDfTUWIfgvZU+EumvpHKcYjujKH7woYyLj2sUmff0tRhrqM7BohUw7Pz3ZB1jj2gW9Fvmg==}
 
-  '@types/hast@3.0.4':
-    resolution: {integrity: sha512-WPs+bbQw5aCj+x6laNGWLH3wviHtoCv/P3+otBhbOhJgG8qtpdAMlTCxLtsTWA7LH1Oh/bFCHsBn0TPS5m30EQ==}
-
   '@types/hast@3.0.5':
     resolution: {integrity: sha512-rp/ezSWaD1m44dPKICGhiskI13nVr7qTloFwDa/IYkhhf5nzwP+zIQcIJh3WIFSBOy/H1PzB40jPjMDksN4F+g==}
 
@@ -7347,9 +7321,6 @@ packages:
     resolution: {integrity: sha512-ZI7bU42mZXXKHn/qNLEw2IrbiINU7X5+vfgdixBHkCNpYWXjKgfQ/P+uyGb5CjOLB9UcnTeg3rylQtV2hym44Q==}
     peerDependencies:
       '@types/react': ^19.3.0
-
-  '@types/react-test-renderer@19.1.0':
-    resolution: {integrity: sha512-XD0WZrHqjNrxA/MaR9O22w/RNidWR9YZmBdRGI7wcnWGrv/3dA8wKCJ8m63Sn+tLJhcjmuhOi629N66W6kgWzQ==}
 
   '@types/react-test-renderer@19.3.0':
     resolution: {integrity: sha512-TX4p2D4Z2oigM3SXU7+QyLSUnSR0vR1S1Pfxm/qFL9nHQ3jclgi6ioGoWQmlIr1DeKRVmPJrmNlhgM0JlWlLUg==}
@@ -10429,9 +10400,6 @@ packages:
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
 
-  magic-string@1.4.1:
-    resolution: {integrity: sha512-8lyCu36ErXR0J9uaGKlKQoiLZKmtI63YGLE8G2o9jyRPdr4X47LusSOwgOJOzcVtp81fTAAjxR7BwKz682Jhow==}
-
   magic-string@1.4.3:
     resolution: {integrity: sha512-z12OxmaPGE0F4xlpGdjuAUckipLpQlTAuAmyGhNoD7ODpYUzvDfvtxUbjM/jwznyP178oju/KDdyi220wNJ0RQ==}
 
@@ -10821,11 +10789,6 @@ packages:
   multitars@1.0.2:
     resolution: {integrity: sha512-6GwVw5eLi9sThdtlS4PKwC7yRLaf45pYhIEzKBHdKxi+YOXGKFX8acIniH+Uh/+k9mS2lQOupTccjoe5r0/1IQ==}
 
-  nanoid@3.3.19:
-    resolution: {integrity: sha512-Y2tUNy4ouw6tq5oDSKeQYGOyhkUBhNOcGV/02KC+6kd9eDGqdZd++mjMiIDilrBYvjEnCYvVtsuHCuP+okSfug==}
-    engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
-    hasBin: true
-
   nanoid@3.3.20:
     resolution: {integrity: sha512-uKdg2G3GNCKQn9byYOpxbGqrT2fGO5KRt5J/8b3pok8rT6qxGWF6hxMyJiEYtAf+FVyYuD9hRaDqX5uPFYJ4ZQ==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
@@ -11109,9 +11072,6 @@ packages:
   p-try@2.2.0:
     resolution: {integrity: sha512-R4nPAVTAU0B9D35/Gk3uJf/7XYbQcyohSKdvAxIRSNghFl4e71hVoGnBNQz9cWaXxO2I10KTC+3jMdvvoKw6dQ==}
     engines: {node: '>=6'}
-
-  package-manager-detector@1.6.0:
-    resolution: {integrity: sha512-61A5ThoTiDG/C8s8UMZwSorAGwMJ0ERVGj2OjoW5pAalsNOg15+iQiPzrLJ4jhZ1HJzmC2PIHT2oEiH3R5fzNA==}
 
   package-manager-detector@1.8.0:
     resolution: {integrity: sha512-yQA4H19AmPEoMUeavPMDIe1higySl/gH/yaQrkT/s07Qp+7pp2hYz30N3z2l5BkjVkF9Ow6o0wjJamm2y7Sn0A==}
@@ -11500,9 +11460,6 @@ packages:
 
   react-is@18.3.1:
     resolution: {integrity: sha512-/LLMVyas0ljjAtoYiPqYiL8VWXzUUdThrmU5+n20DZv+a+ClRoevUzw5JxU+Ieh5/c87ytoTBV9G1FiKfNJdmg==}
-
-  react-is@19.2.7:
-    resolution: {integrity: sha512-kZFnouyVv7eP/Phmrlo9FK+zcAdriZJvzxXHF1Sl1P377WSGe2G/JxVolhTrB/jeV47lKImhNUsijjHAAbcl/A==}
 
   react-is@19.3.1:
     resolution: {integrity: sha512-RRieF6IyxQBkcK6pP8xOHprLTPW6QjRkbGdImtqNme+/hYVwCZkLQLdlZGOhUqXwkS9IEynaGvPJtv6XB/cz0Q==}
@@ -12020,10 +11977,6 @@ packages:
     resolution: {integrity: sha512-kCZr2V3ch9i00x8zXRhjUNVcjG9ijES5dDudkXvUVCT5QlJNQWElSJdZqyPemffHoLNUYwOcou0Fy+ojN0uHSQ==}
     engines: {node: '>= 18'}
 
-  source-map-js@1.2.1:
-    resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
-    engines: {node: '>=0.10.0'}
-
   source-map-js@1.2.2:
     resolution: {integrity: sha512-KGj/8Y43x35aZVDtt+J4mK1hoLGHULMYfSkODJNQjNDC3oW1PqPoxMwo0pLUsWM/UEGzON/NxeHywEfNXNP3Vw==}
     engines: {node: '>=0.10.0'}
@@ -12254,10 +12207,6 @@ packages:
   tinyclip@1.0.3:
     resolution: {integrity: sha512-nTv2raKFMzGG6JJp0lpNDsRPdfFE6UHlu2rVEjXo8vkx1ZS3LW2CVXqIaLu8xZlu+6tbFs9V58Qc/Jmk/Ii7wA==}
     engines: {node: ^16.14.0 || >= 17.3.0}
-
-  tinyexec@1.2.4:
-    resolution: {integrity: sha512-SHf/r48b7vOrjve9PxJo3MN5v5yuyjHvdUcrQffT3WXMUfnGmHDVbC4k3sHJaJTgZCwpUplIaAo5ANtMyp3YHg==}
-    engines: {node: '>=18'}
 
   tinyexec@1.3.1:
     resolution: {integrity: sha512-GCvB3aoys96IuDFBMcTB46JOR6mdMtAToqwiW8JlWhsoh1mhHi/xn9ss/Dg7N555GiJyEt2qzoG/NHCwM6h1EA==}
@@ -12572,11 +12521,6 @@ packages:
     resolution: {integrity: sha512-FvRG9i1HSo0wagmX63Vrm8SnlUU3LMM3WyZkQ76RnslpBrX694AdG4A0zQBx2B3ZifFA0yv/BaEHGBnEax5rZg==}
     peerDependencies:
       react: '>=16.8'
-
-  use-sync-external-store@1.6.0:
-    resolution: {integrity: sha512-Pp6GSwGP/NrPIrxVFAIkOQeyw8lFenOHijQWkUTrDvrF4ALqylP2C/KCkeS9dpUM3KvYRQhna5vt7IL95+ZQ9w==}
-    peerDependencies:
-      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
 
   use-sync-external-store@1.7.0:
     resolution: {integrity: sha512-6L+EeigHMQhdaIPNIFUKwfWJSwWFQ8gJbJ2DLOs5sDIegTwR9fRxvnM3uciHKjIZhFz+KAv2emhWMRvDmMcY8A==}
@@ -13057,9 +13001,6 @@ packages:
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
 
-  zod@4.4.3:
-    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
-
   zod@4.5.4:
     resolution: {integrity: sha512-sC95tT5iHHH9gtpj6A81kh+NEaRAUFN+qlUPDUbRfOMvNf5QCBqsb3WgvnpVtK5Y+4UfA6KqufotuTvMGiTlsA==}
 
@@ -13098,13 +13039,13 @@ snapshots:
     optionalDependencies:
       typescript: '@tsc-rs/typescript@0.8.0'
 
-  '@ai-sdk/provider-utils@4.0.49(zod@4.4.3)':
+  '@ai-sdk/provider-utils@4.0.49(zod@4.6.5)':
     dependencies:
       '@ai-sdk/provider': 3.0.15
       '@standard-schema/spec': 1.1.0
       eventsource-parser: 3.1.0
       undici: 6.28.1
-      zod: 4.4.3
+      zod: 4.6.5
 
   '@ai-sdk/provider@3.0.15':
     dependencies:
@@ -13252,13 +13193,13 @@ snapshots:
       effect: 4.0.5
       rolldown: 1.2.13
 
-  '@alchemy.run/drizzle@2.0.0-beta.84(e4cb2e0412ed70ab610880b59e7ca507)':
+  '@alchemy.run/drizzle@2.0.0-beta.84(3afdc7c5db73690c52be93586628205a)':
     dependencies:
       '@alchemy.run/sql': 2.0.0-beta.84(1b64d144d22bc50b8239f5331dd49513)
       '@effect/sql-d1': 4.1.0(effect@4.0.5)
       '@effect/sql-sqlite-do': 4.0.5(effect@4.0.5)
       alchemy: 2.0.0-beta.84(patch_hash=824006659fa28ca31e490ce1fc3611f77436005ce9fa0f638be46564133cf042)(@effect/platform-node@4.0.5(bufferutil@4.1.0)(effect@4.0.5)(redis@6.2.1)(utf-8-validate@6.0.6))(@effect/vitest@4.0.5(patch_hash=2731c9c3761c595f25ddc625a7d61ca376b389d5b3049ecb837c8940f21cfa02)(@astrojs/compiler-rs@0.5.1)(@tsc-rs/typescript@0.8.0)(@types/node@24.12.4)(@vitest/browser-playwright@5.0.5)(@vitest/ui@5.0.5)(@volar/typescript@2.4.28(@tsc-rs/typescript@0.8.0))(bufferutil@4.1.0)(effect@4.0.5)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.1.0(@noble/hashes@1.8.0))(playwright@1.60.0)(terser@5.48.0)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0))(@types/react@19.3.0)(@voidzero-dev/vite-plus-core@1.4.0(@tsc-rs/typescript@0.8.0)(@types/node@24.12.4)(@volar/typescript@2.4.28(@tsc-rs/typescript@0.8.0))(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(unrun@0.2.39)(yaml@2.9.0))(effect@4.0.5)(react-devtools-core@6.1.5(bufferutil@4.1.0)(utf-8-validate@6.0.6))(ws@8.22.0(bufferutil@4.1.0)(utf-8-validate@6.0.6))
-      drizzle-orm: 1.0.0-rc.5-ab785fc(@cloudflare/workers-types@4.20260604.1)(@effect/sql-d1@4.1.0(effect@4.0.5))(@effect/sql-pg@4.0.5(effect@4.0.5))(@effect/sql-sqlite-bun@4.0.0-rc.112(effect@4.0.5))(@effect/sql-sqlite-do@4.0.5(effect@4.0.5))(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.3(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/sql.js@1.4.11)(bun-types@1.3.14)(effect@4.0.5)(expo-sqlite@58.0.13(expo@58.0.14)(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(react@19.3.0))(pg@8.23.0)(sql.js@1.15.0)(zod@4.4.3)
+      drizzle-orm: 1.0.0-rc.5-ab785fc(@cloudflare/workers-types@4.20260604.1)(@effect/sql-d1@4.1.0(effect@4.0.5))(@effect/sql-pg@4.0.5(effect@4.0.5))(@effect/sql-sqlite-bun@4.0.0-rc.112(effect@4.0.5))(@effect/sql-sqlite-do@4.0.5(effect@4.0.5))(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.3(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/sql.js@1.4.11)(bun-types@1.3.14)(effect@4.0.5)(expo-sqlite@58.0.13(expo@58.0.14)(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(react@19.3.0))(pg@8.23.0)(sql.js@1.15.0)(zod@4.6.5)
       effect: 4.0.5
     optionalDependencies:
       '@alchemy.run/cloudflare': 2.0.0-beta.84(24ce6902b7189b66a257867375b8f56d)
@@ -13940,11 +13881,6 @@ snapshots:
       debug: 4.4.3(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
-
-  '@babel/types@7.29.7':
-    dependencies:
-      '@babel/helper-string-parser': 7.29.7
-      '@babel/helper-validator-identifier': 7.29.7
 
   '@babel/types@7.29.8':
     dependencies:
@@ -15299,20 +15235,9 @@ snapshots:
       '@ff-labs/fff-bin-win32-arm64': 0.11.0
       '@ff-labs/fff-bin-win32-x64': 0.11.0
 
-  '@floating-ui/core@1.7.5':
-    dependencies:
-      '@floating-ui/utils': 0.2.11
-    optional: true
-
   '@floating-ui/core@1.8.0':
     dependencies:
       '@floating-ui/utils': 0.2.12
-
-  '@floating-ui/dom@1.7.6':
-    dependencies:
-      '@floating-ui/core': 1.7.5
-      '@floating-ui/utils': 0.2.11
-    optional: true
 
   '@floating-ui/dom@1.8.0':
     dependencies:
@@ -15324,9 +15249,6 @@ snapshots:
       '@floating-ui/dom': 1.8.0
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
-
-  '@floating-ui/utils@0.2.11':
-    optional: true
 
   '@floating-ui/utils@0.2.12': {}
 
@@ -15668,7 +15590,7 @@ snapshots:
   '@legendapp/list@3.3.5(patch_hash=6cbdacd8c380d9a5afb9f73d4198dc2cc44be6ef28a955b1183c781469307896)(react-dom@19.3.0(react@19.3.0))(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(react@19.3.0)':
     dependencies:
       react: 19.3.0
-      use-sync-external-store: 1.6.0(react@19.3.0)
+      use-sync-external-store: 1.7.0(react@19.3.0)
     optionalDependencies:
       react-dom: 19.3.0(react@19.3.0)
       react-native: 0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6)
@@ -15879,13 +15801,6 @@ snapshots:
       '@napi-rs/keyring-win32-ia32-msvc': 1.3.0
       '@napi-rs/keyring-win32-x64-msvc': 1.3.0
 
-  '@napi-rs/wasm-runtime@1.1.6(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)':
-    dependencies:
-      '@emnapi/core': 1.11.2
-      '@emnapi/runtime': 1.11.2
-      '@tybys/wasm-util': 0.10.3
-    optional: true
-
   '@napi-rs/wasm-runtime@1.2.4(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
     dependencies:
       '@emnapi/core': 1.10.0
@@ -15897,6 +15812,13 @@ snapshots:
     dependencies:
       '@emnapi/core': 1.11.1
       '@emnapi/runtime': 1.11.1
+      '@tybys/wasm-util': 0.10.4
+    optional: true
+
+  '@napi-rs/wasm-runtime@1.2.4(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)':
+    dependencies:
+      '@emnapi/core': 1.11.2
+      '@emnapi/runtime': 1.11.2
       '@tybys/wasm-util': 0.10.4
     optional: true
 
@@ -16185,7 +16107,7 @@ snapshots:
     dependencies:
       '@emnapi/core': 1.11.2
       '@emnapi/runtime': 1.11.2
-      '@napi-rs/wasm-runtime': 1.1.6(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)
+      '@napi-rs/wasm-runtime': 1.2.4(@emnapi/core@1.11.2)(@emnapi/runtime@1.11.2)
     optional: true
 
   '@oxc-resolver/binding-win32-arm64-msvc@11.24.2':
@@ -16383,8 +16305,6 @@ snapshots:
   '@oxlint/binding-win32-x64-msvc@1.89.0':
     optional: true
 
-  '@oxlint/plugins@1.68.0': {}
-
   '@oxlint/plugins@1.89.0': {}
 
   '@peculiar/asn1-schema@2.8.0':
@@ -16471,17 +16391,17 @@ snapshots:
       commander: 14.0.3
       ignore: 7.0.5
       ora: 9.4.0
-      package-manager-detector: 1.6.0
+      package-manager-detector: 1.8.0
       picocolors: 1.1.1
       prompts: 2.4.2
-      tinyexec: 1.2.4
+      tinyexec: 1.3.1
 
   '@react-native-ai/apple@0.12.0(patch_hash=2d09870c2848d185cb05b53ed823a46e12dba519324d8dd8e584e28731990f9d)(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))':
     dependencies:
       '@ai-sdk/provider': 3.0.15
-      '@ai-sdk/provider-utils': 4.0.49(zod@4.4.3)
+      '@ai-sdk/provider-utils': 4.0.49(zod@4.6.5)
       react-native: 0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6)
-      zod: 4.4.3
+      zod: 4.6.5
 
   '@react-native-async-storage/async-storage@3.1.1(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(react@19.3.0)':
     dependencies:
@@ -16645,9 +16565,9 @@ snapshots:
       escape-string-regexp: 4.0.0
       fast-deep-equal: 3.1.3
       react: 19.3.0
-      react-is: 19.2.7
+      react-is: 19.3.1
       use-latest-callback: 0.2.6(react@19.3.0)
-      use-sync-external-store: 1.6.0(react@19.3.0)
+      use-sync-external-store: 1.7.0(react@19.3.0)
 
   '@react-navigation/elements@2.9.45(d8845bac868f4d8a58c8a8f12ad0d4a5)':
     dependencies:
@@ -16657,7 +16577,7 @@ snapshots:
       react-native: 0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6)
       react-native-safe-area-context: 5.10.1(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(react@19.3.0)
       use-latest-callback: 0.2.6(react@19.3.0)
-      use-sync-external-store: 1.6.0(react@19.3.0)
+      use-sync-external-store: 1.7.0(react@19.3.0)
     optionalDependencies:
       '@react-native-masked-view/masked-view': 0.3.2(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(react@19.3.0)
 
@@ -16680,7 +16600,7 @@ snapshots:
       '@react-navigation/core': 7.24.0(react@19.3.0)
       escape-string-regexp: 4.0.0
       fast-deep-equal: 3.1.3
-      nanoid: 3.3.19
+      nanoid: 3.3.20
       react: 19.3.0
       react-native: 0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6)
       standard-navigation: 0.0.8(react@19.3.0)
@@ -16688,7 +16608,7 @@ snapshots:
 
   '@react-navigation/routers@7.6.5':
     dependencies:
-      nanoid: 3.3.19
+      nanoid: 3.3.20
 
   '@redis/bloom@6.2.1(@redis/client@6.2.1)':
     dependencies:
@@ -16866,7 +16786,7 @@ snapshots:
       '@shikijs/primitive': 4.2.0
       '@shikijs/types': 4.2.0
       '@shikijs/vscode-textmate': 10.0.2
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       hast-util-to-html: 9.0.5
 
   '@shikijs/engine-javascript@4.2.0':
@@ -16888,7 +16808,7 @@ snapshots:
     dependencies:
       '@shikijs/types': 4.2.0
       '@shikijs/vscode-textmate': 10.0.2
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
 
   '@shikijs/themes@4.2.0':
     dependencies:
@@ -17044,14 +16964,14 @@ snapshots:
       '@tanstack/store': 0.8.1
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
-      use-sync-external-store: 1.6.0(react@19.3.0)
+      use-sync-external-store: 1.7.0(react@19.3.0)
 
   '@tanstack/react-store@0.9.3(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
     dependencies:
       '@tanstack/store': 0.9.3
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
-      use-sync-external-store: 1.6.0(react@19.3.0)
+      use-sync-external-store: 1.7.0(react@19.3.0)
 
   '@tanstack/router-core@1.171.8':
     dependencies:
@@ -17080,14 +17000,14 @@ snapshots:
       '@babel/plugin-syntax-typescript': 7.29.7(@babel/core@7.29.7(supports-color@8.1.1))
       '@babel/template': 7.29.7
       '@babel/traverse': 7.29.7(supports-color@8.1.1)
-      '@babel/types': 7.29.7
+      '@babel/types': 7.29.8
       '@tanstack/router-core': 1.171.8
       '@tanstack/router-generator': 1.167.12(supports-color@8.1.1)
       '@tanstack/router-utils': 1.162.1(supports-color@8.1.1)
       '@tanstack/virtual-file-routes': 1.162.0
       chokidar: 5.0.0
       unplugin: 3.0.0
-      zod: 4.4.3
+      zod: 4.6.5
     optionalDependencies:
       '@tanstack/react-router': 1.170.10(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       vite: '@voidzero-dev/vite-plus-core@1.4.0(@tsc-rs/typescript@0.8.0)(@types/node@24.12.4)(@volar/typescript@2.4.28(@tsc-rs/typescript@0.8.0))(esbuild@0.28.2)(jiti@2.7.0)(terser@5.48.0)(unrun@0.2.39)(yaml@2.9.0)'
@@ -17144,7 +17064,7 @@ snapshots:
 
   '@tiptap/extension-bubble-menu@3.31.3(@tiptap/core@3.31.3(@tiptap/pm@3.31.3))(@tiptap/pm@3.31.3)':
     dependencies:
-      '@floating-ui/dom': 1.7.6
+      '@floating-ui/dom': 1.8.0
       '@tiptap/core': 3.31.3(@tiptap/pm@3.31.3)
       '@tiptap/pm': 3.31.3
     optional: true
@@ -17276,7 +17196,7 @@ snapshots:
       fast-equals: 5.4.2
       react: 19.3.0
       react-dom: 19.3.0(react@19.3.0)
-      use-sync-external-store: 1.6.0(react@19.3.0)
+      use-sync-external-store: 1.7.0(react@19.3.0)
     optionalDependencies:
       '@tiptap/extension-bubble-menu': 3.31.3(@tiptap/core@3.31.3(@tiptap/pm@3.31.3))(@tiptap/pm@3.31.3)
       '@tiptap/extension-floating-menu': 3.31.3(@floating-ui/dom@1.8.0)(@tiptap/core@3.31.3(@tiptap/pm@3.31.3))(@tiptap/pm@3.31.3)
@@ -17338,11 +17258,6 @@ snapshots:
     optional: true
 
   '@tweenjs/tween.js@23.1.3': {}
-
-  '@tybys/wasm-util@0.10.3':
-    dependencies:
-      tslib: 2.8.1
-    optional: true
 
   '@tybys/wasm-util@0.10.4':
     dependencies:
@@ -17529,10 +17444,6 @@ snapshots:
 
   '@types/geojson@7946.0.16': {}
 
-  '@types/hast@3.0.4':
-    dependencies:
-      '@types/unist': 3.0.3
-
   '@types/hast@3.0.5':
     dependencies:
       '@types/unist': 3.0.3
@@ -17591,10 +17502,6 @@ snapshots:
   '@types/range-parser@1.2.7': {}
 
   '@types/react-dom@19.3.0(@types/react@19.3.0)':
-    dependencies:
-      '@types/react': 19.3.0
-
-  '@types/react-test-renderer@19.1.0':
     dependencies:
       '@types/react': 19.3.0
 
@@ -18323,7 +18230,7 @@ snapshots:
       http-cache-semantics: 4.2.0
       js-yaml: 4.3.2
       jsonc-parser: 3.3.1
-      magic-string: 1.4.1
+      magic-string: 1.4.3
       magicast: 0.5.5
       mrmime: 2.0.1
       neotraverse: 1.0.1
@@ -18952,7 +18859,7 @@ snapshots:
   css-tree@2.2.1:
     dependencies:
       mdn-data: 2.0.28
-      source-map-js: 1.2.1
+      source-map-js: 1.2.2
 
   css-tree@3.2.1:
     dependencies:
@@ -19334,7 +19241,7 @@ snapshots:
       get-tsconfig: 4.14.3
       jiti: 2.7.0
 
-  drizzle-orm@1.0.0-rc.5-ab785fc(@cloudflare/workers-types@4.20260604.1)(@effect/sql-d1@4.1.0(effect@4.0.5))(@effect/sql-pg@4.0.5(effect@4.0.5))(@effect/sql-sqlite-bun@4.0.0-rc.112(effect@4.0.5))(@effect/sql-sqlite-do@4.0.5(effect@4.0.5))(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.3(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/sql.js@1.4.11)(bun-types@1.3.14)(effect@4.0.5)(expo-sqlite@58.0.13(expo@58.0.14)(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(react@19.3.0))(pg@8.23.0)(sql.js@1.15.0)(zod@4.4.3):
+  drizzle-orm@1.0.0-rc.5-ab785fc(@cloudflare/workers-types@4.20260604.1)(@effect/sql-d1@4.1.0(effect@4.0.5))(@effect/sql-pg@4.0.5(effect@4.0.5))(@effect/sql-sqlite-bun@4.0.0-rc.112(effect@4.0.5))(@effect/sql-sqlite-do@4.0.5(effect@4.0.5))(@electric-sql/pglite@0.3.15)(@libsql/client@0.17.3(bufferutil@4.1.0)(utf-8-validate@6.0.6))(@types/sql.js@1.4.11)(bun-types@1.3.14)(effect@4.0.5)(expo-sqlite@58.0.13(expo@58.0.14)(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(react@19.3.0))(pg@8.23.0)(sql.js@1.15.0)(zod@4.6.5):
     optionalDependencies:
       '@cloudflare/workers-types': 4.20260604.1
       '@effect/sql-d1': 4.1.0(effect@4.0.5)
@@ -19349,7 +19256,7 @@ snapshots:
       expo-sqlite: 58.0.13(expo@58.0.14)(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(react@19.3.0)
       pg: 8.23.0
       sql.js: 1.15.0
-      zod: 4.4.3
+      zod: 4.6.5
 
   dset@3.1.4: {}
 
@@ -20843,7 +20750,7 @@ snapshots:
       tinyglobby: 0.2.17
       unbash: 4.0.11
       yaml: 2.9.0
-      zod: 4.4.3
+      zod: 4.6.5
 
   lan-network@0.2.1: {}
 
@@ -20990,10 +20897,6 @@ snapshots:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
 
-  magic-string@1.4.1:
-    dependencies:
-      '@jridgewell/sourcemap-codec': 1.6.0
-
   magic-string@1.4.3:
     dependencies:
       '@jridgewell/sourcemap-codec': 1.6.0
@@ -21002,7 +20905,7 @@ snapshots:
     dependencies:
       '@babel/parser': 7.29.8
       '@babel/types': 7.29.8
-      source-map-js: 1.2.1
+      source-map-js: 1.2.2
 
   makeerror@1.0.12:
     dependencies:
@@ -21179,7 +21082,7 @@ snapshots:
 
   mdast-util-to-hast@13.2.1(patch_hash=57ea46c73aea3c876ab8d351fe0482ddd081dcb4a0610576e399dbe5eb59d2b1):
     dependencies:
-      '@types/hast': 3.0.4
+      '@types/hast': 3.0.5
       '@types/mdast': 4.0.4
       '@ungap/structured-clone': 1.3.1
       devlop: 1.1.0
@@ -21707,8 +21610,6 @@ snapshots:
 
   multitars@1.0.2: {}
 
-  nanoid@3.3.19: {}
-
   nanoid@3.3.20: {}
 
   negotiator@0.6.3: {}
@@ -22114,8 +22015,6 @@ snapshots:
 
   p-try@2.2.0: {}
 
-  package-manager-detector@1.6.0: {}
-
   package-manager-detector@1.8.0: {}
 
   pako@1.0.11: {}
@@ -22520,8 +22419,6 @@ snapshots:
 
   react-is@18.3.1: {}
 
-  react-is@19.2.7: {}
-
   react-is@19.3.1: {}
 
   react-markdown@10.1.0(@types/react@19.3.0)(react@19.3.0)(supports-color@8.1.1):
@@ -22557,7 +22454,7 @@ snapshots:
 
   react-native-gesture-handler@3.3.0(patch_hash=abe20e1d1c23549297cbbc818e14fe479b41455930d9663135d6b40fe359b626)(react-native@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(react@19.3.0):
     dependencies:
-      '@types/react-test-renderer': 19.1.0
+      '@types/react-test-renderer': 19.3.0
       invariant: 2.2.4
       react: 19.3.0
       react-native: 0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(@react-native/metro-config@0.88.0(@babel/core@7.29.7(supports-color@8.1.1))(bufferutil@4.1.0)(supports-color@8.1.1)(utf-8-validate@6.0.6))(@types/react@19.3.0)(bufferutil@4.1.0)(react@19.3.0)(supports-color@8.1.1)(utf-8-validate@6.0.6)
@@ -23291,8 +23188,6 @@ snapshots:
 
   smol-toml@1.8.0: {}
 
-  source-map-js@1.2.1: {}
-
   source-map-js@1.2.2: {}
 
   source-map-support@0.5.21:
@@ -23528,8 +23423,6 @@ snapshots:
 
   tinyclip@1.0.3: {}
 
-  tinyexec@1.2.4: {}
-
   tinyexec@1.3.1: {}
 
   tinyglobby@0.2.17:
@@ -23763,10 +23656,6 @@ snapshots:
     optional: true
 
   use-latest-callback@0.2.6(react@19.3.0):
-    dependencies:
-      react: 19.3.0
-
-  use-sync-external-store@1.6.0(react@19.3.0):
     dependencies:
       react: 19.3.0
 
@@ -24328,17 +24217,15 @@ snapshots:
 
   zod@3.25.76: {}
 
-  zod@4.4.3: {}
-
   zod@4.5.4: {}
 
   zod@4.6.5: {}
 
-  zustand@5.0.14(@types/react@19.3.0)(react@19.3.0)(use-sync-external-store@1.6.0(react@19.3.0)):
+  zustand@5.0.14(@types/react@19.3.0)(react@19.3.0)(use-sync-external-store@1.7.0(react@19.3.0)):
     optionalDependencies:
       '@types/react': 19.3.0
       react: 19.3.0
-      use-sync-external-store: 1.6.0(react@19.3.0)
+      use-sync-external-store: 1.7.0(react@19.3.0)
 
   zwitch@2.0.4: {}
 

@@ -156,18 +156,15 @@ export function ComposerControlsBar(props: {
     onCompact,
   } = props;
   const accessMatchesDefault = compatibleRuntimeMode === defaultRuntimeMode;
-  const extraRestingBlockCount = Number(contextWindowControl !== null) + Number(promptCache !== null);
-  const {
-    accessDisplay,
-    showModeBlock,
-    overflowShowsPermissions,
-    pickerOwnsModeShortcut,
-  } = resolveComposerControlsOwnership({
-    matchesDefault: accessMatchesDefault || props.permissionsShownInStrip,
-    planModeUiEnabled,
-    collapsed: composerControlsCollapsed,
-    measuredHiddenBlockCount: Math.max(0, measuredHiddenBlockCount - extraRestingBlockCount),
-  });
+  const extraRestingBlockCount =
+    Number(contextWindowControl !== null) + Number(promptCache !== null);
+  const { accessDisplay, showModeBlock, overflowShowsPermissions, pickerOwnsModeShortcut } =
+    resolveComposerControlsOwnership({
+      matchesDefault: accessMatchesDefault || props.permissionsShownInStrip,
+      planModeUiEnabled,
+      collapsed: composerControlsCollapsed,
+      measuredHiddenBlockCount: Math.max(0, measuredHiddenBlockCount - extraRestingBlockCount),
+    });
   const controlSize = composerControlsCollapsed ? "xs" : "sm";
   const traitsInput = resolveComposerTraitsInput({
     provider: selectedProvider,
@@ -183,27 +180,30 @@ export function ComposerControlsBar(props: {
     planModeEnabled,
   });
   const effort = describeComposerEffort(traitsInput, props.effortDisplay, controlSize);
+  // The mode block comes first, so it hides last.
+  const modeBlockHidden =
+    measuredHiddenBlockCount >= Number(showModeBlock) + extraRestingBlockCount;
   const restingBlockDefs = [
     ...(showModeBlock
       ? [
-        {
-          id: "mode",
-          content: (
-            <ComposerFooterModeControls
-              showInteractionModeToggle={planModeUiEnabled}
-              interactionMode={interactionMode}
-              runtimeMode={compatibleRuntimeMode}
-              runtimeModeOptions={compatibleRuntimeModeOptions}
-              size={controlSize}
-              hidden={composerControlsHidden || restingHiddenBlockCount > 0}
-              accessDisplay={accessDisplay}
-              emphasized={!accessMatchesDefault}
-              onToggleInteractionMode={toggleInteractionMode}
-              onRuntimeModeChange={handleRuntimeModeChange}
-            />
-          ),
-        },
-      ]
+          {
+            id: "mode",
+            content: (
+              <ComposerFooterModeControls
+                showInteractionModeToggle={planModeUiEnabled}
+                interactionMode={interactionMode}
+                runtimeMode={compatibleRuntimeMode}
+                runtimeModeOptions={compatibleRuntimeModeOptions}
+                size={controlSize}
+                hidden={composerControlsHidden || modeBlockHidden}
+                accessDisplay={accessDisplay}
+                emphasized={!accessMatchesDefault}
+                onToggleInteractionMode={toggleInteractionMode}
+                onRuntimeModeChange={handleRuntimeModeChange}
+              />
+            ),
+          },
+        ]
       : []),
     ...(contextWindowControl
       ? [

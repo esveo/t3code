@@ -129,9 +129,11 @@ const codexAuthPath = Effect.fn("VoiceCallAuth.codexAuthPath")(function* (
     decodeCodexSettings(instance?.config ?? {}),
     defaultCodexSettings,
   );
+  const configuredHome = instance?.environment?.findLast(
+    (variable) => variable.name === "CODEX_HOME",
+  )?.value;
   const environmentHome = (
-    instance?.environment?.findLast((variable) => variable.name === "CODEX_HOME")?.value ??
-    process.env.CODEX_HOME
+    typeof configuredHome === "string" ? configuredHome : process.env.CODEX_HOME
   )?.trim();
   const layout = yield* resolveCodexHomeLayout(
     !config.homePath.trim() && !config.shadowHomePath.trim() && environmentHome

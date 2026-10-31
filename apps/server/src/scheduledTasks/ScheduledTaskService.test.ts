@@ -415,7 +415,7 @@ it.effect("a bound run follows its thread when promotion moves it mid-send", () 
     const promoted = ProjectId.make("project:promoted");
     const sends = yield* Ref.make<Array<{ projectId: ProjectId; commandId: string }>>([]);
     // Rebind lands first, then the promotion commits between the shell read and the retry.
-    const shellProjects = yield* Ref.make([scratch, promoted]);
+    const shellProjects = yield* Ref.make([promoted, scratch, promoted]);
     const layer = ScheduledTaskService.layer.pipe(
       Layer.provide(
         Layer.mergeAll(

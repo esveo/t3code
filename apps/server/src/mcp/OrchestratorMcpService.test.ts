@@ -2757,6 +2757,7 @@ describe("fork: OrchestratorMcpService across projects", () => {
       Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
       Layer.mock(ProjectService.ProjectService)({}),
       Layer.mock(SecretRequests.SecretRequests)({}),
+      Layer.mock(RemoteDelegation.RemoteDelegation)({}),
     );
     return Effect.gen(function* () {
       return yield* body(yield* OrchestratorMcpService.OrchestratorMcpService, sent);

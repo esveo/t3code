@@ -219,7 +219,6 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.subscribeServerConfig]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeServerLifecycle]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeAuthAccess]: AuthAccessReadScope,
-  [WS_METHODS.subscribeBackgroundPolicy]: AuthOrchestrationReadScope,
   // Fork: coordinator decisions.
   [THREAD_DECISIONS_WS_METHODS.subscribe]: AuthOrchestrationReadScope,
   [THREAD_DECISIONS_WS_METHODS.act]: AuthOrchestrationOperateScope,

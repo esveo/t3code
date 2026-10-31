@@ -123,6 +123,7 @@ const TestLayer = Layer.mergeAll(OrchestrationV2LayerLive, OrchestrationV2EventS
           faviconPath: null,
           repositoryIdentityResolved: false,
         }),
+      readRepositoryIdentity: () => Effect.die("unused in this test"),
       invalidate: () => Effect.void,
       subscribeChanges: Effect.never,
     }),

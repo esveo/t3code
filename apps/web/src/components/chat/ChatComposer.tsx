@@ -2353,7 +2353,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       }
       activeThreadId={activeThreadId}
       activeThreadModelDisplayName={activeThreadModelDisplayName}
-      compactDisabled={compactDisabled || noProviderAvailable || isSendBusy || isConnecting}
+      compactDisabled={compactDisabled || noProviderAvailable || isSendBusy}
       compactDisabledReason={resolvedCompactDisabledReason}
       onCompact={compactCommandAvailable ? compactThreadContextStable : undefined}
     />
@@ -3100,7 +3100,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     ? (primary: React.ReactNode, keepPrimary: boolean) => (
         <VoiceCallButton
           environmentId={environmentId}
-          threadId={props.isServerThread ? activeThreadId : null}
+          threadId={routeKind === "server" ? activeThreadId : null}
           primary={primary}
           keepPrimary={keepPrimary}
         />

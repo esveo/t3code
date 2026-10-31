@@ -167,8 +167,8 @@ function ThreadImagesGrid(props: {
   const { columns } = gridWindow({ ...viewport, scrollTop: 0, count: 0 });
   const count = images.length + (loading ? columns * PLACEHOLDER_ROWS_WHILE_LOADING : 0);
   const grid = gridWindow({ ...viewport, scrollTop, count });
-  const tiles = [];
-  for (let index = grid.first; index < grid.last; index++) {
+  const tiles = Array.from({ length: Math.max(0, grid.last - grid.first) }, (_, offset) => {
+    const index = grid.first + offset;
     const style = {
       top: Math.floor(index / grid.columns) * (grid.tileSize + grid.gap),
       left: (index % grid.columns) * (grid.tileSize + grid.gap),
@@ -176,22 +176,20 @@ function ThreadImagesGrid(props: {
       height: grid.tileSize,
     };
     const image = images[index];
-    tiles.push(
-      image ? (
-        <ThreadImageTile
-          key={image.key}
-          environmentId={environmentId}
-          image={image}
-          style={style}
-          onOpen={() => void openPreview(index)}
-        />
-      ) : (
-        <div key={`placeholder:${index}`} className={TILE_CLASS} style={style}>
-          <ImageIcon aria-hidden className="size-5 text-icon-muted opacity-40" />
-        </div>
-      ),
+    return image ? (
+      <ThreadImageTile
+        key={image.key}
+        environmentId={environmentId}
+        image={image}
+        style={style}
+        onOpen={() => void openPreview(index)}
+      />
+    ) : (
+      <div key={`placeholder:${index}`} className={TILE_CLASS} style={style}>
+        <ImageIcon aria-hidden className="size-5 text-icon-muted opacity-40" />
+      </div>
     );
-  }
+  });
 
   return (
     <div
@@ -233,7 +231,7 @@ function ThreadImageTile(props: {
   );
   const src =
     image.source._tag === "direct" ? image.source.src : asset._tag === "Success" ? asset.url : null;
-  // oxlint-disable-next-line t3code/react-effect-budget -- fetches and decodes outside React, only while this tile is on screen.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- fetches and decodes outside React, only while this tile is on screen.
   useEffect(() => {
     if (src === null || thumbnail !== undefined) return;
     let current = true;

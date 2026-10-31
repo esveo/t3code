@@ -819,15 +819,6 @@ export const BranchToolbar = memo(function BranchToolbar({
         </div>
       ) : null}
 
-      {composerControlsHostRef ? (
-        <div
-          ref={composerControlsHostRef}
-          data-composer-context-control
-          data-chat-resting-composer-controls-host="true"
-          className="flex min-w-0 flex-1 items-center justify-start overflow-x-clip overflow-y-visible"
-        />
-      ) : null}
-
       {showGitControls && onOpenGitGraph ? (
         <Tooltip>
           <TooltipTrigger

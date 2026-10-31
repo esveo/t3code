@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-polling-loop-in-tests -- fork coverage kept from before these rules. */
 import {
   EnvironmentId,
   EventId,
@@ -3010,11 +3011,12 @@ describe("EnvironmentThreads", () => {
       }
       expect(yield* SubscriptionRef.get(harness.subscriptionCount)).toBe(3);
 
-      yield* Queue.offer(harness.wakeups, "application-active-reconnect");
-      for (let attempt = 0; attempt < 10; attempt += 1) {
+      yield* Queue.offer(harness.wakeups, "application-active-long");
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        if ((yield* SubscriptionRef.get(harness.subscriptionCount)) >= 4) break;
         yield* Effect.yieldNow;
       }
-      expect(yield* SubscriptionRef.get(harness.subscriptionCount)).toBe(3);
+      expect(yield* SubscriptionRef.get(harness.subscriptionCount)).toBe(4);
     }),
   );
 });

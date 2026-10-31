@@ -1,10 +1,7 @@
 /**
  * Fork: the composer of a provider subagent thread. Only the parent agent can
- * reach the subagent, so a message typed here goes to the parent thread as a
- * user message asking it to pass it on. Stop ends the running subagent where
- * its provider supports that. It wears the chat composer's surface, footer and
- * send/stop buttons; the model is shown where the composer's picker sits, but
- * the provider chose it, so it is read-only.
+ * reach the subagent, so a message goes to the parent to pass on. The provider
+ * chose the model, so it is read-only.
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { formatProviderSubagentStatus } from "@t3tools/client-runtime/state/thread-execution";
@@ -15,15 +12,7 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import { ArrowUpLeftIcon } from "lucide-react";
-import {
-  type ComponentProps,
-  type FormEvent,
-  useCallback,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { type ComponentProps, type FormEvent, useLayoutEffect, useRef, useState } from "react";
 
 import { ComposerControl, ComposerControlSeparator } from "~/components/chat/ComposerControl";
 import { ComposerPrimaryActions } from "~/components/chat/ComposerPrimaryActions";
@@ -53,10 +42,7 @@ export function SubagentRelayBar(
   const target = useEnvironmentQuery(
     subagentRelayEnvironment.target({ environmentId, input: { threadId } }),
   ).data;
-  const parentRef = useMemo(
-    () => (target === null ? null : scopeThreadRef(environmentId, target.parentThreadId)),
-    [environmentId, target],
-  );
+  const parentRef = target === null ? null : scopeThreadRef(environmentId, target.parentThreadId);
   const parent = useThreadShell(parentRef);
   const canOperateThread = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const startTurn = useAtomCommand(threadEnvironment.startTurn);
@@ -67,7 +53,7 @@ export function SubagentRelayBar(
   const live = status !== null && isOrchestrationV2WorkActive(status.status);
   const hasText = text.trim().length > 0;
 
-  const send = useCallback(async () => {
+  const send = async () => {
     if (target === null || parent === null || sending || !hasText) return;
     setSending(true);
     const result = await startTurn({
@@ -87,22 +73,19 @@ export function SubagentRelayBar(
     });
     setSending(false);
     if (result._tag === "Success") setText("");
-  }, [environmentId, hasText, parent, sending, startTurn, target, text]);
+  };
 
-  const onSubmit = useCallback(
-    (event: FormEvent) => {
-      event.preventDefault();
-      void send();
-    },
-    [send],
-  );
+  const onSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    void send();
+  };
 
-  const onStop = useCallback(async () => {
+  const onStop = async () => {
     if (stopping) return;
     setStopping(true);
     await stop({ environmentId, input: { threadId } });
     setStopping(false);
-  }, [environmentId, stop, stopping, threadId]);
+  };
 
   // Like the composer: an empty prompt on running work offers Stop, text offers Send.
   const showStop = live && target !== null && target.supportsStop && !hasText;
@@ -180,7 +163,6 @@ export function SubagentRelayBar(
                   promptHasText={hasText}
                   isSendBusy={sending}
                   sendDisabledReason={parent === null ? "Loading the parent thread" : null}
-                  isConnecting={false}
                   isEnvironmentUnavailable={false}
                   isPreparingWorktree={false}
                   hasSendableContent={hasText}
@@ -237,6 +219,7 @@ function SubagentStatus(props: {
     0,
   );
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- ticks a DOM node's text without re-rendering.
   useLayoutEffect(() => {
     const update = () => {
       if (statusRef.current) {

@@ -3534,7 +3534,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                                 ),
                               );
                               items.push(
-                                ...forkList.afterThread(threadKey, "active", (child) =>
+                                forkList.afterThread(threadKey, "active", (child) =>
                                   renderThreadRow(
                                     child,
                                     "active",

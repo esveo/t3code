@@ -33,7 +33,9 @@ const instanceHome = (
         : ""
       : "";
   const environment = Object.fromEntries(
-    (instance?.environment ?? []).map((variable) => [variable.name, variable.value]),
+    (instance?.environment ?? []).flatMap((variable) =>
+      typeof variable.value === "string" ? [[variable.name, variable.value] as const] : [],
+    ),
   );
   // An instance missing from the settings is a default one, whose id is its driver.
   return { driver: instance?.driver ?? instanceId, homePath, environment };
