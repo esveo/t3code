@@ -202,6 +202,7 @@ function reviewFileQueries({
                   cwd,
                   ...(baseRef ? { baseRef } : {}),
                   ...(range ? { range } : {}),
+                  ...(source.kind === "commit" ? { commitSha: source.id } : {}),
                   ignoreWhitespace,
                   file: {
                     path: file.path,

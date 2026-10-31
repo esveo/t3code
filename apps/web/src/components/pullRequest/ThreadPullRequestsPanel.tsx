@@ -371,7 +371,7 @@ const itemKey = (item: PullRequestStatusListItem) =>
 
 export function ThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThreadRef }) {
   const configs = useServerConfigs();
-  if (configs.get(threadRef.environmentId)?.environment.capabilities.threadPullRequests !== true) {
+  if (configs.get(threadRef.environmentId) === undefined) {
     return (
       <PullRequestsUnavailableState
         title="Linked pull requests unavailable"
@@ -476,7 +476,7 @@ function EnabledThreadPullRequestsPanel({ threadRef }: { threadRef: ScopedThread
                 line={line}
                 threadRef={threadRef}
                 projectId={
-                  capabilities?.pullRequests === true
+                  capabilities !== undefined
                     ? (findProjectForChangeRequest(environmentProjects, line.link)?.id ??
                       thread?.projectId ??
                       null)
