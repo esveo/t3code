@@ -20,7 +20,7 @@ export interface ThreadImage {
   readonly name: string;
   readonly createdAtMs: number;
   readonly kind: "image" | "video";
-  /** Only named in a message's text, so the file may not exist; the gallery drops it then. */
+  /** Only a path, named in text or viewed earlier, so the file may be gone; the gallery drops it then. */
   readonly mentioned?: boolean;
   readonly source: ThreadImageSource;
 }
@@ -113,6 +113,7 @@ export function collectThreadImages(
         name: viewed.alt,
         createdAtMs,
         kind: "image",
+        mentioned: true,
         source: { _tag: "asset", resource: viewed.resource },
       });
     }
