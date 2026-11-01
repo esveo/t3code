@@ -66,6 +66,7 @@ describe("collectThreadImages", () => {
     ]);
     expect(images[1]).toMatchObject({ kind: "video" });
     expect(images[2]).toMatchObject({ kind: "image", mentioned: true });
+    expect(images[5]).toMatchObject({ kind: "image", mentioned: true });
     expect(images[4]?.source).toEqual({
       _tag: "asset",
       resource: { _tag: "tool-output-image", threadId: "parent", itemId: "item-1", index: 1 },
