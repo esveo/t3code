@@ -500,7 +500,14 @@ it.effect("refuses saving an enabled task above the policy ceiling", () =>
             limits: { maxRuntimeMode: "auto-accept-edits" },
           }),
           Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
-          Layer.mock(ThreadManagementService.ThreadManagementService)({}),
+          Layer.mock(ThreadManagementService.ThreadManagementService)({
+            getThreadShell: (threadId) =>
+              Effect.succeed({
+                id: threadId,
+                projectId: ProjectId.make("project:test"),
+                deletedAt: null,
+              } as never),
+          }),
           Layer.mock(SecretRequests.SecretRequests)({}),
           Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
             namedProjectsRoot: "/projects",

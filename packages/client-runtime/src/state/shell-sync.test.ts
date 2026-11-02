@@ -1527,7 +1527,14 @@ describe("environment shell synchronization", () => {
       const sendSnapshot = Effect.fn(function* (sequence: number) {
         yield* Queue.offer(events, {
           kind: "snapshot",
-          snapshot: { ...LIVE_SHELL_SNAPSHOT, snapshotSequence: sequence },
+          snapshot: {
+            ...LIVE_SHELL_SNAPSHOT,
+            snapshotSequence: sequence,
+            threads: LIVE_SHELL_SNAPSHOT.threads.map((thread) => ({
+              ...thread,
+              title: `Thread ${sequence}`,
+            })),
+          },
         });
         yield* SubscriptionRef.changes(shellState).pipe(
           Stream.filter(
@@ -1538,13 +1545,14 @@ describe("environment shell synchronization", () => {
         );
       });
       yield* sendSnapshot(1);
-      yield* TestClock.adjust("500 millis");
+      yield* TestClock.adjust("10 seconds");
+      expect((yield* Ref.get(saved)).map((snapshot) => snapshot.snapshotSequence)).toEqual([1]);
+      yield* TestClock.adjust("0 millis");
       for (let sequence = 2; sequence <= 10; sequence++) {
         yield* sendSnapshot(sequence);
-        yield* TestClock.adjust("1 second");
       }
       expect((yield* Ref.get(saved)).map((snapshot) => snapshot.snapshotSequence)).toEqual([1]);
-      yield* TestClock.adjust("1 second");
+      yield* TestClock.adjust("10 seconds");
       expect((yield* Ref.get(saved)).map((snapshot) => snapshot.snapshotSequence)).toEqual([1, 10]);
       yield* sendSnapshot(11);
       yield* SubscriptionRef.set(supervisorState, {
