@@ -1,4 +1,15 @@
-/** Fork: computes and caches Usage-page agent time from thread projections. */
+/* oxlint-disable t3code/no-low-value-comments -- fork module documentation predates the stricter upstream rule */
+/**
+ * Fork: the Usage page's "Agent time", read from the thread projections.
+ *
+ * Reads the Claude runs that overlap the window (plus a margin, so waits that
+ * started before it or end after it are seen whole) and their turn items,
+ * attributes each thread's time (`agentTimeAttribution.ts`), and returns
+ * per-bucket totals. Past days do not change, so their totals are kept in
+ * memory per time zone and a repeat read only computes the recent days.
+ *
+ * @module AgentTime
+ */
 import {
   AGENT_TIME_CATEGORIES,
   AGENT_TIME_PASSIVE_CATEGORIES,
@@ -366,6 +377,7 @@ const make = Effect.fn("AgentTime.make")(function* (dbPath: string) {
 });
 
 /** Agent time read from the database file at `dbPath`. */
+export const layerFromDbPath = (dbPath: string) => Layer.effect(AgentTime, make(dbPath));
 
 export const layer = Layer.effect(
   AgentTime,

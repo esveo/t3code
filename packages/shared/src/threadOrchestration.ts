@@ -4,6 +4,7 @@
  * client's overview both read a child's state from its shell through these
  * helpers, so the agent and the user see the same word for the same thread.
  */
+/* oxlint-disable t3code/no-low-value-comments -- fork helpers document coordinator lineage semantics */
 import {
   isProviderNativeSubagentThread,
   type OrchestrationV2ThreadShell,
@@ -19,7 +20,13 @@ export type ChildThreadShell = Pick<
 > &
   Partial<Pick<OrchestrationV2ThreadShell, "pendingBackgroundTasks">>;
 
-/** Resolves mutable coordinator overrides before delegated-child lineage. */
+/**
+ * The coordinator a thread reports to. The user or a coordinator can put a
+ * thread under another one, or release it (`overrides`, the server's
+ * fork_thread_coordinators rows; null releases it). Without such a row, a
+ * T3-owned delegated child (delegate_task) belongs to the thread
+ * that started it; provider-native subagents never do: their provider owns them.
+ */
 export function coordinatorThreadIdOf(
   thread: Pick<OrchestrationV2ThreadShell, "id" | "lineage" | "creationSource">,
   overrides: ReadonlyMap<ThreadId, ThreadId | null>,
@@ -136,7 +143,7 @@ export function describeChildThread(thread: ChildThreadShell): string {
  * Markdown link a coordinator writes to mention a child thread. The client
  * renders it as a chip with the thread's live state.
  */
-const THREAD_LINK_SCHEME = "t3-thread:";
+export const THREAD_LINK_SCHEME = "t3-thread:";
 
 export function threadLinkHref(threadId: string): string {
   return `${THREAD_LINK_SCHEME}${threadId}`;

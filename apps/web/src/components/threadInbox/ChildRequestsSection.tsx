@@ -1,7 +1,9 @@
+/* oxlint-disable t3code/no-manual-memo -- stable array identity prevents downstream subscription churn */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { describeChildThread } from "@t3tools/shared/threadOrchestration";
+import { useMemo } from "react";
 
 import { useThreadShells } from "~/state/entities";
 import { useCoordinatorOf } from "../threadOrchestration/coordinatorLinks";
@@ -10,7 +12,7 @@ import { ThreadLinkChip } from "../threadOrchestration/ThreadLinkChip";
 import { useOpenThread } from "../threadOrchestration/useOpenThread";
 
 /** The coordinator's threads that wait on an approval or answer from the user, oldest first. */
-function childrenWaitingOnUser(
+export function childrenWaitingOnUser(
   children: ReadonlyArray<EnvironmentThreadShell>,
 ): ReadonlyArray<EnvironmentThreadShell> {
   return children
@@ -27,15 +29,19 @@ export function useChildrenWaitingOnUser(
 ): ReadonlyArray<EnvironmentThreadShell> {
   const threads = useThreadShells();
   const coordinatorOf = useCoordinatorOf(threads);
-  return threadRef
-    ? childrenWaitingOnUser(
-        childThreadsOf(
-          threads,
-          { environmentId: threadRef.environmentId, id: threadRef.threadId },
-          coordinatorOf,
-        ),
-      )
-    : [];
+  return useMemo(
+    () =>
+      threadRef
+        ? childrenWaitingOnUser(
+            childThreadsOf(
+              threads,
+              { environmentId: threadRef.environmentId, id: threadRef.threadId },
+              coordinatorOf,
+            ),
+          )
+        : [],
+    [coordinatorOf, threadRef, threads],
+  );
 }
 
 /**

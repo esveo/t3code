@@ -1,9 +1,20 @@
+/* oxlint-disable t3code/no-low-value-comments -- fork module documents browser and desktop routing constraints */
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
 import { isElectron } from "../../env";
 
-/** Opens one browser or desktop popout per thread using the hash-routed popout URL. */
+/**
+ * Thread popouts: a pane can leave the split grid for a window of its own,
+ * which renders the bare chat under `/popout/...`. One window per thread — a
+ * second popout of the same thread focuses the window that is already open.
+ *
+ * The same `window.open` call serves both surfaces: a browser opens a popup,
+ * and the desktop shell allows same-origin popups on this route (see
+ * `apps/desktop/src/window/popoutWindow.ts`). The desktop app routes through
+ * the URL hash, so the route has to go there too — as a path it would open the
+ * app at "/" instead, which lands on a new thread.
+ */
 
 const POPOUT_WIDTH = 900;
 const POPOUT_HEIGHT = 760;
@@ -21,7 +32,7 @@ export function popoutPathForThread(thread: ScopedThreadRef): string {
 
 const POPOUT_WINDOW_NAME_PREFIX = "t3code-popout:";
 
-function popoutWindowName(thread: ScopedThreadRef): string {
+export function popoutWindowName(thread: ScopedThreadRef): string {
   return `${POPOUT_WINDOW_NAME_PREFIX}${scopedThreadKey(thread)}`;
 }
 
@@ -70,7 +81,7 @@ function browserHost(): ThreadPopoutHost {
 }
 
 /** The address of a thread's popout, in the form this app's router reads. */
-function popoutUrl(thread: ScopedThreadRef, host: ThreadPopoutHost): string {
+export function popoutUrl(thread: ScopedThreadRef, host: ThreadPopoutHost): string {
   const route = popoutPathForThread(thread);
   return host.hashRouting ? `${host.origin}/#${route}` : `${host.origin}${route}`;
 }

@@ -27,7 +27,7 @@ export function withScheduledTaskProject<D extends LocationDraft>(draft: D, proj
 }
 
 /** Most picker rows worth rendering; typing narrows the rest. */
-const THREAD_PICKER_LIMIT = 50;
+export const THREAD_PICKER_LIMIT = 50;
 
 /** The project's own threads a task can bind to, most recently updated first. */
 export function scheduledTaskThreadOptions(

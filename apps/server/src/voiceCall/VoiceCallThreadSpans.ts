@@ -23,7 +23,7 @@ const decodeStoredSpans = Schema.decodeUnknownOption(StoredSpansJson);
 const encodeStoredSpans = Schema.encodeSync(StoredSpansJson);
 
 // ponytail: a crash leaves no end time, so the restart stands in; a long outage overstates the call.
-const closeAbandonedSpans = (spans: StoredSpans, nowMs: number): StoredSpans =>
+export const closeAbandonedSpans = (spans: StoredSpans, nowMs: number): StoredSpans =>
   spans.map((span) => (span.endedAt === null ? { ...span, endedAt: nowMs } : span));
 
 export const makeVoiceCallThreadSpans = Effect.gen(function* () {

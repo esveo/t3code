@@ -1,4 +1,5 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+/* oxlint-disable t3code/no-low-value-comments -- fork module documents sidebar grouping invariants */
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { resolveChildThreadState } from "@t3tools/shared/threadOrchestration";
@@ -47,10 +48,14 @@ export function hiddenChildThreadGroups(
   return { childrenByParentKey: new Map(), nestedThreadKeys, listsChildren: false };
 }
 
+export function parentKeyOf(thread: Pick<EnvironmentThreadShell, "environmentId" | "id">): string {
+  return keyOf(thread.environmentId, thread.id);
+}
+
 /** Which part of the sidebar a thread lists in: open, snoozed or settled. */
 export type SidebarShelf = "open" | "snoozed" | "settled";
 
-function sidebarShelfOf(
+export function sidebarShelfOf(
   thread: Pick<EnvironmentThreadShell, "settledOverride" | "snoozedUntil">,
   now: string,
 ): SidebarShelf {
@@ -59,7 +64,13 @@ function sidebarShelfOf(
   return thread.settledOverride === "settled" ? "settled" : "open";
 }
 
-/** Children nest only when their coordinator is visible on the same sidebar shelf. */
+/**
+ * A child nests under its coordinator while that coordinator is listed on the
+ * same shelf: a settled child leaves an open coordinator's group for the
+ * settled shelf, and comes back with it. A child whose coordinator was
+ * archived or deleted stands on its own again, so no thread ever disappears
+ * from the sidebar.
+ */
 export function groupChildThreads(
   threads: ReadonlyArray<EnvironmentThreadShell>,
   coordinatorOf: CoordinatorOf,

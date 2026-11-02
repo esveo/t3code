@@ -58,7 +58,7 @@ export const DEFAULT_VOICE_CALL_VOICE: VoiceCallVoice = "miko";
 export const VoiceCallLanguage = Schema.Literals(["auto", "de"]);
 export type VoiceCallLanguage = typeof VoiceCallLanguage.Type;
 
-const VOICE_CALL_PERSONA_MAX_LENGTH = 2_000;
+export const VOICE_CALL_PERSONA_MAX_LENGTH = 2_000;
 export const VoiceCallPersona = Schema.String.check(
   Schema.isMaxLength(VOICE_CALL_PERSONA_MAX_LENGTH),
 );

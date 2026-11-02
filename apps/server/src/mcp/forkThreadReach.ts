@@ -1,4 +1,17 @@
-/** Fork: gates cross-project thread tools on the live environment setting. */
+/* oxlint-disable t3code/no-low-value-comments, t3code/prefer-effect-fn -- preserve fork authorization helpers and rationale */
+/**
+ * Fork: with Cross-project threads on (Settings, `enableCrossProjectThreads`),
+ * the t3_thread_* tools reach threads in every project of the environment, not
+ * only the calling thread's, so a coordinator can read, message and settle its
+ * children wherever they run. Off, they keep upstream's limit to the calling
+ * project, and so do delegate_task into another project and adopt_thread. Every
+ * other check stays: a live caller, modes not broader than the caller's, and so
+ * on. t3_thread_list and t3_thread_search default to the calling project either
+ * way.
+ *
+ * The setting is read on each call, so a change reaches running sessions. It is
+ * read optionally, so upstream's own tests and layers keep upstream's limit.
+ */
 import {
   type OrchestrationV2ThreadShell,
   OrchestratorMcpFailure,
@@ -20,7 +33,7 @@ export const CROSS_PROJECT_THREADS_HINT =
   "The user can let agents reach other projects by turning on Cross-project threads in Settings → General.";
 
 /** Whether the user turned on cross-project threads, right now. */
-const crossProjectThreadsOn: Effect.Effect<boolean> = Effect.serviceOption(
+export const crossProjectThreadsOn: Effect.Effect<boolean> = Effect.serviceOption(
   ServerSettingsService,
 ).pipe(
   Effect.flatMap((settings) =>
@@ -69,7 +82,6 @@ export const threadProjectId = Effect.fn("forkThreadReach.threadProjectId")(func
  * another project's with `projectId`, every project's with scope "all" (both
  * only with cross-project threads on). Same order as `listProjectThreads`.
  */
-// oxlint-disable-next-line t3code/prefer-effect-fn -- exported helper runs inside the MCP operation span
 export const listThreadsInScope = (
   threads: Pick<ThreadManagementServiceShape, "getShellSnapshot" | "listProjectThreads">,
   input: {

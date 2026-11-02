@@ -1,4 +1,27 @@
-/** Fork: durably delivers child results beyond V2's one-shot delegated mailbox. */
+/* oxlint-disable t3code/no-low-value-comments -- fork module documents durable coordinator delivery */
+/**
+ * Fork: thread orchestration. Tells a coordinator about the results of its
+ * threads that V2's delegated-task mailbox does not deliver.
+ *
+ * V2 wakes the thread that started a delegated child exactly once, with the
+ * child's first result (Orchestrator.finalizeAppOwnedSubagent). A coordinator
+ * keeps its threads for longer: it sends them follow-ups, the user puts
+ * existing threads under it or moves them between coordinators, and a wake
+ * V2 disposed (its parent run was interrupted) still has to arrive. Each of
+ * those results reaches the coordinator here, as a queued message of
+ * `<t3_thread_update>` blocks with the child's full answer, the same shape
+ * V2's wakes carry in the fork (delegatedCompletionText.ts). Results that
+ * arrive while such a message still waits in the coordinator's queue join it.
+ *
+ * A child's result is its latest run once V2 reports it `result_available`
+ * (no run, subagent or background task of it still going). Which result each
+ * child last reported is kept in `fork_thread_reports`, so nothing reaches a
+ * coordinator twice, also across restarts; on start, `catchUp` reports what
+ * ended while the server was down. The very first start only records every
+ * result that exists by then, without a word to anyone: thread orchestration
+ * used to be opt-in, and switching it on must not wake old coordinators with
+ * results they never waited for.
+ */
 import {
   CommandId,
   MessageId,
@@ -75,7 +98,7 @@ export function decideCoordinatorUpdate(input: {
 }
 
 /** The update block the coordinator reads about one child result. */
-function childUpdateBlock(input: {
+export function childUpdateBlock(input: {
   readonly child: Pick<
     OrchestrationV2ThreadShell,
     | "id"
@@ -112,7 +135,7 @@ export class CoordinatorUpdates extends Context.Service<
 const TERMINAL_RUN_STATUSES = new Set(["completed", "failed", "interrupted", "cancelled"]);
 const TERMINAL_TASK_STATUSES = new Set(["completed", "failed", "interrupted", "cancelled"]);
 
-const make = Effect.gen(function* () {
+export const make = Effect.gen(function* () {
   const threads = yield* ThreadManagementService;
   const coordinators = yield* ThreadCoordinators;
   const crypto = yield* Crypto.Crypto;

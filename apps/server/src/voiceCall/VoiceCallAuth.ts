@@ -64,7 +64,7 @@ const jwtClaims = (token: string): unknown => {
   }
 };
 
-const jwtExpiresAtMs = (token: string): number | null => {
+export const jwtExpiresAtMs = (token: string): number | null => {
   const claims = jwtClaims(token);
   return typeof claims === "object" &&
     claims !== null &&

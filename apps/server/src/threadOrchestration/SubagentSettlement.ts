@@ -1,4 +1,16 @@
-/** Fork: subagents without their own override follow their parent's settlement state. */
+/* oxlint-disable t3code/no-low-value-comments, t3code/prefer-effect-fn -- preserve fork settlement helpers and rationale */
+/**
+ * Fork: subagents settle with the thread that started them. Settling a thread
+ * means its work is done; its subagent threads (provider-native ones and
+ * delegate_task children alike) would otherwise stay in the thread list as
+ * orphans that have to be settled one by one.
+ *
+ * A subagent follows its parent when it has no settled override of its own:
+ * one the user reopened ("active") stays open. One still running when its
+ * parent settles cannot be settled yet and follows once its run ends. On
+ * start, subagents left open under an already settled parent are caught up.
+ * Settling a subagent never settles its parent.
+ */
 import {
   CommandId,
   type OrchestrationV2DomainEvent,
@@ -19,7 +31,7 @@ type SettlementShell = Pick<
 >;
 
 /** Whether `child` is an open subagent of `parent` that should settle with it. */
-function followsSettledParent(child: SettlementShell, parent: SettlementShell): boolean {
+export function followsSettledParent(child: SettlementShell, parent: SettlementShell): boolean {
   return (
     child.lineage.relationshipToParent === "subagent" &&
     child.lineage.parentThreadId === parent.id &&
@@ -59,7 +71,6 @@ const make = Effect.gen(function* () {
   const threads = yield* ThreadManagementService;
   const crypto = yield* Crypto.Crypto;
 
-  // oxlint-disable-next-line t3code/prefer-effect-fn -- the service operation owns this span
   const settle = (threadId: ThreadId) =>
     Effect.gen(function* () {
       const uuid = yield* crypto.randomUUIDv4();

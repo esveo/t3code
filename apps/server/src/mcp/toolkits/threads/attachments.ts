@@ -1,4 +1,14 @@
-/** Fork: claims coordinator attachments for a delegated child's first message. */
+/* oxlint-disable t3code/no-low-value-comments -- fork module documents delegated attachment ownership */
+/**
+ * Fork: thread orchestration. Hands attachments from a coordinator to a child
+ * it starts with delegate_task. Each one is copied into the attachment store
+ * under the coordinator's id (the child's id exists only once the task does),
+ * exactly as an upload from the composer would be claimed, so the child sees
+ * it as if the user had attached it to its first message.
+ *
+ * OrchestratorMcpService reads `DelegatedAttachments` optionally, so its own
+ * tests and layers stay as upstream builds them.
+ */
 import {
   type ChatAttachment,
   type ChatFileAttachment,
@@ -50,7 +60,7 @@ const isKnownAttachment = (attachment: ChatAttachment): attachment is KnownAttac
  * context id of a `t3-context://v1/file/<contextId>` reference, as the agent
  * sees it in its prompt (`ref=file_…`).
  */
-function findMessageAttachment(
+export function findMessageAttachment(
   messages: ReadonlyArray<OrchestrationV2ConversationMessage>,
   reference: string,
 ): ChatAttachment | undefined {
@@ -70,7 +80,7 @@ function findMessageAttachment(
 }
 
 /** How a local file travels: as an image when a provider can take it as one, else as a file. */
-function classifyLocalFile(input: {
+export function classifyLocalFile(input: {
   readonly name: string;
   readonly sizeBytes: number;
 }): { readonly type: "image" | "file"; readonly mimeType: string } | string {
@@ -91,7 +101,7 @@ function classifyLocalFile(input: {
   return { type: "file", mimeType };
 }
 
-const makeThreadAttachments = Effect.gen(function* () {
+export const makeThreadAttachments = Effect.gen(function* () {
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const { attachmentsDir } = yield* ServerConfig.ServerConfig;

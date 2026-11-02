@@ -6,7 +6,7 @@ import { isAbsolutePath } from "@t3tools/shared/path";
 import { useProjectFileQuery } from "../files/projectFilesQueryState";
 
 /** A failed realpath of the target is how the server reports a path that does not exist. */
-function isMissingFileReadError(error: ProjectReadFileError | null): boolean {
+export function isMissingFileReadError(error: ProjectReadFileError | null): boolean {
   return error?.failure === "operation_failed" && error.operation === "realpath-target";
 }
 

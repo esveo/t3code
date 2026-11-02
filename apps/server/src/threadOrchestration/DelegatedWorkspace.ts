@@ -1,6 +1,15 @@
+/* oxlint-disable t3code/no-low-value-comments -- fork module documentation captures cross-service constraints */
 /**
- * Fork: plans and prepares delegated work in another project or worktree.
- * New worktrees hold their first run until checkout and setup complete.
+ * Fork: delegate_task into another project and/or a worktree of its own.
+ *
+ * V2 runs a delegated child in its parent's checkout. A coordinator hands out
+ * independent work instead: in another repository, or on a branch of its own
+ * so children never step on each other's changes. `plan` turns the tool's
+ * `workspace` input into the `delegated_task.request` workspace (the child
+ * thread's project, branch and worktree); when the child gets a new worktree,
+ * its first run waits in "preparing" and `prepare` provisions the worktree
+ * the way a launched thread's is (ThreadLaunchService.prepareWorkspace):
+ * checkout, setup script, then the run starts.
  *
  * OrchestratorMcpService reads this service optionally, so its own tests and
  * layers stay as upstream builds them.
@@ -65,7 +74,7 @@ export class DelegatedWorkspace extends Context.Service<
   }
 >()("t3/threadOrchestration/DelegatedWorkspace") {}
 
-const make = Effect.gen(function* () {
+export const make = Effect.gen(function* () {
   const projects = yield* ProjectService.ProjectService;
   const git = yield* GitWorkflowService.GitWorkflowService;
   const launches = yield* ThreadLaunch.ThreadLaunchService;

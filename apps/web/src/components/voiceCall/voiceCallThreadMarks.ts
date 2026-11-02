@@ -3,6 +3,7 @@
  * a compaction divider. They carry no run, so they stay out of turn folds and of
  * everything the agent sees.
  */
+/* oxlint-disable t3code/no-unreasoned-state-sync -- effect refreshes spans from the external call subscription */
 import type { ScopedThreadRef, ServerSettings, VoiceCallThreadSpan } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult, Atom } from "effect/reactivity";
@@ -37,7 +38,7 @@ const markEntry = (kind: string, atMs: number, label: string): TimelineEntry => 
   };
 };
 
-const voiceCallMarkEntries = (spans: ReadonlyArray<VoiceCallThreadSpan>) =>
+export const voiceCallMarkEntries = (spans: ReadonlyArray<VoiceCallThreadSpan>) =>
   spans.flatMap((span) => [
     markEntry("started", span.startedAt, "Voice call started"),
     ...(span.endedAt === null
@@ -96,7 +97,6 @@ export function useVoiceCallMarks(
       : voiceCallEnvironment.view({ environmentId, input: { clientId: voiceCallClientId } }),
     callKey,
   );
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- refreshes server spans when the external call subscription moves
   useEffect(() => {
     if (key !== null) refresh();
   }, [key, refresh]);

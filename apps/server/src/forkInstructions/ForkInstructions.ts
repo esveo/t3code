@@ -1,4 +1,12 @@
-/** Fork: reads and writes provider instruction files for the Instructions tab. */
+/* oxlint-disable t3code/no-low-value-comments -- fork module documents provider-specific instruction roots */
+/**
+ * Fork: the instruction files of the Instructions tab.
+ *
+ * The server works out every path from the thread: Project is the thread's
+ * checkout (its worktree, else the project root), Global the provider's home
+ * as the thread's provider instance runs it (`homePath`, `CLAUDE_CONFIG_DIR`,
+ * `CODEX_HOME`). See `instructionFiles.ts` for which file that is.
+ */
 import {
   ForkInstructionsConflictError,
   ForkInstructionsError,
@@ -38,7 +46,7 @@ export class ForkInstructions extends Context.Service<
 
 const failure = (message: string) => new ForkInstructionsError({ message });
 
-const make = Effect.gen(function* () {
+export const make = Effect.gen(function* () {
   const projections = yield* ProjectionStoreV2.ProjectionStoreV2;
   const projects = yield* ProjectStore.ProjectStoreV2;
   const serverSettings = yield* ServerSettingsService;

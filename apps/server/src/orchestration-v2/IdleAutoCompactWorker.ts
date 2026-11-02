@@ -1,4 +1,15 @@
-/** Fork: compacts idle Claude threads shortly before their prompt cache expires. */
+/* oxlint-disable t3code/no-low-value-comments -- fork module documents prompt-cache timing constraints */
+/**
+ * Fork: idle auto-compact for Claude threads.
+ *
+ * A Claude subscription session caches its prompt for an hour. When a long
+ * thread sits idle past that hour, the next message rewrites the whole
+ * transcript into the cache. Compacting shortly before the cache expires reads
+ * the transcript once more at the cheap cache rate and leaves a summary, so
+ * the next message only writes that summary.
+ *
+ * @module IdleAutoCompactWorker
+ */
 import {
   CommandId,
   IDLE_AUTO_COMPACT_MESSAGE_ID_PREFIX,
@@ -69,7 +80,7 @@ export type IdleAutoCompactSkipReason =
  * when it sits inside the window of a live cache. A finished thread's shell
  * status is its latest run's terminal status; "idle" only means it never ran.
  */
-function idleAutoCompactShellSkipReason(
+export function idleAutoCompactShellSkipReason(
   shell: IdleAutoCompactShell,
   preferences: IdleAutoCompactPreferences,
   nowMs: number,
