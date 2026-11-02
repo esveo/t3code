@@ -199,7 +199,7 @@ const WHISPER_LANGUAGES = new Set(
 );
 
 /** A language hint Whisper understands, else `auto`. */
-export function resolveWhisperLanguage(language: string): string {
+function resolveWhisperLanguage(language: string): string {
   return WHISPER_LANGUAGES.has(language) ? language : "auto";
 }
 

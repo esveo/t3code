@@ -24,7 +24,7 @@ export interface DecisionDraft {
 
 export type InboxGroupBy = "urgency" | "thread";
 
-export const URGENCY_LABELS: Record<ThreadDecisionUrgency, string> = {
+const URGENCY_LABELS: Record<ThreadDecisionUrgency, string> = {
   now: "Now",
   today: "Today",
   later: "Can wait",
@@ -35,8 +35,7 @@ const URGENCY_RANK: Record<ThreadDecisionUrgency, number> = { now: 0, today: 1, 
 export const isSnoozed = (decision: ThreadDecision) => decision.snoozedAt !== null;
 
 /** Open and not snoozed: what waits on the user right now. */
-export const isWaiting = (decision: ThreadDecision) =>
-  decision.status === "open" && !isSnoozed(decision);
+const isWaiting = (decision: ThreadDecision) => decision.status === "open" && !isSnoozed(decision);
 
 export function waitingDecisionCount(decisions: ReadonlyArray<ThreadDecision>): number {
   return decisions.filter(isWaiting).length;

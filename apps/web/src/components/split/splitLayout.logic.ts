@@ -1,12 +1,4 @@
-/**
- * Editor-group style layout for chat panes, modelled on VS Code: a tree of
- * row/column splits whose leaves each show one thread. Exactly one leaf is the
- * routed pane (`thread: "route"`); it renders whatever the URL selects, so
- * normal navigation keeps working inside the grid.
- *
- * Everything here is pure so the drop, close, and resize rules can be tested
- * without rendering.
- */
+/** Pure editor-group layout for split chat panes, including one URL-routed pane. */
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
 export type SplitDirection = "row" | "column";
@@ -37,7 +29,7 @@ export interface Rect {
 }
 
 export const ROUTE_LEAF_ID = "route";
-export const MIN_PANE_FRACTION = 0.1;
+const MIN_PANE_FRACTION = 0.1;
 
 export const SINGLE_PANE_LAYOUT: SplitNode = { kind: "leaf", id: ROUTE_LEAF_ID, thread: "route" };
 
@@ -122,7 +114,7 @@ function replaceNode(root: SplitNode, targetId: string, replace: (node: SplitNod
  * target's space. An existing leaf with the same id is moved rather than
  * duplicated.
  */
-export function insertBeside(
+function insertBeside(
   root: SplitNode,
   targetId: string,
   zone: Exclude<DropZone, "center">,
@@ -173,14 +165,7 @@ function appendColumn(root: SplitNode, leaf: SplitLeaf, makeId: (prefix: string)
   } satisfies SplitBranch;
 }
 
-/**
- * Keeps the routed thread on screen and hands the route pane to whatever the
- * URL points at next: the thread moves into a pane of its own and a fresh
- * route pane is appended. Used when a new thread starts while the split is
- * open, so it joins the grid instead of taking over the pane the user was
- * reading. Without a split, or when the thread already has a pane of its own,
- * the layout is unchanged.
- */
+/** Preserves the routed thread and appends a fresh route pane for navigation. */
 export function appendRoutePane(
   root: SplitNode,
   routeThread: ScopedThreadRef,
@@ -232,7 +217,7 @@ export function insertThreadBeside(
 }
 
 /** Swaps the positions of two leaves, keeping their ids and threads together. */
-export function swapLeaves(root: SplitNode, firstId: string, secondId: string): SplitNode {
+function swapLeaves(root: SplitNode, firstId: string, secondId: string): SplitNode {
   const first = findLeaf(root, firstId);
   const second = findLeaf(root, secondId);
   if (!first || !second || firstId === secondId) return root;
@@ -480,7 +465,7 @@ export interface GridSize {
   readonly rows: number;
 }
 
-export const AUTO_ARRANGE_MIN_PANE = { width: 420, height: 280 } as const;
+const AUTO_ARRANGE_MIN_PANE = { width: 420, height: 280 } as const;
 
 /**
  * How many panes each column of a `columns × rows` grid holds for `count`
@@ -499,13 +484,7 @@ export function gridColumnCounts(count: number, grid: GridSize): number[] {
   );
 }
 
-/**
- * The grid Auto Arrange suggests for `count` threads in an area of
- * `width × height` pixels: every pane must keep a usable minimum size; among
- * the grids that allow that, the one whose smallest pane is largest wins, and
- * ties go to more columns because chats read better tall than wide. When no
- * grid fits every thread, the largest grid that keeps the minimum is used.
- */
+/** Picks the grid maximizing its smallest pane while respecting minimum size. */
 export function recommendGrid(
   count: number,
   width: number,
@@ -583,13 +562,7 @@ export function buildGridLayout(input: {
   return { layout, navigateTo: routeIndex === -1 ? placed[0]! : null };
 }
 
-/**
- * Picks and orders the threads Auto Arrange places, for `buildGridLayout`.
- * Threads the layout already shows keep their place on screen as well as the
- * new grid allows: each goes to the free cell nearest to where its pane was,
- * closest pairs first. The cells left over take the other threads in the
- * order given. The route pane counts as showing `routeThread`.
- */
+/** Orders auto-arranged threads to keep existing panes near their old positions. */
 export function arrangeByPosition(input: {
   readonly threads: readonly ScopedThreadRef[];
   readonly layout: SplitNode;

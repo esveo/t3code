@@ -11,7 +11,7 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 
-export const DECISIONS_TAG = "t3_decisions";
+const DECISIONS_TAG = "t3_decisions";
 
 /** What the coordinator passes to upsert_decision. */
 export interface ThreadDecisionInput {
@@ -208,7 +208,7 @@ export function validateReply(
 }
 
 /** How much of the context the reply repeats, so the coordinator still knows after compacting. */
-export const REPLY_CONTEXT_MAX_LENGTH = 300;
+const REPLY_CONTEXT_MAX_LENGTH = 300;
 
 /** The context in one line, cut at a word near the limit. */
 export function shortenContext(context: string, max = REPLY_CONTEXT_MAX_LENGTH): string {

@@ -169,9 +169,7 @@ export const mcpToolSession = (
  * `session/new` but fail to expose those tools to their model. Compliant ACP
  * agents continue to use the stdio bridge above.
  */
-export function callAcpMcpTool(
-  options: AcpMcpToolCallOptions,
-): Effect.Effect<unknown, AcpMcpBridgeError> {
+function callAcpMcpTool(options: AcpMcpToolCallOptions): Effect.Effect<unknown, AcpMcpBridgeError> {
   return mcpToolSession({ ...options, clientName: "t3-code-acp-cli" }).pipe(
     Effect.flatMap((session) => session.call(options.tool, options.arguments)),
     Effect.scoped,

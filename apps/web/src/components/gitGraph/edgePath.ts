@@ -6,7 +6,7 @@ export const LANE_WIDTH = 14;
 export const LANE_PADDING = 10;
 
 export const laneX = (lane: number) => LANE_PADDING + lane * LANE_WIDTH;
-export const rowY = (row: number) => row * ROW_HEIGHT + ROW_HEIGHT / 2;
+const rowY = (row: number) => row * ROW_HEIGHT + ROW_HEIGHT / 2;
 
 /**
  * Child lane -> carrier lane -> parent lane, bending once at each change. A

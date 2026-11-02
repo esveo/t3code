@@ -51,8 +51,10 @@ export function scheduledTaskDefaultModel(
 }
 
 export type ScheduleDraft = {
-  readonly mode: "fixed_time" | "interval" | "webhook";
+  readonly mode: "fixed_time" | "once" | "interval" | "webhook";
   readonly timeOfDay: string;
+  /** ISO time for a one-time run. Empty until the user picks the "Once" mode. */
+  readonly runAt: string;
   readonly weekdays: ReadonlyArray<number>;
   readonly intervalMinutes: string;
   /** Fork (esveo): catch up a fixed-time run missed while the app was off or asleep. */
@@ -70,6 +72,7 @@ export type ScheduleDraft = {
 export const DEFAULT_SCHEDULE: ScheduleDraft = {
   mode: "fixed_time",
   timeOfDay: "09:00",
+  runAt: "",
   weekdays: [1, 2, 3, 4, 5],
   intervalMinutes: "15",
   catchUpMissedRuns: false,
@@ -93,6 +96,8 @@ export function scheduleDraftForTask(task: Pick<ScheduledTask, "schedule">): Sch
           : [0, 1, 2, 3, 4, 5, 6],
         catchUpMissedRuns: task.schedule.catchUpMissedRuns === true,
       };
+    case "once":
+      return { ...DEFAULT_SCHEDULE, mode: "once", runAt: task.schedule.runAt };
     case "interval":
       return {
         ...DEFAULT_SCHEDULE,
@@ -170,6 +175,10 @@ export function scheduleFromDraft(draft: ScheduleDraft): ScheduledTaskUpsertSche
         : {}),
     };
   }
+  if (draft.mode === "once") {
+    const runAt = new Date(draft.runAt);
+    return Number.isNaN(runAt.getTime()) ? null : { type: "once", runAt: runAt.toISOString() };
+  }
   if (draft.mode === "interval") {
     const minutes = parseIntervalMinutes(draft.intervalMinutes);
     const everyMs = Math.round(minutes * 60_000);
@@ -220,6 +229,7 @@ function draftSignature(draft: ScheduledTaskDraft): string {
       .map((option) => [option.id, option.value]),
     draft.schedule.mode,
     draft.schedule.timeOfDay,
+    draft.schedule.runAt,
     [...draft.schedule.weekdays].sort((a, b) => a - b),
     draft.schedule.intervalMinutes,
     draft.schedule.catchUpMissedRuns,

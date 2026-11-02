@@ -15,7 +15,7 @@ export const FORK_NOTES_WS_METHODS = {
   act: "forkNotes.act",
 } as const;
 
-export const FORK_NOTE_MAX_TEXT_LENGTH = 20_000;
+const FORK_NOTE_MAX_TEXT_LENGTH = 20_000;
 
 export const ForkNoteScope = Schema.Literals(["thread", "project", "global"]);
 export type ForkNoteScope = typeof ForkNoteScope.Type;

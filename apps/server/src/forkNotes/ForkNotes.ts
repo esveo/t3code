@@ -1,11 +1,4 @@
-/**
- * Fork: the notes and todos of the Notes tab.
- *
- * One table for all three scopes (thread, project, global); global means the
- * whole environment. Writes go one at a time, renumber the positions of every
- * scope they touch, and then tell the open subscriptions of those scopes,
- * which answer with the scope's full list again. It stays small.
- */
+/** Fork: stores Notes-tab notes and todos across thread, project, and global scopes. */
 import {
   type ForkNote,
   type ForkNoteScope,
@@ -82,7 +75,7 @@ const insertAt = <A>(items: ReadonlyArray<A>, position: number, item: A) => {
   return [...items.slice(0, index), item, ...items.slice(index)];
 };
 
-export const make = Effect.gen(function* () {
+const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const crypto = yield* Crypto.Crypto;
   const writes = yield* Semaphore.make(1);
@@ -140,6 +133,7 @@ export const make = Effect.gen(function* () {
     `.pipe(Effect.mapError(storeFailed("save")));
 
   /** Runs one change and returns the scopes it touched. */
+  // oxlint-disable-next-line t3code/prefer-effect-fn -- local transaction body shares the service span
   const apply = (
     action: ForkNotesAction,
   ): Effect.Effect<ReadonlyArray<ForkNotesTarget>, ForkNotesError> =>

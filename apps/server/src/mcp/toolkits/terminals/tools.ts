@@ -19,7 +19,7 @@ const dependencies = [
 ];
 
 export const READ_TERMINAL_DEFAULT_LINES = 200;
-export const READ_TERMINAL_MAX_LINES = 1_000;
+const READ_TERMINAL_MAX_LINES = 1_000;
 /** Keeps a result well below the ~100 KB at which Claude Code drops tool output. */
 export const READ_TERMINAL_MAX_CHARS = 40_000;
 

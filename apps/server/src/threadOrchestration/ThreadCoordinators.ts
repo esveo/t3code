@@ -1,19 +1,4 @@
-/**
- * Fork: thread orchestration. Which coordinator thread a thread reports to.
- *
- * A thread a coordinator started (delegate_task) belongs to it
- * by V2 lineage. Lineage is immutable, and V2's delegated-task records hang
- * off one run of the parent whose delivery V2 stops for good when that run
- * is interrupted, so neither can carry "put this thread under that
- * coordinator" or "release it". Those changes live in
- * `fork_thread_coordinators` instead: a row overrides the lineage default,
- * a row with a null coordinator releases the thread. `coordinatorThreadIdOf`
- * (shared) combines both, on the server and in the client.
- *
- * Moving a delegated child away from the thread that started it disposes that
- * parent's V2 completion delivery, so only the new coordinator hears about it
- * (CoordinatorUpdates.ts).
- */
+/** Fork: mutable coordinator ownership overrides immutable V2 lineage. */
 import {
   CommandId,
   isProviderNativeSubagentThread,
@@ -51,7 +36,7 @@ const failure = (message: string) => new ThreadCoordinatorsError({ message });
  * in V1: a coordinator is no child itself, and a thread with children of its
  * own cannot become one. That also rules out every cycle.
  */
-export function coordinatorChangeError(input: {
+function coordinatorChangeError(input: {
   readonly thread: CoordinatedShell;
   readonly coordinator: CoordinatedShell;
   readonly threads: ReadonlyArray<CoordinatedShell>;
@@ -130,7 +115,7 @@ export class ThreadCoordinators extends Context.Service<
   }
 >()("t3/threadOrchestration/ThreadCoordinators") {}
 
-export const make = Effect.gen(function* () {
+const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const threads = yield* ThreadManagementService;
   const crypto = yield* Crypto.Crypto;
@@ -234,6 +219,7 @@ export const make = Effect.gen(function* () {
    * V2 keeps delivering a delegated child's result to the thread that started
    * it. Once the child reports elsewhere, that delivery is disposed.
    */
+  // oxlint-disable-next-line t3code/prefer-effect-fn -- the coordinator mutation owns this span
   const disposeLineageDelivery = (thread: OrchestrationV2ThreadShell) =>
     Effect.gen(function* () {
       const parentThreadId = thread.lineage.parentThreadId;
@@ -386,7 +372,7 @@ export const make = Effect.gen(function* () {
 export const layer = Layer.effect(ThreadCoordinators, make);
 
 /** The RPC side reads the service optionally, like ThreadDecisions.withService. */
-export const withService = <A>(
+const withService = <A>(
   use: (service: ThreadCoordinators["Service"]) => Effect.Effect<A, ThreadCoordinatorsError>,
 ) =>
   Effect.flatMap(Effect.serviceOption(ThreadCoordinators), (service) =>

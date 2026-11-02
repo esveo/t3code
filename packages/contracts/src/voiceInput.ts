@@ -1,10 +1,4 @@
-/**
- * Fork: dictation in the composer. The client records the microphone and sends
- * the audio to its environment, which transcribes it locally with Whisper.
- * `prepare` downloads the model when the user turns dictation on; with
- * `download: false` it reports whether the model is there and stays open until
- * it is, which is how clients decide to offer dictation.
- */
+/** Fork: contracts for local Whisper dictation and model preparation. */
 import * as Schema from "effect/Schema";
 import * as Rpc from "effect/rpc/Rpc";
 
@@ -23,7 +17,7 @@ export const VOICE_INPUT_MAX_SECONDS = 5 * 60;
  * bytes), with a few seconds of headroom: a recorder stopped at the limit
  * delivers slightly more. The server transcribes at most the limit.
  */
-export const VOICE_INPUT_MAX_AUDIO_BASE64_LENGTH =
+const VOICE_INPUT_MAX_AUDIO_BASE64_LENGTH =
   Math.ceil(((VOICE_INPUT_MAX_SECONDS + 10) * VOICE_INPUT_SAMPLE_RATE * 2) / 3) * 4;
 /** Languages to steer Whisper towards; `auto` lets it detect one per recording. */
 export const VoiceInputLanguage = Schema.String.check(Schema.isPattern(/^(auto|[a-z]{2,3})$/));

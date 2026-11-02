@@ -23,7 +23,7 @@ import { forkParked } from "../serverActivation.ts";
 import { VoiceCallService } from "./VoiceCallService.ts";
 
 /** About 1,000 tokens, Codex's budget for a spoken result. */
-export const READ_BACK_MAX_BYTES = 4_000;
+const READ_BACK_MAX_BYTES = 4_000;
 
 const SETTLED: ReadonlySet<OrchestrationV2RunStatus> = new Set([
   "completed",

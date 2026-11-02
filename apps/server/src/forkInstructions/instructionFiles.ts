@@ -1,21 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
-/**
- * Fork: which instruction file the Instructions tab opens, and reading and
- * writing it with a version check.
- *
- * What the providers read (Claude Code: code.claude.com/docs/en/memory; Codex:
- * openai/codex `core/src/agents_md.rs` and `codex-home/src/instructions`):
- * - Claude, project: `CLAUDE.md` and `.claude/CLAUDE.md` (both load), plus
- *   `CLAUDE.local.md`; `AGENTS.md` only while neither CLAUDE.md exists (the
- *   default of its "Project instructions" setting); global: `<config dir>/CLAUDE.md`. `@path` lines import
- *   other files, relative to the importing file, `~/` from the home directory.
- * - Codex, project: per folder from the repository root down, the first of
- *   `AGENTS.override.md` and `AGENTS.md`; global: the first non-empty one of
- *   the same two names in `CODEX_HOME`. Codex has no imports.
- * The tab edits one file per provider and scope, the one that wins; others
- * that load too only show up as hints. A file that only imports Markdown
- * files opens its first import, with a switcher between them.
- */
+/** Fork: resolves provider instruction files and writes them with version checks. */
 import {
   FORK_INSTRUCTIONS_MAX_BYTES,
   type ForkInstructionsChoice,
@@ -47,10 +31,10 @@ export interface InstructionLocation {
 
 const failure = (message: string) => new ForkInstructionsError({ message });
 
-export const abbreviateHome = (path: string, home: string) =>
+const abbreviateHome = (path: string, home: string) =>
   path === home ? "~" : path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
 
-export const contentVersion = (content: string) =>
+const contentVersion = (content: string) =>
   NodeCrypto.createHash("sha256").update(content).digest("hex").slice(0, 16);
 
 /**

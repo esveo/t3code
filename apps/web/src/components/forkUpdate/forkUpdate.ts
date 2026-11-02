@@ -21,7 +21,7 @@ export function formatForkBuildTime(builtAt: string, now: Date = new Date()): st
 }
 
 /** Gigabytes with one decimal; every build is gigabytes, so smaller units would mislead. */
-export function formatForkBuildSize(sizeBytes: number): string {
+function formatForkBuildSize(sizeBytes: number): string {
   return `${(sizeBytes / 1_000_000_000).toFixed(1)} GB`;
 }
 

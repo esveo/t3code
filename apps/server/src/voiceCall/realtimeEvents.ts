@@ -168,7 +168,7 @@ export type RealtimeOutbound =
   | { readonly type: "session.close" };
 
 /** The session rejects a context append over 500 tokens; Codex sends 500 bytes at a time. */
-export const CONTEXT_APPEND_MAX_BYTES = 500;
+const CONTEXT_APPEND_MAX_BYTES = 500;
 
 const encoder = new TextEncoder();
 

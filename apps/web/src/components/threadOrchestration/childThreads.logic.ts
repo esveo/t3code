@@ -47,14 +47,10 @@ export function hiddenChildThreadGroups(
   return { childrenByParentKey: new Map(), nestedThreadKeys, listsChildren: false };
 }
 
-export function parentKeyOf(thread: Pick<EnvironmentThreadShell, "environmentId" | "id">): string {
-  return keyOf(thread.environmentId, thread.id);
-}
-
 /** Which part of the sidebar a thread lists in: open, snoozed or settled. */
 export type SidebarShelf = "open" | "snoozed" | "settled";
 
-export function sidebarShelfOf(
+function sidebarShelfOf(
   thread: Pick<EnvironmentThreadShell, "settledOverride" | "snoozedUntil">,
   now: string,
 ): SidebarShelf {
@@ -63,13 +59,7 @@ export function sidebarShelfOf(
   return thread.settledOverride === "settled" ? "settled" : "open";
 }
 
-/**
- * A child nests under its coordinator while that coordinator is listed on the
- * same shelf: a settled child leaves an open coordinator's group for the
- * settled shelf, and comes back with it. A child whose coordinator was
- * archived or deleted stands on its own again, so no thread ever disappears
- * from the sidebar.
- */
+/** Children nest only when their coordinator is visible on the same sidebar shelf. */
 export function groupChildThreads(
   threads: ReadonlyArray<EnvironmentThreadShell>,
   coordinatorOf: CoordinatorOf,

@@ -15,15 +15,8 @@ const EMPTY_TURNS: ReadonlySet<string> = new Set();
 const byTimeline = new Map<string, TimelineThoughts>();
 const listeners = new Set<() => void>();
 
-/**
- * A module store rather than a context, so the timeline does not have to wrap
- * its tree to publish. Wrapping cost 174 lines of re-indentation in a file
- * upstream edits constantly, which is a conflict at every rebase for nothing.
- *
- * Only membership changes notify: entries are replaced on every streaming
- * frame, and the footers care only about which runs have thinking at all.
- */
-export function publishTimelineThoughts(
+/** Module store avoids wrapping the upstream timeline; only membership changes notify. */
+function publishTimelineThoughts(
   timelineKey: string,
   entries: ReadonlyArray<ThoughtEntry>,
   liveRunId: string | null,
@@ -36,7 +29,7 @@ export function publishTimelineThoughts(
   }
 }
 
-export function forgetTimelineThoughts(timelineKey: string) {
+function forgetTimelineThoughts(timelineKey: string) {
   if (byTimeline.delete(timelineKey)) {
     for (const listener of listeners) listener();
   }
@@ -62,9 +55,11 @@ export function usePublishTimelineThoughts(
   entries: ReadonlyArray<ThoughtEntry>,
   liveRunId: string | null,
 ) {
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- publishes timeline state to the external module store
   useEffect(() => {
     publishTimelineThoughts(timelineKey, entries, liveRunId);
   }, [entries, liveRunId, timelineKey]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- unregisters the external timeline entry on unmount
   useEffect(() => () => forgetTimelineThoughts(timelineKey), [timelineKey]);
 }
 

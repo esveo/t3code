@@ -1,12 +1,4 @@
-// Fork: carries prompts an early interrupt dropped into the next turn.
-//
-// The Claude CLI dequeues a prompt well before it records it in the
-// transcript. Stop closes the query, so a Stop in that gap (a resumed session
-// still loading, hooks still running) discards the prompt: the model never
-// sees it and the resumed session has no trace of it. Each user turn's
-// message stays here until the CLI replies to it; a turn that ends
-// interrupted or failed without a reply hands its message(s) to the next
-// user turn on the same native thread.
+// Fork: carries prompts dropped by an early Claude interrupt into the next turn.
 import type { SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 
 type ClaudeUserMessageContent = SDKUserMessage["message"]["content"];
@@ -33,7 +25,7 @@ function echoedPromptUuids(message: SDKMessage): ReadonlyArray<string> | undefin
  * names the prompt: an interrupt ends with an unstamped result even when the
  * prompt was never read.
  */
-export function isClaudePromptAcknowledgement(message: SDKMessage, promptUuid: string): boolean {
+function isClaudePromptAcknowledgement(message: SDKMessage, promptUuid: string): boolean {
   const uuids = echoedPromptUuids(message);
   if (message.type === "result") return uuids?.includes(promptUuid) ?? false;
   if (message.type !== "stream_event" && message.type !== "assistant") return false;

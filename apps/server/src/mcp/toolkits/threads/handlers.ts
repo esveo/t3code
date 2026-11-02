@@ -40,14 +40,14 @@ import {
 
 type Shell = OrchestrationV2ThreadShell;
 
-export function threadLink(thread: Pick<Shell, "id" | "title">): string {
+function threadLink(thread: Pick<Shell, "id" | "title">): string {
   return `[${thread.title.replaceAll("]", ")")}](${threadLinkHref(thread.id)})`;
 }
 
 const iso = (value: DateTime.Utc) => DateTime.formatIso(value);
 
 /** What the tools report about a thread; exported so the shape is testable without a layer. */
-export function summarizeChildThread(thread: Shell, isChild: boolean): ChildThreadSummary {
+function summarizeChildThread(thread: Shell, isChild: boolean): ChildThreadSummary {
   return {
     threadId: thread.id,
     title: thread.title,
@@ -65,7 +65,7 @@ export function summarizeChildThread(thread: Shell, isChild: boolean): ChildThre
 }
 
 /** A decision as list_decisions reports it: the answer in words, not ids. */
-export function summarizeDecision(decision: ThreadDecision): DecisionSummary {
+function summarizeDecision(decision: ThreadDecision): DecisionSummary {
   const option = decision.options.find((candidate) => candidate.id === decision.answer?.optionId);
   const answer = decision.answer
     ? [option?.label, decision.answer.text].filter((part) => part).join(" – ") ||

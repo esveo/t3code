@@ -1,13 +1,4 @@
-/**
- * Fork: the decisions a coordinator thread asks the user for.
- *
- * Kept in a fork table of their own rather than as thread activities: a
- * thread's detail only carries its latest activities, so on a busy
- * coordinator older open questions would drop out of view, and activities
- * would show up as rows in the chat. The coordinator writes through its MCP
- * tools, the Inbox panel reads through a subscription and replies through
- * `act`; every write tells the open subscriptions of that coordinator.
- */
+/** Fork: persists coordinator decisions independently of truncated thread activities. */
 import {
   CommandId,
   MessageId,
@@ -74,7 +65,7 @@ const decodeDecision = Schema.decodeUnknownOption(Schema.fromJsonString(ThreadDe
 
 const failure = (message: string) => new ThreadDecisionsError({ message });
 
-export const make = Effect.gen(function* () {
+const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const threads = yield* ThreadManagementService;
   const crypto = yield* Crypto.Crypto;

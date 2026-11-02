@@ -19,13 +19,7 @@ export type ChildThreadShell = Pick<
 > &
   Partial<Pick<OrchestrationV2ThreadShell, "pendingBackgroundTasks">>;
 
-/**
- * The coordinator a thread reports to. The user or a coordinator can put a
- * thread under another one, or release it (`overrides`, the server's
- * fork_thread_coordinators rows; null releases it). Without such a row, a
- * T3-owned delegated child (delegate_task) belongs to the thread
- * that started it; provider-native subagents never do: their provider owns them.
- */
+/** Resolves mutable coordinator overrides before delegated-child lineage. */
 export function coordinatorThreadIdOf(
   thread: Pick<OrchestrationV2ThreadShell, "id" | "lineage" | "creationSource">,
   overrides: ReadonlyMap<ThreadId, ThreadId | null>,
@@ -142,7 +136,7 @@ export function describeChildThread(thread: ChildThreadShell): string {
  * Markdown link a coordinator writes to mention a child thread. The client
  * renders it as a chip with the thread's live state.
  */
-export const THREAD_LINK_SCHEME = "t3-thread:";
+const THREAD_LINK_SCHEME = "t3-thread:";
 
 export function threadLinkHref(threadId: string): string {
   return `${THREAD_LINK_SCHEME}${threadId}`;

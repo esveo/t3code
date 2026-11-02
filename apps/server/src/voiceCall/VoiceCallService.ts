@@ -156,7 +156,7 @@ const contextIdFor = (delegationId: string) =>
   `voice-${delegationId.replace(/[^a-z0-9_-]/gi, "").slice(-100)}`;
 
 /** The steered message: a voice chip, then the voice's instruction. */
-export const voiceDelegationMessage = (input: {
+const voiceDelegationMessage = (input: {
   readonly callId: string;
   readonly delegationId: string;
   readonly text: string;

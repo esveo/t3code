@@ -1,11 +1,4 @@
-/**
- * Fork: a coordinator is not done while threads it coordinates are still open.
- * Upstream's automatic settlement settles a thread once all its linked pull
- * requests merged, or after days without activity; a coordinator that linked
- * its children's pull requests would settle when the last of them merged,
- * though its work goes on. The sweep leaves out every coordinator with a child
- * that is neither settled nor archived; settling it by hand still works.
- */
+/** Fork: automatic settlement skips coordinators that still have open children. */
 import type { ThreadId } from "@t3tools/contracts";
 import { coordinatorThreadIdOf } from "@t3tools/shared/threadOrchestration";
 import * as Effect from "effect/Effect";
@@ -19,7 +12,7 @@ export interface OpenThreadRow {
 }
 
 /** The coordinators among `rows`' owners that still have an open thread. */
-export function coordinatorsWithOpenThreads(
+function coordinatorsWithOpenThreads(
   openThreads: ReadonlyArray<OpenThreadRow>,
   overrides: ReadonlyMap<ThreadId, ThreadId | null>,
 ): ReadonlySet<ThreadId> {
@@ -52,6 +45,7 @@ export const readCoordinatorsWithOpenThreads = (
 ): Effect.Effect<ReadonlySet<ThreadId>> =>
   sql === null ? Effect.succeed(new Set<ThreadId>()) : readWith(sql);
 
+// oxlint-disable-next-line t3code/prefer-effect-fn -- called only inside the enclosing sweep span
 const readWith = (sql: SqlClient.SqlClient): Effect.Effect<ReadonlySet<ThreadId>> =>
   Effect.gen(function* () {
     const links = yield* sql<{

@@ -18,7 +18,7 @@ export interface InboxView {
   readonly expanded: boolean;
 }
 
-export const DEFAULT_INBOX_VIEW: InboxView = {
+const DEFAULT_INBOX_VIEW: InboxView = {
   mode: "list",
   groupBy: "urgency",
   currentId: null,

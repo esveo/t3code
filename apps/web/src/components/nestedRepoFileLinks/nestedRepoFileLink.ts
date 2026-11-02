@@ -1,14 +1,7 @@
-/**
- * Agents working in a repository nested inside the workspace (its own `.git`,
- * usually ignored by the outer repo) name files relative to that inner
- * repository: `.devops/pipeline.yml` instead of `proda/.devops/pipeline.yml`.
- * Resolved against the workspace root such a link points nowhere, and the
- * basename lookup cannot help because the search index skips ignored folders.
- * So a link that is missing at the root is looked for one folder down.
- */
+/** Resolves agent file links relative to repositories nested one folder below the workspace. */
 
 // Bounds the probes a single click can send for a root with many folders.
-export const NESTED_REPO_FILE_LOOKUP_MAX_DIRECTORIES = 100;
+const NESTED_REPO_FILE_LOOKUP_MAX_DIRECTORIES = 100;
 
 export interface NestedRepoFileProbe {
   /** False only when nothing exists at the workspace-relative path. */

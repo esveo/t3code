@@ -37,7 +37,7 @@ const markEntry = (kind: string, atMs: number, label: string): TimelineEntry => 
   };
 };
 
-export const voiceCallMarkEntries = (spans: ReadonlyArray<VoiceCallThreadSpan>) =>
+const voiceCallMarkEntries = (spans: ReadonlyArray<VoiceCallThreadSpan>) =>
   spans.flatMap((span) => [
     markEntry("started", span.startedAt, "Voice call started"),
     ...(span.endedAt === null
@@ -96,7 +96,7 @@ export function useVoiceCallMarks(
       : voiceCallEnvironment.view({ environmentId, input: { clientId: voiceCallClientId } }),
     callKey,
   );
-  // oxlint-disable-next-line t3code/react-effect-budget -- the server's spans move with the call, which only the subscription reports
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- refreshes server spans when the external call subscription moves
   useEffect(() => {
     if (key !== null) refresh();
   }, [key, refresh]);

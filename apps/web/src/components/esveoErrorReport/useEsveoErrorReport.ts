@@ -10,7 +10,7 @@ const COMMIT_HASH = import.meta.env.VITE_ESVEO_COMMIT_HASH;
  * then resolves minified bundle frames through the build's source maps, so a
  * report names source files even after that build is gone.
  */
-export function esveoErrorReport(report: string, error: unknown): string {
+function esveoErrorReport(report: string, error: unknown): string {
   const [header = "", ...rest] = report.split("\n");
   const lines = [header];
   if (COMMIT_HASH) lines.push(`Commit: ${COMMIT_HASH}`);
@@ -29,6 +29,7 @@ export function useEsveoErrorReport(report: string, error: unknown): string {
     readonly text: string;
   } | null>(null);
 
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- synchronizes async source-map symbolication
   useEffect(() => {
     let cancelled = false;
     // Read here, not during render: React records the component stack after the error view renders.
