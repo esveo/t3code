@@ -21,7 +21,11 @@ const COORDINATOR = ThreadId.make("coordinator");
 
 interface ChildState {
   readonly shell: OrchestrationV2ThreadShell;
-  readonly runs: ReadonlyArray<{ readonly id: string; readonly status: string }>;
+  readonly runs: ReadonlyArray<{
+    readonly id: string;
+    readonly status: string;
+    readonly delegatedTaskId?: string;
+  }>;
   readonly answers: Record<string, string>;
 }
 
@@ -30,7 +34,11 @@ interface World {
   /** Coordinator links: adopted threads. */
   readonly links: Map<ThreadId, ThreadId | null>;
   /** The coordinator's V2 tasks and the child runs V2 published to it. */
-  tasks: ReadonlyArray<{ childThreadId: ThreadId; completionDelivery?: { state: string } }>;
+  tasks: ReadonlyArray<{
+    id?: string;
+    childThreadId: ThreadId;
+    completionDelivery?: { state: string };
+  }>;
   transfers: ReadonlyArray<{ sourceThreadId: ThreadId; runId: string }>;
   queued: ReadonlyArray<{ runId: string; messageId: string; text: string }>;
   /** The last reported result of each child, as it was before a restart. */
@@ -154,7 +162,10 @@ const withUpdates = <A, E>(
         }
         return Effect.succeed({
           thread: child.shell,
-          runs: child.runs.map((entry, index) => run(entry.id, index + 1, entry.status)),
+          runs: child.runs.map((entry, index) => ({
+            ...run(entry.id, index + 1, entry.status),
+            delegatedTaskId: entry.delegatedTaskId,
+          })),
           messages: [],
           subagents: [],
           providerThreads: [],
@@ -284,7 +295,7 @@ describe("CoordinatorUpdates", () => {
           yield* updates.report(child);
           assert.strictEqual((yield* Ref.get(dispatched)).length, 0);
 
-          // The coordinator sent a follow-up; V2 wakes it no more.
+          // The user sent a follow-up: no task of the coordinator covers it.
           world.children.set(
             child,
             state([
@@ -298,6 +309,43 @@ describe("CoordinatorUpdates", () => {
           const command = commands[0]!;
           if (command.type !== "message.dispatch") return assert.fail(command.type);
           assert.strictEqual(parseThreadUpdates(command.text)?.[0]?.body, "Follow-up result.");
+        }),
+      );
+    }),
+  );
+
+  it.effect("leaves the result of a coordinator's send to V2, which wakes it once", () =>
+    Effect.gen(function* () {
+      const world = makeWorld();
+      const child = ThreadId.make("delegated");
+      const sent = "send-task";
+      world.children.set(child, {
+        shell: childShell("delegated", COORDINATOR),
+        runs: [
+          { id: "run-1", status: "completed" },
+          { id: "run-2", status: "completed", delegatedTaskId: sent },
+        ],
+        answers: { "run-1": "First result.", "run-2": "Sent result." },
+      });
+      world.tasks = [{ childThreadId: child }, { id: sent, childThreadId: child }];
+      world.transfers = [{ sourceThreadId: child, runId: "run-1" }];
+      yield* withUpdates(world, ({ updates, dispatched }) =>
+        Effect.gen(function* () {
+          yield* updates.report(child);
+          assert.strictEqual((yield* Ref.get(dispatched)).length, 0);
+          world.transfers = [...world.transfers, { sourceThreadId: child, runId: "run-2" }];
+          yield* updates.report(child);
+          assert.strictEqual((yield* Ref.get(dispatched)).length, 0);
+          assert.strictEqual(world.reported.get(child), "run-2");
+
+          // V2 could not wake the coordinator: the update still has to arrive.
+          world.reported.delete(child);
+          world.tasks = [
+            { childThreadId: child },
+            { id: sent, childThreadId: child, completionDelivery: { state: "disposed" } },
+          ];
+          yield* updates.report(child);
+          assert.strictEqual((yield* Ref.get(dispatched)).length, 1);
         }),
       );
     }),

@@ -3,11 +3,12 @@
  * Fork: thread orchestration. Tells a coordinator about the results of its
  * threads that V2's delegated-task mailbox does not deliver.
  *
- * V2 wakes the thread that started a delegated child exactly once, with the
- * child's first result (Orchestrator.finalizeAppOwnedSubagent). A coordinator
- * keeps its threads for longer: it sends them follow-ups, the user puts
- * existing threads under it or moves them between coordinators, and a wake
- * V2 disposed (its parent run was interrupted) still has to arrive. Each of
+ * V2 wakes the thread that started a delegated child with the result of each
+ * of its tasks: the child's first run and every `t3_thread_send` to it
+ * (Orchestrator.finalizeAppOwnedSubagent). A coordinator keeps its threads for
+ * longer: the user writes to them directly, puts existing threads under it or
+ * moves them between coordinators, and a wake V2 disposed (its parent run was
+ * interrupted) still has to arrive. Each of
  * those results reaches the coordinator here, as a queued message of
  * `<t3_thread_update>` blocks with the child's full answer, the same shape
  * V2's wakes carry in the fork (delegatedCompletionText.ts). Results that
@@ -62,9 +63,8 @@ export type CoordinatorUpdateDecision =
 
 /**
  * Whether the coordinator should hear about the child's latest result now.
- * `lineageTask` is the coordinator's V2 task for the child when the
- * coordinator also started it; `resultTransferRunIds` the child runs V2
- * already published to it.
+ * `lineageTask` is the coordinator's V2 task that delivers this result, if
+ * any; `resultTransferRunIds` the child runs V2 already published to it.
  */
 export function decideCoordinatorUpdate(input: {
   readonly child: Pick<OrchestrationV2ThreadShell, "settledAt">;
@@ -91,8 +91,9 @@ export function decideCoordinatorUpdate(input: {
     input.lineageTask !== undefined &&
     input.lineageTask.completionDelivery?.state !== "disposed"
   ) {
-    if (input.resultTransferRunIds.includes(runId)) return { kind: "skip", accounted: runId };
-    if (input.resultTransferRunIds.length === 0) return { kind: "wait" };
+    return input.resultTransferRunIds.includes(runId)
+      ? { kind: "skip", accounted: runId }
+      : { kind: "wait" };
   }
   return { kind: "send", runId };
 }
@@ -218,21 +219,29 @@ export const make = Effect.gen(function* () {
     const parentRecords = lineageParent
       ? yield* threads.getThreadRecords(coordinatorId, ["subagents", "contextTransfers"])
       : null;
+    const lineageTasks = (parentRecords?.subagents ?? []).filter(
+      (task) => task.origin === "app_owned" && task.childThreadId === childThreadId,
+    );
+    const resultTransferRunIds = (parentRecords?.contextTransfers ?? []).flatMap((transfer) =>
+      transfer.type === "subagent_result" &&
+      transfer.sourceThreadId === childThreadId &&
+      transfer.sourcePoint.runId !== undefined
+        ? [transfer.sourcePoint.runId]
+        : [],
+    );
+    // A later run without a task of its own (the user wrote to the child) gets no V2 wake.
+    const firstResultTask =
+      resultTransferRunIds.length === 0 || resultTransferRunIds.includes(resultRun.id)
+        ? lineageTasks[0]
+        : undefined;
     const decision = decideCoordinatorUpdate({
       child,
       coordinator,
       resultRunId: resultRun.id,
       lastReportedRunId: yield* coordinators.lastReportedRun(childThreadId),
-      lineageTask: parentRecords?.subagents.find(
-        (task) => task.origin === "app_owned" && task.childThreadId === childThreadId,
-      ),
-      resultTransferRunIds: (parentRecords?.contextTransfers ?? []).flatMap((transfer) =>
-        transfer.type === "subagent_result" &&
-        transfer.sourceThreadId === childThreadId &&
-        transfer.sourcePoint.runId !== undefined
-          ? [transfer.sourcePoint.runId]
-          : [],
-      ),
+      lineageTask:
+        lineageTasks.find((task) => task.id === resultRun.delegatedTaskId) ?? firstResultTask,
+      resultTransferRunIds,
     });
     if (decision.kind === "wait") return null;
     if (decision.kind === "skip") {
