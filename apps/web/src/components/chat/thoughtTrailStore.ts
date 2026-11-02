@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/no-unreasoned-state-sync -- effects synchronize the external thought store */
 import { useEffect, useSyncExternalStore } from "react";
 
 import { deriveTurnsWithThoughts, readTurnThoughts, type ThoughtEntry } from "./thoughtSummary";

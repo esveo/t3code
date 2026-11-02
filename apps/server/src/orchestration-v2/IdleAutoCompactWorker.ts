@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- fork module documents prompt-cache timing constraints */
 /**
  * Fork: idle auto-compact for Claude threads.
  *

@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-manual-memo -- stable array identity prevents downstream subscription churn */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { ScopedThreadRef } from "@t3tools/contracts";

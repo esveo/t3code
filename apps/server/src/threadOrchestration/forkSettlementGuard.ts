@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/prefer-effect-fn -- preserve the fork sweep helper and rationale */
 /**
  * Fork: a coordinator is not done while threads it coordinates are still open.
  * Upstream's automatic settlement settles a thread once all its linked pull

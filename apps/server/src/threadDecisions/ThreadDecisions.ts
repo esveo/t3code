@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- fork module documents persistence outside truncated activities */
 /**
  * Fork: the decisions a coordinator thread asks the user for.
  *

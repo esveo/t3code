@@ -14,6 +14,7 @@ import * as ThreadLaunchServiceModule from "../orchestration-v2/ThreadLaunchServ
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
+import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import { ThreadCoordinators } from "../threadOrchestration/ThreadCoordinators.ts";
@@ -55,6 +56,7 @@ const withService = <A, E>(
     const sends: Array<unknown> = [];
     const dependencies = Layer.mergeAll(
       NodePlatformCrypto.layer,
+      ManagedPolicy.layerTest(),
       Scheduler.layer,
       Layer.mock(ThreadLaunchServiceModule.ThreadLaunchService)({
         launch: (input) =>

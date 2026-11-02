@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/prefer-effect-fn -- preserve fork service spans and documentation */
 /**
  * Fork: the notes and todos of the Notes tab.
  *

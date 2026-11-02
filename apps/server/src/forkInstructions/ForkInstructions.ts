@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- fork module documents provider-specific instruction roots */
 /**
  * Fork: the instruction files of the Instructions tab.
  *

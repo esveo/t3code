@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- fork module documents browser and desktop routing constraints */
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 

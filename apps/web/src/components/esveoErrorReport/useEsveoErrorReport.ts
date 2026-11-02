@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-unreasoned-state-sync -- effect synchronizes async source-map symbolication */
 import { useEffect, useState } from "react";
 
 import { componentStackOf } from "./reactErrorInfo";

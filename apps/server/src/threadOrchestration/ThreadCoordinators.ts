@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/prefer-effect-fn -- preserve fork coordinator helpers and rationale */
 /**
  * Fork: thread orchestration. Which coordinator thread a thread reports to.
  *

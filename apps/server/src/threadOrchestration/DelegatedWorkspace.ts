@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- fork module documentation captures cross-service constraints */
 /**
  * Fork: delegate_task into another project and/or a worktree of its own.
  *

@@ -3,6 +3,7 @@
  * a compaction divider. They carry no run, so they stay out of turn folds and of
  * everything the agent sees.
  */
+/* oxlint-disable t3code/no-unreasoned-state-sync -- effect refreshes spans from the external call subscription */
 import type { ScopedThreadRef, ServerSettings, VoiceCallThreadSpan } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult, Atom } from "effect/reactivity";
@@ -96,7 +97,6 @@ export function useVoiceCallMarks(
       : voiceCallEnvironment.view({ environmentId, input: { clientId: voiceCallClientId } }),
     callKey,
   );
-  // oxlint-disable-next-line t3code/react-effect-budget -- the server's spans move with the call, which only the subscription reports
   useEffect(() => {
     if (key !== null) refresh();
   }, [key, refresh]);

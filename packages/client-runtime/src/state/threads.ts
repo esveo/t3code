@@ -1028,6 +1028,12 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
               current = yield* SubscriptionRef.get(state);
               break;
             }
+            case "missing": {
+              yield* setDeleted();
+              // A 404 also means "not created yet". Only a delete event may outlive this mount.
+              if (resumeCache?.owner === owner) resumeCache.snapshot = undefined;
+              return yield* Effect.never;
+            }
             case "unavailable": {
               break;
             }

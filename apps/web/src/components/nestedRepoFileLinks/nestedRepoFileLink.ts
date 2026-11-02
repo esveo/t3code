@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- fork module documents nested-repository resolution constraints */
 /**
  * Agents working in a repository nested inside the workspace (its own `.git`,
  * usually ignored by the outer repo) name files relative to that inner

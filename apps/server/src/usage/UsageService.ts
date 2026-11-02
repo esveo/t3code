@@ -39,10 +39,9 @@ import type {
   TranscriptUsageFormat,
   UsageRecord,
 } from "@t3tools/provider-core/server/usage";
-import { resolveModelAliases, UsageAggregator } from "./usageAggregation.ts";
+import { canonicalModelFilter, resolveModelAliases, UsageAggregator } from "./usageAggregation.ts";
 import { createOverrideRateTable, parseRateTable, type RateTable } from "./usagePricing.ts";
 import {
-  emptySessionUsageReport,
   summarizeSessionRecords,
   type SessionUsageInput,
   type SessionUsageReport,
@@ -734,6 +733,7 @@ export const make = Effect.gen(function* () {
       rates,
       priceOverrides: createOverrideRateTable(settings.usagePriceOverrides),
       modelAliases: resolveModelAliases(settings.usageModelAliases),
+      ...(input.modelFilter === undefined ? {} : { modelFilter: input.modelFilter }),
     });
 
     const sources: UsageSource[] = [];
@@ -892,6 +892,7 @@ export const make = Effect.gen(function* () {
       sources,
       pricing: pricing(),
       scanDurationMs: Math.max(0, finishedAtMs - startedAtMs),
+      ...(input.modelFilter === undefined ? {} : { modelFilter: input.modelFilter }),
     } satisfies UsageSummary;
   });
 
@@ -907,16 +908,10 @@ export const make = Effect.gen(function* () {
       input.untilTime ?? null,
       settings,
       input.awaitRefresh === true,
+      input.modelFilter ?? null,
     ]);
 
-  /**
-   * Usage for one provider session, priced exactly as the daily summary
-   * prices it.
-   *
-   * `sinceMs` is a lower bound on the session's last write: a transcript's
-   * mtime can only be at or after it, so the walk skips every unrelated file instead of
-   * parsing the whole history to answer for one thread.
-   */
+  /** Reads one provider session, using `sinceMs` to skip unrelated transcript files. */
   const readSessionUsage = Effect.fn("UsageService.readSessionUsage")(function* (
     input: SessionUsageInput,
   ) {
@@ -953,7 +948,12 @@ export const make = Effect.gen(function* () {
     } satisfies SessionUsageReport;
   });
 
-  const readSummary = Effect.fn("UsageService.readSummary")(function* (input: UsageSummaryInput) {
+  const readSummary = Effect.fn("UsageService.readSummary")(function* (
+    requested: UsageSummaryInput,
+  ) {
+    const { modelFilter: requestedFilter, ...unfiltered } = requested;
+    const modelFilter = canonicalModelFilter(requestedFilter);
+    const input = modelFilter === undefined ? unfiltered : { ...unfiltered, modelFilter };
     const settings = yield* readSettings;
     const key = scanKey(input, settings);
     const deferred = yield* Effect.uninterruptible(

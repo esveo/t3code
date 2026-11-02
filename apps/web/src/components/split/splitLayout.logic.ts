@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- fork layout comments capture tested geometry invariants */
 /**
  * Editor-group style layout for chat panes, modelled on VS Code: a tree of
  * row/column splits whose leaves each show one thread. Exactly one leaf is the

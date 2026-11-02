@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/prefer-effect-fn -- preserve fork settlement helpers and rationale */
 /**
  * Fork: subagents settle with the thread that started them. Settling a thread
  * means its work is done; its subagent threads (provider-native ones and

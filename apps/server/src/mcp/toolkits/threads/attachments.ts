@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- fork module documents delegated attachment ownership */
 /**
  * Fork: thread orchestration. Hands attachments from a coordinator to a child
  * it starts with delegate_task. Each one is copied into the attachment store

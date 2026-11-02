@@ -63,13 +63,7 @@ import { useEnvironments } from "~/state/environments";
 import { useEnvironmentQuery } from "~/state/query";
 import { readEnvironmentScope, useEnvironmentScope } from "~/state/session";
 import { useLiveRefresh } from "~/hooks/useLiveRefresh";
-import {
-  pullRequestEnvironment,
-  pullRequestListEntryToSummary,
-  newestPullRequestSummary,
-  useSharedPullRequestSummary,
-  usePullRequestTurnRefresh,
-} from "~/state/pullRequests";
+import { pullRequestEnvironment, usePullRequestTurnRefresh } from "~/state/pullRequests";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { PullRequestStackMenu } from "./PullRequestStackMenu";
 import { PullRequestChangeBreakdownStat } from "./PullRequestChangeBreakdownStat";
@@ -160,7 +154,6 @@ import {
   resolvePullRequestState,
   summarizePullRequestChecks,
 } from "./pullRequestPresentation";
-import { PullRequestGlyph } from "./pullRequestIcons";
 import { PullRequestDiffUpdateNotice } from "../pullRequestDiffUpdate/PullRequestDiffUpdateNotice";
 import { pullRequestDiffRevision } from "../pullRequestDiffUpdate/pullRequestDiffUpdate.logic";
 import { usePullRequestDiffUpdate } from "../pullRequestDiffUpdate/usePullRequestDiffUpdate";
@@ -563,6 +556,12 @@ export function PullRequestDetailPanel({
     stackPending: !nativeStackQuery.isFresh,
     stackError: nativeStackQuery.error,
   });
+  const stackOwnsMerge = supportsStackActions && nativeStack !== null;
+  const mergeBlockedReason = canMergeSinglePullRequest
+    ? null
+    : nativeStackQuery.error
+      ? "Couldn't check stack membership"
+      : "Checking stack membership…";
   const activityPending = activityQuery.isPending && activity === null;
   const activityError = activity === null ? activityQuery.error : null;
   const refreshDetail = () => {
@@ -1159,9 +1158,9 @@ export function PullRequestDetailPanel({
         checksState,
         autoMergeEnabled: detail.autoMergeEnabled,
         hasMergeMethod: allowedMergeMethods.length > 0,
-        canMerge: canMergeSinglePullRequest && can("merge"),
+        canMerge: !stackOwnsMerge && can("merge"),
         canMarkReady: can("ready"),
-        canEnableAutoMerge: canMergeSinglePullRequest && can("enable-auto-merge"),
+        canEnableAutoMerge: !stackOwnsMerge && can("enable-auto-merge"),
       })
     : null;
   const showsDraftToggle =
@@ -1307,6 +1306,15 @@ export function PullRequestDetailPanel({
         <div className="mr-4 flex h-7 shrink-0 select-none items-center justify-end gap-1">
           {detail ? (
             <TooltipProvider delay={150} closeDelay={150} timeout={400}>
+              {context === "page" ? (
+                <PullRequestThreadLinks
+                  display="count"
+                  environmentId={environmentId}
+                  reference={reference}
+                  url={detail.url}
+                  threadRef={null}
+                />
+              ) : null}
               {!nativeStack && supportsStackActions && nativeStackQuery.error ? (
                 <Button variant="ghost" size="xs" onClick={nativeStackQuery.refresh}>
                   Retry stack lookup
@@ -1323,33 +1331,17 @@ export function PullRequestDetailPanel({
                   environmentId={environmentId}
                   onSelect={onSelectPullRequest}
                   mergeMethod={selectedMergeMethod}
-                  canMerge={
-                    nativeStackQuery.isFresh &&
-                    supportsStackActions &&
-                    can("merge") &&
-                    allowedMergeMethods.length > 0
-                  }
-                  canRebase={
-                    nativeStackQuery.isFresh &&
-                    supportsStackActions &&
-                    detail.viewerPermissions.stackRebase === true
-                  }
+                  stale={!nativeStackQuery.isFresh}
+                  canMerge={supportsStackActions && can("merge") && allowedMergeMethods.length > 0}
+                  canRebase={supportsStackActions && detail.viewerPermissions.stackRebase === true}
                   onActed={() => {
                     refreshDetail();
                     onActed?.();
                   }}
                 />
               ) : null}
-              {context === "page" ? (
-                <PullRequestThreadLinks
-                  display="count"
-                  environmentId={environmentId}
-                  reference={reference}
-                  url={detail.url}
-                  threadRef={null}
-                />
-              ) : null}
               <PullRequestPrimaryAction
+                mergeBlockedReason={mergeBlockedReason}
                 pullRequestKey={pullRequestKey}
                 primaryAction={primaryAction}
                 autoMergeArmed={autoMergeArmed}

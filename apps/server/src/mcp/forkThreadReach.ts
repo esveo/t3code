@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments, t3code/prefer-effect-fn -- preserve fork authorization helpers and rationale */
 /**
  * Fork: with Cross-project threads on (Settings, `enableCrossProjectThreads`),
  * the t3_thread_* tools reach threads in every project of the environment, not

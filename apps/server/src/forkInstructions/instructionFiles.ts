@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off
+/* oxlint-disable t3code/no-low-value-comments -- provider lookup rules are externally defined constraints */
 /**
  * Fork: which instruction file the Instructions tab opens, and reading and
  * writing it with a version check.

@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- fork module documentation predates the stricter upstream rule */
 /**
  * Fork: the Usage page's "Agent time", read from the thread projections.
  *

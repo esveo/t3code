@@ -1,4 +1,5 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+/* oxlint-disable t3code/no-low-value-comments -- fork module documents sidebar grouping invariants */
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { resolveChildThreadState } from "@t3tools/shared/threadOrchestration";

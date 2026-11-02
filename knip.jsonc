@@ -32,6 +32,7 @@
         "mobile-native-client.ts",
         "setup-worktree.ts",
         "sign-macos.ts",
+        "prepare-server-compile-cache.cjs",
         "smoke-desktop-app.ts",
         "verify-windows-desktop-artifact.ts",
       ],
@@ -56,7 +57,22 @@
         "graphql.config.ts",
       ],
       // The generated operations export every selection's class.
-      "ignoreIssues": { "**/*.graphql.ts": ["exports", "types", "namespaceMembers"] },
+      "ignoreIssues": {
+        "**/*.graphql.ts": ["exports", "types", "namespaceMembers"],
+        "src/agentTime/**": ["exports"],
+        "src/forkInstructions/**": ["exports"],
+        "src/forkNotes/**": ["exports"],
+        "src/mcp/AcpMcpStdioBridge.ts": ["exports"],
+        "src/mcp/forkThreadReach.ts": ["exports"],
+        "src/mcp/toolkits/terminals/tools.ts": ["exports"],
+        "src/mcp/toolkits/threads/**": ["exports"],
+        "src/orchestration-v2/Adapters/ClaudeUndeliveredPrompts.ts": ["exports"],
+        "src/orchestration-v2/IdleAutoCompactWorker.ts": ["exports"],
+        "src/threadDecisions/**": ["exports"],
+        "src/threadOrchestration/**": ["exports"],
+        "src/voiceCall/**": ["exports"],
+        "src/voiceInput/**": ["exports"],
+      },
       // Keep the transitive Effect runtime pinned for standalone npm installs.
       // The Vite+ web build prerequisite.
       // Native and disk-loaded provider packages stay external to the bundle; the
@@ -66,6 +82,7 @@
         "@effect/platform-node-shared",
         "@t3tools/web",
         "@napi-rs/keyring",
+        "ffi-rs",
       ],
     },
     "apps/desktop": {
@@ -78,6 +95,7 @@
         "src/snapShot/SnapShotAccessibilityWorker.ts!",
         "src/boot.ts!",
         "src/compileCache.ts!",
+        "src/serverCompileCache.ts!",
         "src/main.ts!",
         "src/preload.ts!",
         "src/preview-pick-preload.ts!",
@@ -96,7 +114,21 @@
       // UI component modules are copied and adapted as cohesive sets. Keep their
       // named subcomponents even before they have callers; the file audit still
       // reports an entire component module when nothing imports it.
-      "ignoreIssues": { "src/components/ui/*.tsx": ["exports", "nsExports", "duplicates"] },
+      "ignoreIssues": {
+        "src/components/ui/*.tsx": ["exports", "nsExports", "duplicates"],
+        "src/components/chat/thoughtTrailStore.ts": ["exports"],
+        "src/components/esveoErrorReport/**": ["exports"],
+        "src/components/forkUpdate/**": ["exports"],
+        "src/components/gitGraph/**": ["exports"],
+        "src/components/homePathFallback/**": ["exports"],
+        "src/components/nestedRepoFileLinks/**": ["exports"],
+        "src/components/scheduledTaskLocation/**": ["exports"],
+        "src/components/split/**": ["exports"],
+        "src/components/threadInbox/**": ["exports"],
+        "src/components/threadOrchestration/**": ["exports"],
+        "src/components/voiceCall/**": ["exports"],
+        "src/lib/assistantTextSelection.ts": ["exports"],
+      },
     },
     "apps/marketing": {
       // `astro check` runs from the typecheck task in vite.config.ts, which knip does not read.
@@ -144,6 +176,21 @@
     "packages/*": {
       // These workspace packages are private to this monorepo.
       "includeEntryExports": true,
+    },
+    "packages/contracts": {
+      "ignoreIssues": {
+        "src/forkNotes.ts": ["exports"],
+        "src/voiceCall.ts": ["exports"],
+        "src/voiceInput.ts": ["exports"],
+      },
+    },
+    "packages/shared": {
+      "ignoreIssues": {
+        "src/githubMedia.ts": ["exports"],
+        "src/threadDecisions.ts": ["exports"],
+        "src/threadInbox.ts": ["exports"],
+        "src/threadOrchestration.ts": ["exports"],
+      },
     },
     "packages/effect-acp": {
       "includeEntryExports": true,

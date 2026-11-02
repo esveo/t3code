@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- fork contract documents the preparation handshake */
 /**
  * Fork: dictation in the composer. The client records the microphone and sends
  * the audio to its environment, which transcribes it locally with Whisper.

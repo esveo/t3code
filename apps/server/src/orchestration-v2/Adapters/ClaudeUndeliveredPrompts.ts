@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- fork module documents a narrow Claude protocol race */
 // Fork: carries prompts an early interrupt dropped into the next turn.
 //
 // The Claude CLI dequeues a prompt well before it records it in the

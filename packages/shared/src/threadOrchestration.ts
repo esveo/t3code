@@ -4,6 +4,7 @@
  * client's overview both read a child's state from its shell through these
  * helpers, so the agent and the user see the same word for the same thread.
  */
+/* oxlint-disable t3code/no-low-value-comments -- fork helpers document coordinator lineage semantics */
 import {
   isProviderNativeSubagentThread,
   type OrchestrationV2ThreadShell,

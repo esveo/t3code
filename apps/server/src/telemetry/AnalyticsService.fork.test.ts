@@ -10,6 +10,7 @@ import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 
 import * as ServerConfig from "../config.ts";
+import * as ManagedPolicy from "../policy/ManagedPolicy.ts";
 import * as AnalyticsService from "./AnalyticsService.ts";
 
 // Fork: builds of the fork must not report to upstream's PostHog project unless asked to.
@@ -31,6 +32,7 @@ it.layer(NodeServices.layer)("AnalyticsService in the fork", (it) => {
         }),
       );
       const runtimeLayer = AnalyticsService.layer.pipe(
+        Layer.provide(ManagedPolicy.layerTest()),
         Layer.provideMerge(serverConfigLayer),
         Layer.provide(configLayer),
         Layer.provide(

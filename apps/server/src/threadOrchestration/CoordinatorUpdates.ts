@@ -1,3 +1,4 @@
+/* oxlint-disable t3code/no-low-value-comments -- fork module documents durable coordinator delivery */
 /**
  * Fork: thread orchestration. Tells a coordinator about the results of its
  * threads that V2's delegated-task mailbox does not deliver.
