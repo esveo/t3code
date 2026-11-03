@@ -76,9 +76,10 @@ export function resolveChildThreadState(thread: ChildThreadShell): ChildThreadSt
 export type ChildThreadGroup = "waiting" | "working" | "review" | "active" | "settled";
 
 /**
- * What blocks on the user or still runs shows whatever the thread's settled
- * state. Finished work, a pull request ready for review included, lists as
- * settled once the thread is settled, and as active otherwise.
+ * A question or approval and running work show whatever the thread's settled
+ * state. A failure waits on the user until they settle it. Finished work, a
+ * pull request ready for review included, lists as settled once the thread is
+ * settled, and as active otherwise.
  */
 export function childThreadGroupOf(
   state: ChildThreadState,
@@ -86,8 +87,9 @@ export function childThreadGroupOf(
 ): ChildThreadGroup {
   switch (state) {
     case "waiting":
-    case "failed":
       return "waiting";
+    case "failed":
+      return settledOverride === "settled" ? "settled" : "waiting";
     case "working":
       return "working";
     case "review":

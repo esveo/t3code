@@ -224,10 +224,12 @@ describe("buildThreadOverview", () => {
       thread("done", {}, { status: "completed" }),
       thread("settled", { settledOverride: "settled" }, { status: "completed" }),
       thread("failed", {}, { status: "failed" }),
+      // Settling a failure dismisses it; settling a question does not answer it.
+      thread("settled-failed", { settledOverride: "settled" }, { status: "failed" }),
       thread("working", {}, { status: "running" }),
       thread(
         "asks",
-        {},
+        { settledOverride: "settled" },
         {
           pendingRuntimeRequest: {
             kind: "command",
@@ -241,10 +243,10 @@ describe("buildThreadOverview", () => {
       ["waiting", expect.arrayContaining(["failed", "asks"])],
       ["working", ["working"]],
       ["active", ["done"]],
-      ["settled", ["settled"]],
+      ["settled", expect.arrayContaining(["settled", "settled-failed"])],
     ]);
     expect(waitingThreadCount(entries)).toBe(2);
-    expect(describeOverviewOrigin(entries)).toBe("5 threads coordinated from here");
+    expect(describeOverviewOrigin(entries)).toBe("6 threads coordinated from here");
   });
 
   it("lists a settled thread with an open pull request as settled, not ready for review", () => {
