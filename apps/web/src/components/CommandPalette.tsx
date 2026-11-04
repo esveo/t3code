@@ -97,6 +97,7 @@ import { useDesktopLocalBootstraps } from "../connection/useDesktopLocalBootstra
 import { useHandleNewThread } from "../hooks/useHandleNewThread";
 import { forkChangelogCommandItem } from "./forkChangelog/ForkChangelogDialog";
 import { forkNotesCommandItems } from "./forkNotes/ForkNotesCaptureDialog";
+import { esveoNotionCommandItems } from "./esveoNotion/esveoNotionCommandItems";
 import { useOpenPanelPullRequestUrl } from "../hooks/useOpenPanelPullRequestUrl";
 import { copyThreadReference } from "../lib/copyThreadReference";
 import {
@@ -1532,6 +1533,7 @@ function OpenCommandPaletteDialog(props: {
 
   actionItems.push(forkChangelogCommandItem);
   actionItems.push(...forkNotesCommandItems(activeThread));
+  actionItems.push(...esveoNotionCommandItems(activeThread, query));
 
   actionItems.push({
     kind: "action",

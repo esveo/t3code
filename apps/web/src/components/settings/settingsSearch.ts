@@ -327,6 +327,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["transparent transparency solid menus dialogs composer"],
   },
   {
+    id: "esveo-notion",
+    title: "Notion",
+    to: "/settings/source-control",
+    fork: true,
+    searchTerms: ["notion integration secret pages links viewer connect token ntn"],
+  },
+  {
     id: "two-line-thread-cards",
     title: "Two-line thread cards",
     to: "/settings/appearance",

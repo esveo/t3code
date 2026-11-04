@@ -40,6 +40,7 @@ import {
   ThreadImagesTabIcon,
   UNAVAILABLE_THREAD_IMAGES,
 } from "./threadImages/threadImagesSurface";
+import { EsveoNotionTabIcon } from "./esveoNotion/EsveoNotionPanel";
 import {
   closestCenter,
   DndContext,
@@ -749,6 +750,8 @@ function surfaceTitle(
       return FORK_INSTRUCTIONS_ACTION.label;
     case "thread-images":
       return THREAD_IMAGES_ACTION.label;
+    case "notion":
+      return surface.title ?? "Notion";
     case "device":
       return surface.title ?? surface.target?.name ?? "Device";
     case "side-chat":
@@ -855,6 +858,8 @@ function SurfaceIcon({
       return <ForkInstructionsTabIcon className="size-3 shrink-0" />;
     case "thread-images":
       return <ThreadImagesTabIcon className="size-3 shrink-0" />;
+    case "notion":
+      return <EsveoNotionTabIcon className="size-3 shrink-0" />;
     case "side-chat":
       return <SideChatTabIcon environmentId={environmentId} threadId={surface.threadId} />;
     case "device":

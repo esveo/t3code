@@ -11,6 +11,7 @@ import {
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 
 import { canOpenLinksInApp } from "../browser/browserLinkTarget";
+import { useOpenEsveoNotionLink } from "../components/esveoNotion/useEsveoNotionLink";
 import { useOpenLink } from "../browser/useOpenLink";
 import { useClientSettings } from "../hooks/useSettings";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
@@ -70,7 +71,9 @@ export function useOpenChangeRequestLink(
     refresh: true,
   });
   const openLink = useOpenLink(threadRef);
+  const openNotionLink = useOpenEsveoNotionLink(threadRef, panelRef); // Fork: Notion tab.
   return (event, targetUrl, targetThreadRef, targetEnvironmentId, onCommitUnavailable) => {
+    if (openNotionLink(event, targetUrl, targetThreadRef)) return true;
     if (!openInApp || shouldOpenPullRequestExternally(event)) return false;
     const resolvedThreadRef = targetThreadRef ?? threadRef;
     const resolvedPanelRef = panelRef ?? resolvedThreadRef;

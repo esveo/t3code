@@ -36,6 +36,7 @@ import { SourceControlAppSignInSettings } from "./SourceControlAppSignInSettings
 import { SourceControlTokenSettings } from "./SourceControlTokenSettings";
 import { RedactedSensitiveText } from "./RedactedSensitiveText";
 import { SourceControlWritingSettingsSection } from "./SourceControlWritingSettings";
+import { EsveoNotionSettingsSection } from "../esveoNotion/EsveoNotionSettings";
 import {
   SettingsPageContainer,
   SettingsSearchTarget,
@@ -521,6 +522,7 @@ export function SourceControlSettingsPanel() {
         />
       )}
 
+      <EsveoNotionSettingsSection />
       <SourceControlWritingSettingsSection />
     </SettingsPageContainer>
   );
