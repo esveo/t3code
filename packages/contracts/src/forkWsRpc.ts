@@ -2,6 +2,15 @@ import * as RpcGroup from "effect/rpc/RpcGroup";
 
 import { AGENT_TIME_WS_METHODS, WsAgentTimeSummaryRpc } from "./agentTime.ts";
 import {
+  ESVEO_NOTION_WS_METHODS,
+  WsEsveoNotionConnectRpc,
+  WsEsveoNotionDisconnectRpc,
+  WsEsveoNotionFileUrlRpc,
+  WsEsveoNotionPageRefsRpc,
+  WsEsveoNotionPageRpc,
+  WsEsveoNotionStatusRpc,
+} from "./esveoNotion.ts";
+import {
   FORK_INSTRUCTIONS_WS_METHODS,
   WsForkInstructionsReadRpc,
   WsForkInstructionsWriteRpc,
@@ -75,6 +84,13 @@ export const ForkWsRpcGroup = RpcGroup.make(
   WsAgentTimeSummaryRpc,
   // The Images tab in the right panel.
   WsThreadImagesListRpc,
+  // The Notion page viewer.
+  WsEsveoNotionStatusRpc,
+  WsEsveoNotionConnectRpc,
+  WsEsveoNotionDisconnectRpc,
+  WsEsveoNotionPageRpc,
+  WsEsveoNotionPageRefsRpc,
+  WsEsveoNotionFileUrlRpc,
 );
 
 /** The methods of `ForkWsRpcGroup`, for leaving them out of upstream's handler map. */
@@ -100,4 +116,10 @@ export const FORK_WS_RPC_TAGS = [
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS.stop,
   AGENT_TIME_WS_METHODS.summary,
   THREAD_IMAGES_WS_METHODS.list,
+  ESVEO_NOTION_WS_METHODS.status,
+  ESVEO_NOTION_WS_METHODS.connect,
+  ESVEO_NOTION_WS_METHODS.disconnect,
+  ESVEO_NOTION_WS_METHODS.page,
+  ESVEO_NOTION_WS_METHODS.pageRefs,
+  ESVEO_NOTION_WS_METHODS.fileUrl,
 ] as const;
