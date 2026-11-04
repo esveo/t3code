@@ -3,7 +3,8 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import type { EnvironmentId } from "@t3tools/contracts";
+import { type EnvironmentId, EsveoNotionError } from "@t3tools/contracts";
+import { Schema } from "effect";
 import { useState } from "react";
 
 import { esveoSearchableSetting } from "~/components/esveoSettings/EsveoSettingBadge";
@@ -19,8 +20,15 @@ import { useEsveoNotionStatus } from "./useEsveoNotionLink";
 
 const INTEGRATIONS_URL = "https://www.notion.so/profile/integrations";
 
-const failureMessage = (failure: unknown) =>
-  failure instanceof Error ? failure.message : "Notion ist nicht erreichbar.";
+const isNotionError = Schema.is(EsveoNotionError);
+
+// The server's messages are English; the row speaks German like the rest of the viewer.
+const failureMessage = (failure: unknown) => {
+  if (isNotionError(failure) && failure.reason === "unauthorized") {
+    return "Notion hat das Secret abgelehnt. Prüfe, ob es vollständig kopiert ist.";
+  }
+  return failure instanceof Error ? failure.message : "Notion ist nicht erreichbar.";
+};
 
 /**
  * Fork: connects the environment's server to a Notion integration, so Notion
@@ -68,16 +76,22 @@ function NotionConnectionRow({ environmentId }: { environmentId: EnvironmentId }
 
   const connected = status?.connected === true;
   const showForm = !connected || replacing;
+  const secretLabel = `Secret ntn_••••${status?.secretLast4 ?? ""}`;
+  // A rejected secret has no integration or workspace to name, and is not a working connection.
   const description = connected ? (
-    <>
-      Verbunden · Integration „{status.botName ?? "?"}“ im Workspace „{status.workspaceName ?? "?"}“
-      · Secret ntn_••••{status.secretLast4 ?? ""}
-      {status.secretInvalid && (
+    status.secretInvalid ? (
+      <>
+        {secretLabel}
         <span className="block text-destructive-foreground">
           Notion lehnt dieses Secret ab. Ersetze es durch ein gültiges.
         </span>
-      )}
-    </>
+      </>
+    ) : (
+      <>
+        Verbunden · Integration „{status.botName ?? "?"}“ im Workspace „
+        {status.workspaceName ?? "?"}“ · {secretLabel}
+      </>
+    )
   ) : (
     <>
       Notion-Links öffnen sich in einem Tab, sobald eine interne Integration verbunden ist. Lege sie
