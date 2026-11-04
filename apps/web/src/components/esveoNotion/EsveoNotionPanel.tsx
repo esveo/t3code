@@ -342,7 +342,8 @@ function NotionPageView({ page }: { page: EsveoNotionPage }) {
           </>
         )}
         <span>Zuletzt bearbeitet {editedAt}</span>
-        {page.lastEditedBy && (
+        {/* A personal access token cannot look up other users; "von Unbekannt" says nothing. */}
+        {page.lastEditedBy?.name && (
           <>
             <span>von</span>
             <NotionPerson user={page.lastEditedBy} />
