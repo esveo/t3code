@@ -105,6 +105,7 @@ import * as VoiceCall from "./voiceCall/VoiceCallService.ts";
 import * as RealtimeCallClient from "./voiceCall/RealtimeCallClient.ts";
 import * as VoiceCallReadBack from "./voiceCall/VoiceCallReadBack.ts";
 import * as ForkInstructions from "./forkInstructions/ForkInstructions.ts";
+import * as EsveoNotion from "./esveoNotion/EsveoNotion.ts";
 import * as AgentTime from "./agentTime/AgentTime.ts";
 import { hasCloudPublicConfig } from "./cloud/publicConfig.ts";
 import * as ServerSettings from "./serverSettings.ts";
@@ -691,6 +692,8 @@ const layerRuntimeCoreDependenciesBase = Layer.mergeAll(
   ForkNotes.layer,
   // Fork: instruction files of the Instructions tab.
   ForkInstructions.layer.pipe(Layer.provide(ProjectionStoreV2.layer)),
+  // Fork: the Notion page viewer.
+  EsveoNotion.layer,
   // Fork: agent time on the Usage page.
   AgentTime.layer,
   // Fork: voice call with GPT-Live.
