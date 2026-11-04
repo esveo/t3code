@@ -12,6 +12,7 @@ import {
   type EsveoNotionPageRef,
   type EsveoNotionPageRefsInput,
   type EsveoNotionStatus,
+  type EsveoNotionProperty,
   type EsveoNotionUser,
   normalizeNotionId,
   notionPageUrl,
@@ -278,10 +279,19 @@ export const makeWith = Effect.fn("EsveoNotion.make")(function* (options: Notion
     return crumbs.reverse();
   });
 
-  /** Names of the editor; Notion only sends the id on a page. */
-  const resolveUser = Effect.fn("EsveoNotion.resolveUser")(function* (raw: unknown) {
+  /**
+   * Names of the editor; Notion only sends the id on a page. The page's own
+   * people properties usually name them, which matters because a personal
+   * access token may only look up its own user.
+   */
+  const resolveUser = Effect.fn("EsveoNotion.resolveUser")(function* (
+    raw: unknown,
+    known: ReadonlyArray<EsveoNotionUser>,
+  ) {
     const user = toUser(raw);
     if (user === null || user.name !== null) return user;
+    const named = known.find((candidate) => candidate.id === user.id && candidate.name !== null);
+    if (named !== undefined) return named;
     const now = yield* Clock.currentTimeMillis;
     const cached = users.get(user.id, now);
     if (cached !== undefined) return cached;
@@ -348,13 +358,14 @@ export const makeWith = Effect.fn("EsveoNotion.make")(function* (options: Notion
   const loadPage = Effect.fn("EsveoNotion.loadPage")(function* (id: string) {
     const raw = yield* fetchPageOrDatabase(id);
     const isDatabase = raw.object === "database";
+    const properties = isDatabase ? [] : toProperties(raw.properties);
     const [tree, crumbs, editor] = yield* Effect.all(
       [
         isDatabase
           ? Effect.succeed({ blocks: databaseDescription(raw), truncated: false })
           : blockTree(id),
         breadcrumb(parentOf(raw)),
-        resolveUser(raw.last_edited_by),
+        resolveUser(raw.last_edited_by, propertyPeople(properties)),
       ],
       { concurrency: 3 },
     );
@@ -367,7 +378,7 @@ export const makeWith = Effect.fn("EsveoNotion.make")(function* (options: Notion
       breadcrumb: crumbs,
       lastEditedTime: typeof raw.last_edited_time === "string" ? raw.last_edited_time : "",
       lastEditedBy: editor,
-      properties: isDatabase ? [] : toProperties(raw.properties),
+      properties,
       blocks: tree.blocks,
       truncated: tree.truncated,
     };
@@ -467,6 +478,10 @@ export const makeWith = Effect.fn("EsveoNotion.make")(function* (options: Notion
 
   return EsveoNotion.of({ status, connect, disconnect, page, pageRefs, fileUrl });
 });
+
+/** Users named by the page's people, created-by and last-edited-by properties. */
+const propertyPeople = (properties: ReadonlyArray<EsveoNotionProperty>) =>
+  properties.flatMap((property) => (property.value.kind === "people" ? property.value.people : []));
 
 /** A database has no blocks; its description stands in as the first paragraph. */
 function databaseDescription(raw: Json): EsveoNotionBlock[] {

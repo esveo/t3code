@@ -68,12 +68,12 @@ const PAGE_ROUTES = {
   [`/blocks/${fixtures.children.results[3]!.id}/children`]: ok({ results: [], has_more: false }),
   [`/blocks/${fixtures.children.results[4]!.id}/children`]: ok({ results: [], has_more: false }),
   [`/databases/${DATABASE_ID}`]: ok(fixtures.db),
-  [`/users/${fixtures.page.last_edited_by.id}`]: ok({
-    object: "user",
-    id: fixtures.page.last_edited_by.id,
-    name: "Person 9",
-    avatar_url: null,
-  }),
+  // A personal access token may only look up its own user.
+  [`/users/${fixtures.page.last_edited_by.id}`]: {
+    status: 403,
+    retryAfter: undefined,
+    body: { object: "error", code: "restricted_resource", message: "Restricted." },
+  },
 };
 
 const flipError = <A, R>(effect: Effect.Effect<A, EsveoNotionError, R>) => Effect.flip(effect);
@@ -131,7 +131,8 @@ describe("EsveoNotion page", () => {
         assert.strictEqual(page.kind, "page");
         assert.strictEqual(page.title, "Text 1");
         assert.deepStrictEqual(page.icon, { kind: "emoji", emoji: fixtures.page.icon.emoji });
-        assert.strictEqual(page.lastEditedBy?.name, "Person 9");
+        // The editor's name comes from the page's own people properties.
+        assert.strictEqual(page.lastEditedBy?.name, "Person 3");
         assert.isFalse(page.truncated);
         assert.strictEqual(page.blocks[2]?.children?.[0]?.type, "file");
         // The database is readable; its parent page is not shared, so the walk stops there.
