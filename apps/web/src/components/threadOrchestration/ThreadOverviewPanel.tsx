@@ -2,11 +2,24 @@
  * Fork: the threads a coordinator started and the subagents its agent started,
  * grouped by what they need from the user: what waits on them, what is running,
  * what is ready for review, and what is done, split into still active and
- * settled. Each row opens its thread.
+ * settled. Each row opens its thread; right-click shows the sidebar's thread menu.
  */
-import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { useAtomValue } from "@effect/atom-react";
+import {
+  scopedThreadKey,
+  scopeProjectRef,
+  scopeThreadRef,
+} from "@t3tools/client-runtime/environment";
+import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
-import type { ScopedThreadRef, ThreadPullRequestLink } from "@t3tools/contracts";
+import {
+  AuthOrchestrationOperateScope,
+  type ScopedThreadRef,
+  type ThreadPullRequestLink,
+} from "@t3tools/contracts";
 import { formatModelSlugName } from "@t3tools/shared/model";
 import { CHILD_THREAD_STATE_LABELS } from "@t3tools/shared/threadOrchestration";
 import {
@@ -17,19 +30,26 @@ import {
   NetworkIcon,
 } from "lucide-react";
 
+import { canShareWithGuestAtom } from "~/components/chat/guestShareAvailability";
 import { ProviderInstanceIcon } from "~/components/chat/ProviderInstanceIcon";
 import { PullRequestGlyph } from "~/components/pullRequest/pullRequestIcons";
-import { useMemo, useState } from "react";
+import { useRef, useState } from "react";
 
 import { Button } from "~/components/ui/button";
+import { toastManager } from "~/components/ui/toast";
+import { useThreadActionMenu } from "~/hooks/useThreadActionMenu";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { useOpenPrLink } from "~/lib/openPullRequestLink";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { cn } from "~/lib/utils";
-import { useThreadShell } from "~/state/entities";
+import { useProject, useThreadShell } from "~/state/entities";
+import { readEnvironmentScope } from "~/state/session";
+import { threadEnvironment } from "~/state/threads";
+import { useOrchestrationCommand } from "~/state/use-orchestration-command";
 import { formatElapsedDurationLabel } from "~/timestampFormat";
 import { CHILD_THREAD_DOT_CLASS } from "./childThreadStateVisuals";
 import { EmbeddedChildThread } from "./EmbeddedChildThread";
+import { useThreadParentActions } from "./ThreadParentActions";
 import {
   buildThreadOverview,
   countOverviewEntries,
@@ -75,54 +95,128 @@ function OverviewRow({
   const openPrLink = useOpenPrLink();
   const pullRequest = newestOpenPullRequest(thread.pullRequests ?? []);
   const provider = useProviderEntryLookup()(thread.environmentId, thread.modelSelection.instanceId);
+  const threadRef = scopeThreadRef(thread.environmentId, thread.id);
+  const [renaming, setRenaming] = useState(false);
+  const renameCancelledRef = useRef(false);
+  const updateThreadMetadata = useOrchestrationCommand(threadEnvironment.updateMetadata, {
+    reportFailure: false,
+  });
+  const commitRename = (value: string) => {
+    setRenaming(false);
+    const title = value.trim();
+    if (title.length === 0) {
+      toastManager.add({ type: "warning", title: "Thread title cannot be empty" });
+      return;
+    }
+    if (title === thread.title) return;
+    void updateThreadMetadata({
+      environmentId: thread.environmentId,
+      input: { threadId: thread.id, title },
+    }).then((result) => {
+      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+        const error = squashAtomCommandFailure(result);
+        toastManager.add({
+          type: "error",
+          title: "Failed to rename thread",
+          description: error instanceof Error ? error.message : "An error occurred.",
+        });
+      }
+    });
+  };
+  const { openMenu } = useThreadActionMenu({
+    threadRef,
+    projectCwd:
+      useProject(scopeProjectRef(thread.environmentId, thread.projectId))?.workspaceRoot ?? null,
+    onStartRename: () => {
+      if (readEnvironmentScope(thread.environmentId, AuthOrchestrationOperateScope)) {
+        renameCancelledRef.current = false;
+        setRenaming(true);
+      }
+    },
+    canShareWithGuest: useAtomValue(canShareWithGuestAtom(thread.environmentId)),
+    forkParentActions: useThreadParentActions(),
+  });
   return (
-    <div className="group/overview-row grid grid-cols-[minmax(0,1fr)_auto] items-center rounded-md transition-colors hover:bg-accent/60">
-      <button
-        type="button"
-        // Opens here, beside the coordinator; with Cmd/Ctrl as the thread itself.
-        onClick={(event) => {
-          const threadRef = scopeThreadRef(thread.environmentId, thread.id);
-          if (event.metaKey || event.ctrlKey) openThread(threadRef);
-          else onOpenInPanel(threadRef);
-        }}
-        className="grid w-full cursor-pointer grid-cols-[0.375rem_minmax(0,1fr)] items-center gap-x-2.5 rounded-md py-1.5 pl-2 text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <span aria-hidden className={cn("size-1.5 rounded-full", CHILD_THREAD_DOT_CLASS[state])} />
-        <span className="sr-only">{CHILD_THREAD_STATE_LABELS[state]}: </span>
-        <span className="flex min-w-0 flex-col">
-          <span className="flex min-w-0 items-center gap-1.5">
-            <Tooltip>
-              <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
-                <kind.icon aria-hidden className="size-3.5 text-muted-foreground/70" />
-                <span className="sr-only">{kind.label}: </span>
-              </TooltipTrigger>
-              <TooltipPopup side="top">{kind.label}</TooltipPopup>
-            </Tooltip>
-            <span className="truncate text-sm font-medium">
-              {entry.kind === "subagent" ? formatSubagentDisplayTitle(thread.title) : thread.title}
+    <div
+      className="group/overview-row grid grid-cols-[minmax(0,1fr)_auto] items-center rounded-md transition-colors hover:bg-accent/60"
+      onContextMenu={(event) => {
+        event.preventDefault();
+        openMenu({ x: event.clientX, y: event.clientY });
+      }}
+    >
+      {renaming ? (
+        <div className="py-1 pl-2">
+          <input
+            autoFocus
+            aria-label="Thread title"
+            defaultValue={thread.title}
+            onFocus={(event) => event.currentTarget.select()}
+            // Unmounting the focused input on Escape can still fire blur.
+            onBlur={(event) => {
+              if (!renameCancelledRef.current) commitRename(event.currentTarget.value);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") event.currentTarget.blur();
+              if (event.key === "Escape") {
+                renameCancelledRef.current = true;
+                setRenaming(false);
+              }
+            }}
+            className="w-full rounded-sm border border-input bg-background px-1.5 py-0.5 text-sm outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          />
+        </div>
+      ) : (
+        <button
+          type="button"
+          // Opens here, beside the coordinator; with Cmd/Ctrl as the thread itself.
+          onClick={(event) => {
+            if (event.metaKey || event.ctrlKey) openThread(threadRef);
+            else onOpenInPanel(threadRef);
+          }}
+          className="grid w-full cursor-pointer grid-cols-[0.375rem_minmax(0,1fr)] items-center gap-x-2.5 rounded-md py-1.5 pl-2 text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        >
+          <span
+            aria-hidden
+            className={cn("size-1.5 rounded-full", CHILD_THREAD_DOT_CLASS[state])}
+          />
+          <span className="sr-only">{CHILD_THREAD_STATE_LABELS[state]}: </span>
+          <span className="flex min-w-0 flex-col">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <Tooltip>
+                <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
+                  <kind.icon aria-hidden className="size-3.5 text-muted-foreground/70" />
+                  <span className="sr-only">{kind.label}: </span>
+                </TooltipTrigger>
+                <TooltipPopup side="top">{kind.label}</TooltipPopup>
+              </Tooltip>
+              <span className="truncate text-sm font-medium">
+                {entry.kind === "subagent"
+                  ? formatSubagentDisplayTitle(thread.title)
+                  : thread.title}
+              </span>
+            </span>
+            <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+              {provider ? (
+                <ProviderInstanceIcon
+                  driverKind={provider.driverKind}
+                  displayName={provider.displayName}
+                  acpRegistryAgentId={provider.acpRegistryAgentId}
+                  acpRegistryIconUrl={provider.acpRegistryIconUrl}
+                  iconClassName="size-3 shrink-0"
+                />
+              ) : null}
+              {model ? <span className="shrink-0">{model}</span> : null}
+              {branch ? (
+                <>
+                  {model ? <span aria-hidden>·</span> : null}
+                  <GitBranchIcon aria-hidden className="size-3 shrink-0" />
+                  <span className="min-w-0 truncate">{branch}</span>
+                </>
+              ) : null}
             </span>
           </span>
-          <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
-            {provider ? (
-              <ProviderInstanceIcon
-                driverKind={provider.driverKind}
-                displayName={provider.displayName}
-                acpRegistryAgentId={provider.acpRegistryAgentId}
-                acpRegistryIconUrl={provider.acpRegistryIconUrl}
-                iconClassName="size-3 shrink-0"
-              />
-            ) : null}
-            {model ? <span className="shrink-0">{model}</span> : null}
-            {branch ? (
-              <>
-                {model ? <span aria-hidden>·</span> : null}
-                <GitBranchIcon aria-hidden className="size-3 shrink-0" />
-                <span className="min-w-0 truncate">{branch}</span>
-              </>
-            ) : null}
-          </span>
-        </span>
-      </button>
+        </button>
+      )}
       <span className="flex items-center gap-2 pr-2 pl-2.5 text-xs text-muted-foreground tabular-nums">
         {pullRequest ? (
           <Button
@@ -198,8 +292,8 @@ function OverviewSection({
 export function ThreadOverviewPanel({ threadRef }: { threadRef: ScopedThreadRef | null }) {
   const children = useThreadOverviewEntries(threadRef);
   const coordinatorBranch = useThreadShell(threadRef)?.branch ?? null;
-  const groups = useMemo(() => buildThreadOverview(children), [children]);
-  const waiting = useMemo(() => waitingEntries(children), [children]);
+  const groups = buildThreadOverview(children);
+  const waiting = waitingEntries(children);
   // The child open in the panel, cleared when the panel moves to another coordinator.
   const [openChild, setOpenChild] = useState<{
     readonly coordinatorKey: string;

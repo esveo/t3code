@@ -46,6 +46,7 @@ import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
 import { canTurnThreadIntoProject, useThreadActions } from "./useThreadActions";
+import type { useThreadParentActions } from "../components/threadOrchestration/ThreadParentActions";
 
 function failureToast(title: string, error: unknown) {
   toastManager.add(
@@ -63,8 +64,11 @@ export function useThreadActionMenu(input: {
   readonly onStartRename: () => void;
   readonly onFind?: ((threadRef: ScopedThreadRef) => void) | undefined;
   readonly canShareWithGuest: boolean;
+  /** Fork: adds "Assign to coordinator…" and "Detach" to the menu. */
+  readonly forkParentActions?: ReturnType<typeof useThreadParentActions> | undefined;
 }) {
-  const { threadRef, projectCwd, onStartRename, onFind, canShareWithGuest } = input;
+  const { threadRef, projectCwd, onStartRename, onFind, canShareWithGuest, forkParentActions } =
+    input;
   const router = useRouter();
   const projects = useProjects();
   const primaryEnvironmentId = usePrimaryEnvironmentId();
@@ -149,8 +153,16 @@ export function useThreadActionMenu(input: {
         canShareWithGuest,
         canTurnIntoProject: canTurnThreadIntoProject(threadRef),
       });
-      const clicked = await settlePromise(() => api.contextMenu.show(items, position));
+      const clicked = await settlePromise(() =>
+        forkParentActions
+          ? forkParentActions.showMenu(api, thread)(items, position)
+          : api.contextMenu.show(items, position),
+      );
       if (clicked._tag === "Failure" || clicked.value === null) return;
+      if (clicked.value === "assign-parent" || clicked.value === "detach-parent") {
+        await forkParentActions?.handle(clicked.value, thread);
+        return;
+      }
       const action: ThreadActionMenuId = clicked.value;
       if (
         threadActionRequiresOperate(action) &&
