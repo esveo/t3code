@@ -1,4 +1,5 @@
 import { SourceControlProviderRegistry } from "../sourceControl/SourceControlProviderRegistry.ts";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import { parseThreadUpdates } from "@t3tools/shared/threadOrchestration";
@@ -44,8 +45,9 @@ import {
 } from "../orchestration-v2/runtimeLayer.ts";
 import { layer as worktreeRepairDependenciesTestLayer } from "../orchestration-v2/ProviderTurnStartService.testkit.ts";
 
-const PlatformTestLayer = Layer.merge(
+const PlatformTestLayer = Layer.mergeAll(
   NodeServices.layer,
+  NodeCrypto.layer,
   Layer.mock(SourceControlProviderRegistry)({ resolveLink: () => Effect.die("unused title link") }),
 );
 

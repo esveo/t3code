@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -91,7 +92,14 @@ const withService = <A, E>(
     }).pipe(
       Effect.provide(
         ThreadCoordinators.layer.pipe(
-          Layer.provide(Layer.mergeAll(management, SqlitePersistenceMemory, NodeServices.layer)),
+          Layer.provide(
+            Layer.mergeAll(
+              management,
+              SqlitePersistenceMemory,
+              NodeServices.layer,
+              NodeCrypto.layer,
+            ),
+          ),
         ),
       ),
     );

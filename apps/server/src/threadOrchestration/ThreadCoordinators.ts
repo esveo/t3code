@@ -27,7 +27,7 @@ import {
 } from "@t3tools/contracts";
 import { coordinatorThreadIdOf } from "@t3tools/shared/threadOrchestration";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -134,7 +134,7 @@ export class ThreadCoordinators extends Context.Service<
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const threads = yield* ThreadManagementService;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const writes = yield* Semaphore.make(1);
   const changes = yield* Effect.acquireRelease(PubSub.unbounded<void>(), (pubsub) =>
     PubSub.shutdown(pubsub),
@@ -249,9 +249,7 @@ export const make = Effect.gen(function* () {
       for (const task of tasks) {
         yield* threads.dispatch({
           type: "delegated_task.completion-delivery.dispose",
-          commandId: CommandId.make(
-            `fork:coordinator-move:${thread.id}:${yield* crypto.randomUUIDv4()}`,
-          ),
+          commandId: CommandId.make(`fork:coordinator-move:${thread.id}:${yield* random.uuidV4()}`),
           parentThreadId,
           taskId: task.id,
         });

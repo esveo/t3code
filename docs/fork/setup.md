@@ -295,22 +295,9 @@ Obtainium does not offer it.
 
 ## Dictation
 
-Settings → General → Voice input is stored per browser, but the speech model
-belongs to the environment: turning the switch on downloads Whisper
-large-v3-turbo (about 550 MB) to `~/.t3/models/whisper/` on the machine that
-runs the server, and every client of that environment uses it. Deleting the
-file there frees the space; the next switch or dictation downloads it again.
-
-The server decodes the compressed recordings of phones and browsers with
-`afconvert` on macOS and `ffmpeg` elsewhere. A Linux server without `ffmpeg`
-still takes browser dictation, as larger uncompressed audio, but Android offers
-no microphone for it. The server looks for `ffmpeg` once per start, so install
-it before restarting the service.
-
-Phones without on-device transcription (Android, iPhones before iOS 26)
-dictate through the environment in the phone's language. They show the
-microphone only once the environment has the model, so turn voice input on in a
-web or desktop client first. Newer iPhones keep Apple's on-device transcription.
+Dictation is upstream's. Builds before it ran their own Whisper and left its
+model (about 550 MB) in `~/.t3/models/whisper/` on the server's machine;
+delete that folder to free the space.
 
 ## Orchestrator V2 data
 

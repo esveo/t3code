@@ -3,7 +3,6 @@ import { useCallback, useEffect, useRef } from "react";
 import {
   voiceInputBlocksSubmission,
   type VoiceInputState,
-  type VoiceTranscriber,
 } from "@t3tools/client-runtime/voice-input";
 
 import type { ComposerEditorSelection } from "../../components/ComposerEditor";
@@ -21,8 +20,6 @@ export function useVoiceInputController(input: {
   readonly disabled?: boolean;
   readonly onChangeDraftMessage: (value: string) => void;
   readonly onChangeSelection: (selection: ComposerEditorSelection) => void;
-  /** Fork: used when the device cannot transcribe on its own, e.g. the server's Whisper on Android. */
-  readonly fallbackTranscriber?: VoiceTranscriber | null;
 }) {
   const global = useGlobalVoiceInput();
   const { session } = global;
@@ -62,7 +59,6 @@ export function useVoiceInputController(input: {
         },
         captured.selection,
         captured.subscribeToDraftChanges,
-        captured.fallbackTranscriber,
       ),
       label: captured.label,
     });
@@ -70,9 +66,7 @@ export function useVoiceInputController(input: {
   const state = global.ownerKey === input.ownerKey ? global.state : IDLE_STATE;
   const isBusy = voiceInputBlocksSubmission(state);
   return {
-    isAvailable:
-      (global.isAvailable || input.fallbackTranscriber != null) &&
-      (!global.isBusy || global.ownerKey === input.ownerKey),
+    isAvailable: global.isAvailable && (!global.isBusy || global.ownerKey === input.ownerKey),
     state,
     audioLevels: global.audioLevels,
     elapsedSeconds: global.elapsedSeconds,

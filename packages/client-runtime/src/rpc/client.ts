@@ -9,7 +9,6 @@ import {
   ORCHESTRATION_V2_WS_METHODS,
   THREAD_COORDINATORS_WS_METHODS,
   THREAD_DECISIONS_WS_METHODS,
-  VOICE_INPUT_WS_METHODS,
   WS_METHODS,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -82,7 +81,6 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof FORK_NOTES_WS_METHODS.subscribe
   // Fork: the voice call.
   | typeof VOICE_CALL_WS_METHODS.subscribe
-  | typeof VOICE_INPUT_WS_METHODS.prepare
   | typeof WS_METHODS.terminalObserve;
 
 export type EnvironmentStreamCommandRpcTag =
@@ -248,6 +246,7 @@ export function runStreamGuarded<TTag extends EnvironmentStreamCommandRpcTag>(
 }
 
 interface SubscriptionOptions<TTag extends EnvironmentSubscriptionRpcTag> {
+  /** Reports defects; the subscription then waits for the next session or resubscribe. */
   readonly onDefect?: (
     cause: Cause.Cause<EnvironmentRpcStreamFailure<TTag>>,
   ) => Effect.Effect<void, never, never>;
@@ -382,6 +381,11 @@ function subscribeDynamicMapped<TTag extends EnvironmentSubscriptionRpcTag, A>(
                           ),
                           Stream.concat(subscribeToSession()),
                         );
+                      }
+                      // A reported defect parks until the next session or resubscribe. Failing would
+                      // end the whole subscription, so a mounted screen never syncs again.
+                      if (options?.onDefect !== undefined && Cause.hasDies(cause)) {
+                        return Stream.empty;
                       }
                       return Stream.failCause(cause);
                     }),

@@ -1,4 +1,5 @@
 import * as NodeHttpPlatform from "@effect/platform-node/NodeHttpPlatform";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
@@ -14,6 +15,7 @@ import * as AzureDevOpsCli from "@t3tools/source-control-azure-devops/server/Azu
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import { ASSET_ROUTE_PREFIX, issueAssetUrl, resolveAsset } from "./AssetAccess.ts";
+import * as AssetSigner from "./AssetSigner.ts";
 import { azureDevOpsMediaHttpResponse } from "./AzureDevOpsMediaFetch.ts";
 import * as NativeAppIconResolver from "./NativeAppIconResolver.ts";
 
@@ -147,8 +149,10 @@ const assetLayer = Layer.mergeAll(
     Layer.provide(T3ProjectFileLoader.layer),
   ),
   NativeAppIconResolver.layer.pipe(Layer.provide(configLayer)),
-  ServerSecretStore.layer.pipe(Layer.provide(configLayer)),
-).pipe(Layer.provideMerge(NodeServices.layer));
+  AssetSigner.layer.pipe(
+    Layer.provideMerge(ServerSecretStore.layer.pipe(Layer.provide(configLayer))),
+  ),
+).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
 describe("azure-devops-media assets", () => {
   it.effect("sign only Azure DevOps pull request attachments", () =>

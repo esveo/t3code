@@ -28,7 +28,7 @@ import {
   describeComposerEffort,
 } from "./ComposerModelEffort";
 import type { useComposerProviderModel } from "./useComposerProviderModel";
-import type { ContextWindowSnapshot } from "../../lib/contextWindow";
+import type { ContextWindowSnapshot } from "@t3tools/client-runtime/state/context-window";
 import { ThreadUsageControl } from "../threadUsage/ThreadUsageControl";
 import { PromptCacheControl } from "./PromptCacheControl";
 import type { ThreadId } from "@t3tools/contracts";

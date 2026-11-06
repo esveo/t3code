@@ -1,4 +1,4 @@
-import type { ContextWindowSnapshot } from "~/lib/contextWindow";
+import type { ContextWindowSnapshot } from "@t3tools/client-runtime/state/context-window";
 
 export interface ContextWindowRow {
   readonly key: string;
@@ -8,11 +8,8 @@ export interface ContextWindowRow {
 
 /**
  * The exact figures a provider reported for this thread, and nothing else.
- *
- * Providers report totals, never a breakdown by system prompt, tool schema or
- * message, so there is no honest way to say what fills the window. What they
- * do report differs per provider, which is why every row is dropped rather
- * than zeroed when it is missing.
+ * Providers report totals, never a breakdown, and what they report differs,
+ * so a missing row is dropped rather than zeroed.
  */
 export function contextWindowRows(usage: ContextWindowSnapshot): readonly ContextWindowRow[] {
   const rows: ContextWindowRow[] = [];

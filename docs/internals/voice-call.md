@@ -233,8 +233,7 @@ probe costs voice quota and the rule is safe either way:
 
 ## Server modules
 
-Everything new lives in `apps/server/src/voiceCall/` (the name avoids the
-existing `voiceInput/` dictation module), with the contract in
+Everything new lives in `apps/server/src/voiceCall/`, with the contract in
 `packages/contracts/src/voiceCall.ts`.
 
 - **`VoiceCallAuth.ts`** returns `{ accessToken, accountId }` for the Codex
@@ -516,7 +515,7 @@ touch list): a field with a decoding default plus the matching optional key in
 - `voiceCallLanguage: "auto" | "de"`, default `"auto"`.
 - `voiceCallPersona: string`, default empty, capped in length.
 
-Rows sit in Settings next to `VoiceInputSettingRow`, use
+Rows sit in Settings → General, use
 `esveoSearchableSetting`, and their search items set `fork: true`. The
 subscription reports availability, so the UI can hide the button or explain why
 a call cannot start: no Codex instance, Codex logged in with an API key, login

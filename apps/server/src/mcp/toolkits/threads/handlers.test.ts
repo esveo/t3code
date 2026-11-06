@@ -3,6 +3,7 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -37,7 +38,7 @@ const COORDINATOR = ThreadId.make("coordinator");
 
 const baseDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-threads-toolkit-"));
 const configLayer = ServerConfig.layerTest(process.cwd(), baseDir).pipe(
-  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
 function thread(

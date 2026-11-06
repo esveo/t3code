@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { Link as LinkIconNode } from "lucide";
 import { Button, InlineButton } from "../ui/button";
+import { FreshSessionRow, ModelSwitchRow } from "./V2LifecycleRow";
 import { useAssetUrlRefresh, useAssetUrls, useAssetUrlState } from "../../assets/assetUrls";
 import { AttachmentImage } from "../media/AttachmentImage";
 import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
@@ -252,9 +253,23 @@ function UserVideoAttachment({
 
 export function UserMessageRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
-  return isIdleAutoCompactMessage(row.message) ? (
-    <IdleAutoCompactTimelineRow />
-  ) : ctx.workflowOpening?.messageId === row.message.id ? (
+  if (isIdleAutoCompactMessage(row.message)) return <IdleAutoCompactTimelineRow />; // Fork
+  const item = row.projectedItem?.item;
+  const modelSwitch = item?.type === "user_message" ? item.modelSwitch : undefined;
+  return (
+    <>
+      {item?.type === "user_message" && item.freshContext ? <FreshSessionRow /> : null}
+      {modelSwitch ? (
+        <ModelSwitchRow environmentId={ctx.activeThreadEnvironmentId} modelSwitch={modelSwitch} />
+      ) : null}
+      <UserMessageContent row={row} />
+    </>
+  );
+}
+
+function UserMessageContent({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
+  const ctx = use(TimelineRowCtx);
+  return ctx.workflowOpening?.messageId === row.message.id ? (
     <WorkflowOpeningBlock
       opening={ctx.workflowOpening}
       environmentId={ctx.activeThreadEnvironmentId}

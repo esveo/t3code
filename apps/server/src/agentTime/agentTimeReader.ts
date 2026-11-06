@@ -1,16 +1,8 @@
 // @effect-diagnostics nodeBuiltinImport:off
 /* oxlint-disable unicorn/require-post-message-target-origin -- worker_threads ports take no origin. */
-/**
- * Fork: runs Agent time's reads in a worker thread on a read-only connection
- * of its own. node:sqlite is synchronous and a cold month reads tens of
- * thousands of turn items for seconds; on the server's own thread that stalls
- * every request and running agent. The database runs in WAL mode, so this
- * reader never blocks the server's writes. The worker is created from source
- * text, like the whisper worker, so the single executable needs no extra
- * file. It starts with the first read and lives until the server stops.
- *
- * @module agentTimeReader
- */
+// Fork: Agent time reads in a worker on a read-only (WAL) connection, since node:sqlite is
+// synchronous and a cold month would stall the server's thread for seconds. The worker comes
+// from source text so the single executable needs no extra file; it lives until the server stops.
 import * as NodeWorkerThreads from "node:worker_threads";
 
 const WORKER_SOURCE = `

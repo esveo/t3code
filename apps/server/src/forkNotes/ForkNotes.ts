@@ -16,7 +16,7 @@ import {
   type ForkNotesTarget,
 } from "@t3tools/contracts";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -85,7 +85,7 @@ const insertAt = <A>(items: ReadonlyArray<A>, position: number, item: A) => {
 
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const writes = yield* Semaphore.make(1);
   const changes = yield* Effect.acquireRelease(PubSub.unbounded<string>(), (pubsub) =>
     PubSub.shutdown(pubsub),
@@ -155,7 +155,7 @@ export const make = Effect.gen(function* () {
             if (Option.isSome(taken)) return yield* failure("A note with this id already exists.");
           }
           const note: ForkNote = {
-            id: action.id ?? (yield* crypto.randomUUIDv4().pipe(Effect.orDie)),
+            id: action.id ?? (yield* random.uuidV4()),
             scope: action.scope,
             scopeId: action.scopeId,
             text: action.text,

@@ -34,7 +34,7 @@ import {
 } from "@t3tools/shared/threadDecisions";
 import { threadLinkHref } from "@t3tools/shared/threadOrchestration";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -78,14 +78,14 @@ const failure = (message: string) => new ThreadDecisionsError({ message });
 export const make = Effect.gen(function* () {
   const sql = yield* SqlClient.SqlClient;
   const threads = yield* ThreadManagementService;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const writes = yield* Semaphore.make(1);
   const changes = yield* Effect.acquireRelease(PubSub.unbounded<ThreadId>(), (pubsub) =>
     PubSub.shutdown(pubsub),
   );
 
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
-  const uuid = crypto.randomUUIDv4().pipe(Effect.orDie);
+  const uuid = random.uuidV4();
   const storeFailed = (detail: string) => () => failure(`Could not ${detail} the decisions.`);
 
   const list = (coordinatorId: ThreadId) =>

@@ -144,6 +144,7 @@ export function SubagentRelayBar(
                   </ComposerControl>
                 </>
               ) : null}
+              {props.actions}
             </div>
             <div className="flex shrink-0 flex-nowrap items-center justify-end gap-2">
               <SubagentStatus

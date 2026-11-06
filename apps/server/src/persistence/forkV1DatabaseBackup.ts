@@ -4,6 +4,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
+import * as PlatformError from "effect/PlatformError";
 
 /**
  * Fork: writes a consistent backup of the V1 database to
@@ -19,20 +20,30 @@ export const backupV1DatabaseBeforeV2Import = Effect.fn("backupV1DatabaseBeforeV
     yield* fs.makeDirectory(backupDirectory, { recursive: true });
     const timestamp = DateTime.formatIso(yield* DateTime.now).replaceAll(":", "-");
     const backupPath = path.join(backupDirectory, `state-v1-${timestamp}.sqlite`);
-    yield* Effect.tryPromise(async () => {
-      const database = new NodeSqlite.DatabaseSync(sourcePath, { readOnly: true });
-      try {
-        await NodeSqlite.backup(database, backupPath);
-      } finally {
-        database.close();
-      }
-      // A single self-contained file: no -wal/-shm siblings when it is opened later.
-      const backup = new NodeSqlite.DatabaseSync(backupPath);
-      try {
-        backup.exec("PRAGMA journal_mode=DELETE");
-      } finally {
-        backup.close();
-      }
+    yield* Effect.tryPromise({
+      try: async () => {
+        const database = new NodeSqlite.DatabaseSync(sourcePath, { readOnly: true });
+        try {
+          await NodeSqlite.backup(database, backupPath);
+        } finally {
+          database.close();
+        }
+        // A single self-contained file: no -wal/-shm siblings when it is opened later.
+        const backup = new NodeSqlite.DatabaseSync(backupPath);
+        try {
+          backup.exec("PRAGMA journal_mode=DELETE");
+        } finally {
+          backup.close();
+        }
+      },
+      catch: (cause) =>
+        PlatformError.systemError({
+          _tag: "Unknown",
+          module: "FileSystem",
+          method: "backupV1Database",
+          pathOrDescriptor: backupPath,
+          cause,
+        }),
     });
     yield* Effect.logInfo(`Backed up the V1 database before the V2 migration to ${backupPath}`);
     return backupPath;

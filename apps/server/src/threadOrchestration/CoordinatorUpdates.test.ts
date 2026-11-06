@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -201,7 +202,9 @@ const withUpdates = <A, E>(
     }).pipe(
       Effect.provide(
         CoordinatorUpdates.layer.pipe(
-          Layer.provide(Layer.mergeAll(management, coordinators, NodeServices.layer)),
+          Layer.provide(
+            Layer.mergeAll(management, coordinators, NodeServices.layer, NodeCrypto.layer),
+          ),
         ),
       ),
     );

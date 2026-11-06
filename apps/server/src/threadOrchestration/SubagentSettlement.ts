@@ -17,7 +17,7 @@ import {
   type OrchestrationV2ThreadShell,
   type ThreadId,
 } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Stream from "effect/Stream";
@@ -69,11 +69,11 @@ const TERMINAL_RUN_STATUSES = new Set([
 
 const make = Effect.gen(function* () {
   const threads = yield* ThreadManagementService;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
 
   const settle = (threadId: ThreadId) =>
     Effect.gen(function* () {
-      const uuid = yield* crypto.randomUUIDv4();
+      const uuid = yield* random.uuidV4();
       yield* threads.dispatch({
         type: "thread.settle",
         commandId: CommandId.make(`fork:settle-with-parent:${threadId}:${uuid}`),

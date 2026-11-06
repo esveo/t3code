@@ -1,7 +1,7 @@
 import type { CodeViewDiffItem, FileDiffMetadata } from "@pierre/diffs";
 import type { EnvironmentId, ReviewDiffRange, VcsCommitGraphEntry } from "@t3tools/contracts";
 import { ArrowRightIcon, ChevronDownIcon, ChevronRightIcon, XIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { DiffStatLabel } from "~/components/chat/DiffStatLabel";
 import { DiffPanelLoadingState } from "~/components/DiffPanelShell";
@@ -36,7 +36,7 @@ function PointLabel({ point }: { readonly point: VcsCommitGraphEntry }) {
     <span className="truncate italic">Untracked changes</span>
   ) : (
     <span className="flex min-w-0 items-baseline gap-1.5">
-      <span className="shrink-0 font-mono text-[11px] text-muted-foreground">
+      <span className="shrink-0 font-mono text-2xs text-muted-foreground">
         {point.sha.slice(0, 8)}
       </span>
       <span className="truncate">{point.subject}</span>
@@ -76,6 +76,7 @@ export function GitGraphDiff({
 
   const refresh = preview.refresh;
   const lastRefreshKey = useRef(refreshKey);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- refetches the diff query when the working tree changes
   useEffect(() => {
     if (range.head !== null || lastRefreshKey.current === refreshKey) return;
     lastRefreshKey.current = refreshKey;
@@ -83,93 +84,68 @@ export function GitGraphDiff({
   }, [range.head, refresh, refreshKey]);
 
   const lazySource = source?.truncated && source.files ? source : null;
-  const renderablePatch = useMemo(
-    () =>
-      lazySource
-        ? null
-        : getRenderablePatch(source?.diff, `git-graph:${resolvedTheme}`, {
-            compactPartialHunkOffsets: true,
-          }),
-    [lazySource, resolvedTheme, source?.diff],
-  );
-  const { renderableFiles, readyFilePaths, settledFileCount, loadNextFiles } = useReviewFilePatches(
-    {
-      environmentId,
-      cwd: preview.data?.cwd,
-      source: lazySource,
-      baseRef: null,
-      range,
-      ignoreWhitespace: settings.diffIgnoreWhitespace,
-      theme: resolvedTheme,
-      previewInput,
-      preview: renderablePatch,
-    },
-  );
+  const renderablePatch = lazySource
+    ? null
+    : getRenderablePatch(source?.diff, `git-graph:${resolvedTheme}`, {
+        compactPartialHunkOffsets: true,
+      });
+  const { renderableFiles, remainingFileCount, loadNextFiles } = useReviewFilePatches({
+    environmentId,
+    cwd: preview.data?.cwd,
+    source: lazySource,
+    baseRef: null,
+    range,
+    ignoreWhitespace: settings.diffIgnoreWhitespace,
+    theme: resolvedTheme,
+    previewInput,
+    preview: renderablePatch,
+  });
 
-  const loadDiffFiles = useMemo(
-    () =>
-      source && preview.data
-        ? createGitDiffFileContentsLoader(getDiffFileContents, {
-            environmentId,
-            cwd: preview.data.cwd,
-            sourceKind: "commit-range",
-            baseRef: range.base,
-            headRef: range.head,
-            cacheKey: source.diffHash,
-          })
-        : undefined,
-    [environmentId, getDiffFileContents, preview.data, range, source],
-  );
+  const loadDiffFiles =
+    source && preview.data
+      ? createGitDiffFileContentsLoader(getDiffFileContents, {
+          environmentId,
+          cwd: preview.data.cwd,
+          sourceKind: "commit-range",
+          baseRef: range.base,
+          headRef: range.head,
+          cacheKey: source.diffHash,
+        })
+      : undefined;
 
   // Collapsing is local to this diff: the pane remounts per selection.
   const [collapseOverrides, setCollapseOverrides] = useState<ReadonlyMap<string, boolean>>(
     () => new Map(),
   );
-  const toggleCollapsed = useCallback((fileKey: string, collapsed: boolean) => {
+  const toggleCollapsed = (fileKey: string, collapsed: boolean) => {
     setCollapseOverrides((current) => new Map(current).set(fileKey, !collapsed));
-  }, []);
-  const items = useMemo<CodeViewDiffItem<undefined>[]>(
-    () =>
-      renderableFiles
-        .filter((fileDiff) => !lazySource || readyFilePaths.has(resolveFileDiffPath(fileDiff)))
-        .map((fileDiff) => {
-          const id = buildFileDiffIdentityKey(fileDiff);
-          const collapsed =
-            fileDiff.cacheKey?.endsWith(":pending") === true ||
-            (collapseOverrides.get(id) ?? settings.diffFilesCollapsed);
-          return {
-            id,
-            type: "diff",
-            fileDiff,
-            collapsed,
-            version: fnv1a32(`${buildFileDiffContentVersion(fileDiff)}:${collapsed ? 1 : 0}`),
-          };
+  };
+  const items: CodeViewDiffItem<undefined>[] = renderableFiles.map((fileDiff) => {
+    const id = buildFileDiffIdentityKey(fileDiff);
+    const collapsed =
+      fileDiff.cacheKey?.endsWith(":pending") === true ||
+      (collapseOverrides.get(id) ?? settings.diffFilesCollapsed);
+    return {
+      id,
+      type: "diff",
+      fileDiff,
+      collapsed,
+      version: fnv1a32(`${buildFileDiffContentVersion(fileDiff)}:${collapsed ? 1 : 0}`),
+    };
+  });
+  const lineStat = source?.files
+    ? source.files.reduce(
+        (total, file) => ({
+          additions: total.additions + file.additions,
+          deletions: total.deletions + file.deletions,
         }),
-    [collapseOverrides, lazySource, readyFilePaths, renderableFiles, settings.diffFilesCollapsed],
-  );
-  const lineStat = useMemo(
-    () =>
-      source?.files
-        ? source.files.reduce(
-            (total, file) => ({
-              additions: total.additions + file.additions,
-              deletions: total.deletions + file.deletions,
-            }),
-            { additions: 0, deletions: 0 },
-          )
-        : getDiffLineStat(renderableFiles),
-    [renderableFiles, source],
-  );
-  const renderLoadingBoundary = useCallback(
-    () =>
-      settledFileCount < renderableFiles.length ? (
-        <DiffFileLoadingBoundary
-          load={loadNextFiles}
-          count={renderableFiles.length - settledFileCount}
-        />
-      ) : null,
-    [loadNextFiles, renderableFiles.length, settledFileCount],
-  );
+        { additions: 0, deletions: 0 },
+      )
+    : getDiffLineStat(renderableFiles);
+  const renderLoadingBoundary = () =>
+    remainingFileCount > 0 ? (
+      <DiffFileLoadingBoundary load={loadNextFiles} count={remainingFileCount} />
+    ) : null;
 
   const single = points.length === 1 ? points[0] : undefined;
   const authored = single && single.sha !== WORKTREE_ID ? new Date(single.authoredAt) : null;
@@ -236,15 +212,15 @@ export function GitGraphDiff({
         <p className="p-4 text-xs text-muted-foreground">No changes.</p>
       ) : renderablePatch?.kind === "raw" ? (
         <div className="min-h-0 flex-1 overflow-auto p-2">
-          <p className="mb-2 text-[11px] text-muted-foreground/75">{renderablePatch.reason}</p>
-          <pre className="font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground/90">
+          <p className="mb-2 text-2xs text-muted-foreground/75">{renderablePatch.reason}</p>
+          <pre className="font-mono text-2xs leading-relaxed whitespace-pre-wrap text-muted-foreground/90">
             {renderablePatch.text}
           </pre>
         </div>
       ) : (
         <>
           {source.truncated && !lazySource ? (
-            <p className="shrink-0 border-b bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
+            <p className="shrink-0 border-b bg-muted/40 px-3 py-1.5 text-2xs text-muted-foreground">
               This diff exceeds the size limit. Changes shown are incomplete.
             </p>
           ) : null}

@@ -91,6 +91,7 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "composer.sendAlternate",
   "composer.sendBackground",
   "composer.sendAndNewThread",
+  "composer.dictation",
   "composer.host",
   "composer.cycleHost",
   "composer.effort",
@@ -100,8 +101,6 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "composer.workspace",
   "composer.previousWorktree",
   "composer.branch",
-  // Fork: dictation.
-  "composer.dictate",
   // Fork: the Notes tab.
   "notes.capture",
   "notes.open",

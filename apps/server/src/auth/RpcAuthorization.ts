@@ -32,7 +32,6 @@ import {
   VOICE_CALL_WS_METHODS,
   FORK_INSTRUCTIONS_WS_METHODS,
   ESVEO_NOTION_WS_METHODS,
-  VOICE_INPUT_WS_METHODS,
   AuthTerminalReadScope,
   type AuthEnvironmentScope,
   EnvironmentAuthorizationError,
@@ -51,6 +50,7 @@ export const RPC_REQUIRED_SCOPES = {
   ...CLIENT_GUARDED_RPC_SCOPES,
   [ORCHESTRATION_V2_WS_METHODS.dispatchCommand]: AuthOrchestrationOperateScope,
   [ORCHESTRATION_V2_WS_METHODS.getWorkflowScript]: AuthOrchestrationReadScope,
+  [ORCHESTRATION_V2_WS_METHODS.getNativeChildWork]: AuthOrchestrationReadScope,
   [ORCHESTRATION_V2_WS_METHODS.stopWorkflow]: AuthOrchestrationOperateScope,
   [ORCHESTRATION_V2_WS_METHODS.forceStopThread]: AuthOrchestrationOperateScope,
   [ORCHESTRATION_V2_WS_METHODS.getTurnDiff]: AuthOrchestrationReadScope,
@@ -60,6 +60,7 @@ export const RPC_REQUIRED_SCOPES = {
   [ORCHESTRATION_V2_WS_METHODS.searchThreadStream]: AuthOrchestrationReadScope,
   [ORCHESTRATION_V2_WS_METHODS.getArchivedShellSnapshot]: AuthOrchestrationReadScope,
   [ORCHESTRATION_V2_WS_METHODS.getThreadFamily]: AuthOrchestrationReadScope,
+  [ORCHESTRATION_V2_WS_METHODS.getThreadTitles]: AuthOrchestrationReadScope,
   [ORCHESTRATION_V2_WS_METHODS.getWorktreeThreadIds]: AuthOrchestrationReadScope,
   [ORCHESTRATION_V2_WS_METHODS.getOlderSettledThreads]: AuthOrchestrationReadScope,
   [ORCHESTRATION_V2_WS_METHODS.getThreadProjection]: AuthOrchestrationReadScope,
@@ -231,9 +232,6 @@ export const RPC_REQUIRED_SCOPES = {
   // Fork: which coordinator a thread reports to.
   [THREAD_COORDINATORS_WS_METHODS.subscribe]: AuthOrchestrationReadScope,
   [THREAD_COORDINATORS_WS_METHODS.set]: AuthOrchestrationOperateScope,
-  // Fork: dictation in the composer.
-  [VOICE_INPUT_WS_METHODS.prepare]: AuthOrchestrationOperateScope,
-  [VOICE_INPUT_WS_METHODS.transcribe]: AuthOrchestrationOperateScope,
   // Fork: voice call. Even watching it needs operate: the subscription keeps a billed session alive.
   [VOICE_CALL_WS_METHODS.subscribe]: AuthOrchestrationOperateScope,
   [VOICE_CALL_WS_METHODS.connect]: AuthOrchestrationOperateScope,

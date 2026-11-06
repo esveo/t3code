@@ -49,6 +49,9 @@ describe("shouldBundleCliDependency", () => {
       "@yuuang/ffi-rs-win32-x64-msvc",
       "@ff-labs/fff-node",
       "@napi-rs/keyring",
+      "transcribe-cpp",
+      "@transcribe-cpp/win32-x64-cpu-vulkan",
+      "koffi",
       "@clerk/electron-passkeys",
       "node-addon-api",
     ]) {
@@ -82,7 +85,6 @@ describe("selectCliRuntimeExternalDependencies", () => {
       [
         "@cursor/sdk",
         "@ff-labs/fff-node",
-        "@fugood/whisper.node",
         "@napi-rs/keyring",
         "node-pty",
         "playwright-core",

@@ -42,11 +42,6 @@ import {
   WsVoiceCallThreadSpansRpc,
   WsVoiceCallUsageRpc,
 } from "./voiceCall.ts";
-import {
-  VOICE_INPUT_WS_METHODS,
-  WsVoiceInputPrepareRpc,
-  WsVoiceInputTranscribeRpc,
-} from "./voiceInput.ts";
 
 /**
  * Fork: esveo code's own WebSocket methods. `WsRpcGroup` merges them in, so
@@ -66,9 +61,6 @@ export const ForkWsRpcGroup = RpcGroup.make(
   // Which coordinator a thread reports to.
   WsThreadCoordinatorsSubscribeRpc,
   WsThreadCoordinatorsSetRpc,
-  // Dictation in the composer.
-  WsVoiceInputPrepareRpc,
-  WsVoiceInputTranscribeRpc,
   // Voice call with GPT-Live.
   WsVoiceCallSubscribeRpc,
   WsVoiceCallConnectRpc,
@@ -103,8 +95,6 @@ export const FORK_WS_RPC_TAGS = [
   FORK_INSTRUCTIONS_WS_METHODS.write,
   THREAD_COORDINATORS_WS_METHODS.subscribe,
   THREAD_COORDINATORS_WS_METHODS.set,
-  VOICE_INPUT_WS_METHODS.prepare,
-  VOICE_INPUT_WS_METHODS.transcribe,
   VOICE_CALL_WS_METHODS.subscribe,
   VOICE_CALL_WS_METHODS.connect,
   VOICE_CALL_WS_METHODS.setTarget,
