@@ -515,7 +515,7 @@ touch list): a field with a decoding default plus the matching optional key in
 - `voiceCallLanguage: "auto" | "de"`, default `"auto"`.
 - `voiceCallPersona: string`, default empty, capped in length.
 
-Rows sit in Settings → General, use
+Rows sit in Settings → Voice, use
 `esveoSearchableSetting`, and their search items set `fork: true`. The
 subscription reports availability, so the UI can hide the button or explain why
 a call cannot start: no Codex instance, Codex logged in with an API key, login

@@ -92,7 +92,7 @@ Read back the thinking behind any answer.
 
 ### Voice calls
 
-Talk to the open thread instead of typing. GPT-Live holds the conversation on your Codex ChatGPT login, hands the work to the thread's agent and reads the result back. Turn it on under Settings → General → Voice calls; while it is off, nothing of it runs and agents don't get its `voice_say` tool.
+Talk to the open thread instead of typing. GPT-Live holds the conversation on your Codex ChatGPT login, hands the work to the thread's agent and reads the result back. Turn it on under Settings → Voice → Voice calls; while it is off, nothing of it runs and agents don't get its `voice_say` tool.
 
 ### esveo themes
 

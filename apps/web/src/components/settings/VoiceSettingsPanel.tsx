@@ -85,6 +85,7 @@ import { searchableSetting } from "./settingsSearch";
 import { useOptionalSettingsScope, useSettingsScope } from "./SettingsScopeContext";
 import { useScopedModelDisabledReason } from "./useScopedModelAvailability";
 import { useScopedSettings, useUpdateScopedSettings } from "./useScopedSettings";
+import { VoiceCallSettingsSection } from "../voiceCall/VoiceCallVoiceSettingRow"; // Fork
 
 const OFF = "off";
 const SYSTEM_DEFAULT = "system-default";
@@ -1366,6 +1367,7 @@ export function VoiceSettingsPanel() {
           />
         ) : null}
       </SettingsSection>
+      <VoiceCallSettingsSection />
     </SettingsPageContainer>
   );
 }
