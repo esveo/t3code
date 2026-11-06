@@ -15,6 +15,7 @@ describe("esveo settings search", () => {
         "context-window-control",
         "cross-project-threads",
         "easter-eggs",
+        "esveo-notion",
         "group-sidebar-threads-by-project",
         "idle-auto-compact",
         "idle-auto-compact-after",
@@ -27,12 +28,13 @@ describe("esveo settings search", () => {
         "voice-call-enabled",
         "voice-call-follow-up",
         "voice-call-voice",
-        "voice-input",
       ].toSorted(),
     );
   });
 
   it("still finds a fork setting by its own words", () => {
-    expect(searchSettings("voice input esveo").map((item) => item.id)).toEqual(["voice-input"]);
+    expect(searchSettings("voice call follow-up esveo").map((item) => item.id)).toEqual([
+      "voice-call-follow-up",
+    ]);
   });
 });

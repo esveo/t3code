@@ -114,7 +114,6 @@ import { CrossProjectThreadsSettingRow } from "../threadOrchestration/CrossProje
 import { IdleAutoCompactSettingRows } from "../idleAutoCompact/IdleAutoCompactSettingRows";
 import { SidebarChildThreadsSettingRow } from "../threadOrchestration/SidebarChildThreadsSetting";
 import { AgentStageSettingRow } from "../agentStage/AgentStageSetting";
-import { VoiceCallSettingsSection } from "../voiceCall/VoiceCallVoiceSettingRow";
 import { EasterEggsSettingRow } from "../easterEggs/EasterEggsSettingRow";
 import { EsveoComposerReadoutSettingRows } from "../esveoSettings/EsveoSettingRows";
 
@@ -1019,8 +1018,6 @@ export function GeneralSettingsPanel() {
           />
         ) : null}
       </SettingsSection>
-
-      <VoiceCallSettingsSection />
 
       <SettingsSection id="display" title="Display">
         <SettingsRow
