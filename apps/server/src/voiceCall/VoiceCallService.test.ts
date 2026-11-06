@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off - fixtures load synchronously at module scope.
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
@@ -169,7 +170,15 @@ const makeHarness = Effect.gen(function* () {
     Layer.provideMerge(
       ServerConfig.layerTest(process.cwd(), { prefix: "voice-call-test-" }).pipe(
         Layer.provideMerge(
-          Layer.mergeAll(realtime, management, settings, projections, engine, NodeServices.layer),
+          Layer.mergeAll(
+            realtime,
+            management,
+            settings,
+            projections,
+            engine,
+            NodeServices.layer,
+            NodeCrypto.layer,
+          ),
         ),
       ),
     ),
@@ -275,7 +284,7 @@ describe("VoiceCallService", () => {
         assert.equal(recorded?.runId, "run-1");
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -334,7 +343,7 @@ describe("VoiceCallService", () => {
         assert.isUndefined(transcriptOf(2));
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -371,7 +380,7 @@ describe("VoiceCallService", () => {
         assert.equal(record.payload?.transcript, "assistant: Queued.");
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -414,7 +423,7 @@ describe("VoiceCallService", () => {
         assert.equal(transcriptOf(3), "user: build");
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -444,7 +453,7 @@ describe("VoiceCallService", () => {
         assert.isTrue(Option.isNone(yield* Queue.poll(harness.outbound)));
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -473,7 +482,7 @@ describe("VoiceCallService", () => {
         assert.equal((yield* nextOfState(watcher.events, "error")).call?.state, "error");
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -505,7 +514,7 @@ describe("VoiceCallService", () => {
         assert.equal((yield* service.delegations)[0]?.status, "answered");
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -536,7 +545,7 @@ describe("VoiceCallService", () => {
         assert.isTrue(Option.isNone(yield* Queue.poll(harness.outbound)));
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -561,7 +570,7 @@ describe("VoiceCallService", () => {
         assert.equal(Option.isNone(yield* Queue.poll(harness.outbound)), true);
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -593,7 +602,7 @@ describe("VoiceCallService", () => {
         assert.equal(harness.sent.length, 1);
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -631,7 +640,7 @@ describe("VoiceCallService", () => {
         assert.deepEqual(statuses, ["failed", "failed"]);
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -668,7 +677,7 @@ describe("VoiceCallService", () => {
         );
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -687,7 +696,7 @@ describe("VoiceCallService", () => {
         assert.deepEqual(states, ["connecting", "live", "error"]);
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -719,7 +728,7 @@ describe("VoiceCallService", () => {
         assert.isTrue(usage.offered);
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -755,7 +764,7 @@ describe("VoiceCallService", () => {
         ]);
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -781,7 +790,7 @@ describe("VoiceCallService", () => {
         assert.include(refused.message, "off in Settings");
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -797,7 +806,7 @@ describe("VoiceCallService", () => {
         assert.isTrue(exit._tag === "Failure");
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -839,7 +848,7 @@ describe("VoiceCallService", () => {
         assert.isTrue(Option.isNone(yield* Queue.poll(harness.outbound)));
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -862,7 +871,7 @@ describe("VoiceCallService", () => {
         assert.isTrue(Option.isNone(yield* Queue.poll(harness.outbound)));
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -901,7 +910,7 @@ describe("VoiceCallService", () => {
         assert.include(spokenText(yield* Queue.take(harness.outbound)), noTargetAnswer);
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -952,7 +961,9 @@ describe("VoiceCallService", () => {
           assert.include(spokenText(yield* Queue.take(harness.outbound)), "Update from the agent");
         }).pipe(Effect.provide(harness.layer));
       }).pipe(
-        Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+        Effect.provide(
+          Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory),
+        ),
         Effect.scoped,
       ),
   );
@@ -976,7 +987,7 @@ describe("VoiceCallService", () => {
         assert.include(spokenText(yield* Queue.take(harness.outbound)), "Update from the agent");
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -1021,7 +1032,7 @@ describe("VoiceCallService", () => {
         assert.isTrue(Option.isNone(yield* Queue.poll(harness.outbound)));
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -1058,7 +1069,7 @@ describe("VoiceCallService", () => {
         assert.include(spokenText(yield* Queue.take(harness.outbound)), "From Alpha:");
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -1085,7 +1096,7 @@ describe("VoiceCallService", () => {
         assert.include(answer, 'Result of the earlier request \\"Run the tests\\". From Alpha:');
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );
@@ -1116,7 +1127,7 @@ describe("VoiceCallService", () => {
         assert.include(spokenText(yield* Queue.take(harness.outbound)), "First thing");
       }).pipe(Effect.provide(harness.layer));
     }).pipe(
-      Effect.provide(Layer.merge(NodeServices.layer, SqlitePersistenceMemory)),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer, SqlitePersistenceMemory)),
       Effect.scoped,
     ),
   );

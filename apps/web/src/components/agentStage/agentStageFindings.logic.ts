@@ -1,4 +1,4 @@
-import type { ContextWindowSnapshot } from "../../lib/contextWindow";
+import type { ContextWindowSnapshot } from "@t3tools/client-runtime/state/context-window";
 
 /**
  * Something the user may want to step in for, though nothing waits on them:

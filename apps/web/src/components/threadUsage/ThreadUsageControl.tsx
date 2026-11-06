@@ -4,7 +4,8 @@ import { useState } from "react";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 
 import { cn } from "~/lib/utils";
-import { type ContextWindowSnapshot, formatContextWindowTokens } from "~/lib/contextWindow";
+import type { ContextWindowSnapshot } from "@t3tools/client-runtime/state/context-window";
+import { formatContextWindowTokens } from "~/lib/contextWindow";
 import { ComposerControl, type ComposerControlSize } from "../chat/ComposerControl";
 import { useComposerMenuProps } from "../chat/composerEventScope";
 import { useComposerMenuState } from "../chat/useComposerMenuState";
@@ -40,18 +41,9 @@ const toneLabelClassName: Record<ContextWindowTone, string> = {
 type ThreadUsageTab = "context" | "cost";
 
 /**
- * The fork's composer control for what a turn costs, in tokens and in money.
- *
- * Stands in for upstream's `ContextWindowControl` at the composer's one call
- * site rather than wrapping it: the tab switcher belongs inside the popover,
- * and there trigger and popup are one component. Replacing it keeps upstream's
- * file untouched, so its future edits land as a file to read rather than as a
- * merge conflict. The trigger and the context readout are deliberately a copy
- * of upstream's, and upstream's pure helpers are imported, not duplicated.
- *
- * It also replaces upstream's opt-in legacy `ContextWindowMeter`: the context
- * tab shows every figure that meter does, including the cost an ACP provider
- * reports, so the fork keeps this one control rather than a second meter.
+ * Fork: replaces upstream's `ContextWindowControl` and legacy meter at the
+ * composer's call site, so the tab switcher can live inside the popover while
+ * upstream's file stays untouched. Trigger and context readout copy upstream's.
  */
 export function ThreadUsageControl(props: {
   usage: ContextWindowSnapshot;

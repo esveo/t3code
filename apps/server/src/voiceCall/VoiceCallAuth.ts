@@ -9,6 +9,7 @@ import {
   type ServerSettings,
   type VoiceCallUnavailableReason,
 } from "@t3tools/contracts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -133,7 +134,9 @@ const codexAuthPath = Effect.fn("VoiceCallAuth.codexAuthPath")(function* (
     (variable) => variable.name === "CODEX_HOME",
   )?.value;
   const environmentHome = (
-    typeof configuredHome === "string" ? configuredHome : process.env.CODEX_HOME
+    typeof configuredHome === "string"
+      ? configuredHome
+      : (yield* HostProcess.Environment).CODEX_HOME
   )?.trim();
   const layout = yield* resolveCodexHomeLayout(
     !config.homePath.trim() && !config.shadowHomePath.trim() && environmentHome

@@ -22,7 +22,7 @@ import {
 import { formatComposerContextReference } from "@t3tools/shared/composerContextReferences";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -195,7 +195,7 @@ const make = Effect.gen(function* () {
   const threads = yield* ThreadManagementService;
   const projections = yield* ProjectionStore.ProjectionStoreV2;
   const realtime = yield* RealtimeCallClient;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const lifecycle = yield* Semaphore.make(1);
@@ -223,7 +223,7 @@ const make = Effect.gen(function* () {
   const subscriptions = new Map<string, number>();
 
   const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
-  const uuid = crypto.randomUUIDv4().pipe(Effect.orDie);
+  const uuid = random.uuidV4();
   const publish = (event: VoiceCallEvent) => PubSub.publish(changes, event).pipe(Effect.asVoid);
   const publishCall = Effect.suspend(() => publish({ type: "call", call }));
   const setCall = (patch: Partial<VoiceCallStatus>) =>

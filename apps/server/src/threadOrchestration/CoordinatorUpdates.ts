@@ -39,7 +39,7 @@ import {
   wrapThreadUpdate,
 } from "@t3tools/shared/threadOrchestration";
 import * as Context from "effect/Context";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import type * as Scope from "effect/Scope";
@@ -139,9 +139,9 @@ const TERMINAL_TASK_STATUSES = new Set(["completed", "failed", "interrupted", "c
 export const make = Effect.gen(function* () {
   const threads = yield* ThreadManagementService;
   const coordinators = yield* ThreadCoordinators;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
   const serial = yield* Semaphore.make(1);
-  const uuid = crypto.randomUUIDv4().pipe(Effect.orDie);
+  const uuid = random.uuidV4();
 
   /** Appends to the coordinator's waiting update message, or queues a new one. */
   const deliver = Effect.fn("CoordinatorUpdates.deliver")(function* (

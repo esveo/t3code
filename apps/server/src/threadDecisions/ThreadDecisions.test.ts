@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import { type OrchestrationV2ThreadShell, ProjectId, ThreadId } from "@t3tools/contracts";
@@ -82,7 +83,14 @@ describe("ThreadDecisions on V2", () => {
       }).pipe(
         Effect.provide(
           ThreadDecisions.layer.pipe(
-            Layer.provide(Layer.mergeAll(management, SqlitePersistenceMemory, NodeServices.layer)),
+            Layer.provide(
+              Layer.mergeAll(
+                management,
+                SqlitePersistenceMemory,
+                NodeServices.layer,
+                NodeCrypto.layer,
+              ),
+            ),
           ),
         ),
       );

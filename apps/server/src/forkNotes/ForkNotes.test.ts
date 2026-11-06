@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import type { ForkNotesTarget } from "@t3tools/contracts";
@@ -14,7 +15,7 @@ const PROJECT: ForkNotesTarget = { scope: "project", scopeId: "project-1" };
 const GLOBAL: ForkNotesTarget = { scope: "global", scopeId: "" };
 
 const testLayer = ForkNotes.layer.pipe(
-  Layer.provide(Layer.mergeAll(SqlitePersistenceMemory, NodeServices.layer)),
+  Layer.provide(Layer.mergeAll(SqlitePersistenceMemory, NodeServices.layer, NodeCrypto.layer)),
 );
 
 const texts = (target: ForkNotesTarget) =>

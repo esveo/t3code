@@ -1,4 +1,5 @@
 import { NodeHttpServer } from "@effect/platform-node";
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import {
@@ -66,8 +67,9 @@ const VoiceCallToolkitStubLive = McpHttpServer.toolkitRegistration(
   }),
 );
 
-const TestLayer = Layer.mergeAll(ThreadsToolkitStubLive, VoiceCallToolkitStubLive).pipe(
-  Layer.provideMerge(McpHttpServer.layerMcpTransport),
+const TestLayer = McpHttpServer.layerMcpTransport(
+  Layer.mergeAll(ThreadsToolkitStubLive, VoiceCallToolkitStubLive),
+).pipe(
   Layer.provide(McpToolAccessTestkit.liveThreadsLayer),
   Layer.provide(Layer.mock(VoiceCallService)({})),
   Layer.provide(
@@ -76,7 +78,7 @@ const TestLayer = Layer.mergeAll(ThreadsToolkitStubLive, VoiceCallToolkitStubLiv
       getDescriptor: Effect.die("unused"),
     }),
   ),
-  Layer.provide(NodeServices.layer),
+  Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
 );
 
 const RegistryLive = McpSessionRegistry.layer.pipe(
@@ -86,7 +88,7 @@ const RegistryLive = McpSessionRegistry.layer.pipe(
       getDescriptor: Effect.die("unused"),
     }),
   ),
-  Layer.provide(NodeServices.layer),
+  Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
   Layer.provideMerge(NodeHttpServer.layerTest),
 );
 

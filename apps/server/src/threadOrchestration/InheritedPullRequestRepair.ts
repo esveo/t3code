@@ -1,10 +1,7 @@
 /**
  * Fork: drops the pull request links subagent threads inherited from their
- * parent. Until upstream's fix (#14918), a subagent thread (a delegate_task
- * child among them) was created as a copy of its parent and took every pull
- * request linked to the parent along, so the coordinator's panel listed
- * finished children as ready for review with someone else's pull request. A link made before the child existed can only
- * be such a copy. Runs once on start; the unlinks make it a no-op afterwards.
+ * parent before upstream stopped copying them. A link made before the child
+ * existed can only be such a copy. Runs once on start; then it is a no-op.
  */
 import {
   CommandId,
@@ -12,7 +9,7 @@ import {
   type ThreadId,
   type ThreadPullRequestKey,
 } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -53,11 +50,11 @@ export function inheritedPullRequestLinks(
 
 const make = Effect.gen(function* () {
   const threads = yield* ThreadManagementService;
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
 
-  const unlink = (link: InheritedPullRequestLink) =>
-    Effect.gen(function* () {
-      const uuid = yield* crypto.randomUUIDv4();
+  const unlink = Effect.fn("InheritedPullRequestRepair.unlink")(
+    function* (link: InheritedPullRequestLink) {
+      const uuid = yield* random.uuidV4();
       yield* threads.dispatch({
         type: "thread.pull-request.unlink",
         commandId: CommandId.make(`fork:inherited-pr-unlink:${link.threadId}:${uuid}`),
@@ -66,11 +63,14 @@ const make = Effect.gen(function* () {
         repository: link.repository,
         number: link.number,
       });
-    }).pipe(
-      Effect.catchCause((cause) =>
-        Effect.logWarning("inherited-pr-repair.unlink-failed", { ...link, cause }),
+    },
+    (effect, link) =>
+      effect.pipe(
+        Effect.catchCause((cause) =>
+          Effect.logWarning("inherited-pr-repair.unlink-failed", { ...link, cause }),
+        ),
       ),
-    );
+  );
 
   yield* forkParked(
     Effect.gen(function* () {

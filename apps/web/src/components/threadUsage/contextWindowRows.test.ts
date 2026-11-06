@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import type { ContextWindowSnapshot } from "~/lib/contextWindow";
+import type { ContextWindowSnapshot } from "@t3tools/client-runtime/state/context-window";
 import { contextWindowRows } from "./contextWindowRows";
 
 describe("contextWindowRows", () => {
