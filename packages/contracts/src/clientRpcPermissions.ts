@@ -11,6 +11,7 @@ import {
   AuthTerminalOperateScope,
   type AuthEnvironmentScope,
 } from "./auth.ts";
+import { ESVEO_NOTION_WS_METHODS } from "./esveoNotion.ts";
 import { FORK_INSTRUCTIONS_WS_METHODS } from "./forkInstructions.ts";
 import { ORCHESTRATION_V2_WS_METHODS } from "./orchestrationV2.ts";
 import { WS_METHODS } from "./rpc.ts";
@@ -64,6 +65,9 @@ export const CLIENT_GUARDED_RPC_SCOPES = {
   [ORCHESTRATION_V2_WS_METHODS.stopWorkflow]: AuthOrchestrationOperateScope,
   // Fork: saving an instruction file in the Instructions tab.
   [FORK_INSTRUCTIONS_WS_METHODS.write]: AuthFilesystemWriteScope,
+  // Fork: the Notion secret is a server credential, saved like a source control token.
+  [ESVEO_NOTION_WS_METHODS.connect]: AuthSettingsWriteScope,
+  [ESVEO_NOTION_WS_METHODS.disconnect]: AuthSettingsWriteScope,
   // Force stop kills agent processes, as Stop on a terminal does.
   [ORCHESTRATION_V2_WS_METHODS.forceStopThread]: AuthOrchestrationOperateScope,
   // A guest link hands thread access to someone outside, like a pairing link.

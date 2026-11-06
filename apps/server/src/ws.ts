@@ -67,6 +67,7 @@ import {
   FORK_NOTES_WS_METHODS,
   VOICE_CALL_WS_METHODS,
   FORK_INSTRUCTIONS_WS_METHODS,
+  ESVEO_NOTION_WS_METHODS,
   VOICE_INPUT_WS_METHODS,
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS,
   AGENT_TIME_WS_METHODS,
@@ -222,6 +223,7 @@ import * as ThreadDecisions from "./threadDecisions/ThreadDecisions.ts";
 import * as ForkNotes from "./forkNotes/ForkNotes.ts";
 import * as VoiceCall from "./voiceCall/VoiceCallService.ts";
 import * as ForkInstructions from "./forkInstructions/ForkInstructions.ts";
+import * as EsveoNotion from "./esveoNotion/EsveoNotion.ts";
 import * as ThreadCoordinators from "./threadOrchestration/ThreadCoordinators.ts";
 import * as VoiceInput from "./voiceInput/VoiceInput.ts";
 import * as ProviderSubagentControl from "./providerSubagentControl/ProviderSubagentControl.ts";
@@ -3361,6 +3363,13 @@ export const layerWsRpc = (
         // instruction files of the Instructions tab.
         [FORK_INSTRUCTIONS_WS_METHODS.read]: (input) => ForkInstructions.readRpc(input),
         [FORK_INSTRUCTIONS_WS_METHODS.write]: (input) => ForkInstructions.writeRpc(input),
+        // the Notion page viewer.
+        [ESVEO_NOTION_WS_METHODS.status]: (_input) => EsveoNotion.statusRpc(),
+        [ESVEO_NOTION_WS_METHODS.connect]: (input) => EsveoNotion.connectRpc(input),
+        [ESVEO_NOTION_WS_METHODS.disconnect]: (_input) => EsveoNotion.disconnectRpc(),
+        [ESVEO_NOTION_WS_METHODS.page]: (input) => EsveoNotion.pageRpc(input),
+        [ESVEO_NOTION_WS_METHODS.pageRefs]: (input) => EsveoNotion.pageRefsRpc(input),
+        [ESVEO_NOTION_WS_METHODS.fileUrl]: (input) => EsveoNotion.fileUrlRpc(input),
         // which coordinator a thread reports to.
         [THREAD_COORDINATORS_WS_METHODS.subscribe]: (_input) => ThreadCoordinators.subscribeRpc(),
         [THREAD_COORDINATORS_WS_METHODS.set]: (input) => ThreadCoordinators.setRpc(input),

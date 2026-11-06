@@ -1,10 +1,11 @@
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
-import { lazy, Suspense, useCallback, useMemo, type ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 
 import type { ComposerThreadTarget } from "~/composerDraftStore";
 import { useRightPanelStore, type RightPanelSurface } from "~/rightPanelStore";
 import { AgentStagePanel } from "../agentStage/AgentStagePanel";
 import { useAgentStageEnabled } from "../agentStage/agentStageStore";
+import { EsveoNotionPanel } from "../esveoNotion/EsveoNotionPanel";
 import { ForkNotesPanel } from "../forkNotes/ForkNotesPanel";
 import { useForkNotesSurface } from "../forkNotes/useForkNotesSurface";
 import { ForkInstructionsPanel } from "../forkInstructions/ForkInstructionsPanel";
@@ -51,10 +52,10 @@ export function useForkRightPanelSurfaces(input: {
   const notes = useForkNotesSurface(threadRef);
   const instructions = forkInstructionsSurface(threadRef);
   const threadImages = threadImagesSurface(threadRef);
-  const addAgentStageSurface = useCallback(() => {
+  const addAgentStageSurface = () => {
     if (!threadRef || !agentStageEnabled) return;
     useRightPanelStore.getState().open(threadRef, "agent-stage");
-  }, [threadRef, agentStageEnabled]);
+  };
 
   // The graph reads the repository the thread runs in: its worktree when it has
   // one, the project's workspace root otherwise. Older servers reject
@@ -62,14 +63,14 @@ export function useForkRightPanelSurfaces(input: {
   // than opening a pane that can only fail.
   const gitGraphCwd = input.workspaceRoot ?? null;
   const gitGraphAvailable = input.isGitRepo && gitGraphCwd !== null && input.commitGraphSupported;
-  const addGitGraphSurface = useCallback(() => {
+  const addGitGraphSurface = () => {
     if (!threadRef || !gitGraphAvailable) return;
     useRightPanelStore.getState().open(threadRef, "git-graph");
-  }, [threadRef, gitGraphAvailable]);
+  };
   /** The `gitGraph.open` shortcut: open, then maximize, then close. */
   const { activeSurface, canMaximize, maximized, toggleMaximized, closeSurface } = rightPanel;
   const panelOpen = rightPanel.open;
-  const cycleGitGraphSurface = useCallback(() => {
+  const cycleGitGraphSurface = () => {
     if (!threadRef) return;
     const showing = panelOpen && activeSurface?.kind === "git-graph";
     const step = nextGitGraphPanelStep({ showing, canMaximize, maximized });
@@ -83,45 +84,21 @@ export function useForkRightPanelSurfaces(input: {
     }
     if (maximized) toggleMaximized();
     if (activeSurface) closeSurface(activeSurface);
-  }, [
-    activeSurface,
-    addGitGraphSurface,
-    canMaximize,
-    closeSurface,
-    maximized,
-    panelOpen,
-    threadRef,
-    toggleMaximized,
-  ]);
+  };
 
-  const tabProps = useMemo(
-    () => ({
-      onAddGitGraph: addGitGraphSurface,
-      onAddAgentStage: addAgentStageSurface,
-      onAddThreadOverview: threadOverview.open,
-      gitGraphAvailable,
-      agentStageAvailable: agentStageEnabled,
-      threadOverviewAvailable: threadOverview.available,
-      threadsWaitingCount: threadOverview.waitingCount,
-      threadInbox,
-      notes,
-      instructions,
-      threadImages,
-    }),
-    [
-      addAgentStageSurface,
-      addGitGraphSurface,
-      agentStageEnabled,
-      gitGraphAvailable,
-      instructions,
-      notes,
-      threadImages,
-      threadInbox,
-      threadOverview.available,
-      threadOverview.open,
-      threadOverview.waitingCount,
-    ],
-  );
+  const tabProps = {
+    onAddGitGraph: addGitGraphSurface,
+    onAddAgentStage: addAgentStageSurface,
+    onAddThreadOverview: threadOverview.open,
+    gitGraphAvailable,
+    agentStageAvailable: agentStageEnabled,
+    threadOverviewAvailable: threadOverview.available,
+    threadsWaitingCount: threadOverview.waitingCount,
+    threadInbox,
+    notes,
+    instructions,
+    threadImages,
+  };
 
   /** The panel for a fork surface, or undefined when the surface is upstream's. */
   const renderSurface = (surface: RightPanelSurface | null | undefined): ReactNode | undefined => {
@@ -138,6 +115,8 @@ export function useForkRightPanelSurfaces(input: {
         );
       case "instructions":
         return <ForkInstructionsPanel threadRef={threadRef} />;
+      case "notion":
+        return <EsveoNotionPanel threadRef={threadRef} surface={surface} />;
       case "thread-images":
         return <ThreadImagesPanel threadRef={threadRef} workspaceRoot={input.workspaceRoot} />;
       case "git-graph":

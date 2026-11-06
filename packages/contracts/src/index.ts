@@ -72,6 +72,7 @@ export * from "./worktreeSetup.ts";
 export * from "./threadDecisions.ts";
 export * from "./forkNotes.ts";
 export * from "./forkInstructions.ts";
+export * from "./esveoNotion.ts"; // Fork
 export * from "./threadCoordinators.ts";
 export * from "./voiceInput.ts";
 export * from "./voiceCall.ts";

@@ -31,6 +31,7 @@ import {
   FORK_NOTES_WS_METHODS,
   VOICE_CALL_WS_METHODS,
   FORK_INSTRUCTIONS_WS_METHODS,
+  ESVEO_NOTION_WS_METHODS,
   VOICE_INPUT_WS_METHODS,
   AuthTerminalReadScope,
   type AuthEnvironmentScope,
@@ -249,6 +250,12 @@ export const RPC_REQUIRED_SCOPES = {
   [AGENT_TIME_WS_METHODS.summary]: AuthDiagnosticsReadScope,
   // Fork: the Images tab.
   [THREAD_IMAGES_WS_METHODS.list]: AuthOrchestrationReadScope,
+  // Fork: reading Notion through the server's integration, like listing pull requests through
+  // its source control credential (connecting is guarded above).
+  [ESVEO_NOTION_WS_METHODS.status]: AuthOrchestrationReadScope,
+  [ESVEO_NOTION_WS_METHODS.page]: AuthOrchestrationReadScope,
+  [ESVEO_NOTION_WS_METHODS.pageRefs]: AuthOrchestrationReadScope,
+  [ESVEO_NOTION_WS_METHODS.fileUrl]: AuthOrchestrationReadScope,
 } as const satisfies Readonly<Record<WsRpcMethod, AuthEnvironmentScope>>;
 
 export function requiredScopeForRpcMethod(method: string): AuthEnvironmentScope {

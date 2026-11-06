@@ -1,5 +1,6 @@
 import {
   AGENT_TIME_WS_METHODS,
+  ESVEO_NOTION_WS_METHODS,
   THREAD_IMAGES_WS_METHODS,
   FORK_INSTRUCTIONS_WS_METHODS,
   FORK_NOTES_WS_METHODS,
@@ -36,4 +37,10 @@ export const FORK_RPC_AGGREGATES = {
   [PROVIDER_SUBAGENT_CONTROL_WS_METHODS.stop]: "orchestration",
   [AGENT_TIME_WS_METHODS.summary]: "server",
   [THREAD_IMAGES_WS_METHODS.list]: "orchestration",
+  [ESVEO_NOTION_WS_METHODS.status]: "server",
+  [ESVEO_NOTION_WS_METHODS.connect]: "server",
+  [ESVEO_NOTION_WS_METHODS.disconnect]: "server",
+  [ESVEO_NOTION_WS_METHODS.page]: "server",
+  [ESVEO_NOTION_WS_METHODS.pageRefs]: "server",
+  [ESVEO_NOTION_WS_METHODS.fileUrl]: "server",
 } as const;

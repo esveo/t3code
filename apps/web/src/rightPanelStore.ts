@@ -34,6 +34,8 @@ const RIGHT_PANEL_KINDS = [
   // Fork: every image of the thread and the threads below it.
   "thread-images",
   "side-chat",
+  // Fork: a Notion page.
+  "notion",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -101,7 +103,9 @@ export type RightPanelSurface =
   /** Fork: the instruction file the thread's agent reads. */
   | { id: "instructions"; kind: "instructions" }
   | { id: "thread-images"; kind: "thread-images" }
-  | { id: `side-chat:${string}`; kind: "side-chat"; threadId: ThreadId };
+  | { id: `side-chat:${string}`; kind: "side-chat"; threadId: ThreadId }
+  /** Fork: a Notion page; `pageId` follows navigation inside the tab. */
+  | { id: `notion:${string}`; kind: "notion"; pageId: string; title?: string };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 const RIGHT_PANEL_STORAGE_VERSION = 14;
@@ -148,9 +152,14 @@ interface RightPanelStoreState {
   ) => boolean;
   open: (
     ref: ScopedThreadRef,
-    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "side-chat">,
+    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "side-chat" | "notion">,
   ) => void;
   openSideChat: (ref: ScopedThreadRef, threadId: ThreadId) => void;
+  /** Fork: opens (or activates) a Notion tab. */
+  openNotion: (
+    ref: ScopedThreadRef,
+    surface: Extract<RightPanelSurface, { kind: "notion" }>,
+  ) => void;
   openDevice: (ref: ScopedThreadRef, target: DeviceTabTarget, automatic?: boolean) => void;
   renameDevice: (ref: ScopedThreadRef, surfaceId: string, title: string) => void;
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
@@ -210,7 +219,7 @@ interface RightPanelStoreState {
   toggleVisibility: (ref: ScopedThreadRef) => void;
   toggle: (
     ref: ScopedThreadRef,
-    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "side-chat">,
+    kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "side-chat" | "notion">,
   ) => void;
   setThreadPanelOpen: (
     ref: ScopedThreadRef,
@@ -248,7 +257,10 @@ export function setEsveoThreadPanelOpenByDefault(open: boolean): void {
 }
 
 const singletonSurface = (
-  kind: Exclude<RightPanelKind, "file" | "preview" | "terminal" | "pull-request" | "side-chat">,
+  kind: Exclude<
+    RightPanelKind,
+    "file" | "preview" | "terminal" | "pull-request" | "side-chat" | "notion"
+  >,
 ): RightPanelSurface => {
   switch (kind) {
     case "diff":
@@ -779,6 +791,10 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           userAction(state, scopedThreadKey(ref), (current) =>
             upsertSurface(current, { id: `side-chat:${threadId}`, kind: "side-chat", threadId }),
           ),
+        ),
+      openNotion: (ref, surface) =>
+        set((state) =>
+          userAction(state, scopedThreadKey(ref), (current) => upsertSurface(current, surface)),
         ),
       renameDevice: (ref, surfaceId, title) =>
         set((state) =>
