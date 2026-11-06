@@ -1,13 +1,9 @@
 import type { ExpoConfig } from "expo/config";
 
-// Fork: the esveo code Android build, a sideloaded APK published as a GitHub release by
-// .github/workflows/fork-android-apk.yml. Opt in with T3CODE_ESVEO_ANDROID=1
-// (scripts/fork/build-esveo-apk.sh sets it); without it the config stays upstream's. Built from
-// the production variant, so it signs in with upstream's public Clerk and relay config and
-// reaches T3 Connect with the same account. It installs next to the official app under its
-// own package; since Clerk only allows the OAuth callback of upstream's package
-// (clerk://com.t3tools.t3code.callback), plugins/withEsveoClerkCallback.cjs keeps sign-in on
-// that callback.
+// Fork: the esveo code Android APK (fork-android-apk.yml), opt in with T3CODE_ESVEO_ANDROID=1;
+// without it the config stays upstream's. It uses upstream's production Clerk and relay config
+// under a package of its own, so plugins/withEsveoClerkCallback.cjs keeps sign-in on the only
+// callback Clerk allows, clerk://com.t3tools.t3code.callback.
 
 const ESVEO_ASSETS = {
   "./assets/android-icon-foreground.png": "./assets/esveo/icon-foreground.png",
@@ -65,15 +61,6 @@ export function withEsveoAndroid(config: ExpoConfig, env: Record<string, string 
       if (!Array.isArray(plugin)) return plugin;
       if (plugin[0] === "expo-notifications") {
         return [plugin[0], { ...plugin[1], color: "#68e5de" }];
-      }
-      // Dictation records on the phone and transcribes with the environment's Whisper, which
-      // needs RECORD_AUDIO. Upstream leaves it out, and its image picker option even blocks it.
-      if (plugin[0] === "expo-audio") {
-        return [plugin[0], { ...plugin[1], recordAudioAndroid: true }];
-      }
-      if (plugin[0] === "expo-image-picker") {
-        const { microphonePermission: _blocksRecordAudio, ...options } = plugin[1] ?? {};
-        return [plugin[0], options];
       }
       return plugin;
     }),

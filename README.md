@@ -90,14 +90,6 @@ Read back the thinking behind any answer.
   <img src="docs/fork/media/thinking-trail.webp" alt="The thought trail under an answer" width="80%">
 </p>
 
-### Dictation
-
-Speak into the composer with the microphone button or <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Space</kbd>. Whisper transcribes on the machine that runs the server, in German and English, and no audio leaves it. Turn it on under Settings → General → Voice input; Android phones and older iPhones then dictate through the same model.
-
-<p align="center">
-  <img src="docs/fork/media/dictation.webp" alt="The composer recording a dictation, with cancel, timer and finish beside the send button" width="100%">
-</p>
-
 ### Voice calls
 
 Talk to the open thread instead of typing. GPT-Live holds the conversation on your Codex ChatGPT login, hands the work to the thread's agent and reads the result back. Turn it on under Settings → General → Voice calls; while it is off, nothing of it runs and agents don't get its `voice_say` tool.

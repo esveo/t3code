@@ -661,15 +661,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["surprise fun rocket animation message send hidden"],
   },
   {
-    id: "voice-input",
-    title: "Voice input",
-    to: "/settings/general",
-    fork: true,
-    searchTerms: [
-      "dictation speech to text microphone whisper transcribe language spracheingabe diktat sprache",
-    ],
-  },
-  {
     id: "voice-call-enabled",
     title: "Voice calls",
     to: "/settings/general",

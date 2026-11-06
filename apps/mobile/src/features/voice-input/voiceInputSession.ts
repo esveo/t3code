@@ -4,7 +4,6 @@ import {
   voiceInputBlocksSubmission,
   type VoiceDraftSnapshot,
   type VoiceInputControllerDependencies,
-  type VoiceTranscriber,
   type VoiceInputPhase,
   type VoiceInputState,
 } from "@t3tools/client-runtime/voice-input";
@@ -21,7 +20,6 @@ export type VoiceInputTarget = {
   readonly readDraft: () => VoiceDraftSnapshot | null;
   readonly commitDraft: VoiceInputControllerDependencies["commitDraft"];
   readonly subscribe: () => () => void;
-  readonly fallbackTranscriber?: VoiceTranscriber | null;
 };
 
 export type VoiceInputSnapshot = {
@@ -55,12 +53,10 @@ export function createVoiceInputTarget(
   commitDraft: VoiceInputTarget["commitDraft"],
   selection: VoiceDraftSnapshot["selection"],
   subscribeToChanges: (onChange: () => void) => () => void,
-  fallbackTranscriber?: VoiceTranscriber | null,
 ): VoiceInputTarget {
   let revision = 0;
   return {
     ownerKey,
-    fallbackTranscriber,
     readDraft: () => {
       const text = readText();
       if (text === null) return null;
@@ -105,8 +101,6 @@ export class VoiceInputSession {
     this.dependencies = dependencies;
     this.controller = new VoiceInputController({
       ...dependencies,
-      getTranscriber: () =>
-        dependencies.getTranscriber() ?? this.target?.fallbackTranscriber ?? null,
       onStateChange: (state) => this.handleStateChange(state),
       readDraft: () => this.target?.readDraft() ?? null,
       commitDraft: (text, selection) => this.target?.commitDraft(text, selection),
@@ -119,10 +113,6 @@ export class VoiceInputSession {
 
   get label(): string | null {
     return this.target?.label ?? null;
-  }
-
-  get fallbackTranscriber(): VoiceTranscriber | null {
-    return this.target?.fallbackTranscriber ?? null;
   }
 
   readonly subscribe = (listener: () => void): (() => void) => {

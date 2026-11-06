@@ -68,7 +68,6 @@ import {
   VOICE_CALL_WS_METHODS,
   FORK_INSTRUCTIONS_WS_METHODS,
   ESVEO_NOTION_WS_METHODS,
-  VOICE_INPUT_WS_METHODS,
   PROVIDER_SUBAGENT_CONTROL_WS_METHODS,
   AGENT_TIME_WS_METHODS,
   THREAD_IMAGES_WS_METHODS,
@@ -225,7 +224,6 @@ import * as VoiceCall from "./voiceCall/VoiceCallService.ts";
 import * as ForkInstructions from "./forkInstructions/ForkInstructions.ts";
 import * as EsveoNotion from "./esveoNotion/EsveoNotion.ts";
 import * as ThreadCoordinators from "./threadOrchestration/ThreadCoordinators.ts";
-import * as VoiceInput from "./voiceInput/VoiceInput.ts";
 import * as ProviderSubagentControl from "./providerSubagentControl/ProviderSubagentControl.ts";
 import * as AgentTime from "./agentTime/AgentTime.ts";
 import { threadImagesList } from "./threadImages/threadImagesList.ts";
@@ -3373,9 +3371,6 @@ export const layerWsRpc = (
         // which coordinator a thread reports to.
         [THREAD_COORDINATORS_WS_METHODS.subscribe]: (_input) => ThreadCoordinators.subscribeRpc(),
         [THREAD_COORDINATORS_WS_METHODS.set]: (input) => ThreadCoordinators.setRpc(input),
-        // dictation in the composer.
-        [VOICE_INPUT_WS_METHODS.prepare]: (input) => VoiceInput.prepareRpc(input),
-        [VOICE_INPUT_WS_METHODS.transcribe]: (input) => VoiceInput.transcribeRpc(input),
         // voice call with GPT-Live.
         [VOICE_CALL_WS_METHODS.subscribe]: (input) => VoiceCall.subscribeRpc(input),
         [VOICE_CALL_WS_METHODS.connect]: (input) => VoiceCall.connectRpc(input),

@@ -113,7 +113,6 @@ import {
   ComposerDictationToolbar,
 } from "../voice-input/ComposerDictationControl";
 import { useVoiceInputController } from "../voice-input/useVoiceInputController";
-import { useServerVoiceTranscriber } from "../serverVoiceInput/useServerVoiceTranscriber";
 import { resolveVoiceComposerPresentation } from "../voice-input/voiceInputPresentation";
 import type { ExistingThreadSettingsRouteParams } from "./ThreadSettingsSheet";
 import {
@@ -562,8 +561,6 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     onUsageLimits:
       usageLimitsOffered && draftAttachments.length === 0 ? openUsageLimits : undefined,
   });
-  // Fork: dictation through the environment's Whisper.
-  const serverVoiceTranscriber = useServerVoiceTranscriber(props.environmentId);
   const voiceInput = useVoiceInputController({
     ownerKey: composerDraftKey,
     label: props.selectedThread.title || "Untitled thread",
@@ -572,7 +569,6 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
     selection: composerMenu.selection,
     onChangeDraftMessage: (text) => setComposerDraftText(composerDraftKey, text),
     onChangeSelection: composerMenu.onSelectionChange,
-    fallbackTranscriber: serverVoiceTranscriber,
   });
   const isSubmissionLocked =
     props.interactionLocked === true || queuedEdit?.saving === true || voiceInput.blocksSubmission;

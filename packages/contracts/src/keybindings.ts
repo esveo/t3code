@@ -100,8 +100,6 @@ export const STATIC_KEYBINDING_COMMANDS = [
   "composer.workspace",
   "composer.previousWorktree",
   "composer.branch",
-  // Fork: dictation.
-  "composer.dictate",
   // Fork: the Notes tab.
   "notes.capture",
   "notes.open",

@@ -278,7 +278,6 @@ import {
 } from "./preparingComposerImages";
 import { ComposerControlsBar } from "./ComposerControlsBar";
 import { composerCommandKeyHandler } from "./composerCommandKey";
-import { ComposerVoiceInputControl } from "../voiceInput/ComposerVoiceInputControl";
 import { VoiceCallButton } from "../voiceCall/VoiceCallButton";
 
 function consumePasteAsTextShortcut(deadline: { current: number }): boolean {
@@ -3516,14 +3515,6 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   }
                   className="flex min-w-0 flex-1 flex-nowrap items-center justify-end gap-2"
                 >
-                  <ComposerVoiceInputControl
-                    environmentId={environmentId}
-                    draftKey={composerTargetKey(composerDraftTarget)}
-                    primary={!props.hideThreadControls}
-                    insertText={(text) =>
-                      insertComposerText(text, "cursor", { ensureLeadingBoundary: true })
-                    }
-                  />
                   <div
                     ref={attachExpandedComposerControls}
                     data-chat-composer-controls="footer"

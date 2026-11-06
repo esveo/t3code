@@ -114,7 +114,6 @@ import { CrossProjectThreadsSettingRow } from "../threadOrchestration/CrossProje
 import { IdleAutoCompactSettingRows } from "../idleAutoCompact/IdleAutoCompactSettingRows";
 import { SidebarChildThreadsSettingRow } from "../threadOrchestration/SidebarChildThreadsSetting";
 import { AgentStageSettingRow } from "../agentStage/AgentStageSetting";
-import { VoiceInputSettingRow } from "../voiceInput/VoiceInputSettingRow";
 import { VoiceCallSettingsSection } from "../voiceCall/VoiceCallVoiceSettingRow";
 import { EasterEggsSettingRow } from "../easterEggs/EasterEggsSettingRow";
 import { EsveoComposerReadoutSettingRows } from "../esveoSettings/EsveoSettingRows";
@@ -923,7 +922,6 @@ export function GeneralSettingsPanel() {
           }
         />
         <AgentStageSettingRow />
-        <VoiceInputSettingRow />
         <EasterEggsSettingRow />
         <SettingsRow
           {...searchableSetting("archive-confirmation")}

@@ -17,7 +17,6 @@ allowBuilds:
   # Keep the key: pnpm fails installs that still record a removed `true`.
   electron: false
   electron-winstaller: false
-  "@fugood/whisper.node": false
   esbuild: true
   msgpackr-extract: true
   msw: false

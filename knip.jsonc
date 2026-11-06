@@ -71,14 +71,12 @@
         "src/threadDecisions/**": ["exports"],
         "src/threadOrchestration/**": ["exports"],
         "src/voiceCall/**": ["exports"],
-        "src/voiceInput/**": ["exports"],
       },
       // Keep the transitive Effect runtime pinned for standalone npm installs.
       // The Vite+ web build prerequisite.
       // Native and disk-loaded provider packages stay external to the bundle; the
       // CLI archive and desktop sidecar stage them from this manifest.
       "ignoreDependencies": [
-        "@fugood/whisper.node",
         "@effect/platform-node-shared",
         "@t3tools/web",
         "@napi-rs/keyring",
@@ -181,7 +179,6 @@
       "ignoreIssues": {
         "src/forkNotes.ts": ["exports"],
         "src/voiceCall.ts": ["exports"],
-        "src/voiceInput.ts": ["exports"],
       },
     },
     "packages/shared": {

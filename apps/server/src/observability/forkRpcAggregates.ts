@@ -8,7 +8,6 @@ import {
   THREAD_COORDINATORS_WS_METHODS,
   THREAD_DECISIONS_WS_METHODS,
   VOICE_CALL_WS_METHODS,
-  VOICE_INPUT_WS_METHODS,
   WS_METHODS,
 } from "@t3tools/contracts";
 
@@ -24,8 +23,6 @@ export const FORK_RPC_AGGREGATES = {
   [FORK_INSTRUCTIONS_WS_METHODS.write]: "server",
   [THREAD_COORDINATORS_WS_METHODS.subscribe]: "orchestration",
   [THREAD_COORDINATORS_WS_METHODS.set]: "orchestration",
-  [VOICE_INPUT_WS_METHODS.prepare]: "server",
-  [VOICE_INPUT_WS_METHODS.transcribe]: "server",
   [VOICE_CALL_WS_METHODS.subscribe]: "orchestration",
   [VOICE_CALL_WS_METHODS.connect]: "orchestration",
   [VOICE_CALL_WS_METHODS.setTarget]: "orchestration",

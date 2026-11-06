@@ -82,7 +82,6 @@ describe("selectCliRuntimeExternalDependencies", () => {
       [
         "@cursor/sdk",
         "@ff-labs/fff-node",
-        "@fugood/whisper.node",
         "@napi-rs/keyring",
         "node-pty",
         "playwright-core",

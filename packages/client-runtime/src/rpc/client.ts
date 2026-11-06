@@ -9,7 +9,6 @@ import {
   ORCHESTRATION_V2_WS_METHODS,
   THREAD_COORDINATORS_WS_METHODS,
   THREAD_DECISIONS_WS_METHODS,
-  VOICE_INPUT_WS_METHODS,
   WS_METHODS,
 } from "@t3tools/contracts";
 import * as Cause from "effect/Cause";
@@ -82,7 +81,6 @@ export type EnvironmentSubscriptionRpcTag =
   | typeof FORK_NOTES_WS_METHODS.subscribe
   // Fork: the voice call.
   | typeof VOICE_CALL_WS_METHODS.subscribe
-  | typeof VOICE_INPUT_WS_METHODS.prepare
   | typeof WS_METHODS.terminalObserve;
 
 export type EnvironmentStreamCommandRpcTag =

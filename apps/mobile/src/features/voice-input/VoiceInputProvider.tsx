@@ -139,10 +139,7 @@ export function useGlobalVoiceInput() {
   const snapshot = useSyncExternalStore(session.subscribe, session.getSnapshot);
   return {
     ...snapshot,
-    isAvailable:
-      getLocalVoiceTranscriber() !== null ||
-      session.fallbackTranscriber !== null ||
-      getNativeShowcaseScene() !== null,
+    isAvailable: getLocalVoiceTranscriber() !== null || getNativeShowcaseScene() !== null,
     audioLevels,
     isBusy: voiceInputBlocksSubmission(snapshot.state),
     session,
