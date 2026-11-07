@@ -257,10 +257,18 @@ export function readToolOutputImage(block: unknown): ToolOutputImage | null {
   return typeof data === "string" ? { ...image, data } : image;
 }
 
+// MCP app outputs nest the tool's CallToolResult under `result`.
+function contentHolder(value: unknown): { readonly content: ReadonlyArray<unknown> } | undefined {
+  if (!Predicate.isObject(value)) return undefined;
+  if (Array.isArray(value.content)) return value as { readonly content: ReadonlyArray<unknown> };
+  return Predicate.isObject(value.result) && Array.isArray(value.result.content)
+    ? (value.result as { readonly content: ReadonlyArray<unknown> })
+    : undefined;
+}
+
 function outputBlocks(value: unknown): ReadonlyArray<unknown> {
   if (Array.isArray(value)) return value;
-  if (Predicate.isObject(value) && Array.isArray(value.content)) return value.content;
-  return [value];
+  return contentHolder(value)?.content ?? [value];
 }
 
 export const MAX_TOOL_OUTPUT_IMAGES = 8;
@@ -299,8 +307,8 @@ export function omitToolOutputImageData(value: unknown): unknown {
     return image?.data === undefined ? block : { type: "image", mimeType: image.mimeType };
   };
   if (Array.isArray(value)) return value.map(omit);
-  if (Predicate.isObject(value) && Array.isArray(value.content)) {
-    return { ...value, content: value.content.map(omit) };
-  }
-  return omit(value);
+  const holder = contentHolder(value);
+  if (holder === undefined) return omit(value);
+  const omitted = { ...holder, content: holder.content.map(omit) };
+  return holder === value ? omitted : { ...(value as object), result: omitted };
 }

@@ -221,6 +221,23 @@ describe("orchestration V2 wire projection", () => {
     expect(item.output.content[0]?.source.data).toBe(data);
   });
 
+  it("keeps the image bytes an MCP app draws, and the feed still leaves them out", () => {
+    const data = "A".repeat(600_000);
+    const output = {
+      t3McpApp: { attachmentId: "app", server: "blender", tool: "look", resourceUri: "ui://v" },
+      result: { content: [{ type: "image", data, mimeType: "image/png" }] },
+    };
+    const item = {
+      ...base,
+      type: "dynamic_tool" as const,
+      toolName: "mcp__blender__look",
+      input: {},
+      output,
+    };
+    expect(projectTurnItemForDetail(item)).toMatchObject({ output });
+    expect(JSON.stringify(projectTurnItemForWire(item))).not.toContain(data);
+  });
+
   it("keeps image markers when the rest of a tool output is too large to send", () => {
     const image = {
       type: "image",
