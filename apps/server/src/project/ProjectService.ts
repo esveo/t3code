@@ -5,10 +5,12 @@ import {
   type Project,
   type ProjectCreatePayload,
   type ProjectUpdatePayload,
+  type ProjectSettingsOverrides,
   type ProjectSnapshot,
   type ThreadId,
 } from "@t3tools/contracts";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
+import { resolveProjectScripts } from "@t3tools/shared/projectScripts";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -16,6 +18,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
+import type * as Types from "effect/Types";
 
 import { withCommandMetrics } from "../observability/Metrics.ts";
 import * as EventSink from "../orchestration-v2/EventSink.ts";
@@ -104,6 +107,7 @@ export class ProjectOperationError extends Schema.TaggedError<ProjectOperationEr
       "list-threads",
       "delete-thread",
       "dispatch-project-command",
+      "update-settings",
     ]),
     projectId: Schema.optional(ProjectId),
     workspaceRoot: Schema.optional(Schema.String),
@@ -179,6 +183,7 @@ export const make = Effect.gen(function* () {
   const toProject = (
     row: ProjectStore.ProjectRow,
     enrichment: ProjectEnrichmentService.ProjectEnrichment | null,
+    settings: Parameters<typeof resolveProjectScripts>[0],
   ): Project => ({
     id: row.projectId,
     title: row.title,
@@ -189,7 +194,7 @@ export const make = Effect.gen(function* () {
     defaultThreadEnvMode: row.defaultThreadEnvMode,
     autoPull: row.autoPull,
     projectIcon: row.projectIcon,
-    scripts: row.scripts,
+    scripts: resolveProjectScripts(settings, { id: row.projectId, scripts: row.scripts }),
     pinnedAt: row.pinnedAt,
     archivedAt: row.archivedAt,
     createdAt: row.createdAt,
@@ -202,7 +207,51 @@ export const make = Effect.gen(function* () {
       row.deletedAt === null
         ? yield* projectEnrichment.getAvailable(row.workspaceRoot)
         : yield* projectEnrichment.peek(row.workspaceRoot);
-    return toProject(row, enrichment);
+    return toProject(row, enrichment, yield* readSettings);
+  });
+
+  const readSettings = serverSettings.getSettings.pipe(
+    Effect.mapError((cause) => new ProjectOperationError({ operation: "read-project", cause })),
+  );
+
+  // Clients read these from the project's settings override; the row's copies apply only before settings fold.
+  const writeSettingsOverrides = Effect.fn("ProjectService.writeSettingsOverrides")(function* (
+    projectId: ProjectId,
+    input: Pick<
+      ProjectUpdatePayload,
+      "scripts" | "defaultModelSelection" | "defaultThreadEnvMode" | "autoPull"
+    >,
+  ) {
+    if (
+      input.scripts === undefined &&
+      input.defaultModelSelection === undefined &&
+      input.defaultThreadEnvMode === undefined &&
+      input.autoPull === undefined
+    ) {
+      return;
+    }
+    const settings = yield* readSettings;
+    const entry: Types.Mutable<ProjectSettingsOverrides> = {
+      ...settings.projectSettingsOverrides[projectId],
+    };
+    if (input.scripts !== undefined) entry.defaultProjectScripts = input.scripts;
+    if (input.autoPull !== undefined) entry.defaultAutoPull = input.autoPull;
+    // A null project field meant "use the environment default", which is no override.
+    if (input.defaultModelSelection === null) delete entry.defaultModelSelection;
+    else if (input.defaultModelSelection !== undefined) {
+      entry.defaultModelSelection = input.defaultModelSelection;
+    }
+    if (input.defaultThreadEnvMode === null) delete entry.defaultThreadEnvMode;
+    else if (input.defaultThreadEnvMode !== undefined) {
+      entry.defaultThreadEnvMode = input.defaultThreadEnvMode;
+    }
+    yield* serverSettings
+      .updateSettings({ projectSettingsOverrides: { [projectId]: entry } })
+      .pipe(
+        Effect.mapError(
+          (cause) => new ProjectOperationError({ operation: "update-settings", projectId, cause }),
+        ),
+      );
   });
 
   const readRow = (projectId: ProjectId, options?: { readonly includeDeleted?: boolean }) =>
@@ -366,6 +415,7 @@ export const make = Effect.gen(function* () {
         workspaceRoot,
         ...(input.scripts === undefined ? {} : { scripts: input.scripts }),
       });
+      yield* writeSettingsOverrides(input.projectId, input);
       yield* projectEnrichment.invalidate([workspaceRoot]);
       return yield* readCommitted(input.projectId);
     },
@@ -404,6 +454,7 @@ export const make = Effect.gen(function* () {
         ...(input.pinned === undefined ? {} : { pinned: input.pinned }),
         ...(input.archived === undefined ? {} : { archived: input.archived }),
       });
+      yield* writeSettingsOverrides(input.projectId, input);
       if (workspaceRoot !== previousRoot) {
         yield* projectEnrichment.invalidate([previousRoot, workspaceRoot]);
       }
