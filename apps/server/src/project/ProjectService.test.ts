@@ -96,13 +96,14 @@ const layerTestFor = (
     | ProjectFaviconResolver.ProjectFaviconResolver
     | RepositoryIdentityResolver.RepositoryIdentityResolver
   >,
+  settings?: Parameters<typeof ServerSettings.layerTest>[0],
 ) =>
   RuntimeLayer.layerProjectService.pipe(
     Layer.provideMerge(ProjectEnrichmentService.layer),
     Layer.provideMerge(layerWorkspacePaths),
     Layer.provideMerge(projectMetadataLayer),
     Layer.provideMerge(SqlitePersistence.layerMemory),
-    Layer.provideMerge(ServerSettings.layerTest()),
+    Layer.provideMerge(ServerSettings.layerTest(settings)),
     Layer.provide(ServerConfig.layerTest(process.cwd(), { prefix: "project-service-test-" })),
     Layer.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     Layer.provideMerge(layerEnrichmentCompletions),
@@ -614,6 +615,63 @@ it.layer(layerTest)("ProjectService", (it) => {
     }),
   );
 });
+
+// regression: scripts set through t3_project_update never reached the thread details panel
+it.effect("keeps scripts and defaults written through the project where clients read them", () =>
+  Effect.gen(function* () {
+    const service = yield* ProjectService.ProjectService;
+    const settings = yield* ServerSettings.ServerSettingsService;
+    const projectId = ProjectId.make("project:folded-settings");
+    const script = (id: string) =>
+      ({ id, name: id, command: `echo ${id}`, icon: "play", runOnWorktreeCreate: false }) as const;
+    const override = () =>
+      settings.getSettings.pipe(Effect.map((s) => s.projectSettingsOverrides[projectId]));
+
+    yield* service.create({
+      commandId: CommandId.make("command:folded:create"),
+      projectId,
+      title: "Folded",
+      workspaceRoot: "/work/folded",
+      scripts: [script("play")],
+    });
+    assert.deepEqual((yield* override())?.defaultProjectScripts, [script("play")]);
+
+    yield* settings.updateSettings({
+      projectSettingsOverrides: {
+        [projectId]: { ...(yield* override()), enableAgentBrowserAccess: true },
+      },
+    });
+    const updated = yield* service.update({
+      commandId: CommandId.make("command:folded:update"),
+      projectId,
+      scripts: [script("play"), script("tests")],
+      autoPull: true,
+      defaultThreadEnvMode: "worktree",
+    });
+    assert.deepEqual(updated.scripts, [script("play"), script("tests")]);
+    assert.deepEqual(yield* override(), {
+      defaultProjectScripts: [script("play"), script("tests")],
+      enableAgentBrowserAccess: true,
+      defaultAutoPull: true,
+      defaultThreadEnvMode: "worktree",
+    });
+
+    yield* service.update({
+      commandId: CommandId.make("command:folded:reset"),
+      projectId,
+      defaultThreadEnvMode: null,
+    });
+    assert.isFalse(Object.hasOwn((yield* override()) ?? {}, "defaultThreadEnvMode"));
+
+    yield* settings.updateSettings({
+      projectSettingsOverrides: {
+        [projectId]: { ...(yield* override()), defaultProjectScripts: [script("ui")] },
+      },
+    });
+    const read = yield* service.getById(projectId);
+    assert.deepEqual(Option.getOrThrow(read).scripts, [script("ui")]);
+  }).pipe(Effect.provide(layerTestFor(layerMetadata, { projectSettingsFolded: true }))),
+);
 
 it.effect("keeps project snapshots available when optional metadata enrichment fails", () =>
   Effect.gen(function* () {
