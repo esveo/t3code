@@ -121,6 +121,25 @@ describe("stripUnservedToolOutputImageBytes", () => {
     ]);
   });
 
+  // regression: the Blender MCP viewport app lost its screenshot bytes before it could draw them
+  it("keeps the images of an MCP app's tool result", () => {
+    const image = { type: "image", data: PNG_BASE64, mimeType: "image/png" };
+    const item = toolItem(
+      {
+        t3McpApp: { attachmentId: "app", server: "blender", tool: "look", resourceUri: "ui://v" },
+        result: { content: [image, { type: "text", text: "Framed 3 objects." }] },
+      },
+      "mcp__blender__look",
+    );
+
+    const stripped = stripUnservedToolOutputImageBytes(item);
+
+    expect(stripped).toBe(item);
+    expect(toolOutputImages(outputOf(stripped))).toEqual([
+      { mimeType: "image/png", data: PNG_BASE64 },
+    ]);
+  });
+
   it("strips only the images past the last one an asset can serve", () => {
     const images = Array.from({ length: MAX_TOOL_OUTPUT_IMAGES + 2 }, () => ({
       type: "image",

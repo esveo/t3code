@@ -15,6 +15,7 @@ import {
   dedupeSubagentBodies,
   dedupeTurnItemBodies,
 } from "@t3tools/shared/orchestrationV2DedupedBodies";
+import { MCP_APP_OUTPUT_KEY } from "@t3tools/shared/mcpApp";
 import {
   compactDynamicToolOutput,
   omitToolOutputImageData,
@@ -225,10 +226,17 @@ function boundDynamicValue(value: unknown): unknown {
     : truncateDetail(json, MAX_ON_DEMAND_BYTES);
 }
 
+function isMcpAppOutput(output: unknown): boolean {
+  return typeof output === "object" && output !== null && MCP_APP_OUTPUT_KEY in output;
+}
+
 /** Preserve ordered image markers in truncated output so clients can load images by index. */
 function boundToolOutput(output: unknown): unknown {
   const omitted = omitToolOutputImageData(output);
   const bounded = boundDynamicValue(omitted);
+  // MCP apps draw their result's images from base64 and cannot load them by asset index.
+  // Ingestion already limits the image bytes kept, so only the rest counts against the bound.
+  if (bounded === omitted && isMcpAppOutput(output)) return output;
   if (typeof bounded !== "string" || typeof omitted === "string") return bounded;
   const images = toolOutputImages(omitted);
   return images.length === 0

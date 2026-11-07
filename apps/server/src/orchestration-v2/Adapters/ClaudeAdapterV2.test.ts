@@ -5180,6 +5180,34 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     ),
   );
 
+  // regression: the Blender MCP viewport app showed a broken image for its screenshot
+  it.effect("hands an MCP app its result's images as MCP image content", () =>
+    Effect.gen(function* () {
+      const data = Buffer.alloc(3_000, 7).toString("base64");
+      const { item } = yield* runClaudeMcpAppToolTurn(MCP_APP_CAPABILITIES, undefined, undefined, [
+        { type: "image", source: { type: "base64", media_type: "image/png", data } },
+        { type: "text", text: "Framed 3 objects." },
+      ]);
+      assert.isDefined(mcpAppFromToolItem(item));
+      assert.deepEqual((item.output as { readonly result?: unknown }).result, {
+        content: [
+          { type: "image", data, mimeType: "image/png" },
+          { type: "text", text: "Framed 3 objects." },
+        ],
+      });
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(
+          IdAllocator.layer,
+          McpProviderSessions.layer,
+          NodeServices.layer,
+          NodeCrypto.layer,
+        ),
+      ),
+    ),
+  );
+
   it.effect.each([
     {
       name: "its ui:// resource cannot be read",

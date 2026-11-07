@@ -862,6 +862,19 @@ function claudeMcpToolForApps(
   };
 }
 
+/** Claude reports MCP images as Anthropic `source` blocks; apps read MCP's `data` and `mimeType`. */
+function mcpImageContent(block: unknown): unknown {
+  if (!Predicate.isObject(block) || block.type !== "image" || !Predicate.isObject(block.source)) {
+    return block;
+  }
+  const { source, ...rest } = block;
+  return source.type === "base64" &&
+    typeof source.data === "string" &&
+    typeof source.media_type === "string"
+    ? { ...rest, data: source.data, mimeType: source.media_type }
+    : block;
+}
+
 /** A model-turn MCP `tool_use_result` flattens text `content` to a string; app calls return MCP's raw `CallToolResult`. */
 function claudeMcpCallToolResult(
   value: unknown,
@@ -873,7 +886,7 @@ function claudeMcpCallToolResult(
       typeof content === "string"
         ? [{ type: "text", text: content }]
         : Array.isArray(content)
-          ? content
+          ? content.map(mcpImageContent)
           : [],
     ...(record?.structuredContent === undefined
       ? {}
