@@ -32,6 +32,50 @@ export function resolveSpawnAsSubthread(
   return input.spawnAsSubthread ?? existing?.spawnAsSubthread ?? false;
 }
 
+export const validateThreadBinding = Effect.fn("forkSubthreadRun.validateThreadBinding")(function* (
+  threadManagement: Pick<
+    ThreadManagementService.ThreadManagementService["Service"],
+    "getThreadShell"
+  >,
+  input: {
+    readonly id: ScheduledTask["id"];
+    readonly projectId: ScheduledTask["projectId"];
+    readonly threadId: string | null;
+  },
+  existing: Pick<ScheduledTask, "projectId" | "threadId"> | null,
+) {
+  if (input.threadId === null) return;
+  if (existing?.threadId === input.threadId && existing.projectId === input.projectId) return;
+  const shell = yield* threadManagement.getThreadShell(ThreadId.make(input.threadId)).pipe(
+    Effect.mapError(
+      (cause) =>
+        new ScheduledTaskError({
+          message: "Could not read the destination thread.",
+          taskId: input.id,
+          cause,
+        }),
+    ),
+  );
+  if (shell === null || shell.deletedAt !== null) {
+    return yield* new ScheduledTaskError({
+      message: "That thread no longer exists.",
+      taskId: input.id,
+    });
+  }
+  if (shell.archivedAt !== null) {
+    return yield* new ScheduledTaskError({
+      message: "That thread is archived. Unarchive it or pick another destination.",
+      taskId: input.id,
+    });
+  }
+  if (shell.projectId !== input.projectId) {
+    return yield* new ScheduledTaskError({
+      message: "That thread belongs to a different project.",
+      taskId: input.id,
+    });
+  }
+});
+
 interface ScheduledSubthreadTypes {
   services: {
     readonly threadLaunch: ThreadLaunchService.ThreadLaunchService["Service"];
