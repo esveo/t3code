@@ -269,6 +269,11 @@ import { composerCommandKeyHandler } from "./composerCommandKey";
 import { VoiceCallButton } from "../voiceCall/VoiceCallButton";
 import { usePromptSuggestion } from "./usePromptSuggestion";
 import { useFreshSessionArmed } from "./freshSessionArms";
+import {
+  providerSupportsManualCompaction,
+  resolveContextWindowModelDisplayName,
+} from "./ContextWindowMeter.logic";
+import type { ContextWindowSnapshot } from "@t3tools/client-runtime/state/context-window";
 
 function consumePasteAsTextShortcut(deadline: { current: number }): boolean {
   const armed = Date.now() <= deadline.current;
@@ -414,8 +419,10 @@ export interface ChatComposerProps {
   activeProjectId: ProjectId | null;
   projectName?: string | undefined;
 
+  activeContextWindow: ContextWindowSnapshot | null;
   compactThreadUnavailable: boolean;
   compactDisabled: boolean;
+  compactDisabledReason: string | null;
 
   resolvedTheme: "light" | "dark";
   settings: UnifiedSettings;
@@ -531,8 +538,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     reportedModelSelection,
     activeProjectId,
     projectName,
+    activeContextWindow,
     compactThreadUnavailable,
     compactDisabled,
+    compactDisabledReason,
     resolvedTheme,
     settings,
     keybindings,
@@ -909,6 +918,9 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         (multipleModelSelections === null ? providerSendBlockReason : null)));
   const isSendDisabled = sendDisabledReason !== null;
   const selectedProviderStatus = selectedProviderEntry?.snapshot ?? null;
+  const resolvedCompactDisabledReason =
+    compactDisabledReason ?? (noProviderAvailable ? "Compacting is unavailable right now" : null);
+  const compactCommandAvailable = providerSupportsManualCompaction(selectedProviderEntry);
   const selectedProviderSkills = selectedProviderStatus
     ? resolveProviderSkillsForCwd(selectedProviderStatus, gitCwd)
     : NO_PROVIDER_SKILLS;
@@ -948,6 +960,10 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
       ? selectedModelForPicker
       : (normalizeModelSlug(selectedModelForPicker, selectedProvider) ?? selectedModelForPicker);
   })();
+  const activeThreadModelDisplayName = resolveContextWindowModelDisplayName(
+    activeThreadModelSelection,
+    modelOptionsByInstance,
+  );
 
   const [composerCursor, setComposerCursor] = useState(() => {
     const value = isLiteralPendingAnswer ? (activePendingProgress?.customAnswer ?? prompt) : prompt;
@@ -3590,6 +3606,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                         },
                       },
                     )}
+                    promptHasText={prompt.trim().length > 0 || voiceInputActive}
                     voiceInputActive={voiceInputActive}
                     isSendBusy={isSendBusy}
                     sendDisabledReason={voiceSendDisabledReason}

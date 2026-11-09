@@ -34,7 +34,6 @@ const clientSettings: ClientSettings = {
   confirmThreadArchive: true,
   confirmThreadDelete: false,
   confirmThreadUnpin: false,
-  contextWindowMeterEnabled: false,
   contextWindowControlEnabled: true,
   promptCacheTimerEnabled: true,
   diffFilesCollapsed: true,

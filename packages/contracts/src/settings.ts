@@ -514,7 +514,6 @@ export const ClientSettingsSchema = Schema.Struct({
 
   pullRequestLinksOpenInApp: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
 
-  contextWindowMeterEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   // The context window reading in the composer's control strip.
   contextWindowControlEnabled: Schema.Boolean.pipe(
     Schema.withDecodingDefault(Effect.succeed(true)),
@@ -2003,7 +2002,6 @@ export const ClientSettingsPatch = Schema.Struct({
     Schema.Record(TrimmedNonEmptyString, PullRequestMergeMethod),
   ),
   pullRequestLinksOpenInApp: Schema.optionalKey(Schema.Boolean),
-  contextWindowMeterEnabled: Schema.optionalKey(Schema.Boolean),
   contextWindowControlEnabled: Schema.optionalKey(Schema.Boolean),
   promptCacheTimerEnabled: Schema.optionalKey(Schema.Boolean),
   composerRichTextEnabled: Schema.optionalKey(Schema.Boolean),

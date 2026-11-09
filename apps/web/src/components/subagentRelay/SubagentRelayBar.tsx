@@ -160,8 +160,6 @@ export function SubagentRelayBar(
                   canOperateThread={canOperateThread}
                   isRunning={showStop}
                   canInterrupt={showStop}
-                  showPlanFollowUpPrompt={false}
-                  promptHasText={hasText}
                   isSendBusy={sending}
                   sendDisabledReason={parent === null ? "Loading the parent thread" : null}
                   isEnvironmentUnavailable={false}
@@ -169,7 +167,6 @@ export function SubagentRelayBar(
                   hasSendableContent={hasText}
                   onPreviousPendingQuestion={noop}
                   onInterrupt={() => void onStop()}
-                  onImplementPlanInNewThread={noop}
                 />
               )}
             </div>
