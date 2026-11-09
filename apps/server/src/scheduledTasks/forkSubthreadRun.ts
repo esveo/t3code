@@ -32,21 +32,26 @@ export function resolveSpawnAsSubthread(
   return input.spawnAsSubthread ?? existing?.spawnAsSubthread ?? false;
 }
 
+interface ScheduledSubthreadTypes {
+  services: {
+    readonly threadLaunch: ThreadLaunchService.ThreadLaunchService["Service"];
+    readonly threadManagement: ThreadManagementService.ThreadManagementService["Service"];
+    readonly coordinators: Option.Option<ThreadCoordinators["Service"]>;
+  };
+  input: {
+    readonly task: ScheduledTask;
+    /** The bound thread. */
+    readonly threadId: ThreadId;
+    readonly commandId: CommandId;
+    readonly messageId: MessageId;
+    readonly prompt: string;
+  };
+}
+
 export const launchScheduledSubthread = Effect.fn("ScheduledTaskService.launchScheduledSubthread")(
   function* (
-    services: {
-      readonly threadLaunch: ThreadLaunchService.ThreadLaunchService["Service"];
-      readonly threadManagement: ThreadManagementService.ThreadManagementService["Service"];
-      readonly coordinators: Option.Option<ThreadCoordinators["Service"]>;
-    },
-    input: {
-      readonly task: ScheduledTask;
-      /** The bound thread. */
-      readonly threadId: ThreadId;
-      readonly commandId: CommandId;
-      readonly messageId: MessageId;
-      readonly prompt: string;
-    },
+    services: ScheduledSubthreadTypes["services"],
+    input: ScheduledSubthreadTypes["input"],
   ) {
     const { task } = input;
     if (Option.isNone(services.coordinators)) {
