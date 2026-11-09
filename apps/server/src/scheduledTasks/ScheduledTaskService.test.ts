@@ -39,7 +39,7 @@ const isScheduledTaskError = Schema.is(ScheduledTaskError);
 const threadShell = (
   projectId: ProjectId,
   state: { archivedAt?: string | null; deletedAt?: string | null } = {},
-) => ({ projectId, archivedAt: null, deletedAt: null, ...state }) as never;
+) => ({ projectId, title: "Thread", archivedAt: null, deletedAt: null, ...state }) as never;
 
 const insertRow = (
   sql: SqlClient.SqlClient,
@@ -365,7 +365,14 @@ it.effect("thread cleanup notifies subscribers and a finishing run cannot recrea
                 Effect.andThen(Deferred.await(release)),
                 Effect.andThen(Effect.die("test dispatch failure")),
               ),
-            getThreadShell: () => Effect.succeed(threadShell(ProjectId.make("project:test"))),
+            getThreadShell: (threadId) =>
+              Effect.succeed({
+                id: threadId,
+                projectId: ProjectId.make("project:test"),
+                title: "Thread",
+                archivedAt: null,
+                deletedAt: null,
+              } as never),
           }),
           Layer.mock(SecretRequests.SecretRequests)({}),
           Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
@@ -816,10 +823,10 @@ it.effect("checks a task's destination thread only when the destination changes"
         });
 
       for (const [threadId, message] of [
-        ["thread:missing", "That thread no longer exists."],
-        ["thread:deleted", "That thread no longer exists."],
+        ["thread:missing", "Thread 'thread:missing' does not exist."],
+        ["thread:deleted", "Thread 'thread:deleted' does not exist."],
         ["thread:archived", "That thread is archived. Unarchive it or pick another destination."],
-        ["thread:other-project", "That thread belongs to a different project."],
+        ["thread:other-project", "'Thread' belongs to another project."],
       ] as const) {
         const refused = yield* save(ThreadId.make(threadId)).pipe(Effect.flip);
         assert.equal(refused.message, message);

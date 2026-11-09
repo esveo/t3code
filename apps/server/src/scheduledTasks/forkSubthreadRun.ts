@@ -1,4 +1,7 @@
-/** Fork: a bound automation can launch each trigger as a coordinated child thread. */
+/**
+ * Fork: an automation bound to a thread can run each trigger as a subthread
+ * of it (`spawnAsSubthread`) instead of posting its prompt there.
+ */
 import {
   type CommandId,
   type MessageId,
@@ -32,6 +35,11 @@ export function resolveSpawnAsSubthread(
   return input.spawnAsSubthread ?? existing?.spawnAsSubthread ?? false;
 }
 
+/**
+ * Refuses binding a task to a thread outside its project. Only a new or
+ * changed binding is checked, so a task whose thread was deleted later can
+ * still be edited (its runs fail and say why).
+ */
 export const validateThreadBinding = Effect.fn("forkSubthreadRun.validateThreadBinding")(function* (
   threadManagement: Pick<
     ThreadManagementService.ThreadManagementService["Service"],
@@ -58,7 +66,7 @@ export const validateThreadBinding = Effect.fn("forkSubthreadRun.validateThreadB
   );
   if (shell === null || shell.deletedAt !== null) {
     return yield* new ScheduledTaskError({
-      message: "That thread no longer exists.",
+      message: `Thread '${input.threadId}' does not exist.`,
       taskId: input.id,
     });
   }
@@ -68,12 +76,11 @@ export const validateThreadBinding = Effect.fn("forkSubthreadRun.validateThreadB
       taskId: input.id,
     });
   }
-  if (shell.projectId !== input.projectId) {
-    return yield* new ScheduledTaskError({
-      message: "That thread belongs to a different project.",
-      taskId: input.id,
-    });
-  }
+  if (shell?.projectId === input.projectId) return;
+  return yield* new ScheduledTaskError({
+    message: `'${shell.title}' belongs to another project.`,
+    taskId: input.id,
+  });
 });
 
 interface ScheduledSubthreadTypes {
@@ -92,7 +99,23 @@ interface ScheduledSubthreadTypes {
   };
 }
 
-export const launchScheduledSubthread = Effect.fn("ScheduledTaskService.launchScheduledSubthread")(
+type ScheduledSubthreadEffect = Effect.Effect<
+  Effect.Success<ReturnType<ThreadLaunchService.ThreadLaunchService["Service"]["launch"]>>,
+  | ScheduledTaskError
+  | Effect.Error<
+      ReturnType<
+        ThreadManagementService.ThreadManagementService["Service"]["getProjectThreadRecords"]
+      >
+    >
+  | Effect.Error<ReturnType<ThreadCoordinators["Service"]["claim"]>>
+  | Effect.Error<ReturnType<ThreadCoordinators["Service"]["unclaim"]>>
+  | Effect.Error<ReturnType<ThreadLaunchService.ThreadLaunchService["Service"]["launch"]>>
+>;
+
+export const launchScheduledSubthread: (
+  services: ScheduledSubthreadTypes["services"],
+  input: ScheduledSubthreadTypes["input"],
+) => ScheduledSubthreadEffect = Effect.fn("ScheduledTaskService.launchScheduledSubthread")(
   function* (
     services: ScheduledSubthreadTypes["services"],
     input: ScheduledSubthreadTypes["input"],
