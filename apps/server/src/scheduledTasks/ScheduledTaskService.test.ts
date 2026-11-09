@@ -360,17 +360,12 @@ it.effect("thread cleanup notifies subscribers and a finishing run cannot recrea
           ManagedPolicy.layerTest(),
           Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
           Layer.mock(ThreadManagementService.ThreadManagementService)({
-            getThreadShell: (threadId) =>
-              Effect.succeed({
-                id: threadId,
-                projectId: ProjectId.make("project:test"),
-                title: "Thread",
-              } as never),
             sendToThread: () =>
               Deferred.succeed(started, undefined).pipe(
                 Effect.andThen(Deferred.await(release)),
                 Effect.andThen(Effect.die("test dispatch failure")),
               ),
+            getThreadShell: () => Effect.succeed(threadShell(ProjectId.make("project:test"))),
           }),
           Layer.mock(SecretRequests.SecretRequests)({}),
           Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({

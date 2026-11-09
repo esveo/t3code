@@ -1,15 +1,4 @@
-/**
- * Fork: an automation bound to a thread can run each trigger as a subthread
- * of it (`spawnAsSubthread`) instead of posting its prompt there.
- *
- * The run launches a new thread with the prompt and puts it under the bound
- * thread before it exists, as `t3_thread_launch` with `coordinate: true` does.
- * The bound thread gets no message and no turn when the run starts; the
- * child's result reaches it later as a coordinator update
- * (threadOrchestration/CoordinatorUpdates.ts). V2's own delegated tasks
- * cannot carry this: they hang off an active run of the parent, and a bound
- * thread is usually idle when its automation fires.
- */
+/** Fork: a bound automation can launch each trigger as a coordinated child thread. */
 import {
   type CommandId,
   type MessageId,
@@ -43,65 +32,22 @@ export function resolveSpawnAsSubthread(
   return input.spawnAsSubthread ?? existing?.spawnAsSubthread ?? false;
 }
 
-/**
- * Refuses binding a task to a thread outside its project. Only a new or
- * changed binding is checked, so a task whose thread was deleted later can
- * still be edited (its runs fail and say why).
- */
-export const validateThreadBinding = Effect.fn("forkSubthreadRun.validateThreadBinding")(function* (
-  threadManagement: Pick<
-    ThreadManagementService.ThreadManagementService["Service"],
-    "getThreadShell"
-  >,
-  input: {
-    readonly id: ScheduledTask["id"];
-    readonly projectId: ScheduledTask["projectId"];
-    readonly threadId: string | null;
-  },
-  existing: Pick<ScheduledTask, "projectId" | "threadId"> | null,
-) {
-  if (input.threadId === null) return;
-  if (existing?.threadId === input.threadId && existing.projectId === input.projectId) return;
-  const shell = yield* threadManagement
-    .getThreadShell(ThreadId.make(input.threadId))
-    .pipe(Effect.orElseSucceed(() => null));
-  if (shell?.projectId === input.projectId) return;
-  return yield* new ScheduledTaskError({
-    message:
-      shell === null
-        ? `Thread '${input.threadId}' does not exist.`
-        : `'${shell.title}' belongs to another project.`,
-    taskId: input.id,
-  });
-});
-
-export const launchScheduledSubthread = (
-  services: {
-    readonly threadLaunch: ThreadLaunchService.ThreadLaunchService["Service"];
-    readonly threadManagement: ThreadManagementService.ThreadManagementService["Service"];
-    readonly coordinators: Option.Option<ThreadCoordinators["Service"]>;
-  },
-  input: {
-    readonly task: ScheduledTask;
-    /** The bound thread. */
-    readonly threadId: ThreadId;
-    readonly commandId: CommandId;
-    readonly messageId: MessageId;
-    readonly prompt: string;
-  },
-): Effect.Effect<
-  Effect.Success<ReturnType<ThreadLaunchService.ThreadLaunchService["Service"]["launch"]>>,
-  | ScheduledTaskError
-  | Effect.Error<
-      ReturnType<
-        ThreadManagementService.ThreadManagementService["Service"]["getProjectThreadRecords"]
-      >
-    >
-  | Effect.Error<ReturnType<ThreadCoordinators["Service"]["claim"]>>
-  | Effect.Error<ReturnType<ThreadCoordinators["Service"]["unclaim"]>>
-  | Effect.Error<ReturnType<ThreadLaunchService.ThreadLaunchService["Service"]["launch"]>>
-> =>
-  Effect.gen(function* () {
+export const launchScheduledSubthread = Effect.fn("ScheduledTaskService.launchScheduledSubthread")(
+  function* (
+    services: {
+      readonly threadLaunch: ThreadLaunchService.ThreadLaunchService["Service"];
+      readonly threadManagement: ThreadManagementService.ThreadManagementService["Service"];
+      readonly coordinators: Option.Option<ThreadCoordinators["Service"]>;
+    },
+    input: {
+      readonly task: ScheduledTask;
+      /** The bound thread. */
+      readonly threadId: ThreadId;
+      readonly commandId: CommandId;
+      readonly messageId: MessageId;
+      readonly prompt: string;
+    },
+  ) {
     const { task } = input;
     if (Option.isNone(services.coordinators)) {
       return yield* new ScheduledTaskError({
@@ -153,4 +99,5 @@ export const launchScheduledSubthread = (
         creationSource: task.creationSource,
       })
       .pipe(Effect.tapError(() => coordinators.unclaim(threadId).pipe(Effect.ignore)));
-  });
+  },
+);
