@@ -82,12 +82,20 @@ const withService = <A, E>(
             deletedThreads.has(threadId)
               ? null
               : threadId === boundThreadId
-                ? ({ id: threadId, projectId, title: "Coordinator" } as never)
+                ? ({
+                    id: threadId,
+                    projectId,
+                    title: "Coordinator",
+                    archivedAt: null,
+                    deletedAt: null,
+                  } as never)
                 : threadId === foreignThreadId
                   ? ({
                       id: threadId,
                       projectId: ProjectId.make("project:other"),
                       title: "Elsewhere",
+                      archivedAt: null,
+                      deletedAt: null,
                     } as never)
                   : null,
           ),
@@ -172,11 +180,11 @@ it.effect("refuses binding to a thread of another project or one that does not e
   withService(({ service }) =>
     Effect.gen(function* () {
       const foreign = yield* Effect.flip(service.upsert(taskInput({ threadId: foreignThreadId })));
-      assert.include(foreign.message, "another project");
+      assert.include(foreign.message, "different project");
       const missing = yield* Effect.flip(
         service.upsert(taskInput({ threadId: ThreadId.make("thread:missing") })),
       );
-      assert.include(missing.message, "does not exist");
+      assert.include(missing.message, "no longer exists");
 
       // A saved binding is not rechecked, so a task whose thread is gone stays editable.
       const { task } = yield* service.upsert(taskInput());

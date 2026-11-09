@@ -1480,7 +1480,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const hostMediaResource =
       resolvedDirectUri === null || cwd === undefined
         ? null
-        : (pullRequestMediaResource(cwd, resolvedDirectUri) ??
+        : (pullRequestMediaResource(cwd, resolvedDirectUri, sourceControlMediaRepository) ??
           (() => {
             const fetchUrl = sourceControlClients.mediaUrl(resolvedDirectUri)?.fetchUrl;
             return fetchUrl === undefined

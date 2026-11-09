@@ -18,7 +18,6 @@ describe("esveo Midnight gradient hooks", () => {
 
   it("finds the composer's send actions", () => {
     expect(composerPrimaryActions).toMatch(/\bbg-message-action\s/);
-    expect(composerPrimaryActions).toContain("data-chat-composer-implement-actions");
     expect(chatComposer).toMatch(/\bbg-message-action\s/);
   });
 

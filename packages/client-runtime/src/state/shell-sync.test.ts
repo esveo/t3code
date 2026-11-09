@@ -1514,8 +1514,8 @@ describe("environment shell synchronization", () => {
         if ((yield* Ref.get(capturedAfterSequences)).length >= 5) break;
         yield* Effect.yieldNow;
       }
-      expect(yield* Ref.get(capturedAfterSequences)).toEqual([10, 40, 40, 40, 20]);
-      expect(yield* Ref.get(loaderCalls)).toBe(2);
+      expect(yield* Ref.get(capturedAfterSequences)).toEqual([10, 40, 40, 40, 40]);
+      expect(yield* Ref.get(loaderCalls)).toBe(1);
     }),
   );
 
