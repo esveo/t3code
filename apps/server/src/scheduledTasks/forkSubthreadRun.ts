@@ -119,6 +119,18 @@ type ScheduledSubthreadEffect = Effect.Effect<
  * The run launches a new thread with the prompt and puts it under the bound
  * thread before it exists, as `t3_thread_launch` with `coordinate: true` does.
  */
+/**
+ * The bound thread gets no message and no turn when the run starts; the
+ * child's result reaches it later as a coordinator update
+ */
+/**
+ * (threadOrchestration/CoordinatorUpdates.ts). V2's own delegated tasks
+ * cannot carry this: they hang off an active run of the parent, and a bound
+ */
+/**
+ * thread is usually idle when its automation fires.
+ * The scheduled run therefore owns an independent child launch.
+ */
 export const launchScheduledSubthread: (
   services: ScheduledSubthreadTypes["services"],
   input: ScheduledSubthreadTypes["input"],
@@ -135,10 +147,6 @@ export const launchScheduledSubthread: (
       });
     }
     const coordinators = services.coordinators.value;
-    /**
-     * The bound thread gets no message and no turn when the run starts; the
-     * child's result reaches it later as a coordinator update
-     */
     // Fails like a plain bound run when the thread is gone.
     const parent = yield* services.threadManagement.getProjectThreadRecords(
       { projectId: task.projectId, threadId: input.threadId },
@@ -150,14 +158,6 @@ export const launchScheduledSubthread: (
         taskId: task.id,
       });
     }
-    /**
-     * (threadOrchestration/CoordinatorUpdates.ts). V2's own delegated tasks
-     * cannot carry this: they hang off an active run of the parent, and a bound
-     */
-    /**
-     * thread is usually idle when its automation fires.
-     * The scheduled run therefore owns an independent child launch.
-     */
     // Derived from the run's command id, so a replayed run claims and
     // launches the same thread instead of a second one.
     const threadId = ThreadId.make(input.commandId);
