@@ -64,21 +64,24 @@ export const validateThreadBinding = Effect.fn("forkSubthreadRun.validateThreadB
         }),
     ),
   );
-  if (shell === null || shell.deletedAt !== null) {
-    return yield* new ScheduledTaskError({
-      message: `Thread '${input.threadId}' does not exist.`,
-      taskId: input.id,
-    });
-  }
-  if (shell.archivedAt !== null) {
+  if (shell?.archivedAt !== null && shell?.archivedAt !== undefined) {
     return yield* new ScheduledTaskError({
       message: "That thread is archived. Unarchive it or pick another destination.",
       taskId: input.id,
     });
   }
+  if (shell !== null && shell.deletedAt !== null) {
+    return yield* new ScheduledTaskError({
+      message: `Thread '${input.threadId}' does not exist.`,
+      taskId: input.id,
+    });
+  }
   if (shell?.projectId === input.projectId) return;
   return yield* new ScheduledTaskError({
-    message: `'${shell.title}' belongs to another project.`,
+    message:
+      shell === null
+        ? `Thread '${input.threadId}' does not exist.`
+        : `'${shell.title}' belongs to another project.`,
     taskId: input.id,
   });
 });

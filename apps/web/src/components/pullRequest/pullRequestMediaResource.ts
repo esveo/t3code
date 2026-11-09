@@ -18,8 +18,8 @@ export function pullRequestMediaResource(
   repository?: string | null,
 ): PullRequestMediaResource | null {
   const githubUrl = githubMediaFetchUrl(source);
-  if (githubUrl !== null && !repository) return { _tag: "github-media", cwd, url: githubUrl };
   if (githubUrl !== null) {
+    if (!repository) return { _tag: "github-media", cwd, url: githubUrl };
     return {
       _tag: "github-media",
       cwd,
