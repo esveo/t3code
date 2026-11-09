@@ -19,7 +19,7 @@ import {
   remainingPercent,
 } from "@t3tools/shared/usageLimits";
 import { GaugeIcon, TrendingDownIcon, TrendingUpIcon } from "lucide-react";
-import { Fragment, type ReactNode, useLayoutEffect, useState } from "react";
+import { Fragment, useLayoutEffect, useState } from "react";
 
 import { usePrimarySettings } from "../../hooks/useSettings";
 import { observeResize } from "../../lib/observeResize";
@@ -365,13 +365,11 @@ export function UsageLimitsSection({
   selectedEnvironmentIds,
   hiddenProviders,
   now,
-  cursorPrompt,
   codexExtra,
 }: {
   readonly selectedEnvironmentIds: ReadonlySet<EnvironmentId> | null;
   readonly hiddenProviders: ReadonlySet<UsageProviderKind>;
   readonly now: number;
-  readonly cursorPrompt?: ReactNode;
   readonly codexExtra?: ReactNode;
 }) {
   const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
@@ -404,12 +402,5 @@ export function UsageLimitsSection({
       ];
     }),
   );
-  return (
-    <UsageLimitsPooled
-      presentations={selected}
-      now={now}
-      cursorPrompt={cursorPrompt}
-      codexExtra={codexExtra}
-    />
-  );
+  return <UsageLimitsPooled presentations={selected} now={now} codexExtra={codexExtra} />;
 }

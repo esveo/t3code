@@ -395,24 +395,29 @@ it.effect.each(
   },
 );
 
-it.effect("rejects an automation bound to a missing thread", () => {
-  const harness = makeHarness();
-  const layerScheduledTasks = ScheduledTasks.layer.pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        harness.layer,
-        NodeCrypto.layer,
-        Scheduler.layer,
-        Layer.mock(SecretRequests.SecretRequests)({}),
-        ManagedPolicy.layerTest(),
+it.effect(
+  "returns no dispatched thread when sending an automation to a missing thread fails",
+  () => {
+    const harness = makeHarness();
+    const layerScheduledTasks = ScheduledTasks.layer.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          harness.layer,
+          NodeCrypto.layer,
+          Scheduler.layer,
+          Layer.mock(SecretRequests.SecretRequests)({}),
+          ManagedPolicy.layerTest(),
+        ),
       ),
-    ),
-  );
-  return Effect.gen(function* () {
-    const tasks = yield* ScheduledTasks.ScheduledTaskService;
-    const threadId = ThreadId.make("thread:missing");
-    const error = yield* tasks
-      .upsert({
+    );
+    return Effect.gen(function* () {
+      const tasks = yield* ScheduledTasks.ScheduledTaskService;
+      const launches = yield* ThreadLaunch.ThreadLaunchService;
+      const threads = yield* ThreadManagement.ThreadManagementService;
+      const { threadId } = yield* launches.launch(
+        launchInput({ command: "command:missing", thread: "thread:missing" }),
+      );
+      const { task } = yield* tasks.upsert({
         title: "Daily audit",
         prompt: "Audit performance and crashes.",
         enabled: false,
@@ -425,11 +430,19 @@ it.effect("rejects an automation bound to a missing thread", () => {
         interactionMode: "default",
         createdBy: "user",
         creationSource: "web",
-      })
-      .pipe(Effect.flip);
-    assert.include(error.message, "does not exist");
-  }).pipe(Effect.provide(Layer.mergeAll(harness.layer, layerScheduledTasks)));
-});
+      });
+      yield* threads.dispatch({
+        type: "thread.delete",
+        commandId: CommandId.make("command:missing:delete"),
+        threadId,
+      });
+      const result = yield* tasks.runNow({ id: task.id });
+      assert.equal(result.task.lastRunStatus, "failed");
+      assert.isNull(result.threadId);
+      assert.equal(result.task.threadId, threadId);
+    }).pipe(Effect.provide(Layer.mergeAll(harness.layer, layerScheduledTasks)));
+  },
+);
 
 it.effect("runs a thread-bound automation on the provider the thread uses now", () => {
   const harness = makeHarness({ adapters: [adapter, claudeAdapter] });
