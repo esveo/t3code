@@ -56,11 +56,32 @@ export function materializeReplayTranscriptRuntimeInstructions(
           lastPart.type === "text" &&
           "text" in lastPart &&
           typeof lastPart.text === "string" &&
-          // A recording that switched models mid-thread already carries the
-          // instructions for the model each prompt ran on.
-          (lastPart.text === instructions || lastPart.text.startsWith("<runtime_info>"))
+          lastPart.text === instructions
         ) {
           return entry;
+        }
+        if (
+          typeof lastPart === "object" &&
+          lastPart !== null &&
+          "type" in lastPart &&
+          lastPart.type === "text" &&
+          "text" in lastPart &&
+          typeof lastPart.text === "string" &&
+          lastPart.text.startsWith("<runtime_info>")
+        ) {
+          return {
+            ...entry,
+            frame: {
+              ...frame,
+              params: {
+                ...frame.params,
+                prompt: [
+                  ...prompt.slice(0, -1),
+                  { ...lastPart, text: lastPart.text.replaceAll("T3 Code", "esveo code") },
+                ],
+              },
+            },
+          };
         }
         return {
           ...entry,

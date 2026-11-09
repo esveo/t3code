@@ -82,12 +82,20 @@ const withService = <A, E>(
             deletedThreads.has(threadId)
               ? null
               : threadId === boundThreadId
-                ? ({ id: threadId, projectId, title: "Coordinator" } as never)
+                ? ({
+                    id: threadId,
+                    projectId,
+                    title: "Coordinator",
+                    archivedAt: null,
+                    deletedAt: null,
+                  } as never)
                 : threadId === foreignThreadId
                   ? ({
                       id: threadId,
                       projectId: ProjectId.make("project:other"),
                       title: "Elsewhere",
+                      archivedAt: null,
+                      deletedAt: null,
                     } as never)
                   : null,
           ),

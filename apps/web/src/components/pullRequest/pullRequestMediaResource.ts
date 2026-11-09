@@ -15,9 +15,18 @@ export type PullRequestMediaResource = Extract<
 export function pullRequestMediaResource(
   cwd: string,
   source: string,
+  repository?: string | null,
 ): PullRequestMediaResource | null {
   const githubUrl = githubMediaFetchUrl(source);
-  if (githubUrl !== null) return { _tag: "github-media", cwd, url: githubUrl };
+  if (githubUrl !== null) {
+    if (!repository) return { _tag: "github-media", cwd, url: githubUrl };
+    return {
+      _tag: "github-media",
+      cwd,
+      url: githubUrl,
+      ...(repository ? { repository } : {}),
+    };
+  }
   const azureDevOpsUrl = azureDevOpsMediaFetchUrl(source);
   return azureDevOpsUrl === null ? null : { _tag: "azure-devops-media", cwd, url: azureDevOpsUrl };
 }

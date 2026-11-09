@@ -1327,6 +1327,14 @@ export const layer = Layer.effect(
         existingTask.projectId !== input.projectId &&
         keptThreadId === existingTask.threadId;
       const threadId = threadMode === "new_thread" || movedOffThread ? null : keptThreadId;
+      // An unchanged destination is not rechecked, so a task on an archived thread stays editable.
+      if (threadId !== null && threadId !== existingTask?.threadId) {
+        yield* validateThreadBinding(
+          threadManagement,
+          { id, projectId: input.projectId, threadId },
+          existingTask,
+        );
+      }
       // Refused on save rather than at run time; a disabled task can still be saved, so one
       // stored above the ceiling can be turned off before its mode is lowered. A task bound to a
       // thread runs in that thread's mode, which the orchestrator checks instead. Checked before
@@ -1443,7 +1451,6 @@ export const layer = Layer.effect(
         runCount: existingTask?.runCount ?? 0,
         ...(resolveSpawnAsSubthread(input, existingTask) ? { spawnAsSubthread: true } : {}), // Fork
       };
-      yield* validateThreadBinding(threadManagement, task, existingTask); // Fork
       yield* saveTask(
         task,
         input.requireExisting === true,

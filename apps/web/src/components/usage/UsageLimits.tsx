@@ -365,13 +365,11 @@ export function UsageLimitsSection({
   selectedEnvironmentIds,
   hiddenProviders,
   now,
-  cursorPrompt,
   codexExtra,
 }: {
   readonly selectedEnvironmentIds: ReadonlySet<EnvironmentId> | null;
   readonly hiddenProviders: ReadonlySet<UsageProviderKind>;
   readonly now: number;
-  readonly cursorPrompt?: ReactNode;
   readonly codexExtra?: ReactNode;
 }) {
   const presentations = useAtomValue(environmentPresentations.presentationsWithProvidersAtom);
@@ -404,12 +402,5 @@ export function UsageLimitsSection({
       ];
     }),
   );
-  return (
-    <UsageLimitsPooled
-      presentations={selected}
-      now={now}
-      cursorPrompt={cursorPrompt}
-      codexExtra={codexExtra}
-    />
-  );
+  return <UsageLimitsPooled presentations={selected} now={now} codexExtra={codexExtra} />;
 }

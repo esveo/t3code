@@ -142,6 +142,7 @@ import { useRenderedAppearance } from "../hooks/useTheme";
 import { useClientSettings } from "../hooks/useSettings";
 import { chatMarkdownClipboardPayload } from "../markdown-clipboard";
 import {
+  isLocalEditorFileHref,
   resolveInlineCodeFileLinkMeta,
   resolveMarkdownFileLinkMeta,
   rewriteMarkdownFileUriHref,
@@ -409,6 +410,7 @@ function markdownUrlTransform(href: string) {
   if (parseComposerContextHref(href)) return href;
   if (parseThreadLinkHref(href) || parseForkThreadLinkHref(href)) return href;
   if (isWindowsDrivePathHref(href)) return href;
+  if (isLocalEditorFileHref(href)) return href;
   return rewriteMarkdownFileUriHref(href) ?? defaultUrlTransform(href);
 }
 
@@ -1478,7 +1480,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const hostMediaResource =
       resolvedDirectUri === null || cwd === undefined
         ? null
-        : (pullRequestMediaResource(cwd, resolvedDirectUri) ??
+        : (pullRequestMediaResource(cwd, resolvedDirectUri, sourceControlMediaRepository) ??
           (() => {
             const fetchUrl = sourceControlClients.mediaUrl(resolvedDirectUri)?.fetchUrl;
             return fetchUrl === undefined
