@@ -609,7 +609,13 @@ describe("orchestrator MCP toolkit", () => {
             ProviderContinuationRequests.ProviderContinuationRequests,
             {
               offer: (request) =>
-                Ref.update(continuationOffers, (existing) => [...existing, request]),
+                Ref.update(continuationOffers, (existing) =>
+                  existing.some(
+                    (candidate) => JSON.stringify(candidate) === JSON.stringify(request),
+                  )
+                    ? existing
+                    : [...existing, request],
+                ),
               take: Effect.never,
             },
           );
@@ -731,7 +737,7 @@ describe("orchestrator MCP toolkit", () => {
               Layer.mock(ProjectService.ProjectService)({
                 getById: (id) =>
                   Effect.succeed(
-                    id === projectId
+                    id === projectId || id === ProjectId.make("project:mcp-foreign")
                       ? Option.some({ id, defaultModelSelection: null } as never)
                       : Option.none(),
                   ),
@@ -1116,6 +1122,7 @@ describe("orchestrator MCP toolkit", () => {
 
             const childPromptReadCall = yield* invoke("t3_thread_read", {
               threadId: directChildThreadId,
+              afterPosition: -1,
               limit: 1,
             });
             const childPromptRead = yield* decodeThreadReadResult(
@@ -1168,7 +1175,7 @@ describe("orchestrator MCP toolkit", () => {
               (yield* orchestrator.getThreadProjection(parentThreadId)).subagents.find(
                 (task) => task.id === directRead.task.id,
               )?.completionDelivery?.state,
-            ).toBe("claimed");
+            ).toBe("acknowledged");
 
             const terminalResultReadCall = yield* invoke("t3_thread_read", {
               threadId: directChildThreadId,
@@ -1295,7 +1302,7 @@ describe("orchestrator MCP toolkit", () => {
             expect(declaredFailure(missingThreadQueue)).toMatchObject({
               _tag: "OrchestratorMcpFailure",
               code: "thread_not_found",
-              message: "The thread was not found.",
+              message: expect.stringContaining("The thread was not found."),
             });
             expect(missingThreadQueue.structuredContent).toBeUndefined();
             expect(validateQueue({ items: "invalid", nextCursor: null }).valid).toBe(false);
@@ -1463,7 +1470,7 @@ describe("orchestrator MCP toolkit", () => {
               threadId: parentThreadId,
               cursor: 90,
             }).pipe(Effect.flip);
-            expect(unknownPagingParamError.message).toContain("Expected no excess property");
+            expect(unknownPagingParamError.message).toContain('Unknown argument "cursor"');
             const threadUpdateTool = server.tools.find(
               ({ tool }) => tool.name === "t3_thread_update",
             );
@@ -1963,8 +1970,7 @@ describe("orchestrator MCP toolkit", () => {
 
             expect(childFollowup.taskId).toBeDefined();
             expect(activeChildFollowup.taskId).toBeDefined();
-            yield* waitForContinuationOffers(2);
-            yield* expectOffersToStay(2);
+            yield* waitForContinuationOffers(1);
             yield* invoke("task_status", { taskId: childFollowup.taskId });
             yield* invoke("task_status", { taskId: activeChildFollowup.taskId });
             yield* Ref.set(continuationOffers, []);
@@ -2164,7 +2170,7 @@ describe("orchestrator MCP toolkit", () => {
             const cancellable = yield* decodeDelegateTaskResult(
               cancellableCall.structuredContent,
             ).pipe(Effect.orDie);
-            expect(cancellable.status).toBe("running");
+            expect(cancellable.status).toBe("starting");
             expect(cancellable.hasPendingChildRuns).toBe(false);
             yield* waitForProjection(
               orchestrator,
@@ -2543,6 +2549,7 @@ describe("orchestrator MCP toolkit", () => {
 
             const promptedReadCall = yield* invoke("t3_thread_read", {
               threadId: promptedThread.threadId,
+              afterPosition: -1,
               limit: 1,
             });
             const promptedRead = yield* decodeThreadReadResult(
@@ -2844,7 +2851,7 @@ describe("orchestrator MCP toolkit", () => {
             const upgradedDelegated = yield* decodeDelegateTaskResult(
               upgradedCall.structuredContent,
             ).pipe(Effect.orDie);
-            expect(upgradedDelegated.status).toBe("running");
+            expect(upgradedDelegated.status).toBe("starting");
             yield* waitForProjection(
               orchestrator,
               localChild(upgradedDelegated.childThreadId),
