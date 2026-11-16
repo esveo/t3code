@@ -241,6 +241,7 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
   const registry = yield* McpSessionRegistry.McpSessionRegistry;
   const clients = yield* Effect.serviceOption(McpClientAuthenticator);
   const serverSettings = yield* ServerSettings.ServerSettingsService;
+  const orchestrationTools = yield* McpOrchestrationTools.McpOrchestrationTools;
   const runtimeModeCeiling = serverSettings.managedPolicy?.limits?.maxRuntimeMode;
   const linksEnabled = serverSettings.getSettings.pipe(
     Effect.map((settings) => settings.linkedEnvironmentsEnabled),
@@ -288,6 +289,8 @@ const makeMcpAuthMiddleware = Effect.gen(function* () {
     if (request.headers.origin !== undefined) return HttpServerResponse.empty({ status: 403 });
     const admitted = yield* authenticateRequest(request);
     if (HttpServerResponse.isHttpServerResponse(admitted)) return admitted;
+    // Fork: GET opens the coordinator's notification stream.
+    if (request.method === "GET") return yield* orchestrationTools.openNotificationStream;
     return yield* httpEffect.pipe(
       Effect.provideService(McpInvocationContext.McpInvocationContext, admitted),
       Effect.map(normalizeMcpHttpResponse),
