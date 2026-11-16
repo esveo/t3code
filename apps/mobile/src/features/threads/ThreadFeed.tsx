@@ -66,6 +66,7 @@ import {
 } from "@t3tools/contracts";
 import type { ToolCallVisibility } from "@t3tools/contracts/settings";
 import { renderAssistantCitationsAsText } from "@t3tools/shared/assistantCitations";
+import { readableThreadMessage } from "@t3tools/shared/threadOrchestration";
 import { encodeComposerContextFragment } from "@t3tools/shared/composerContextClipboard";
 import { hostedThreadLink, parseThreadLinkHref } from "@t3tools/shared/threadLinks";
 import { PROMPT_LINK_MAX_PROMPT_LENGTH } from "@t3tools/shared/promptLinks";
@@ -158,6 +159,7 @@ import { flattenThemeColor } from "../../lib/mobileTheme";
 import { PresentationSource } from "../../components/ui/NativePresentation";
 import { NativeScrollViewMarker } from "../../native/NativeScrollViewMarker";
 import Animated, { FadeIn, FadeInDown, type SharedValue } from "react-native-reanimated";
+import { EsveoUserBubbleBackdrop, useEsveoLiveUserMessage } from "../esveoBrand/EsveoMidnight";
 import { useUniwindTheme } from "../../lib/useUniwindTheme";
 import { FONT_FAMILIES } from "../../lib/fontFamilies";
 import { scopedThreadKey } from "../../lib/scopedEntities";
@@ -1988,7 +1990,7 @@ function renderFeedEntry(
     const { message } = entry;
     const isUser = message.role === "user";
     const presentation = resolveUserMessagePresentation(message);
-    const renderedText = renderAssistantCitationsAsText(presentation.text);
+    const renderedText = renderAssistantCitationsAsText(readableThreadMessage(presentation.text));
     const styles = isUser ? markdownStyles.user : markdownStyles.assistant;
     const timestampLabel = props.formatMessageTime(isUser ? message.createdAt : message.updatedAt);
     const attachments = message.attachments ?? [];
@@ -2183,6 +2185,7 @@ function renderFeedEntry(
                       : null),
               }}
             >
+              <EsveoUserBubbleBackdrop messageId={message.id} />
               {presentation.attribution === "guest" ? <GuestBubbleTint /> : null}
               {foldRowId !== null ? (
                 <AgentMessageFoldHeader
@@ -3422,6 +3425,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
   );
   const reviewCommentColors = useReviewCommentColors();
   const unsettledTurnId = threadFeedRunIsUnsettled(props.latestRun) ? props.latestRun.runId : null;
+  useEsveoLiveUserMessage(props.feed, props.activeWorkStartedAt !== null);
   const compactionLabelsByEntryId = useMemo(
     () => threadFeedCompactionLabels(props.feed),
     [props.feed],
