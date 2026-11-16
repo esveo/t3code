@@ -77,7 +77,6 @@ import {
   THREAD_IMAGES_WS_METHODS,
   ThreadImagesReadError,
   ForkWsRpcGroup,
-  FORK_WS_RPC_TAGS,
   type OrchestrationV2ShellStreamItem,
   type OrchestrationV2ThreadStreamItem,
   type ApplicationStoredEvent,
@@ -113,6 +112,8 @@ import {
   type TerminalMetadataStreamEvent,
   type PullRequestRef,
   WS_METHODS,
+  RpcScopeAuthorization,
+  UpstreamWsRpcGroup,
   WsRpcGroup,
 } from "@t3tools/contracts";
 import {
@@ -121,7 +122,7 @@ import {
   HttpServerRespondable,
   HttpServerResponse,
 } from "effect/http";
-import { RpcGroup, RpcSerialization, RpcServer } from "effect/rpc";
+import { Rpc, RpcGroup, RpcSerialization, RpcServer } from "effect/rpc";
 
 import * as CheckpointDiffQuery from "./checkpointing/CheckpointDiffQuery.ts";
 import * as NativeChildWorkQuery from "./orchestration-v2/NativeChildWorkQuery.ts";
@@ -733,25 +734,61 @@ const PROVIDER_STATUS_DEBOUNCE_MS = 200;
 // Middleware added later wraps middleware added earlier, so instrumentation wraps authorization.
 const ServerWsRpcGroup = WsRpcGroup.middleware(RpcInstrumentation);
 // Fork: upstream's handlers and esveo code's are two maps (see ForkWsRpcGroup).
-const UpstreamServerWsRpcGroup = ServerWsRpcGroup.omit(...FORK_WS_RPC_TAGS);
+const UpstreamServerWsRpcGroup =
+  UpstreamWsRpcGroup.middleware(RpcScopeAuthorization).middleware(RpcInstrumentation);
+const ForkServerWsRpcGroup =
+  ForkWsRpcGroup.middleware(RpcScopeAuthorization).middleware(RpcInstrumentation);
 
 // RpcGroup.toLayer derives each handler's requirements by scanning every RPC in
 // the group, so its type cost grows with handlers × RPCs. Near 200 methods that
 // crosses TypeScript's instantiation limit and the layer's requirements degrade to
 // `any`, so the handlers are registered as two disjoint, smaller groups.
 type UpstreamServerWsRpc = RpcGroup.Rpcs<typeof UpstreamServerWsRpcGroup>;
-const SPLIT_WS_RPC_PREFIXES = ["server", "pullRequests", "provider", "orchestration"] as const;
-type SplitWsRpc = Extract<
+type ForkServerWsRpc = RpcGroup.Rpcs<typeof ForkServerWsRpcGroup>;
+type ServerWsRpcRequirements =
+  | RpcServer.Protocol
+  | Rpc.ToHandler<UpstreamServerWsRpc>
+  | Rpc.Middleware<UpstreamServerWsRpc>
+  | Rpc.ServicesServer<UpstreamServerWsRpc>
+  | Rpc.ToHandler<ForkServerWsRpc>
+  | Rpc.Middleware<ForkServerWsRpc>
+  | Rpc.ServicesServer<ForkServerWsRpc>;
+const FIRST_WS_RPC_PREFIXES = ["server", "provider"] as const;
+const SECOND_WS_RPC_PREFIXES = ["pullRequests", "orchestration"] as const;
+const THIRD_WS_RPC_PREFIXES = [
+  "scheduledTasks",
+  "sourceControl",
+  "projects",
+  "vcs",
+  "preview",
+  "device",
+] as const;
+type FirstWsRpc = Extract<
   UpstreamServerWsRpc,
-  { readonly _tag: `${(typeof SPLIT_WS_RPC_PREFIXES)[number]}.${string}` }
+  { readonly _tag: `${(typeof FIRST_WS_RPC_PREFIXES)[number]}.${string}` }
 >;
-const isSplitWsRpc = (rpc: UpstreamServerWsRpc): rpc is SplitWsRpc =>
-  SPLIT_WS_RPC_PREFIXES.some((prefix) => rpc._tag.startsWith(`${prefix}.`));
-const isOtherWsRpc = (rpc: UpstreamServerWsRpc): rpc is Exclude<UpstreamServerWsRpc, SplitWsRpc> =>
-  !isSplitWsRpc(rpc);
+type SecondWsRpc = Extract<
+  UpstreamServerWsRpc,
+  { readonly _tag: `${(typeof SECOND_WS_RPC_PREFIXES)[number]}.${string}` }
+>;
+type ThirdWsRpc = Extract<
+  UpstreamServerWsRpc,
+  { readonly _tag: `${(typeof THIRD_WS_RPC_PREFIXES)[number]}.${string}` }
+>;
+type RemainingWsRpc = Exclude<UpstreamServerWsRpc, FirstWsRpc | SecondWsRpc | ThirdWsRpc>;
+const isFirstWsRpc = (rpc: UpstreamServerWsRpc): rpc is FirstWsRpc =>
+  FIRST_WS_RPC_PREFIXES.some((prefix) => rpc._tag.startsWith(`${prefix}.`));
+const isSecondWsRpc = (rpc: UpstreamServerWsRpc): rpc is SecondWsRpc =>
+  SECOND_WS_RPC_PREFIXES.some((prefix) => rpc._tag.startsWith(`${prefix}.`));
+const isThirdWsRpc = (rpc: UpstreamServerWsRpc): rpc is ThirdWsRpc =>
+  THIRD_WS_RPC_PREFIXES.some((prefix) => rpc._tag.startsWith(`${prefix}.`));
+const isRemainingWsRpc = (rpc: UpstreamServerWsRpc): rpc is RemainingWsRpc =>
+  !isFirstWsRpc(rpc) && !isSecondWsRpc(rpc) && !isThirdWsRpc(rpc);
 const upstreamServerWsRpcs = Array.from(UpstreamServerWsRpcGroup.requests.values());
-const SplitWsRpcGroup = RpcGroup.make(...upstreamServerWsRpcs.filter(isSplitWsRpc));
-const OtherWsRpcGroup = RpcGroup.make(...upstreamServerWsRpcs.filter(isOtherWsRpc));
+const FirstWsRpcGroup = RpcGroup.make(...upstreamServerWsRpcs.filter(isFirstWsRpc));
+const SecondWsRpcGroup = RpcGroup.make(...upstreamServerWsRpcs.filter(isSecondWsRpc));
+const ThirdWsRpcGroup = RpcGroup.make(...upstreamServerWsRpcs.filter(isThirdWsRpc));
+const RemainingWsRpcGroup = RpcGroup.make(...upstreamServerWsRpcs.filter(isRemainingWsRpc));
 function toAuthAccessStreamEvent(
   change: Exclude<
     PairingGrantStore.BootstrapCredentialChange | SessionStore.SessionCredentialChange,
@@ -3583,7 +3620,7 @@ export const layerWsRpc = (
           ),
       });
       // Fork: esveo code's own methods.
-      const forkHandlers = ForkWsRpcGroup.of({
+      const forkHandlers = ForkServerWsRpcGroup.of({
         // decisions a coordinator asks the user for.
         [THREAD_DECISIONS_WS_METHODS.subscribe]: (input) => ThreadDecisions.subscribeRpc(input),
         [THREAD_DECISIONS_WS_METHODS.act]: (input) => ThreadDecisions.actRpc(input),
@@ -3625,15 +3662,22 @@ export const layerWsRpc = (
             Effect.mapError((cause) => new ThreadImagesReadError({ cause })),
           ),
       });
-      const splitHandlers: Pick<typeof handlers, SplitWsRpc["_tag"]> = handlers;
-      const otherHandlers: Pick<typeof handlers, Exclude<UpstreamServerWsRpc, SplitWsRpc>["_tag"]> =
-        handlers;
+      const firstHandlers: Pick<typeof handlers, FirstWsRpc["_tag"]> = handlers;
+      const secondHandlers: Pick<typeof handlers, SecondWsRpc["_tag"]> = handlers;
+      const thirdHandlers: Pick<typeof handlers, ThirdWsRpc["_tag"]> = handlers;
+      const remainingHandlers: Pick<typeof handlers, RemainingWsRpc["_tag"]> = handlers;
       return Context.merge(
         Context.merge(
-          yield* SplitWsRpcGroup.toHandlers(splitHandlers),
-          yield* OtherWsRpcGroup.toHandlers(otherHandlers),
+          Context.merge(
+            yield* FirstWsRpcGroup.toHandlers(firstHandlers),
+            yield* SecondWsRpcGroup.toHandlers(secondHandlers),
+          ),
+          Context.merge(
+            yield* ThirdWsRpcGroup.toHandlers(thirdHandlers),
+            yield* RemainingWsRpcGroup.toHandlers(remainingHandlers),
+          ),
         ),
-        yield* ForkWsRpcGroup.toHandlers(forkHandlers),
+        yield* ForkServerWsRpcGroup.toHandlers(forkHandlers),
       );
     }),
   );
@@ -3695,7 +3739,11 @@ export const layer = Layer.unwrap(
         const reportProfiles = yield* serverBrowser.profileReporter;
         const rpcWebSocketHttpEffect = yield* Effect.gen(function* () {
           const { protocol, httpEffect } = yield* RpcServer.makeProtocolWithHttpEffectWebsocket;
-          yield* RpcServer.make(ServerWsRpcGroup, WS_RPC_SERVER_OPTIONS).pipe(
+          const runRpcServer: Effect.Effect<never, never, ServerWsRpcRequirements> = RpcServer.make(
+            ServerWsRpcGroup,
+            WS_RPC_SERVER_OPTIONS,
+          );
+          yield* runRpcServer.pipe(
             Effect.provideService(RpcServer.Protocol, withOutputWindow(protocol)),
             Effect.provide(
               Layer.merge(

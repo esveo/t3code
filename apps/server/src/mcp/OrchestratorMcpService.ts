@@ -135,6 +135,11 @@ import {
 } from "./delegatedTaskModes.ts";
 import { assertTargetWithinLimits, isLiveCallerShell, threadNotFound } from "./threadAccess.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
+import { DelegatedWorkspace } from "../threadOrchestration/DelegatedWorkspace.ts"; // Fork
+import {
+  claimDelegatedAttachments,
+  releaseDelegatedAttachments,
+} from "./toolkits/threads/attachments.ts"; // Fork
 import * as PeerForwarding from "../peer/PeerForwarding.ts";
 import * as RemoteDelegation from "../peer/RemoteDelegation.ts";
 
