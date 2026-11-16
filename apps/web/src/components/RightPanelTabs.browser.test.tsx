@@ -107,6 +107,8 @@ describe("RightPanelTabs", () => {
           onAddPullRequest={noop}
           onAddPullRequests={noop}
           onAddDevice={noop}
+          onAddGitGraph={noop}
+          onAddAgentStage={noop}
           browserAvailable={false}
           terminalAvailable
           diffAvailable={false}
@@ -114,6 +116,8 @@ describe("RightPanelTabs", () => {
           pullRequestAvailable={false}
           pullRequestsAvailable={false}
           deviceAvailable={false}
+          gitGraphAvailable={false}
+          agentStageAvailable={false}
         >
           {null}
         </RightPanelTabs>
@@ -180,6 +184,8 @@ function panel(activeSurface: RightPanelSurface) {
     onAddPullRequest: noop,
     onAddPullRequests: noop,
     onAddDevice: noop,
+    onAddGitGraph: noop,
+    onAddAgentStage: noop,
     browserAvailable: true,
     terminalAvailable: true,
     diffAvailable: true,
@@ -187,6 +193,8 @@ function panel(activeSurface: RightPanelSurface) {
     pullRequestAvailable: true,
     pullRequestsAvailable: true,
     deviceAvailable: true,
+    gitGraphAvailable: true,
+    agentStageAvailable: true,
     children: (
       <div data-testid="surface-content">
         {/* Stands in for ServerBrowserSurface, whose page canvas handles thumb buttons itself. */}

@@ -484,7 +484,8 @@ function fileLinkSourcesKey(
 ): string {
   const hrefs = extractMarkdownLinkHrefs(renderCodexInlineDirectivesAsMarkdown(text))
     .filter(
-      (href) =>
+      (href): href is string =>
+        typeof href === "string" &&
         !parseComposerContextHref(href) &&
         !parseThreadLinkHref(href) &&
         !parseForkThreadLinkHref(href),

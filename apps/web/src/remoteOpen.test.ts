@@ -105,6 +105,7 @@ describe("resolveRemoteOpenState", () => {
         sshTarget: null,
         isDesktopRenderer: true,
         remoteOpenTargets: TAILSCALE_TARGETS,
+        hostEnvironmentId: EnvironmentId.make("environment-host"),
         bearerHttpBaseUrl: "http://127.0.0.1:3773",
       }),
     ).toEqual({ mode: "local-exec" });
@@ -121,6 +122,7 @@ describe("resolveRemoteOpenState", () => {
         sshTarget: null,
         isDesktopRenderer: true,
         remoteOpenTargets: TAILSCALE_TARGETS,
+        hostEnvironmentId: EnvironmentId.make("environment-host"),
         bearerHttpBaseUrl: "https://sol.tail1234.ts.net",
       }),
     ).toEqual({

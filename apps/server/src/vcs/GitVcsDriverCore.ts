@@ -4150,6 +4150,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const sourceKind = input.file?.sourceKind ?? input.sourceKind;
     const needsCurrentBranch =
       input.commitSha === undefined &&
+      input.range === undefined &&
       input.file?.sourceKind !== "commit" &&
       sourceKind !== "working-tree";
     const repository = yield* (
@@ -4235,7 +4236,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
 
     const dirtyRef = sourceKind === "branch-range" ? null : "HEAD";
     const review =
-      sourceKind === "working-tree"
+      sourceKind === "working-tree" || input.range
         ? { baseRef: input.baseRef ?? null, mergeBase: null }
         : yield* resolveReviewMergeBase(cwd, repository.currentBranch, input.baseRef);
 
@@ -4292,6 +4293,31 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       );
       return { ...patch, files: stat.files };
     });
+    if (input.range) {
+      const base = input.range.base ?? (yield* readEmptyTreeHash(cwd));
+      const result =
+        input.range.head === null
+          ? yield* Effect.gen(function* () {
+              const untracked = yield* prepareUntrackedReviewIndex(cwd, pathArgs, input.file?.path);
+              const tracked = yield* readTrackedDiff(base, untracked?.env);
+              return untracked === null
+                ? { ...tracked, files: undefined, stdoutTruncated: true }
+                : tracked;
+            }).pipe(Effect.scoped)
+          : yield* readTrackedDiff(`${base}..${input.range.head}`);
+      const source: ReviewDiffPreviewSource = {
+        id: "commit-range",
+        kind: "commit-range",
+        title: "Commit range",
+        baseRef: input.range.base,
+        headRef: input.range.head,
+        diff: result.stdout,
+        ...(result.files === undefined ? {} : { files: result.files }),
+        diffHash: yield* hashDiff(result.stdout, result.files ?? []),
+        truncated: result.stdoutTruncated,
+      };
+      return { cwd: input.cwd, generatedAt: yield* DateTime.now, sources: [source] };
+    }
     const [dirtyTrackedResult, baseResult] = yield* Effect.gen(function* () {
       const untracked = input.trackedOnly
         ? { env: undefined, omitted: false }
@@ -4518,6 +4544,25 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     ).pipe(Effect.map((value) => value.trim()));
     if (repositoryRoot.length === 0) {
       return yield* reviewDiffFileError(input, "Could not resolve the Git repository root.");
+    }
+    if (input.sourceKind === "commit-range") {
+      if (!input.baseRef && input.changeType !== "new") {
+        return yield* reviewDiffFileError(input, "Commit range expansion requires a base commit.");
+      }
+      const [oldContents, newContents] = yield* Effect.all(
+        [
+          input.changeType === "new" || !input.baseRef
+            ? Effect.succeed("")
+            : readReviewFileAtRevision(input, input.baseRef, input.oldPath),
+          input.changeType === "deleted"
+            ? Effect.succeed("")
+            : input.headRef === null
+              ? readWorkingTreeReviewFile(input, repositoryRoot)
+              : readReviewFileAtRevision(input, input.headRef, input.newPath),
+        ],
+        { concurrency: 2 },
+      );
+      return { oldContents, newContents };
     }
     if (input.sourceKind === "commit") {
       if (!input.headRef) {

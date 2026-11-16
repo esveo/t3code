@@ -6,6 +6,12 @@ import { VcsError } from "./vcs.ts";
 export const ReviewDiffPreviewInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   baseRef: Schema.optional(TrimmedNonEmptyString),
+  range: Schema.optionalKey(
+    Schema.Struct({
+      base: Schema.NullOr(TrimmedNonEmptyString),
+      head: Schema.NullOr(TrimmedNonEmptyString),
+    }),
+  ),
   commitSha: Schema.optional(TrimmedNonEmptyString),
   ignoreWhitespace: Schema.optionalKey(Schema.Boolean),
   sourceKind: Schema.optionalKey(Schema.Literals(["working-tree", "branch-range"])),
@@ -15,11 +21,12 @@ export const ReviewDiffPreviewInput = Schema.Struct({
     Schema.Struct({
       path: Schema.NonEmptyString,
       previousPath: Schema.NullOr(Schema.NonEmptyString),
-      sourceKind: Schema.Literals(["working-tree", "branch-range", "commit"]),
+      sourceKind: Schema.Literals(["working-tree", "branch-range", "commit", "commit-range"]),
     }),
   ),
 });
 export type ReviewDiffPreviewInput = typeof ReviewDiffPreviewInput.Type;
+export type ReviewDiffRange = NonNullable<ReviewDiffPreviewInput["range"]>;
 
 export const ReviewBranchCommitsInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
@@ -43,6 +50,7 @@ export const ReviewDiffPreviewSourceKind = Schema.Literals([
   "working-tree",
   "branch-range",
   "commit",
+  "commit-range",
 ]);
 export type ReviewDiffPreviewSourceKind = typeof ReviewDiffPreviewSourceKind.Type;
 

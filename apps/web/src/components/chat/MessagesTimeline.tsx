@@ -800,6 +800,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   const [listOpening, setListOpening] = useState<TimelineListOpening>(() =>
     nextListOpening({ mounted: false }, !showsEmptyState, listIdentityKey),
   );
+  const [pinnedUserMessageId, setPinnedUserMessageId] = useState<string | null>(null);
   const nextOpening = nextListOpening(listOpening, !showsEmptyState, listIdentityKey);
   if (nextOpening !== listOpening) setListOpening(nextOpening);
   const listOpenedOn = nextOpening.mounted ? nextOpening.identity : null;

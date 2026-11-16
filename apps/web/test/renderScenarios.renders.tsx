@@ -113,6 +113,7 @@ function timelineFor() {
     emptyPlaceholderInset: 0,
     liveFollowEnabled: true,
     onIsAtEndChange: () => {},
+    isLiveFollowLatched: () => true,
   };
   return (thread: string, entries: Entry[]) => (
     <MessagesTimeline
