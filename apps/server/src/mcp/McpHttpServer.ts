@@ -94,6 +94,10 @@ import { MCP_HTTP_PATH } from "../httpCors.ts";
 import { requestUrl } from "../requestUrl.ts";
 import * as VoiceCallHandlers from "./toolkits/voiceCall/handlers.ts";
 import { VoiceCallToolkit } from "./toolkits/voiceCall/tools.ts";
+import { ThreadsToolkitHandlersLive } from "./toolkits/threads/handlers.ts";
+import { ThreadsToolkit } from "./toolkits/threads/tools.ts";
+import { TerminalsToolkitHandlersLive } from "./toolkits/terminals/handlers.ts";
+import { TerminalsToolkit } from "./toolkits/terminals/tools.ts";
 
 const mcpResourceMetadataUrl = (request: HttpServerRequest.HttpServerRequest) =>
   requestUrl(request).pipe(
@@ -1294,6 +1298,12 @@ export const layerAttachmentToolkit = toolkitRegistration(
   AttachmentHandlers.layer,
 );
 
+const layerThreadsToolkit = toolkitRegistration(ThreadsToolkit, ThreadsToolkitHandlersLive).pipe(
+  Layer.provide(OrchestratorMcpService.layer),
+);
+
+const layerTerminalsToolkit = toolkitRegistration(TerminalsToolkit, TerminalsToolkitHandlersLive);
+
 export const layerPullRequestsToolkit = toolkitRegistration(
   PullRequestsToolkit,
   PullRequestsHandlers.layer,
@@ -1359,6 +1369,8 @@ export const layerTools = Layer.mergeAll(
   layerDeviceToolkit,
   layerHtmlToolkit,
   layerMessageToolkit,
+  layerThreadsToolkit,
+  layerTerminalsToolkit,
   toolkitRegistration(VoiceCallToolkit, VoiceCallHandlers.layer),
 );
 
