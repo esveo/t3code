@@ -136,26 +136,27 @@ it.effect("retries on the next launch when a GPU cache cannot be removed", () =>
       Effect.provideService(FileSystem.FileSystem, fileSystem),
     );
 
-    it.effect("uses the profile named by T3CODE_DESKTOP_USER_DATA_DIR_NAME as is", () =>
-      Effect.gen(function* () {
-        const userDataPath = yield* resolveUserDataPath({
-          appDataDirectory: "/profiles",
-          isDevelopment: false,
-          platform: "win32",
-          userDataDirNameOverride: Option.some("t3code-fork"),
-        });
-        assert.equal(userDataPath, "/profiles/t3code-fork");
-      }).pipe(
-        Effect.provideService(
-          FileSystem.FileSystem,
-          FileSystem.makeNoop({
-            exists: () => Effect.die("the override must not inspect profiles"),
-          }),
-        ),
-        Effect.provide(NodeServices.layer),
-      ),
-    );
-
     assert.deepStrictEqual(writes, []);
   }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+// Fork: the prebuilt app slots run in their own `t3code-fork` profile.
+it.effect("uses the profile named by T3CODE_DESKTOP_USER_DATA_DIR_NAME as is", () =>
+  Effect.gen(function* () {
+    const userDataPath = yield* resolveUserDataPath({
+      appDataDirectory: "/profiles",
+      isDevelopment: false,
+      platform: "win32",
+      userDataDirNameOverride: Option.some("t3code-fork"),
+    });
+    assert.equal(userDataPath, "/profiles/t3code-fork");
+  }).pipe(
+    Effect.provideService(
+      FileSystem.FileSystem,
+      FileSystem.makeNoop({
+        exists: () => Effect.die("the override must not inspect profiles"),
+      }),
+    ),
+    Effect.provide(NodeServices.layer),
+  ),
 );
