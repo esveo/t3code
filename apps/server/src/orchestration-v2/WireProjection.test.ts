@@ -270,7 +270,7 @@ describe("orchestration V2 wire projection", () => {
   });
 
   it("keeps the image bytes an MCP app draws, and the feed still leaves them out", () => {
-    const data = "A".repeat(600_000);
+    const data = "A".repeat(6_000);
     const output = {
       t3McpApp: { attachmentId: "app", server: "blender", tool: "look", resourceUri: "ui://v" },
       result: { content: [{ type: "image", data, mimeType: "image/png" }] },

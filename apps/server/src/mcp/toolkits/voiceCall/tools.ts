@@ -9,6 +9,8 @@ import { VoiceCallService } from "../../../voiceCall/VoiceCallService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import { areVoiceCallToolsOn } from "../../McpOrchestrationTools.ts";
 
+const whileVoiceCallsOn = McpInvocationContext.hiddenFromOutsideClientsWhen(areVoiceCallToolsOn);
+
 const VoiceSayTool = Tool.make("voice_say", {
   description:
     "Only during a voice call on this thread: say one or two spoken sentences to the user. Returns once they were said, or when the user interrupts.",
@@ -32,6 +34,6 @@ const VoiceSayTool = Tool.make("voice_say", {
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, true)
-  .annotate(McpSchema.EnabledWhen, areVoiceCallToolsOn);
+  .annotate(McpSchema.EnabledWhen, whileVoiceCallsOn);
 
 export const VoiceCallToolkit = Toolkit.make(VoiceSayTool);
