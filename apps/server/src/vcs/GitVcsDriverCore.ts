@@ -26,6 +26,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import {
   GitCommandError,
+  VCS_COMMIT_GRAPH_DEFAULT_LIMIT,
   type GitCommandFailureReason,
   T3_PROJECT_FILE_NAME,
   type ReviewBranchCommitsInput,
@@ -44,6 +45,7 @@ import { resolveSpawnCommand, runsGitWithoutConsole } from "@t3tools/shared/shel
 import { parseT3ProjectFile } from "@t3tools/shared/t3ProjectFile";
 import { resolveProjectFileBackedSetting } from "@t3tools/shared/projectSettings";
 import { gitCommandDuration, gitCommandsTotal, withMetrics } from "../observability/Metrics.ts";
+import { commitGraphLogArgs, parseCommitGraphLog } from "./commitGraphLog.ts";
 import * as GitVcsDriver from "./GitVcsDriver.ts";
 import { removeEmptyDirectory, type RemoveEmptyDirectoryError } from "./removeEmptyDirectory.ts";
 import { VcsAutomaticFetchInterval } from "./VcsAutomaticFetchInterval.ts";
@@ -5098,6 +5100,42 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     }
   });
 
+  const listCommitGraph: GitVcsDriver.GitVcsDriver["Service"]["listCommitGraph"] = Effect.fn(
+    "listCommitGraph",
+  )(function* (input) {
+    const repositoryPaths = yield* resolveRepositoryPaths(input.cwd).pipe(
+      Effect.catchTags({
+        GitCommandError: (error) =>
+          isMissingGitCwdError(error) ? Effect.succeed(null) : Effect.fail(error),
+      }),
+    );
+    if (repositoryPaths === null) {
+      return { commits: [], hasMore: false, isRepo: false, headSha: null, currentRefName: null };
+    }
+
+    const limit = input.limit ?? VCS_COMMIT_GRAPH_DEFAULT_LIMIT;
+    const [logStdout, headResult] = yield* Effect.all(
+      [
+        runGitStdout("GitVcsDriver.listCommitGraph", input.cwd, commitGraphLogArgs({ limit })),
+        executeGit("GitVcsDriver.listCommitGraph.head", input.cwd, ["rev-parse", "HEAD"], {
+          timeoutMs: 5_000,
+          allowNonZeroExit: true,
+        }),
+      ],
+      { concurrency: 2 },
+    );
+
+    const parsed = parseCommitGraphLog(logStdout);
+    const headSha = headResult.exitCode === 0 ? headResult.stdout.trim() : "";
+    return {
+      commits: parsed.slice(0, limit),
+      hasMore: parsed.length > limit,
+      isRepo: true,
+      headSha: headSha.length > 0 ? headSha : null,
+      currentRefName: repositoryPaths.currentBranch,
+    };
+  });
+
   const createWorktree: GitVcsDriver.GitVcsDriver["Service"]["createWorktree"] = Effect.fn(
     "createWorktree",
   )(function* (input, options) {
@@ -6200,6 +6238,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     readBranchBase,
     resolveBranchName,
     listRefs,
+    listCommitGraph,
     createWorktree: Effect.fnUntraced(function* (input, options) {
       return yield* createWorktree(input, options).pipe(
         Effect.ensuring(invalidateWorktreeCreationCaches(input.cwd)),

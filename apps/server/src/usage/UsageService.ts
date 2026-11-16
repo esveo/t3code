@@ -47,6 +47,11 @@ import {
   type RateTable,
 } from "./usagePricing.ts";
 import {
+  summarizeSessionRecords,
+  type SessionUsageInput,
+  type SessionUsageReport,
+} from "./threadSessionUsage.ts";
+import {
   DESKTOP_HOST_SCOPE_ENV,
   listTranscriptFiles,
   readDirectoryVolumeId,
@@ -162,6 +167,9 @@ export class UsageService extends Context.Service<
   {
     readonly readSummary: (input: UsageSummaryInput) => Effect.Effect<UsageSummary, UsageReadError>;
     readonly refreshRates: Effect.Effect<UsagePricing>;
+    readonly readSessionUsage: (
+      input: SessionUsageInput,
+    ) => Effect.Effect<SessionUsageReport, UsageReadError>;
   }
 >()("t3/usage/UsageService") {}
 
@@ -1184,6 +1192,48 @@ export const make = Effect.gen(function* () {
       : summary;
   });
 
+  const readSessionUsage = Effect.fn("UsageService.readSessionUsage")(function* (
+    input: SessionUsageInput,
+  ) {
+    const settings = yield* readSettings;
+    const startedAtMs = yield* Clock.currentTimeMillis;
+    yield* ensureScanCacheLoaded;
+
+    const retentionCutoffMs = startedAtMs - CACHE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    const windowStartMs = Math.max(0, input.sinceMs - MTIME_SLACK_MS);
+    const resolved = yield* resolveTranscriptDirs(settings, retentionCutoffMs, false).pipe(
+      Effect.provideContext(readerContext),
+    );
+    const [, scannedDirs] = yield* Effect.all(
+      [
+        ensureRates(false),
+        collectDirs(resolved, windowStartMs, settings, retentionCutoffMs, false, false),
+      ],
+      { concurrency: 2 },
+    );
+
+    const sessionIds = new Set(input.sessionIds);
+    const records: UsageRecord[] = [];
+    for (const scanned of scannedDirs) {
+      if (scanned.provider !== input.provider || scanned.files === null) continue;
+      for (const file of scanned.files) records.push(...file.records);
+    }
+    yield* schedulePersist;
+
+    const summary = summarizeSessionRecords({
+      records,
+      sessionIds,
+      rates,
+      priceOverrides: createOverrideRateTable(settings.usagePriceOverrides),
+    });
+    const finishedAtMs = yield* Clock.currentTimeMillis;
+    return {
+      ...summary,
+      pricing: pricing(),
+      scanDurationMs: Math.max(0, finishedAtMs - startedAtMs),
+    } satisfies SessionUsageReport;
+  });
+
   const inflightScans = new Map<string, Deferred.Deferred<UsageSummary, UsageReadError>>();
 
   const scanKey = (
@@ -1238,7 +1288,7 @@ export const make = Effect.gen(function* () {
     return yield* Deferred.await(deferred);
   });
 
-  return { readSummary, refreshRates, awaitPersisted } as const;
+  return { readSummary, refreshRates, readSessionUsage, awaitPersisted } as const;
 });
 
 export const layer = Layer.effect(UsageService, make);

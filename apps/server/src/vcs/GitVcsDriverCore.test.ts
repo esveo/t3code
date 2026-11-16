@@ -3232,28 +3232,31 @@ it.layer(layerTest)("GitVcsDriver core integration", (it) => {
         const head = yield* revParse("HEAD");
         yield* writeTextFile(cwd, "untracked.txt", "new\n");
         const driver = yield* GitVcsDriver.GitVcsDriver;
-        const paths = (range: { base: string | null; head: string | null }) =>
-          driver.getReviewDiffPreview({ cwd, range }).pipe(
+        const paths = (
+          request:
+            | { commitSha: string }
+            | { sourceKind: "working-tree"; baseRef: string }
+            | { sourceKind: "branch-range"; baseRef: string },
+        ) =>
+          driver.getReviewDiffPreview({ cwd, ...request }).pipe(
             Effect.map(({ sources }) => {
-              assert.deepStrictEqual(
-                sources.map((source) => source.kind),
-                ["commit-range"],
-              );
               return sources[0]!.files!.map((file) => file.path).toSorted();
             }),
           );
 
-        assert.deepStrictEqual(yield* paths({ base: root, head }), ["a.txt"]);
-        assert.deepStrictEqual(yield* paths({ base: null, head: root }), ["README.md"]);
-        assert.deepStrictEqual(yield* paths({ base: head, head: null }), ["untracked.txt"]);
-        assert.deepStrictEqual(yield* paths({ base: root, head: null }), [
+        assert.deepStrictEqual(yield* paths({ commitSha: head }), ["a.txt"]);
+        assert.deepStrictEqual(yield* paths({ commitSha: root }), ["README.md"]);
+        assert.deepStrictEqual(yield* paths({ sourceKind: "working-tree", baseRef: head }), [
+          "untracked.txt",
+        ]);
+        assert.deepStrictEqual(yield* paths({ sourceKind: "branch-range", baseRef: root }), [
           "a.txt",
           "untracked.txt",
         ]);
 
         const contents = yield* driver.getReviewDiffFileContents({
           cwd,
-          sourceKind: "commit-range",
+          sourceKind: "commit",
           changeType: "change",
           baseRef: middle,
           headRef: head,
