@@ -9,7 +9,6 @@ import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contract
 import { coordinatorThreadIdOf } from "@t3tools/shared/threadOrchestration";
 import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
-import { useCallback, useMemo } from "react";
 
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { useServerConfigs, useThreadShell } from "~/state/entities";
@@ -65,29 +64,22 @@ export function useCoordinatorOf(
 ): CoordinatorOf {
   const serverConfigs = useServerConfigs();
   // Only servers that keep links are asked; others have no such method.
-  const key = useMemo(
-    () =>
-      [...new Set(threads.map((thread) => thread.environmentId))]
-        .filter(
-          (environmentId) =>
-            serverConfigs.get(environmentId)?.environment.capabilities.threadCoordinators === true,
-        )
-        .toSorted()
-        .join(KEY_SEPARATOR),
-    [serverConfigs, threads],
-  );
+  const key = [...new Set(threads.map((thread) => thread.environmentId))]
+    .filter(
+      (environmentId) =>
+        serverConfigs.get(environmentId)?.environment?.capabilities.threadCoordinators === true,
+    )
+    .toSorted()
+    .join(KEY_SEPARATOR);
   const overrides = useAtomValue(overridesByEnvironmentAtom(key));
-  return useCallback(
-    (thread: Pick<EnvironmentThreadShell, "environmentId" | "source">) =>
-      coordinatorThreadIdOf(thread.source, overrides.get(thread.environmentId) ?? NO_OVERRIDES),
-    [overrides],
-  );
+  return (thread: Pick<EnvironmentThreadShell, "environmentId" | "source">) =>
+    coordinatorThreadIdOf(thread.source, overrides.get(thread.environmentId) ?? NO_OVERRIDES);
 }
 
 /** The coordinator the thread reports to, or null. */
 export function useThreadCoordinatorId(threadRef: ScopedThreadRef | null): ThreadId | null {
   const thread = useThreadShell(threadRef);
-  const threads = useMemo(() => (thread ? [thread] : []), [thread]);
+  const threads = thread ? [thread] : [];
   const coordinatorOf = useCoordinatorOf(threads);
   return thread ? coordinatorOf(thread) : null;
 }
@@ -98,11 +90,7 @@ export function useChildThreadGroups(
 ): ChildThreadGroups {
   const coordinatorOf = useCoordinatorOf(threads);
   const enabled = useSidebarChildThreadsEnabled();
-  return useMemo(
-    () =>
-      enabled
-        ? groupChildThreads(threads, coordinatorOf)
-        : hiddenChildThreadGroups(threads, coordinatorOf),
-    [coordinatorOf, enabled, threads],
-  );
+  return enabled
+    ? groupChildThreads(threads, coordinatorOf)
+    : hiddenChildThreadGroups(threads, coordinatorOf);
 }

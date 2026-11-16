@@ -126,6 +126,7 @@ const TestLayer = Layer.mergeAll(OrchestrationV2LayerLive, OrchestrationV2EventS
           repositoryIdentityResolved: false,
         }),
       readRepositoryIdentity: () => Effect.die("unused in this test"),
+      refreshRepositoryIdentity: () => Effect.void,
       invalidate: () => Effect.void,
       subscribeChanges: Effect.never,
     }),

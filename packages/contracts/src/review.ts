@@ -3,31 +3,15 @@ import { TrimmedNonEmptyString } from "./baseSchemas.ts";
 import { GitCommandError } from "./git.ts";
 import { VcsError } from "./vcs.ts";
 
-export const ReviewDiffPreviewSourceKind = Schema.Literals([
-  "working-tree",
-  "branch-range",
-  "commit",
-  "commit-range",
-]);
-export type ReviewDiffPreviewSourceKind = typeof ReviewDiffPreviewSourceKind.Type;
-
-const CommitSha = TrimmedNonEmptyString.check(Schema.isPattern(/^[0-9a-f]{7,64}$/));
-
-/**
- * Two points of the commit graph to compare, older first. A null base is the
- * empty tree (a root commit's parent), a null head the working tree including
- * untracked files. Asking for a range returns a single `commit-range` source.
- */
-export const ReviewDiffRange = Schema.Struct({
-  base: Schema.NullOr(CommitSha),
-  head: Schema.NullOr(CommitSha),
-});
-export type ReviewDiffRange = typeof ReviewDiffRange.Type;
-
 export const ReviewDiffPreviewInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   baseRef: Schema.optional(TrimmedNonEmptyString),
-  range: Schema.optionalKey(ReviewDiffRange),
+  range: Schema.optionalKey(
+    Schema.Struct({
+      base: Schema.NullOr(TrimmedNonEmptyString),
+      head: Schema.NullOr(TrimmedNonEmptyString),
+    }),
+  ),
   commitSha: Schema.optional(TrimmedNonEmptyString),
   ignoreWhitespace: Schema.optionalKey(Schema.Boolean),
   sourceKind: Schema.optionalKey(Schema.Literals(["working-tree", "branch-range"])),
@@ -37,11 +21,12 @@ export const ReviewDiffPreviewInput = Schema.Struct({
     Schema.Struct({
       path: Schema.NonEmptyString,
       previousPath: Schema.NullOr(Schema.NonEmptyString),
-      sourceKind: ReviewDiffPreviewSourceKind,
+      sourceKind: Schema.Literals(["working-tree", "branch-range", "commit", "commit-range"]),
     }),
   ),
 });
 export type ReviewDiffPreviewInput = typeof ReviewDiffPreviewInput.Type;
+export type ReviewDiffRange = NonNullable<ReviewDiffPreviewInput["range"]>;
 
 export const ReviewBranchCommitsInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
@@ -61,9 +46,28 @@ export const ReviewBranchCommitsResult = Schema.Struct({
 });
 export type ReviewBranchCommitsResult = typeof ReviewBranchCommitsResult.Type;
 
+export const ReviewDiffPreviewSourceKind = Schema.Literals([
+  "working-tree",
+  "branch-range",
+  "commit",
+  "commit-range",
+]);
+export type ReviewDiffPreviewSourceKind = typeof ReviewDiffPreviewSourceKind.Type;
+
+export const ReviewDiffChangeType = Schema.Literals([
+  "change",
+  "rename-pure",
+  "rename-changed",
+  "new",
+  "deleted",
+]);
+export type ReviewDiffChangeType = typeof ReviewDiffChangeType.Type;
+
 export const ReviewDiffFileStat = Schema.Struct({
   path: Schema.String,
   previousPath: Schema.NullOr(Schema.String),
+  // Older servers omit it.
+  changeType: Schema.optionalKey(ReviewDiffChangeType),
   additions: Schema.Number,
   deletions: Schema.Number,
 });
@@ -87,7 +91,7 @@ export type ReviewDiffPreviewSource = typeof ReviewDiffPreviewSource.Type;
 export const ReviewDiffFileContentsInput = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   sourceKind: ReviewDiffPreviewSourceKind,
-  changeType: Schema.Literals(["change", "rename-pure", "rename-changed", "new", "deleted"]),
+  changeType: ReviewDiffChangeType,
   baseRef: Schema.NullOr(TrimmedNonEmptyString),
   headRef: Schema.NullOr(TrimmedNonEmptyString),
   oldPath: TrimmedNonEmptyString,

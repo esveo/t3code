@@ -250,12 +250,18 @@ export const make = Effect.gen(function* () {
       }
       return null;
     }
-    const result = yield* threads.getThreadRecords(childThreadId, ["messages", "turnItems"], {
-      messageRoles: ["assistant"],
-      messageRunIds: [resultRun.id],
-      turnItemRunId: resultRun.id,
-      turnItemTypes: ["assistant_message", "error"],
-    });
+    const result = yield* threads.getThreadRecords(
+      childThreadId,
+      ["messages", "providerTurns", "turnItems"],
+      {
+        messageRoles: ["assistant"],
+        messageRunIds: [resultRun.id],
+        providerTurnAttemptIds:
+          resultRun.activeAttemptId === null ? [] : [resultRun.activeAttemptId],
+        turnItemRunId: resultRun.id,
+        turnItemTypes: ["assistant_message", "error"],
+      },
+    );
     const answer = subagentResultForRun(result, resultRun).text;
     return {
       childThreadId,

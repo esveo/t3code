@@ -5,6 +5,7 @@
  */
 import { OrchestratorMcpFailure, TerminalSessionStatus, ThreadId } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
+import * as McpSchema from "effect/ai/McpSchema";
 import * as Tool from "effect/ai/Tool";
 import * as Toolkit from "effect/ai/Toolkit";
 
@@ -141,7 +142,8 @@ const ListTerminalsTool = Tool.make("list_terminals", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
-  .annotate(Tool.OpenWorld, false);
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const ReadTerminalTool = Tool.make("read_terminal", {
   description:
@@ -155,6 +157,7 @@ const ReadTerminalTool = Tool.make("read_terminal", {
   .annotate(Tool.Readonly, true)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
-  .annotate(Tool.OpenWorld, false);
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 export const TerminalsToolkit = Toolkit.make(ListTerminalsTool, ReadTerminalTool);
