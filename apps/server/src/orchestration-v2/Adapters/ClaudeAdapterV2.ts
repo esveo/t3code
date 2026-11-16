@@ -10258,7 +10258,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             yield* replacePendingBackgroundTasks(input.nativeThreadId, nextTasks);
             rosterChanged = true;
           } else if (message.type === "system" && message.subtype === "task_started") {
-            if (!isClaudeNonSubagentTask(message)) {
+            if (!isClaudeNonSubagentTask(message) || isClaudeAmbientTask(message)) {
               return false;
             }
             const toolUseId = message.tool_use_id?.trim() || undefined;

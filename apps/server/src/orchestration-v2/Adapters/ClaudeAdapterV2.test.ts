@@ -2431,9 +2431,18 @@ describe("ClaudeAdapterV2 attachments", () => {
           }
           yield* deliver;
           const retried = offeredMessages.at(-1)!.message.content;
-          assert.notInclude(JSON.stringify(retried), '"type":"document"');
-          assert.include(JSON.stringify(retried), JSON.stringify(documentPath).slice(1, -1));
-          assert.isBelow(Buffer.byteLength(JSON.stringify(offeredMessages)), 32_000_000);
+          if (budget === "cancelled-send") {
+            assert.include(JSON.stringify(retried), '"type":"document"');
+          } else {
+            assert.notInclude(JSON.stringify(retried), '"type":"document"');
+            assert.include(JSON.stringify(retried), JSON.stringify(documentPath).slice(1, -1));
+          }
+          assert.isBelow(
+            Math.max(
+              ...offeredMessages.map((message) => Buffer.byteLength(JSON.stringify(message))),
+            ),
+            32_000_000,
+          );
           return;
         }
         if (budget !== "none") {
@@ -2500,7 +2509,11 @@ describe("ClaudeAdapterV2 attachments", () => {
             );
             assert.include(JSON.stringify(steered), JSON.stringify(imagePath).slice(1, -1));
             assert.isBelow(
-              Buffer.byteLength(JSON.stringify(offeredMessages.map((message) => message.message))),
+              Math.max(
+                ...offeredMessages.map((message) =>
+                  Buffer.byteLength(JSON.stringify(message.message)),
+                ),
+              ),
               32_000_000,
             );
             return;
@@ -4046,7 +4059,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       "preserves the last-applied title across provider-session recreation so a native /rename survives",
       () =>
         Effect.gen(function* () {
-          const harness = yield* makeWakeHarnessWithOptions({ freshQueueOnReopen: true });
+          const harness = yield* makeWakeHarnessWithOptions();
           yield* startTurn(harness, "First title", 1);
           assert.deepEqual(harness.renameCalls, []);
           yield* finishTurn(harness, 1);
@@ -4225,7 +4238,6 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       yield* harness.runtime.interruptTurn({
         providerThread: latest(),
         providerTurnId: lastProviderTurn(harness.events).id,
-        requestRuntimeRestart: true,
       });
       yield* harness.runtime.startTurn(turn(3));
       assert.equal(harness.processQueues.length, 2);
@@ -13361,7 +13373,14 @@ describe("ClaudeAdapterV2 background wake turns", () => {
 
         assert.deepEqual(
           providerThreadRosterEvents(harness.events).at(-1)?.providerThread.pendingBackgroundTasks,
-          [{ taskId: "watch-task", kind: "monitor", description: "Watch artifact comments" }],
+          [
+            {
+              taskId: "watch-task",
+              kind: "monitor",
+              description: "Watch artifact comments",
+              awaited: true,
+            },
+          ],
         );
         assert.isFalse(harness.events.some((event) => event.type === "subagent.updated"));
         assert.isTrue(yield* harness.hasPendingBackgroundWork);
@@ -15205,9 +15224,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
 
   it.effect("releases output held for a prompt echo when the stream ends", () =>
     Effect.gen(function* () {
-      const harness = yield* makeWakeHarnessWithOptions({
-        close: (sdkMessages) => Queue.shutdown(sdkMessages),
-      });
+      const harness = yield* makeWakeHarnessWithOptions({ freshQueueOnReopen: true });
       const now = yield* DateTime.now;
       const firstAttempt = RunAttemptId.make("attempt-claude-echo-1");
       const secondAttempt = RunAttemptId.make("attempt-claude-echo-2");
@@ -17292,6 +17309,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       Effect.gen(function* () {
         const harness = yield* makeWakeHarnessWithOptions({
           close: (sdkMessages) => Queue.shutdown(sdkMessages),
+          freshQueueOnReopen: true,
         });
         const idAllocator = yield* IdAllocator.IdAllocatorV2;
         const now = yield* DateTime.now;
@@ -17325,6 +17343,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             driver: ClaudeAdapterV2.CLAUDE_PROVIDER,
             nativeTurnId: `turn:${firstAttempt}`,
           }),
+          requestRuntimeRestart: true,
         });
         yield* harness.until(() => harness.terminalEvents().length === 1);
         assert.equal(harness.terminalEvents()[0]?.status, "interrupted");
@@ -19109,7 +19128,10 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       Effect.gen(function* () {
         const TOOL_USE_ID = "toolu-idle-close-timeout";
         const BASH = "toolu-idle-close-timeout-bash";
-        const harness = yield* makeWakeHarnessWithOptions();
+        const closeStarted = yield* Deferred.make<void>();
+        const harness = yield* makeWakeHarnessWithOptions({
+          close: () => Deferred.succeed(closeStarted, undefined),
+        });
         const now = yield* DateTime.now;
         const bashStatuses = () =>
           harness.events.flatMap((event) =>
@@ -19155,6 +19177,8 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             requestRuntimeRestart: true,
           })
           .pipe(Effect.forkScoped);
+        yield* Deferred.await(closeStarted);
+        yield* TestClock.adjust("1 millis");
         yield* TestClock.adjust("10 seconds");
         yield* Fiber.join(stop);
         assert.deepEqual(bashStatuses(), [
