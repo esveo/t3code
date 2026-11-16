@@ -195,6 +195,18 @@ export const hiddenFromOutsideClients = (): boolean => {
   return scope === undefined || scope.thread !== undefined;
 };
 
+const threadBoundPredicates = new WeakSet<() => boolean>();
+
+export const hiddenFromOutsideClientsWhen = (enabled: () => boolean): (() => boolean) => {
+  const predicate = () => hiddenFromOutsideClients() && enabled();
+  threadBoundPredicates.add(predicate);
+  return predicate;
+};
+
+export const hidesFromOutsideClients = (predicate: unknown): boolean =>
+  predicate === hiddenFromOutsideClients ||
+  (typeof predicate === "function" && threadBoundPredicates.has(predicate as () => boolean));
+
 /** `McpSchema.EnabledWhen` for tools that only serve links, hidden while the beta is off. */
 export const hiddenWhileLinksOff = (): boolean => {
   const fiber = Fiber.getCurrent();

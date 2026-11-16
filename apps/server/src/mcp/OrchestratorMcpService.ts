@@ -89,6 +89,7 @@ import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
+import { requireCrossProjectThreads, threadProjectId } from "./forkThreadReach.ts";
 import * as ProviderAdapterRegistry from "../orchestration-v2/ProviderAdapterRegistry.ts";
 import {
   subagentResultForRun,
@@ -1394,6 +1395,7 @@ const make = Effect.gen(function* () {
   const loadTargetThread = Effect.fn("OrchestratorMcpService.loadTargetThread")(function* (
     scope: McpInvocationScope,
     threadId: ThreadId,
+    callerProjectId: ProjectId | undefined,
   ) {
     const shell = yield* threadManagement
       .getThreadShell(threadId)
@@ -1406,9 +1408,13 @@ const make = Effect.gen(function* () {
         `Thread ${threadId} was not found.`,
       );
     }
+    const projectId =
+      callerProjectId === undefined
+        ? shell.projectId
+        : yield* threadProjectId(threadManagement, threadId, callerProjectId);
     // Keeps legacy import and project validation; callers read only the thread row.
     return yield* threadManagement
-      .getProjectThreadRecords({ projectId: shell.projectId, threadId }, [])
+      .getProjectThreadRecords({ projectId, threadId }, [])
       .pipe(Effect.mapError(threadManagementFailure));
   });
 
@@ -1420,7 +1426,7 @@ const make = Effect.gen(function* () {
     const target: Pick<OrchestrationV2ThreadProjection, "thread"> =
       caller.parent !== undefined && threadId === caller.parent.thread.id
         ? caller.parent
-        : yield* loadTargetThread(scope, threadId);
+        : yield* loadTargetThread(scope, threadId, caller.parent?.thread.projectId);
     return { ...caller, target } as const;
   });
 
@@ -3242,14 +3248,21 @@ const make = Effect.gen(function* () {
     ),
     listThreads: Effect.fn("OrchestratorMcpService.listThreads")(function* (scope, input) {
       const { parent } = yield* loadCaller(scope, []);
-      const projectId = input.allProjects
+      const allProjects = input.allProjects === true || input.scope === "all";
+      const projectId = allProjects
         ? null
         : yield* resolveProjectTarget(
             parent,
             input.projectId,
             "Pass projectId, or allProjects: true for every project. This MCP client is not running inside a T3 thread.",
           );
-      if (!input.allProjects && input.projectId !== undefined) {
+      if (
+        input.scope === "all" ||
+        (parent !== undefined && projectId !== null && projectId !== parent.thread.projectId)
+      ) {
+        yield* requireCrossProjectThreads("Only the calling project's threads can be listed.");
+      }
+      if (!allProjects && input.projectId !== undefined) {
         yield* requireProject(input.projectId);
       }
       const listFailure = (error: unknown) =>

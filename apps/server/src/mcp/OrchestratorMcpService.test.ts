@@ -4544,7 +4544,11 @@ describe("fork: OrchestratorMcpService across projects", () => {
             archivedThreads: [],
           } as never),
         listProjectThreads: (input) =>
-          Effect.succeed(shells.filter((thread) => thread.projectId === input.projectId) as never),
+          Effect.succeed(
+            shells.filter(
+              (thread) => input.projectId === undefined || thread.projectId === input.projectId,
+            ) as never,
+          ),
         sendToThread: (input) =>
           Effect.sync(() => {
             sent.push({ projectId: input.projectId, threadId: input.threadId });
@@ -4561,7 +4565,21 @@ describe("fork: OrchestratorMcpService across projects", () => {
       Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
       Layer.mock(GitVcsDriver.GitVcsDriver)({}),
       Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
-      Layer.mock(ProjectService.ProjectService)({}),
+      Layer.mock(ProjectService.ProjectService)({
+        getById: (id) =>
+          shells.some((thread) => thread.projectId === id)
+            ? Effect.succeedSome({
+                id,
+                title: id,
+                workspaceRoot: `/projects/${id}`,
+                defaultModelSelection: null,
+                scripts: [],
+                createdAt: "2026-10-18T00:00:00.000Z",
+                updatedAt: "2026-10-18T00:00:00.000Z",
+                deletedAt: null,
+              })
+            : Effect.succeedNone,
+      }),
       Layer.mock(SecretRequests.SecretRequests)({}),
       Layer.mock(RemoteDelegation.RemoteDelegation)({}),
     );
