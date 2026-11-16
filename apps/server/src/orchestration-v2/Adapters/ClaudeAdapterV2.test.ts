@@ -4059,7 +4059,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       "preserves the last-applied title across provider-session recreation so a native /rename survives",
       () =>
         Effect.gen(function* () {
-          const harness = yield* makeWakeHarnessWithOptions();
+          const harness = yield* makeWakeHarnessWithOptions({ freshQueueOnReopen: true });
           yield* startTurn(harness, "First title", 1);
           assert.deepEqual(harness.renameCalls, []);
           yield* finishTurn(harness, 1);
@@ -4238,6 +4238,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       yield* harness.runtime.interruptTurn({
         providerThread: latest(),
         providerTurnId: lastProviderTurn(harness.events).id,
+        requestRuntimeRestart: true,
       });
       yield* harness.runtime.startTurn(turn(3));
       assert.equal(harness.processQueues.length, 2);

@@ -13814,8 +13814,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             current?.query === existing.query ? [true, null] : [false, current],
           );
           if (ownedLiveQuery) {
-            yield* finalizeActiveTurnAfterQueryExit(existing);
             yield* endSubagentCallsOfClosedQuery(existing.nativeThreadId, "interrupted");
+            yield* finalizeActiveTurnAfterQueryExit(existing);
           } else {
             yield* endSubagentsOfReplacedQuery(existing);
           }
