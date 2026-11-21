@@ -143,7 +143,8 @@ const readClaudeCancelledSubagentResumeTranscript = Effect.fn(
                 restartCancelledBackgroundWorkNote([
                   {
                     kind: "subagent",
-                    label: "Audit src/math.ts (id a44c0ed810da9e4f3)",
+                    label:
+                      "Audit src/math.ts (id a44c0ed810da9e4f3; resume it with SendMessage to 'a44c0ed810da9e4f3')",
                     id: "a44c0ed810da9e4f3",
                   },
                 ]),

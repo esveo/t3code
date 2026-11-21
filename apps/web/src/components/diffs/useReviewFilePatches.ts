@@ -210,6 +210,7 @@ function reviewFileQueries({
                   ...(baseRef ? { baseRef } : {}),
                   ...(range ? { range } : {}),
                   ...(source.kind === "commit" ? { commitSha: source.id } : {}),
+                  ...(source.mergeBase ? { mergeBase: source.mergeBase } : {}),
                   ignoreWhitespace,
                   file: {
                     path: file.path,
