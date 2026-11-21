@@ -166,6 +166,7 @@ const NON_REPOSITORY_STATUS_DETAILS = Object.freeze<GitVcsDriver.GitStatusDetail
 });
 const NON_REPOSITORY_REMOTE_STATUS_DETAILS = Object.freeze<GitVcsDriver.GitRemoteStatusDetails>({
   isRepo: false,
+  hasPrimaryRemote: false,
   defaultBranch: null,
   isDefaultBranch: false,
   branch: null,
@@ -1845,8 +1846,9 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       }),
     {
       capacity: 2_048,
+      // A remote added outside T3 Code must show on the next status read, so only a hit is kept.
       timeToLive: Exit.match({
-        onSuccess: () => STATUS_ORIGIN_EXISTS_CACHE_TTL,
+        onSuccess: (exists) => (exists ? STATUS_ORIGIN_EXISTS_CACHE_TTL : Duration.zero),
         onFailure: () => Duration.zero,
       }),
     },
@@ -2074,9 +2076,22 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     return parsedRemoteRef?.branchName ?? branchName;
   });
 
+  const hasAnyRemote = (cwd: string) =>
+    resolveRepositoryPaths(cwd).pipe(
+      Effect.orElseSucceed(() => null),
+      Effect.flatMap((paths) =>
+        paths === null
+          ? listRemoteNames(cwd).pipe(Effect.map((remoteNames) => remoteNames.length > 0))
+          : Cache.get(primaryRemoteExistsCache, paths.gitCommonDir),
+      ),
+    );
+
   // Local-only repositories are normal and status polls them, so the span succeeds with null.
   // Callers that need a remote fail in their own span.
   const findPrimaryRemoteName = Effect.fn("resolvePrimaryRemoteName")(function* (cwd: string) {
+    if (!(yield* hasAnyRemote(cwd))) {
+      return null;
+    }
     if (yield* originRemoteExists(cwd)) {
       return "origin";
     }
@@ -2620,7 +2635,8 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       );
     }
 
-    const defaultBranch = yield* resolvePrimaryDefaultBranchName(cwd);
+    const hasPrimaryRemote = yield* hasAnyRemote(cwd);
+    const defaultBranch = hasPrimaryRemote ? yield* resolvePrimaryDefaultBranchName(cwd) : null;
     const isDefaultBranch =
       branch !== null &&
       (branch === defaultBranch ||
@@ -2634,6 +2650,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
 
     return {
       isRepo: true,
+      hasPrimaryRemote,
       defaultBranch,
       isDefaultBranch,
       branch,
@@ -2755,7 +2772,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         { allowNonZeroExit: true, maxOutputBytes: REVIEW_METADATA_MAX_OUTPUT_BYTES },
       );
     // diff-index does not read status output, so both spawn together; a non-repository discards it.
-    const [statusResult, numstatResult, defaultBranch, hasPrimaryRemote] = yield* Effect.all(
+    const [statusResult, numstatResult, [hasPrimaryRemote, defaultBranch]] = yield* Effect.all(
       [
         readStatus,
         readNumstat("HEAD").pipe(
@@ -2781,17 +2798,23 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
           }),
           Effect.result,
         ),
-        statusCacheKey
-          ? Cache.get(defaultBranchCache, statusCacheKey).pipe(Effect.orElseSucceed(() => null))
-          : resolvePrimaryDefaultBranchName(cwd).pipe(Effect.orElseSucceed(() => null)),
-        statusCacheKey
-          ? Cache.get(primaryRemoteExistsCache, statusCacheKey).pipe(
-              Effect.orElseSucceed(() => false),
-            )
-          : listRemoteNames(cwd).pipe(
-              Effect.map((remoteNames) => remoteNames.length > 0),
-              Effect.orElseSucceed(() => false),
+        (statusCacheKey
+          ? Cache.get(primaryRemoteExistsCache, statusCacheKey)
+          : listRemoteNames(cwd).pipe(Effect.map((remoteNames) => remoteNames.length > 0))
+        ).pipe(
+          Effect.orElseSucceed(() => false),
+          Effect.flatMap((hasRemote) =>
+            (hasRemote
+              ? statusCacheKey
+                ? Cache.get(defaultBranchCache, statusCacheKey)
+                : resolvePrimaryDefaultBranchName(cwd)
+              : Effect.succeed(null)
+            ).pipe(
+              Effect.orElseSucceed(() => null),
+              Effect.map((defaultBranch) => [hasRemote, defaultBranch] as const),
             ),
+          ),
+        ),
       ],
       { concurrency: "unbounded" },
     );
@@ -3378,10 +3401,81 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     body,
     options?: GitVcsDriver.GitCommitOptions,
   ) {
+    const diffCached = [
+      "-c",
+      "diff.relative=false",
+      "diff",
+      "--cached",
+      "--no-ext-diff",
+      "--no-textconv",
+    ];
+    if (options?.stage?.unverified) {
+      const indexMatchesHead =
+        (yield* executeGit("GitVcsDriver.commit.indexChanges", cwd, [...diffCached, "--quiet"], {
+          allowNonZeroExit: true,
+        })).exitCode === 0;
+      // Staging an empty result would overwrite what is already staged, so check a scratch index.
+      if (
+        !indexMatchesHead &&
+        (yield* prepareCommitContext(cwd, options.stage.filePaths, { includePatch: false })) ===
+          null
+      ) {
+        return yield* new GitVcsDriver.GitNothingToCommitError({
+          operation: "GitVcsDriver.commit",
+          cwd,
+          detail: "Staging found no changes.",
+        });
+      }
+    }
     const partialCommitPaths =
       options?.stage !== undefined
         ? yield* stageCommitChanges(cwd, options.stage.filePaths)
         : undefined;
+    // Preserved unselected conflicts always show as index changes, so only selected paths count.
+    const selectedPaths = partialCommitPaths && new Set(options?.stage?.filePaths);
+    const hasStagedChanges = selectedPaths
+      ? (yield* runGitStdoutWithOptions(
+          "GitVcsDriver.commit.stagedChanges",
+          cwd,
+          [...diffCached, "--no-renames", "--name-only", "-z"],
+          { maxOutputBytes: REVIEW_METADATA_MAX_OUTPUT_BYTES },
+        ))
+          .split("\0")
+          .some((file) => file.length > 0 && selectedPaths.has(file))
+      : (yield* executeGit("GitVcsDriver.commit.stagedChanges", cwd, [...diffCached, "--quiet"], {
+          allowNonZeroExit: true,
+        })).exitCode !== 0;
+    if (!hasStagedChanges) {
+      // Like git commit, a merge resolved to HEAD's tree still records its merge commit.
+      const mergeHeadPath = yield* runGitStdout("GitVcsDriver.commit.mergeHead", cwd, [
+        "rev-parse",
+        "--git-path",
+        "MERGE_HEAD",
+      ]);
+      const merging = yield* fileSystem.realPath(cwd).pipe(
+        Effect.orElseSucceed(() => cwd),
+        Effect.flatMap((physicalCwd) =>
+          fileSystem.exists(path.resolve(physicalCwd, mergeHeadPath.trim())),
+        ),
+        Effect.mapError(
+          (cause) =>
+            new GitCommandError({
+              operation: "GitVcsDriver.commit.mergeHead",
+              command: "git commit",
+              cwd,
+              detail: "Could not check whether a merge is in progress.",
+              cause,
+            }),
+        ),
+      );
+      if (!merging) {
+        return yield* new GitVcsDriver.GitNothingToCommitError({
+          operation: "GitVcsDriver.commit",
+          cwd,
+          detail: "Staging found no changes.",
+        });
+      }
+    }
     const args = ["commit", "-m", subject];
     const trimmedBody = body.trim();
     if (trimmedBody.length > 0) {
@@ -4697,13 +4791,30 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         exitCode: result.exitCode,
       });
     });
+    // A file the preview did not list as new is stat-ed against the real index first. `git diff`
+    // lists an indexed path as anything but deleted, and `ls-files --others` never lists one.
+    const indexedRef =
+      input.file && !input.trackedOnly && input.file.changeType && input.file.changeType !== "new"
+        ? (dirtyRef ?? review.mergeBase)
+        : null;
+    const indexedStat = indexedRef === null ? undefined : yield* readStats(indexedRef);
+    const indexed =
+      indexedStat?.files.some(
+        (file) =>
+          file.path === input.file?.path &&
+          file.changeType !== undefined &&
+          file.changeType !== "deleted",
+      ) === true;
     const readTrackedDiff = Effect.fn("GitVcsDriver.getReviewDiffPreview.tracked")(function* (
       ref: string | null,
       env?: NodeJS.ProcessEnv,
       metadataOnly = false,
     ) {
       if (ref === null) return { stdout: "", stdoutTruncated: false, files: [] };
-      const stat = yield* readStats(ref, env);
+      const stat =
+        env === undefined && ref === indexedRef && indexedStat !== undefined
+          ? indexedStat
+          : yield* readStats(ref, env);
       if (metadataOnly || stat.files.length === 0) {
         return { stdout: "", stdoutTruncated: false, files: stat.files };
       }
@@ -4741,9 +4852,10 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       return { cwd: input.cwd, generatedAt: yield* DateTime.now, sources: [source] };
     }
     const [dirtyTrackedResult, baseResult] = yield* Effect.gen(function* () {
-      const untracked = input.trackedOnly
-        ? { env: undefined, omitted: false }
-        : yield* prepareUntrackedReviewIndex(cwd, pathArgs, input.file?.path);
+      const untracked =
+        input.trackedOnly || indexed
+          ? { env: undefined, omitted: false }
+          : yield* prepareUntrackedReviewIndex(cwd, pathArgs, input.file?.path);
       // Untracked files left out make the file list partial, so the bounded patch is sent instead.
       const complete = untracked !== null && !untracked.omitted;
       // With no untracked files to add, the tracked read already is the complete diff.
