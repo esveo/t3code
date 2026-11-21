@@ -1,14 +1,17 @@
+import { useGT } from "gt-react";
 import {
   DEFAULT_UNIFIED_SETTINGS,
   MAX_IDLE_AUTO_COMPACT_AFTER_MINUTES,
   MIN_IDLE_AUTO_COMPACT_AFTER_MINUTES,
   MIN_IDLE_AUTO_COMPACT_CONTEXT_TOKENS,
 } from "@t3tools/contracts";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
-import { esveoSearchableSetting } from "~/components/esveoSettings/EsveoSettingBadge";
+import {
+  esveoSearchableSetting,
+  forkSearchableSetting,
+} from "~/components/esveoSettings/EsveoSettingBadge";
 import { ScopedSwitch } from "~/components/settings/ScopedSwitch";
-import { searchableSetting } from "~/components/settings/settingsSearch";
 import { SettingResetButton, SettingsRow } from "~/components/settings/settingsLayout";
 import {
   useScopedSettings,
@@ -24,6 +27,7 @@ const KEYS = [
 
 /** Fork: idle auto-compact for Claude threads, in Settings → Threads. */
 export function IdleAutoCompactSettingRows() {
+  const gt = useGT();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   const changed = KEYS.some((key) => settings[key] !== DEFAULT_UNIFIED_SETTINGS[key]);
@@ -33,11 +37,13 @@ export function IdleAutoCompactSettingRows() {
         {...esveoSearchableSetting("idle-auto-compact")}
         serverScoped
         settingKeys={[...KEYS]}
-        description="Send /compact to a large, idle Claude thread shortly before its 1-hour prompt cache expires, so the next message does not pay to cache the whole conversation again. Threads on a 5-minute cache are left alone."
+        description={gt(
+          "Send /compact to a large, idle Claude thread shortly before its 1-hour prompt cache expires, so the next message skips caching the whole conversation again. 5-minute caches are left alone.",
+        )}
         resetAction={
           changed ? (
             <SettingResetButton
-              label="idle auto-compact"
+              ariaLabel={gt("Reset idle auto-compact to default")}
               onClick={() =>
                 updateSettings({
                   enableIdleAutoCompact: DEFAULT_UNIFIED_SETTINGS.enableIdleAutoCompact,
@@ -56,7 +62,7 @@ export function IdleAutoCompactSettingRows() {
             onCheckedChange={(checked) =>
               updateSettings({ enableIdleAutoCompact: Boolean(checked) })
             }
-            aria-label="Auto-compact idle Claude threads"
+            aria-label={gt("Auto-compact idle Claude threads")}
           />
         }
       />
@@ -65,30 +71,35 @@ export function IdleAutoCompactSettingRows() {
           <SettingsRow
             serverScoped
             settingKeys={["idleAutoCompactAfterMinutes"]}
-            title={searchableSetting("idle-auto-compact-after").title}
-            description={`Between ${MIN_IDLE_AUTO_COMPACT_AFTER_MINUTES} and ${MAX_IDLE_AUTO_COMPACT_AFTER_MINUTES}; it has to fall inside the cache's hour.`}
+            title={forkSearchableSetting("idle-auto-compact-after").title}
+            description={gt("Between {min} and {max}; it has to fall inside the cache's hour.", {
+              min: MIN_IDLE_AUTO_COMPACT_AFTER_MINUTES,
+              max: MAX_IDLE_AUTO_COMPACT_AFTER_MINUTES,
+            })}
             control={
               <BoundedIntInput
                 value={settings.idleAutoCompactAfterMinutes}
                 min={MIN_IDLE_AUTO_COMPACT_AFTER_MINUTES}
                 max={MAX_IDLE_AUTO_COMPACT_AFTER_MINUTES}
                 onCommit={(minutes) => updateSettings({ idleAutoCompactAfterMinutes: minutes })}
-                aria-label="Minutes idle before auto-compact"
+                aria-label={gt("Minutes idle before auto-compact")}
               />
             }
           />
           <SettingsRow
             serverScoped
             settingKeys={["idleAutoCompactMinContextTokens"]}
-            title={searchableSetting("idle-auto-compact-threshold").title}
-            description="Smaller threads are cheap to cache again and keep their full history."
+            title={forkSearchableSetting("idle-auto-compact-threshold").title}
+            description={gt(
+              "Smaller threads are cheap to cache again and keep their full history.",
+            )}
             control={
               <BoundedIntInput
                 value={settings.idleAutoCompactMinContextTokens}
                 min={MIN_IDLE_AUTO_COMPACT_CONTEXT_TOKENS}
                 step={10_000}
                 onCommit={(tokens) => updateSettings({ idleAutoCompactMinContextTokens: tokens })}
-                aria-label="Minimum context tokens for auto-compact"
+                aria-label={gt("Minimum context tokens for auto-compact")}
               />
             }
           />
@@ -106,12 +117,9 @@ function BoundedIntInput(props: {
   readonly onCommit: (value: number) => void;
   readonly "aria-label": string;
 }) {
-  // Local draft so the field can be emptied mid-edit; only valid input commits,
-  // and blur snaps back to the persisted value.
-  const [draft, setDraft] = useState(String(props.value));
-  useEffect(() => {
-    setDraft(String(props.value));
-  }, [props.value]);
+  // A draft only while editing, so the field can be emptied mid-edit; only valid
+  // input commits, and blur drops the draft for the persisted value.
+  const [draft, setDraft] = useState<string | null>(null);
   return (
     <Input
       size="sm"
@@ -120,7 +128,7 @@ function BoundedIntInput(props: {
       max={props.max}
       step={props.step}
       className="w-full sm:w-28"
-      value={draft}
+      value={draft ?? String(props.value)}
       onChange={(event) => {
         setDraft(event.target.value);
         const parsed = Number(event.target.value);
@@ -132,7 +140,7 @@ function BoundedIntInput(props: {
           props.onCommit(parsed);
         }
       }}
-      onBlur={() => setDraft(String(props.value))}
+      onBlur={() => setDraft(null)}
       aria-label={props["aria-label"]}
     />
   );

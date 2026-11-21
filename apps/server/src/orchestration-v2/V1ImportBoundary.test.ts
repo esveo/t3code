@@ -12,6 +12,7 @@ const legacyTable =
 const legacyReaders = ["orchestration-v2/legacy/", "persistence/Migrations/"] as const;
 const legacyReaderFiles: Record<string, string> = {
   "serverSettings.ts": "one-time provider history for settings migration",
+  "persistence/DatabaseMaintenance.ts": "counts V1 records a database repair would drop",
   // Fork: one-time import of V1 coordinator links, and the creation time of threads
   // that only exist in V1 for usage attribution.
   "threadOrchestration/forkSchema.ts": "one-time V1 coordinator link import",

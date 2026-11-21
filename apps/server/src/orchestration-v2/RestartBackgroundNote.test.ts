@@ -251,7 +251,7 @@ it("names a subagent's native id and how to resume it", () => {
   } as never);
   assert.equal(subagent?.id, "turn-item:1");
   assert.lengthOf(subagent?.label ?? "", 160);
-  assert.isTrue(subagent?.label.endsWith("(id a1b2c3)"));
+  assert.isTrue(subagent?.label.endsWith("(id a1b2c3; resume it with SendMessage to 'a1b2c3')"));
   const note = restartCancelledBackgroundWorkNote(subagent === undefined ? [] : [subagent]);
   assert.include(note, "server restarted");
   assert.include(note, "SendMessage");

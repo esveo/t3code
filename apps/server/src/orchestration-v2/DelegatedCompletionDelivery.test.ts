@@ -901,14 +901,15 @@ it.layer(layerTest)("delegated completion delivery repairs", (it) => {
       });
       const projection = yield* orchestrator.getThreadProjection(threadId);
       const message = projection.messages.find((candidate) => candidate.id === messageId)!;
-      assert.equal(message.text.includes(testCase.first), testCase.inlineFirst);
-      assert.equal(message.text.includes(testCase.second), testCase.inlineSecond);
+      // Fork: a child thread's full result travels with the wake past the inline budget
+      // (threadOrchestration/delegatedCompletionText.ts), so no task_status hint either.
+      assert.include(message.text, testCase.first);
+      assert.include(message.text, testCase.second);
       const deferredTaskId = testCase.inlineFirst ? secondTaskId : firstTaskId;
       assert.include(
         message.text,
         `Delegated task ${deferredTaskId} (Inspect regression) in child thread thread:inline-budget-child:${deferredTaskId} [${testCase.inlineFirst ? "cancelled" : "failed"}]`,
       );
-      assert.include(message.text, `Use task_status with taskId ${deferredTaskId}`);
       assert.deepEqual(message.delegatedCompletion?.taskIds, [firstTaskId, secondTaskId]);
       assert.equal(
         projection.subagents.find((candidate) => candidate.id === deferredTaskId)?.result,

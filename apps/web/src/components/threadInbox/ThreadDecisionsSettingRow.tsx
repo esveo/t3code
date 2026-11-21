@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts";
 
 import { ScopedSwitch } from "~/components/settings/ScopedSwitch";
@@ -10,6 +11,7 @@ import {
 
 /** Fork: the opt-in for the coordinator's Inbox of decisions, in Settings → General. */
 export function ThreadDecisionsSettingRow() {
+  const gt = useGT();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   return (
@@ -17,11 +19,13 @@ export function ThreadDecisionsSettingRow() {
       {...esveoSearchableSetting("thread-decisions")}
       serverScoped
       settingKeys={["enableThreadDecisions"]}
-      description="Coordinators put the questions they need you to decide into an Inbox tab beside the chat, instead of numbering them in their messages. Running sessions pick up a change."
+      description={gt(
+        "Coordinators put the questions they need you to decide into an Inbox tab beside the chat, instead of numbering them in their messages. Running sessions pick up a change.",
+      )}
       resetAction={
         settings.enableThreadDecisions !== DEFAULT_UNIFIED_SETTINGS.enableThreadDecisions ? (
           <SettingResetButton
-            label="coordinator decisions"
+            ariaLabel={gt("Reset coordinator decisions to default")}
             onClick={() =>
               updateSettings({
                 enableThreadDecisions: DEFAULT_UNIFIED_SETTINGS.enableThreadDecisions,
@@ -35,7 +39,7 @@ export function ThreadDecisionsSettingRow() {
           settingKeys={["enableThreadDecisions"]}
           checked={settings.enableThreadDecisions}
           onCheckedChange={(checked) => updateSettings({ enableThreadDecisions: Boolean(checked) })}
-          aria-label="Coordinator decisions"
+          aria-label={gt("Coordinator decisions")}
         />
       }
     />

@@ -111,6 +111,14 @@ const declaredFailure = (result: McpSchema.CallToolResult) => {
 };
 
 const parentThreadId = ThreadId.make("thread:mcp-orchestrator-parent");
+// Providers see a parent's message to a child with this sender note in front.
+const fromParent = (text: string) =>
+  `[T3 Code: the agent in T3 thread ${JSON.stringify(parentThreadId)} sent this message, not the user.]
+
+${text}`;
+const withoutSenderNote = (text: string) =>
+  text.replace(/^\[T3 Code: the agent in T3 thread [^\]]*\]\n\n/, "");
+const directReadResult = `Claude completed: ${fromParent("Complete before a parent reads this child result directly.")}`;
 const projectId = ProjectId.make("project:mcp-orchestrator");
 const codexInstanceId = ProviderInstanceId.make("codex");
 const claudeInstanceId = ProviderInstanceId.make("claudeAgent");
@@ -583,7 +591,8 @@ describe("orchestrator MCP toolkit", () => {
               },
               capturedTurns,
               shouldComplete: (turn) =>
-                turn.threadId !== parentThreadId && turn.message.text !== cancellationPrompt,
+                turn.threadId !== parentThreadId &&
+                withoutSenderNote(turn.message.text) !== cancellationPrompt,
               terminalGate: (turn) =>
                 turn.message.text.startsWith("Delegated task") ||
                 turn.message.text.startsWith("Delegated tasks")
@@ -596,17 +605,18 @@ describe("orchestrator MCP toolkit", () => {
               driver: ProviderDriverKind.make("claudeAgent"),
               capabilities: ClaudeProviderCapabilitiesV2,
               capturedTurns,
-              shouldComplete: (turn) => turn.message.text !== cancellationPrompt,
+              shouldComplete: (turn) => withoutSenderNote(turn.message.text) !== cancellationPrompt,
               terminalGate: (turn) =>
                 turn.message.text.startsWith("Delegated task") ||
                 turn.message.text.startsWith("Delegated tasks")
                   ? deliveryTerminalGates.get(turn.threadId)
                   : parentTerminalGates.get(turn.threadId),
               response: (turn) =>
-                turn.message.text === delegatedPrompt
+                withoutSenderNote(turn.message.text) === delegatedPrompt
                   ? delegatedResult
                   : `Claude completed: ${turn.message.text}`,
-              steerReceived: (steer) => steerReceivedGates.get(steer.message.text),
+              steerReceived: (steer) =>
+                steerReceivedGates.get(withoutSenderNote(steer.message.text)),
             }),
           ]);
           const continuationOffers = yield* Ref.make<
@@ -742,6 +752,7 @@ describe("orchestrator MCP toolkit", () => {
             Layer.provide(Layer.mock(ThreadSearch.ThreadSearch)({})),
             Layer.provide(
               Layer.mock(ProjectService.ProjectService)({
+                workspaceScanDirectory: Effect.succeed,
                 getById: (id) =>
                   Effect.succeed(
                     id === projectId || id === ProjectId.make("project:mcp-foreign")
@@ -1175,9 +1186,7 @@ describe("orchestrator MCP toolkit", () => {
               Effect.orDie,
             );
             expect(remainder.items[0]?.nextTextOffset).toBeNull();
-            expect(firstChunk.text + (remainder.items[0]?.text ?? "")).toBe(
-              "Claude completed: Complete before a parent reads this child result directly.",
-            );
+            expect(firstChunk.text + (remainder.items[0]?.text ?? "")).toBe(directReadResult);
             expect(
               (yield* orchestrator.getThreadProjection(parentThreadId)).subagents.find(
                 (task) => task.id === directRead.task.id,
@@ -1195,7 +1204,7 @@ describe("orchestrator MCP toolkit", () => {
             expect(terminalResultRead.items).toMatchObject([
               {
                 type: "assistant_message",
-                text: "Claude completed: Complete before a parent reads this child result directly.",
+                text: directReadResult,
                 textTruncated: false,
               },
             ]);
@@ -1800,7 +1809,7 @@ describe("orchestrator MCP toolkit", () => {
               {
                 instanceId: claudeInstanceId,
                 threadId: delegated.childThreadId,
-                text: delegatedPrompt,
+                text: fromParent(delegatedPrompt),
               },
             ]);
             expect(
@@ -2010,7 +2019,7 @@ describe("orchestrator MCP toolkit", () => {
                   commandId: CommandId.make(`command:mcp-child:${name}`),
                   threadId: localChild(child.childThreadId),
                   messageId,
-                  text: cancellationPrompt,
+                  text: fromParent(cancellationPrompt),
                   attachments: [],
                   modelSelection: { instanceId: target.providerInstanceId, model: target.model },
                   dispatchMode: { type: "start_immediately" },
@@ -2583,7 +2592,7 @@ describe("orchestrator MCP toolkit", () => {
             ).pipe(Effect.orDie);
             expect(promptedReadNext.items.map((item) => item.type)).toEqual(["assistant_message"]);
             expect(promptedReadNext.items[0]?.text).toBe(
-              `Claude completed: ${createdThreadPrompt}`,
+              `Claude completed: ${fromParent(createdThreadPrompt)}`,
             );
 
             const forkedThreadId = ThreadId.make("thread:mcp-orchestrator-inherited-read");

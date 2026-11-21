@@ -126,6 +126,7 @@ export function ReadOnlyThreadTimeline(props: {
             contentInsetEndAdjustment={0}
             emptyPlaceholderInset={0}
             liveFollowEnabled={follow.timelineLiveFollowEnabled}
+            isLiveFollowLatched={follow.isTimelineLiveFollowLatched}
             onIsAtEndChange={follow.onIsAtEndChangeStable}
             onViewportAttach={follow.attachTimelineViewport}
             onFooterGrow={follow.onTimelineFooterGrowStable}
