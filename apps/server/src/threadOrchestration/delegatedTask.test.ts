@@ -32,6 +32,7 @@ import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.t
 import { ServerSettingsService } from "../serverSettings.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
+import * as ModelManifest from "../provider/ModelManifest.ts";
 import { WorkspacePaths } from "../workspace/WorkspacePaths.ts";
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import { EventSinkV2 } from "../orchestration-v2/EventSink.ts";
@@ -110,6 +111,7 @@ const TestLayer = Layer.mergeAll(OrchestrationV2LayerLive, OrchestrationV2EventS
     }),
   ),
   Layer.provide(worktreeRepairDependenciesTestLayer),
+  Layer.provide(ModelManifest.layerTest),
   Layer.provide(
     Layer.succeed(ProjectEnrichmentService, {
       peek: () =>

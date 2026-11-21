@@ -11,9 +11,9 @@ import { msg } from "gt-react-native";
 
 import { m, type MessageResolver } from "../../i18n/messages";
 
-// Fork: "commit" sources exist on the wire; mobile shows only the working tree and branch range.
+// Fork: "commit" and "commit-range" sources exist on the wire; mobile shows only the working tree and branch range.
 export type ReviewSectionKind = "turn" | ReviewDiffPreviewSourceKind;
-export type ReviewGitSectionKind = Exclude<ReviewSectionKind, "turn" | "commit">;
+export type ReviewGitSectionKind = Exclude<ReviewSectionKind, "turn" | "commit" | "commit-range">;
 type ReviewGitSource = ReviewDiffPreviewSource & { readonly kind: ReviewGitSectionKind };
 
 const CHANGES_SECTION_ID = "git:branch-range";

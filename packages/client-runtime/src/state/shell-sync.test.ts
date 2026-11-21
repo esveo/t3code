@@ -1199,6 +1199,7 @@ describe("environment shell synchronization", () => {
         generation: 0,
         lastFailure: null,
         retryAt: null,
+        refusedRouteIds: [],
       });
       yield* Queue.offer(events, {
         kind: "snapshot",
@@ -1227,6 +1228,7 @@ describe("environment shell synchronization", () => {
         generation: 1,
         lastFailure: null,
         retryAt: null,
+        refusedRouteIds: [],
       });
       for (let index = 0; index < 10; index += 1) {
         yield* Effect.yieldNow;
@@ -1293,6 +1295,7 @@ describe("environment shell synchronization", () => {
         generation: 1,
         lastFailure: null,
         retryAt: null,
+        refusedRouteIds: [],
       });
       yield* Queue.offer(events, { kind: "snapshot", snapshot: batchSnapshot });
       yield* Queue.offer(events, { kind: "synchronized" });

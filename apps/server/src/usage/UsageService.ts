@@ -1213,7 +1213,10 @@ export const make = Effect.gen(function* () {
     const startedAtMs = yield* Clock.currentTimeMillis;
     yield* ensureScanCacheLoaded;
 
-    const retentionCutoffMs = startedAtMs - CACHE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    const retentionCutoffMs =
+      settings.usageHistoryRetentionDays === "unlimited"
+        ? 0
+        : Math.max(0, startedAtMs - settings.usageHistoryRetentionDays * 24 * 60 * 60 * 1000);
     const windowStartMs = Math.max(0, input.sinceMs - MTIME_SLACK_MS);
     const resolved = yield* resolveTranscriptDirs(settings, retentionCutoffMs, false).pipe(
       Effect.provideContext(readerContext),
