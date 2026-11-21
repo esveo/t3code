@@ -336,7 +336,14 @@ export function setEsveoThreadPanelOpenByDefault(open: boolean): void {
 const singletonSurface = (
   kind: Exclude<
     RightPanelKind,
-    "file" | "preview" | "terminal" | "pull-request" | "issue" | "thread" | "linked-thread" | "notion"
+    | "file"
+    | "preview"
+    | "terminal"
+    | "pull-request"
+    | "issue"
+    | "thread"
+    | "linked-thread"
+    | "notion"
   >,
 ): RightPanelSurface => {
   switch (kind) {

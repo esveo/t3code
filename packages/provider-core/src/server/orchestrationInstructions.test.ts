@@ -64,10 +64,7 @@ describe("esveo code orchestration provider instructions", () => {
 
   it("only exposes the system prompt when the esveo code MCP server is attached", () => {
     assert.equal(t3OrchestrationSystemPrompt(false, false), undefined);
-    assert.equal(
-      t3OrchestrationSystemPrompt(true, false),
-      T3_CODE_ORCHESTRATION_INSTRUCTIONS,
-    );
+    assert.equal(t3OrchestrationSystemPrompt(true, false), T3_CODE_ORCHESTRATION_INSTRUCTIONS);
   });
 
   it("gives ACP sessions provider-neutral mode, browser, and orchestration guidance", () => {
@@ -200,6 +197,9 @@ describe("esveo code device instructions", () => {
       t3AcpPromptWithInstructions({ prompt: "Again.", state, previousState: state }),
       "Again.",
     );
-    assert.notInclude(t3AcpPromptWithInstructions({ prompt: "Hi.", state }), "## esveo code devices");
+    assert.notInclude(
+      t3AcpPromptWithInstructions({ prompt: "Hi.", state }),
+      "## esveo code devices",
+    );
   });
 });
