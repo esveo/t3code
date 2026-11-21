@@ -152,6 +152,7 @@ const withUpdates = <A, E>(
           return Effect.succeed({
             thread: child.shell,
             turnItems: [],
+            providerTurns: [],
             messages: Object.entries(child.answers).map(([runId, text]) => ({
               id: `answer-${runId}`,
               runId,

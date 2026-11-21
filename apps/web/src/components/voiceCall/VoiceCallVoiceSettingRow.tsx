@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import { DEFAULT_VOICE_CALL_VOICE, VOICE_CALL_VOICES } from "@t3tools/contracts";
 
 import { esveoSearchableSetting } from "../esveoSettings/EsveoSettingBadge";
@@ -9,8 +10,9 @@ import { Switch } from "../ui/switch";
 const voiceLabel = (voice: string) => voice.charAt(0).toUpperCase() + voice.slice(1);
 
 export function VoiceCallSettingsSection() {
+  const gt = useGT();
   return (
-    <SettingsSection id="voice-calls" title="Voice calls">
+    <SettingsSection id="voice-calls" title={gt("Voice calls")}>
       <VoiceCallEnabledSettingRow />
       <VoiceCallVoiceSettingRow />
       <VoiceCallFollowUpSettingRow />
@@ -20,16 +22,19 @@ export function VoiceCallSettingsSection() {
 
 /** Fork: the switch for the whole feature, including the agents' `voice_say`. */
 function VoiceCallEnabledSettingRow() {
+  const gt = useGT();
   const enabled = useScopedSettings((settings) => settings.voiceCallEnabled);
   const updateSettings = useUpdateScopedSettings();
   return (
     <SettingsRow
       {...esveoSearchableSetting("voice-call-enabled")}
-      description="Talk to your agents by voice with GPT-Live on your Codex ChatGPT login. Turning this off ends a running call."
+      description={gt(
+        "Talk to your agents by voice with GPT-Live on your Codex ChatGPT login. Turning this off ends a running call.",
+      )}
       resetAction={
         enabled ? (
           <SettingResetButton
-            label="voice calls"
+            ariaLabel={gt("Reset voice calls to default")}
             onClick={() => updateSettings({ voiceCallEnabled: false })}
           />
         ) : null
@@ -38,7 +43,7 @@ function VoiceCallEnabledSettingRow() {
         <Switch
           checked={enabled}
           onCheckedChange={(checked) => updateSettings({ voiceCallEnabled: Boolean(checked) })}
-          aria-label="Voice calls"
+          aria-label={gt("Voice calls")}
         />
       }
     />
@@ -47,16 +52,19 @@ function VoiceCallEnabledSettingRow() {
 
 /** Fork: what a voice message does while the agent works, apart from the chat's follow-up behavior. */
 function VoiceCallFollowUpSettingRow() {
+  const gt = useGT();
   const behavior = useScopedSettings((settings) => settings.voiceCallFollowUpBehavior);
   const updateSettings = useUpdateScopedSettings();
   return (
     <SettingsRow
       {...esveoSearchableSetting("voice-call-follow-up")}
-      description="Queue what you say in a voice call while the agent runs, or steer the current run. Saying otherwise overrides it for one message. A change applies from the next call."
+      description={gt(
+        "Queue what you say in a voice call while the agent runs, or steer the current run. Saying otherwise overrides it for one message. A change applies from the next call.",
+      )}
       resetAction={
         behavior !== "steer" ? (
           <SettingResetButton
-            label="voice call follow-up"
+            ariaLabel={gt("Reset voice call follow-up to default")}
             onClick={() => updateSettings({ voiceCallFollowUpBehavior: "steer" })}
           />
         ) : null
@@ -70,12 +78,24 @@ function VoiceCallFollowUpSettingRow() {
             }
           }}
         >
-          <SelectTrigger size="sm" className="w-auto min-w-0" aria-label="Voice call follow-up">
-            <SelectValue>{behavior === "queue" ? "Queue" : "Steer"}</SelectValue>
+          <SelectTrigger
+            size="sm"
+            className="w-auto min-w-0"
+            aria-label={gt("Voice call follow-up")}
+          >
+            <SelectValue>
+              {behavior === "queue"
+                ? gt("Queue", { $context: "voice call follow-up mode" })
+                : gt("Steer", { $context: "voice call follow-up mode" })}
+            </SelectValue>
           </SelectTrigger>
           <SelectPopup align="end" alignItemWithTrigger={false}>
-            <SelectItem value="queue">Queue</SelectItem>
-            <SelectItem value="steer">Steer</SelectItem>
+            <SelectItem value="queue">
+              {gt("Queue", { $context: "voice call follow-up mode" })}
+            </SelectItem>
+            <SelectItem value="steer">
+              {gt("Steer", { $context: "voice call follow-up mode" })}
+            </SelectItem>
           </SelectPopup>
         </Select>
       }
@@ -85,16 +105,19 @@ function VoiceCallFollowUpSettingRow() {
 
 /** Fork: which voice speaks in voice calls. */
 function VoiceCallVoiceSettingRow() {
+  const gt = useGT();
   const voice = useScopedSettings((settings) => settings.voiceCallVoice);
   const updateSettings = useUpdateScopedSettings();
   return (
     <SettingsRow
       {...esveoSearchableSetting("voice-call-voice")}
-      description="The voice that talks to you in a voice call. A change applies from the next call."
+      description={gt(
+        "The voice that talks to you in a voice call. A change applies from the next call.",
+      )}
       resetAction={
         voice !== DEFAULT_VOICE_CALL_VOICE ? (
           <SettingResetButton
-            label="voice call voice"
+            ariaLabel={gt("Reset voice call voice to default")}
             onClick={() => updateSettings({ voiceCallVoice: DEFAULT_VOICE_CALL_VOICE })}
           />
         ) : null
@@ -107,7 +130,7 @@ function VoiceCallVoiceSettingRow() {
             if (choice) updateSettings({ voiceCallVoice: choice });
           }}
         >
-          <SelectTrigger size="sm" className="w-40" aria-label="Voice call voice">
+          <SelectTrigger size="sm" className="w-40" aria-label={gt("Voice call voice")}>
             <SelectValue>{voiceLabel(voice)}</SelectValue>
           </SelectTrigger>
           <SelectPopup align="end" alignItemWithTrigger={false}>

@@ -123,7 +123,7 @@ export function useReviewFilePatches({
           {
             name: file.path,
             ...(file.previousPath ? { prevName: file.previousPath } : {}),
-            type: file.previousPath ? "rename-changed" : "change",
+            type: file.changeType ?? (file.previousPath ? "rename-changed" : "change"),
             hunks: [],
             additionLines: [],
             deletionLines: [],
@@ -210,10 +210,12 @@ function reviewFileQueries({
                   ...(baseRef ? { baseRef } : {}),
                   ...(range ? { range } : {}),
                   ...(source.kind === "commit" ? { commitSha: source.id } : {}),
+                  ...(source.mergeBase ? { mergeBase: source.mergeBase } : {}),
                   ignoreWhitespace,
                   file: {
                     path: file.path,
                     previousPath: file.previousPath,
+                    ...(file.changeType ? { changeType: file.changeType } : {}),
                     sourceKind: source.kind,
                   },
                 },

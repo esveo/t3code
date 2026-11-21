@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts";
 
 import { ScopedSwitch } from "~/components/settings/ScopedSwitch";
@@ -10,6 +11,7 @@ import {
 
 /** Fork: lets agents' thread tools reach other projects, in Settings → General. */
 export function CrossProjectThreadsSettingRow() {
+  const gt = useGT();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   return (
@@ -17,12 +19,14 @@ export function CrossProjectThreadsSettingRow() {
       {...esveoSearchableSetting("cross-project-threads")}
       serverScoped
       settingKeys={["enableCrossProjectThreads"]}
-      description="Let agents read, message and start threads in other projects of this environment. Running sessions pick up a change."
+      description={gt(
+        "Let agents read, message and start threads in other projects of this environment. Running sessions pick up a change.",
+      )}
       resetAction={
         settings.enableCrossProjectThreads !==
         DEFAULT_UNIFIED_SETTINGS.enableCrossProjectThreads ? (
           <SettingResetButton
-            label="cross-project threads"
+            ariaLabel={gt("Reset cross-project threads to default")}
             onClick={() =>
               updateSettings({
                 enableCrossProjectThreads: DEFAULT_UNIFIED_SETTINGS.enableCrossProjectThreads,
@@ -38,7 +42,7 @@ export function CrossProjectThreadsSettingRow() {
           onCheckedChange={(checked) =>
             updateSettings({ enableCrossProjectThreads: Boolean(checked) })
           }
-          aria-label="Cross-project threads"
+          aria-label={gt("Cross-project threads")}
         />
       }
     />

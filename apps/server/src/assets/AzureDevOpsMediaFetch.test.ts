@@ -18,6 +18,7 @@ import { ASSET_ROUTE_PREFIX, issueAssetUrl, resolveAsset } from "./AssetAccess.t
 import * as AssetSigner from "./AssetSigner.ts";
 import { azureDevOpsMediaHttpResponse } from "./AzureDevOpsMediaFetch.ts";
 import * as NativeAppIconResolver from "./NativeAppIconResolver.ts";
+import * as WorkspacePreviewRevisions from "./WorkspacePreviewRevisions.ts";
 
 const attachmentUrl = (organization: string) =>
   `https://dev.azure.com/${organization}/d55e6e6f/_apis/git/repositories/a65e7292/pullRequests/402/attachments/shot.png`;
@@ -149,6 +150,7 @@ const assetLayer = Layer.mergeAll(
     Layer.provide(T3ProjectFileLoader.layer),
   ),
   NativeAppIconResolver.layer.pipe(Layer.provide(configLayer)),
+  WorkspacePreviewRevisions.layer,
   AssetSigner.layer.pipe(
     Layer.provideMerge(ServerSecretStore.layer.pipe(Layer.provide(configLayer))),
   ),

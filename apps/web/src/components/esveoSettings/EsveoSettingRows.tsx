@@ -1,3 +1,4 @@
+import { useGT } from "gt-react";
 import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts";
 
 import { SettingResetButton, SettingsRow } from "../settings/settingsLayout";
@@ -7,17 +8,20 @@ import { esveoSearchableSetting } from "./EsveoSettingBadge";
 
 /** Fork: how sidebar thread cards look and group, in Settings → Appearance. */
 export function EsveoSidebarCardSettingRows() {
+  const gt = useGT();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   return (
     <>
       <SettingsRow
         {...esveoSearchableSetting("two-line-thread-cards")}
-        description="Trail the provider icon behind the thread title instead of giving it a line of its own. The line it saves also carried the branch, pull request badge and diff counts."
+        description={gt(
+          "Trail the provider icon behind the thread title instead of giving it a line of its own. The line it saves also carried the branch, pull request badge and diff counts.",
+        )}
         resetAction={
           settings.twoLineThreadCards !== DEFAULT_UNIFIED_SETTINGS.twoLineThreadCards ? (
             <SettingResetButton
-              label="two-line thread cards"
+              ariaLabel={gt("Reset two-line thread cards to default")}
               onClick={() =>
                 updateSettings({ twoLineThreadCards: DEFAULT_UNIFIED_SETTINGS.twoLineThreadCards })
               }
@@ -28,18 +32,20 @@ export function EsveoSidebarCardSettingRows() {
           <Switch
             checked={settings.twoLineThreadCards}
             onCheckedChange={(checked) => updateSettings({ twoLineThreadCards: Boolean(checked) })}
-            aria-label="Two-line thread cards"
+            aria-label={gt("Two-line thread cards")}
           />
         }
       />
       <SettingsRow
         {...esveoSearchableSetting("group-sidebar-threads-by-project")}
-        description="Keep each project's threads together in the sidebar, under a header that folds the project away. Ordering stays by recency: the project with the newest thread leads."
+        description={gt(
+          "Keep each project's threads together in the sidebar, under a header that folds the project away. Ordering stays by recency: the project with the newest thread leads.",
+        )}
         resetAction={
           settings.groupSidebarThreadsByProject !==
           DEFAULT_UNIFIED_SETTINGS.groupSidebarThreadsByProject ? (
             <SettingResetButton
-              label="project grouping"
+              ariaLabel={gt("Reset project grouping to default")}
               onClick={() =>
                 updateSettings({
                   groupSidebarThreadsByProject:
@@ -55,7 +61,7 @@ export function EsveoSidebarCardSettingRows() {
             onCheckedChange={(checked) =>
               updateSettings({ groupSidebarThreadsByProject: Boolean(checked) })
             }
-            aria-label="Group sidebar threads by project"
+            aria-label={gt("Group sidebar threads by project")}
           />
         }
       />
@@ -65,18 +71,21 @@ export function EsveoSidebarCardSettingRows() {
 
 /** Fork: the context window and prompt cache readouts beside the composer, in Settings → General. */
 export function EsveoComposerReadoutSettingRows() {
+  const gt = useGT();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   return (
     <>
       <SettingsRow
         {...esveoSearchableSetting("context-window-control")}
-        description="Show how full the thread's context window is next to the composer controls."
+        description={gt(
+          "Show how full the thread's context window is next to the composer controls.",
+        )}
         resetAction={
           settings.contextWindowControlEnabled !==
           DEFAULT_UNIFIED_SETTINGS.contextWindowControlEnabled ? (
             <SettingResetButton
-              label="context window usage"
+              ariaLabel={gt("Reset context window usage to default")}
               onClick={() =>
                 updateSettings({
                   contextWindowControlEnabled: DEFAULT_UNIFIED_SETTINGS.contextWindowControlEnabled,
@@ -91,17 +100,19 @@ export function EsveoComposerReadoutSettingRows() {
             onCheckedChange={(checked) =>
               updateSettings({ contextWindowControlEnabled: Boolean(checked) })
             }
-            aria-label="Context window usage"
+            aria-label={gt("Context window usage")}
           />
         }
       />
       <SettingsRow
         {...esveoSearchableSetting("prompt-cache-timer")}
-        description="Show how many minutes are left before the prompt cache expires. Claude only."
+        description={gt(
+          "Show how many minutes are left before the prompt cache expires. Claude only.",
+        )}
         resetAction={
           settings.promptCacheTimerEnabled !== DEFAULT_UNIFIED_SETTINGS.promptCacheTimerEnabled ? (
             <SettingResetButton
-              label="prompt cache timer"
+              ariaLabel={gt("Reset prompt cache timer to default")}
               onClick={() =>
                 updateSettings({
                   promptCacheTimerEnabled: DEFAULT_UNIFIED_SETTINGS.promptCacheTimerEnabled,
@@ -116,7 +127,7 @@ export function EsveoComposerReadoutSettingRows() {
             onCheckedChange={(checked) =>
               updateSettings({ promptCacheTimerEnabled: Boolean(checked) })
             }
-            aria-label="Prompt cache timer"
+            aria-label={gt("Prompt cache timer")}
           />
         }
       />
@@ -126,17 +137,20 @@ export function EsveoComposerReadoutSettingRows() {
 
 /** Fork: whether a thread's details card starts open, in Settings → Appearance. */
 export function EsveoThreadDetailsSettingRow() {
+  const gt = useGT();
   const settings = useScopedSettings();
   const updateSettings = useUpdateScopedSettings();
   return (
     <SettingsRow
       {...esveoSearchableSetting("thread-details-open-by-default")}
-      description="Open the thread details card with workspace and version control in every thread. Off, it stays closed until you open it, and each thread remembers your choice."
+      description={gt(
+        "Open the thread details card with workspace and version control in every thread. Off, it stays closed until you open it, and each thread remembers your choice.",
+      )}
       resetAction={
         settings.threadDetailsOpenByDefault !==
         DEFAULT_UNIFIED_SETTINGS.threadDetailsOpenByDefault ? (
           <SettingResetButton
-            label="thread details"
+            ariaLabel={gt("Reset thread details to default")}
             onClick={() =>
               updateSettings({
                 threadDetailsOpenByDefault: DEFAULT_UNIFIED_SETTINGS.threadDetailsOpenByDefault,
@@ -151,7 +165,7 @@ export function EsveoThreadDetailsSettingRow() {
           onCheckedChange={(checked) =>
             updateSettings({ threadDetailsOpenByDefault: Boolean(checked) })
           }
-          aria-label="Open thread details by default"
+          aria-label={gt("Open thread details by default")}
         />
       }
     />

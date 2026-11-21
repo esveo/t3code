@@ -3,11 +3,13 @@ import {
   isAtomCommandInterrupted,
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
-import type { ContextMenuItem, LocalApi, ThreadId } from "@t3tools/contracts";
+import type { ContextMenuItem, ContextMenuSource, LocalApi, ThreadId } from "@t3tools/contracts";
 import { MessageSquareIcon, NetworkIcon } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { T, useGT, Var } from "gt-react";
+import { useEffect, useState } from "react";
 import { create } from "zustand";
 
+import { useStableCallback } from "~/hooks/useStableCallback";
 import { useProjects, useThreadShells } from "~/state/entities";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { Command, CommandInput, CommandItem, CommandList } from "../ui/command";
@@ -41,11 +43,13 @@ function finish(parentThreadId: ThreadId | null) {
 /** Fork: the coordinator picker behind "Assign to coordinator…". Mount once, next to the menu. */
 export function ThreadParentDialogHost() {
   const request = useRequest((state) => state.request);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- settles a pending picker request in the module store on unmount
   useEffect(() => () => finish(null), []);
   return request ? <ThreadParentDialog thread={request.thread} /> : null;
 }
 
 function ThreadParentDialog({ thread }: { thread: EnvironmentThreadShell }) {
+  const gt = useGT();
   const threads = useThreadShells();
   const coordinatorOf = useCoordinatorOf(threads);
   const projects = useProjects();
@@ -75,18 +79,22 @@ function ThreadParentDialog({ thread }: { thread: EnvironmentThreadShell }) {
       }}
     >
       <DialogPopup className="max-w-md" showCloseButton={false}>
-        <DialogTitle className="sr-only">Assign "{thread.title}" to a coordinator</DialogTitle>
+        <DialogTitle className="sr-only">
+          <T>
+            Assign "<Var>{thread.title}</Var>" to a coordinator
+          </T>
+        </DialogTitle>
         <Command
           mode="none"
           value={query}
           onValueChange={setQuery}
-          aria-label="Choose a coordinator"
+          aria-label={gt("Choose a coordinator")}
         >
-          <CommandInput placeholder={`Coordinator for "${thread.title}"…`} />
+          <CommandInput placeholder={gt('Coordinator for "{title}"…', { title: thread.title })} />
           <CommandList className="max-h-80 overflow-y-auto">
             {candidates.length === 0 ? (
               <div className="px-3 py-6 text-center text-sm text-muted-foreground">
-                No thread can coordinate this one.
+                <T>No thread can coordinate this one.</T>
               </div>
             ) : (
               candidates.map((candidate) => (
@@ -101,7 +109,7 @@ function ThreadParentDialog({ thread }: { thread: EnvironmentThreadShell }) {
                     <MessageSquareIcon aria-hidden className="size-4 shrink-0" />
                   )}
                   <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="truncate">{candidate.title || "Untitled thread"}</span>
+                    <span className="truncate">{candidate.title || gt("Untitled thread")}</span>
                     <span className="truncate text-xs text-muted-foreground">
                       {projectNames.get(candidate.projectId)}
                     </span>
@@ -122,38 +130,32 @@ function ThreadParentDialog({ thread }: { thread: EnvironmentThreadShell }) {
  * returns false for every other id, so the menu's own switch keeps the rest.
  */
 export function useThreadParentActions() {
+  const gt = useGT();
   const threads = useThreadShells();
   const coordinatorOf = useCoordinatorOf(threads);
-  // Read when a menu opens, so the actions stay stable while threads change.
-  const threadsRef = useRef({ threads, coordinatorOf });
-  useEffect(() => {
-    threadsRef.current = { threads, coordinatorOf };
-  }, [coordinatorOf, threads]);
   const setCoordinator = useAtomCommand(coordinatorLinksEnvironment.set, {
     reportFailure: false,
   });
 
-  const showMenu = useCallback(
+  // Stable, and reading the threads current when a menu opens.
+  const showMenu = useStableCallback(
     (api: LocalApi, thread: EnvironmentThreadShell) =>
       <Id extends string>(
         items: ReadonlyArray<ContextMenuItem<Id>>,
         position?: { x: number; y: number },
+        source?: ContextMenuSource,
       ) =>
         api.contextMenu.show<Id | ThreadParentMenuId>(
           withThreadParentMenuItems(items, {
-            hasParent: threadsRef.current.coordinatorOf(thread) !== null,
-            hasChildren: hasChildThreads(
-              threadsRef.current.threads,
-              thread,
-              threadsRef.current.coordinatorOf,
-            ),
+            hasParent: coordinatorOf(thread) !== null,
+            hasChildren: hasChildThreads(threads, thread, coordinatorOf),
           }),
           position,
+          source,
         ),
-    [],
   );
 
-  const handle = useCallback(
+  const handle = useStableCallback(
     async (id: string | null | undefined, thread: EnvironmentThreadShell): Promise<boolean> => {
       if (id !== "assign-parent" && id !== "detach-parent") return false;
       const parentThreadId = id === "assign-parent" ? await requestParentThread(thread) : null;
@@ -169,15 +171,14 @@ export function useThreadParentActions() {
             type: "error",
             title:
               id === "assign-parent"
-                ? "Could not assign the thread"
-                : "Could not detach the thread",
-            description: error instanceof Error ? error.message : "An error occurred.",
+                ? gt("Could not assign the thread")
+                : gt("Could not detach the thread"),
+            description: error instanceof Error ? error.message : gt("An error occurred."),
           }),
         );
       }
       return true;
     },
-    [setCoordinator],
   );
 
   return { showMenu, handle };

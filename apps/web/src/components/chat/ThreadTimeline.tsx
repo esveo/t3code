@@ -57,5 +57,5 @@ export function ThreadTimeline({
   }, [activeThreadKey, detailLoading, entries]);
   // Fork: voice call start and end lines.
   const markedEntries = useVoiceCallMarks(threadDetailRef, displayedEntries);
-  return <MessagesTimeline {...timelineProps} timelineEntries={markedEntries} />;
+  return <MessagesTimeline {...timelineProps} syncing={syncing} timelineEntries={markedEntries} />;
 }

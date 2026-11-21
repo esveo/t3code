@@ -1,4 +1,4 @@
-/* oxlint-disable t3code/no-low-value-comments, t3code/prefer-effect-fn -- preserve fork authorization helpers and rationale */
+/* oxlint-disable t3code/no-low-value-comments -- preserve fork authorization helpers and rationale */
 /**
  * Fork: with Cross-project threads on (Settings, `enableCrossProjectThreads`),
  * the t3_thread_* tools reach threads in every project of the environment, not
@@ -12,21 +12,11 @@
  * The setting is read on each call, so a change reaches running sessions. It is
  * read optionally, so upstream's own tests and layers keep upstream's limit.
  */
-import {
-  type OrchestrationV2ThreadShell,
-  OrchestratorMcpFailure,
-  type ProjectId,
-  type ThreadId,
-} from "@t3tools/contracts";
-import * as DateTime from "effect/DateTime";
+import { OrchestratorMcpFailure, type ProjectId, type ThreadId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
-import type { OrchestratorV2Error } from "../orchestration-v2/Orchestrator.ts";
-import type {
-  ThreadManagementError,
-  ThreadManagementServiceShape,
-} from "../orchestration-v2/ThreadManagementService.ts";
+import type { ThreadManagementServiceShape } from "../orchestration-v2/ThreadManagementService.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 
 export const CROSS_PROJECT_THREADS_HINT =
@@ -82,32 +72,20 @@ export const threadProjectId = Effect.fn("forkThreadReach.threadProjectId")(func
  * another project's with `projectId`, every project's with scope "all" (both
  * only with cross-project threads on). Same order as `listProjectThreads`.
  */
-export const listThreadsInScope = (
-  threads: Pick<ThreadManagementServiceShape, "getShellSnapshot" | "listProjectThreads">,
+export const listThreadsInScope = Effect.fn("forkThreadReach.listThreadsInScope")(function* (
+  threads: Pick<ThreadManagementServiceShape, "listProjectThreads">,
   input: {
     readonly scope: "project" | "all" | undefined;
     readonly projectId: ProjectId;
     readonly callerProjectId: ProjectId;
     readonly includeSubagents: boolean;
   },
-): Effect.Effect<
-  ReadonlyArray<OrchestrationV2ThreadShell>,
-  ThreadManagementError | OrchestratorV2Error | OrchestratorMcpFailure
-> =>
-  Effect.gen(function* () {
-    if (input.scope === "all" || input.projectId !== input.callerProjectId) {
-      yield* requireCrossProjectThreads("Only the calling project's threads can be listed.");
-    }
-    if (input.scope !== "all") return yield* threads.listProjectThreads(input);
-    const snapshot = yield* threads.getShellSnapshot();
-    return snapshot.threads
-      .filter((thread) => thread.deletedAt === null)
-      .filter(
-        (thread) => input.includeSubagents || thread.lineage.relationshipToParent !== "subagent",
-      )
-      .toSorted(
-        (left, right) =>
-          DateTime.toEpochMillis(right.updatedAt) - DateTime.toEpochMillis(left.updatedAt) ||
-          right.id.localeCompare(left.id),
-      );
+) {
+  if (input.scope === "all" || input.projectId !== input.callerProjectId) {
+    yield* requireCrossProjectThreads("Only the calling project's threads can be listed.");
+  }
+  return yield* threads.listProjectThreads({
+    ...(input.scope === "all" ? {} : { projectId: input.projectId }),
+    includeSubagents: input.includeSubagents,
   });
+});

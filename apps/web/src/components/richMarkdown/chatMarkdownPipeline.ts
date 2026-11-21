@@ -3,10 +3,15 @@ import {
   CHAT_MARKDOWN_REMARK_PLUGINS as UPSTREAM_CHAT_MARKDOWN_REMARK_PLUGINS,
   CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS as UPSTREAM_CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS,
   CHAT_MARKDOWN_SANITIZE_SCHEMA,
+  chatMarkdownImageSource,
+  decodeMarkdownLinkEscapes,
+  remarkAssistantInsights,
 } from "@t3tools/shared/markdownPipeline";
 import type { PluggableList } from "unified";
 
 import { RICH_MARKDOWN_REMARK_PLUGINS, withRichMarkdownSanitizeSchema } from "./remarkRichMarkdown";
+
+export { chatMarkdownImageSource, decodeMarkdownLinkEscapes, remarkAssistantInsights };
 
 /**
  * Fork: upstream's shared chat pipeline plus math and mermaid. The rich plugins

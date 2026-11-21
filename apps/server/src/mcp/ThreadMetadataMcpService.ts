@@ -143,7 +143,12 @@ const make = Effect.gen(function* () {
         ),
       );
     if (shell === null || shell.deletedAt !== null) {
-      return yield* threadNotFound(threadManagement, threadId, `Thread ${threadId} was not found.`);
+      return yield* threadNotFound(
+        threadManagement,
+        scope,
+        threadId,
+        `Thread ${threadId} was not found.`,
+      );
     }
     // Fork: another project's thread needs Cross-project threads.
     if (scope.thread !== undefined && scope.thread.threadId !== threadId) {

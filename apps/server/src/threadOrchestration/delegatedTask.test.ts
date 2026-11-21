@@ -32,6 +32,7 @@ import { ProviderInstanceRegistry } from "../provider/ProviderInstanceRegistry.t
 import { ServerSettingsService } from "../serverSettings.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
+import * as ModelManifest from "../provider/ModelManifest.ts";
 import { WorkspacePaths } from "../workspace/WorkspacePaths.ts";
 import { CodexProviderCapabilitiesV2 } from "../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import { EventSinkV2 } from "../orchestration-v2/EventSink.ts";
@@ -110,6 +111,7 @@ const TestLayer = Layer.mergeAll(OrchestrationV2LayerLive, OrchestrationV2EventS
     }),
   ),
   Layer.provide(worktreeRepairDependenciesTestLayer),
+  Layer.provide(ModelManifest.layerTest),
   Layer.provide(
     Layer.succeed(ProjectEnrichmentService, {
       peek: () =>
@@ -126,6 +128,7 @@ const TestLayer = Layer.mergeAll(OrchestrationV2LayerLive, OrchestrationV2EventS
           repositoryIdentityResolved: false,
         }),
       readRepositoryIdentity: () => Effect.die("unused in this test"),
+      refreshRepositoryIdentity: () => Effect.void,
       invalidate: () => Effect.void,
       subscribeChanges: Effect.never,
     }),
@@ -410,7 +413,11 @@ it.layer(TestLayer)("fork: delegate_task patches", (it) => {
       const projection = yield* orchestrator.getThreadProjection(threadId);
       const text = projection.messages.find((message) => message.id === messageId)?.text ?? "";
       // The upstream instruction first, then the result itself.
-      assert.isTrue(text.startsWith(`Delegated task ${taskId} (Migration report) [completed]`));
+      assert.isTrue(
+        text.startsWith(
+          `Delegated task ${taskId} (Migration report) in child thread ${childThreadId} [completed]`,
+        ),
+      );
       const updates = text.slice(text.indexOf("<t3_thread_update"));
       assert.deepEqual(
         parseThreadUpdates(updates)?.map((update) => [update.threadId, update.state, update.body]),

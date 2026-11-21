@@ -1,10 +1,4 @@
-/**
- * Fork: the coordinator tools upstream's orchestrator toolkit lacks. A
- * coordinator starts and follows its threads with upstream's tools
- * (delegate_task, t3_thread_*); adopt_thread puts an existing thread under
- * it, and the decisions tools (opt-in, Settings) keep the questions it has
- * for the user in its Inbox.
- */
+/** Fork coordinator tools: adopt existing threads and manage opt-in Inbox decisions. */
 import {
   McpCapabilityUnavailableError,
   OrchestratorMcpFailure,
@@ -23,7 +17,7 @@ import { areDecisionToolsOn } from "../../McpOrchestrationTools.ts";
 const dependencies = [McpInvocationContext.McpInvocationContext, ThreadManagementService];
 
 // Offered in tools/list, and callable, only while the user has decisions on (Settings).
-const whileDecisionsOn = () => areDecisionToolsOn();
+const whileDecisionsOn = McpInvocationContext.hiddenFromOutsideClientsWhen(areDecisionToolsOn);
 
 const LINKING =
   "Mention a thread to the user as a Markdown link [title](t3-thread:THREAD_ID): the app renders it as a chip with the thread's live state.";
@@ -139,7 +133,8 @@ const AdoptThreadTool = Tool.make("adopt_thread", {
   .annotate(Tool.Readonly, false)
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, true)
-  .annotate(Tool.OpenWorld, false);
+  .annotate(Tool.OpenWorld, false)
+  .annotate(McpSchema.EnabledWhen, McpInvocationContext.hiddenFromOutsideClients);
 
 const DecisionOptionInput = Schema.Struct({
   id: TrimmedNonEmptyString.annotate({ description: "Short id, unique within the decision." }),

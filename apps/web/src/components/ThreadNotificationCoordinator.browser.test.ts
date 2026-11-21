@@ -136,6 +136,7 @@ function setup() {
   const router = {
     state: { matches: [{ params: { environmentId: "env-1", threadId: "other-thread" } }] },
     navigate: state.navigate,
+    subscribe: vi.fn(() => () => {}),
   } as unknown as AnyRouter;
   stack.defer(startThreadNotifications(registry, router));
   return {
