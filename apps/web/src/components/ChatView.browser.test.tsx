@@ -231,6 +231,7 @@ it("opens a linked Linear issue from an inactive thread's sidebar badge", async 
   __setClientSettingsForTests({
     ...DEFAULT_CLIENT_SETTINGS,
     onboardingCompletedAt: "2026-01-01T00:00:00.000Z",
+    sidebarWorkingShelfEnabled: false,
   });
   await page.viewport(1400, 900);
   const router = getRouter(
