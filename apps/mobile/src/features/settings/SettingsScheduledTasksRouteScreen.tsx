@@ -1228,6 +1228,7 @@ function TaskForm({
                   display={Platform.OS === "ios" ? "spinner" : "default"}
                   onDismiss={() => setTimePickerOpen(false)}
                   onValueChange={(_, selected) => {
+                    if (Platform.OS === "android") setTimePickerOpen(false);
                     const timeOfDay = `${String(selected.getHours()).padStart(2, "0")}:${String(selected.getMinutes()).padStart(2, "0")}`;
                     setDraft((current) => ({
                       ...current,
@@ -1280,9 +1281,11 @@ function TaskForm({
               />
               {/* Fork (esveo): opt-in catch-up of missed fixed-time runs. */}
               <View className="min-h-14 flex-row items-center gap-3 border-t border-border-subtle px-4 py-3">
-                <Text className="min-w-0 flex-1 text-lg text-foreground">Catch up missed runs</Text>
+                <Text className="min-w-0 flex-1 text-lg text-foreground">
+                  <T>Catch up missed runs</T>
+                </Text>
                 <ThemedSwitch
-                  accessibilityLabel="Catch up missed runs"
+                  accessibilityLabel={gt("Catch up missed runs")}
                   value={draft.schedule.catchUpMissedRuns}
                   onValueChange={(catchUpMissedRuns) =>
                     setDraft((current) => ({

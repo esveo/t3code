@@ -67,7 +67,12 @@ const descriptor = {
   // A matching version, since a mismatch adds an update banner a typical user never sees.
   serverVersion: APP_VERSION,
   orchestrationProtocolVersion: ORCHESTRATION_PROTOCOL_VERSION,
-  capabilities: { repositoryIdentity: true, sideChats: true, freshContext: true },
+  capabilities: {
+    repositoryIdentity: true,
+    sideChats: true,
+    freshContext: true,
+    fileAttachments: { maxUploadBytes: 10_000_000 },
+  },
 };
 const auth = {
   policy: "loopback-browser",
@@ -338,9 +343,9 @@ function shellOf(thread: FakeThread): OrchestrationV2ThreadShell {
     createdBy: thread.providerSubagentOf ? "agent" : "user",
     creationSource: thread.providerSubagentOf ? "provider" : "web",
     latestRunId: latest?.id ?? null,
-    activeRunId: null,
+    activeRunId: latest?.status === "running" ? latest.id : null,
     // Idle reads as waiting on the user, which shows a per-second duration in the sidebar.
-    status: latest ? "completed" : "idle",
+    status: latest?.status === "running" ? "running" : latest ? "completed" : "idle",
     pendingRuntimeRequest: null,
     latestVisibleMessage: null,
     latestUserMessageAt: AT,

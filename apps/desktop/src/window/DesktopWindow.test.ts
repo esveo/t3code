@@ -74,6 +74,12 @@ function makeFakeBrowserWindow() {
   const webContentsListeners = new Map<string, (...args: readonly unknown[]) => void>();
   let zoomLevel = 0;
   const webContents = {
+    id: 1,
+    session: {
+      webRequest: {
+        onBeforeSendHeaders: vi.fn(),
+      },
+    },
     copyImageAt: vi.fn(),
     focus: vi.fn(),
     isDestroyed: vi.fn(() => false),
@@ -902,7 +908,7 @@ describe("DesktopWindow", () => {
         attach({}, otherGuest.window.webContents);
         const openPopup = guest.webContentsListeners.get("did-create-window");
         if (!openPopup) return yield* Effect.die("did-create-window listener was not registered");
-        openPopup(popup.window);
+        openPopup(popup.window, { url: "https://example.com/" });
 
         const pages = [main, guest, otherGuest, popup];
         for (const page of pages) {
