@@ -5892,13 +5892,14 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     }
 
     const limit = input.limit ?? VCS_COMMIT_GRAPH_DEFAULT_LIMIT;
-    const [logStdout, headResult] = yield* Effect.all(
+    const [logStdout, headResult, currentRefName] = yield* Effect.all(
       [
         runGitStdout("GitVcsDriver.listCommitGraph", input.cwd, commitGraphLogArgs({ limit })),
         executeGit("GitVcsDriver.listCommitGraph.head", input.cwd, ["rev-parse", "HEAD"], {
           timeoutMs: 5_000,
           allowNonZeroExit: true,
         }),
+        readCurrentBranch("GitVcsDriver.listCommitGraph.currentBranch", input.cwd),
       ],
       { concurrency: 2 },
     );
@@ -5910,7 +5911,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       hasMore: parsed.length > limit,
       isRepo: true,
       headSha: headSha.length > 0 ? headSha : null,
-      currentRefName: repositoryPaths.currentBranch,
+      currentRefName,
     };
   });
 

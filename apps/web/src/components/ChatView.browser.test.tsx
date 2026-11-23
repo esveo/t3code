@@ -163,10 +163,23 @@ it("opens a linked Linear issue from an inactive thread's sidebar badge", async 
     title: "Keep tabs visible",
   };
   const grouped = threadWithHistory("issue-grouped", 1);
+  const asWorking = <Thread extends typeof linked>(thread: Thread): Thread => ({
+    ...thread,
+    runs: thread.runs.map((run, index) =>
+      index === thread.runs.length - 1
+        ? { ...run, status: "running" as const, completedAt: null }
+        : run,
+    ),
+    items: thread.items.map((item, index) =>
+      index === thread.items.length - 1
+        ? { ...item, status: "running" as const, completedAt: null, streaming: true }
+        : item,
+    ),
+  });
   using _environment = installFakeEnvironment([
     first,
-    { ...linked, issues: [issue] },
-    { ...grouped, issues: [completed, issue] },
+    asWorking({ ...linked, issues: [issue] }),
+    asWorking({ ...grouped, issues: [completed, issue] }),
   ]);
   const liveTitle = "Add keyboard shortcuts to the sidebar";
   using _detail = answerRpc(WS_METHODS.issuesDetail, (input: IssueRef) => {
@@ -956,6 +969,14 @@ it("a subagent tab shows its read-only bar under no header of its own", async ()
   const subagent = {
     ...threadWithHistory("subagent-child", 1),
     providerSubagentOf: parent.id,
+    creationSource: "provider" as const,
+    lineage: {
+      rootThreadId: parent.id,
+      parentThreadId: parent.id,
+      relationshipToParent: "subagent" as const,
+      forkedFrom: null,
+      sideChat: false,
+    },
     olderSettled: true as const,
   };
   await page.viewport(1400, 900);
@@ -977,7 +998,7 @@ it("a subagent tab shows its read-only bar under no header of its own", async ()
   const pane = screen.getByTestId("side-thread-pane");
   // No header of its own: the tab names it, and only a side chat has actions to put in one.
   await expect.element(pane.getByRole("heading", { name: subagent.title })).not.toBeInTheDocument();
-  await expect.element(pane.getByText("Runs on its own")).toBeVisible();
+  await expect.element(pane.getByLabelText("Subagent")).toBeVisible();
   await expect.element(pane.getByRole("button", { name: "Add to chat" })).not.toBeInTheDocument();
   await expect
     .element(screen.getByRole("textbox", { name: `Message ${subagent.title}`, exact: true }))

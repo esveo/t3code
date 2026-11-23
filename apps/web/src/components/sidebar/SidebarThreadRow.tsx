@@ -1779,9 +1779,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               {/* Fork: two-line cards hide the third line, so its icons trail the title. */}
               {twoLineThreadCards ? (
                 <span
-                  aria-hidden
                   className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
                 >
+                  {issueBadge}
                   {props.environmentLabel !== null ? (
                     <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
                       <EnvironmentMachineIcon

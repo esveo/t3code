@@ -908,7 +908,7 @@ describe("DesktopWindow", () => {
         attach({}, otherGuest.window.webContents);
         const openPopup = guest.webContentsListeners.get("did-create-window");
         if (!openPopup) return yield* Effect.die("did-create-window listener was not registered");
-        openPopup(popup.window);
+        openPopup(popup.window, { url: "https://example.com/" });
 
         const pages = [main, guest, otherGuest, popup];
         for (const page of pages) {
