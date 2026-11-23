@@ -1,5 +1,5 @@
-import { beforeEach } from "vite-plus/test";
-import { commands } from "vite-plus/test/browser";
+import { afterAll, beforeEach } from "vite-plus/test";
+import { cdp, commands } from "vite-plus/test/browser";
 
 import { initializeI18n } from "../src/i18n/initializeI18n";
 
@@ -16,6 +16,11 @@ declare module "vite-plus/test/browser" {
 // running and can move the mouse after its own afterEach.
 beforeEach(async () => {
   await commands.resetPointer();
+});
+
+// The browser context spans files, so release unreachable app graphs before loading the next one.
+afterAll(async () => {
+  await cdp().send("HeapProfiler.collectGarbage");
 });
 
 // The app initializes GT at startup; components using its hooks need the same here.
