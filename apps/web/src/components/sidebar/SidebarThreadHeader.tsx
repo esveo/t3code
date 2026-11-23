@@ -1,5 +1,5 @@
 import { useGT } from "gt-react";
-import { FolderPlusIcon, SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
+import { SearchIcon, SquarePenIcon, XIcon } from "lucide-react";
 import {
   type ComponentProps,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -18,7 +18,6 @@ export interface SidebarThreadHeaderProps {
   projectScope: ReactNode;
   /** Fork: icons in front of the project scope, such as split view's auto arrange. */
   forkLeadingActions?: ReactNode;
-  onNewProject: () => void;
   onNewThread: (event: ReactMouseEvent) => void;
   newThreadDisabled: boolean;
   newThreadShortcutLabel: string | null | undefined;
@@ -38,7 +37,6 @@ export function SidebarThreadHeader({
   hasProjects,
   projectScope,
   forkLeadingActions,
-  onNewProject,
   onNewThread,
   newThreadDisabled,
   newThreadShortcutLabel,
@@ -106,9 +104,6 @@ export function SidebarThreadHeader({
           <>
             {forkLeadingActions}
             {projectScope}
-            <SidebarHeaderIconButton label={gt("Add project")} onClick={onNewProject}>
-              <FolderPlusIcon />
-            </SidebarHeaderIconButton>
           </>
         ) : null}
         <SidebarHeaderIconButton

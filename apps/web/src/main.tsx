@@ -9,20 +9,12 @@ import { isElectron } from "./env";
 import { startAppServices } from "./appInit";
 import { AppRoot } from "./AppRoot";
 import { whenLocaleReady } from "./i18n/runtime";
-import { reloadOnceForChunkLoadError } from "./lib/chunkReloadGuard";
+import { chunkLoadState } from "./lib/chunkReloadGuard";
 import { esveoReactRootErrorOptions } from "./components/esveoErrorReport/reactErrorInfo";
 
 const router = startAppServices();
 
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string | undefined;
-
-let reloadScheduled = false;
-window.addEventListener("vite:preloadError", (event) => {
-  if (reloadOnceForChunkLoadError()) {
-    reloadScheduled = true;
-    event.preventDefault();
-  }
-});
 
 const app = <AppRoot router={router} />;
 
@@ -41,7 +33,7 @@ export const startup = Promise.all([
 ])
   .then(([ManagedAuthShell]) => {
     // Route chunk failures resolve router.load() and surface later through the error boundary.
-    if (reloadScheduled) return;
+    if (chunkLoadState.reloadScheduled) return;
     ReactDOM.createRoot(
       document.getElementById("root") as HTMLElement,
       esveoReactRootErrorOptions,
@@ -56,6 +48,6 @@ export const startup = Promise.all([
     );
   })
   .catch((error: unknown) => {
-    if (reloadScheduled) return;
+    if (chunkLoadState.reloadScheduled) return;
     throw error;
   });
