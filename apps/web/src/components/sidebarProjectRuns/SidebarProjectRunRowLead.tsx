@@ -1,20 +1,11 @@
 import { NetworkIcon } from "lucide-react";
+import { T } from "gt-react";
 import type { SidebarThreadSummary } from "../../types";
-import { ThreadWorktreeIndicator } from "../ThreadStatusIndicators";
+import { ThreadWorktreeIndicator } from "../sidebar/ThreadWorktreeIndicator";
 import { MiddleTruncate } from "../ui/middle-truncate";
 import { cn } from "~/lib/utils";
 
-/**
- * Fork: what a row inside a project run puts where its project label used to
- * be. The run header carries the project now, so the slot goes to the branch —
- * the row's other stable identifier, and the one two-line cards otherwise drop
- * with their third line. Rows without a branch fall back to a spacer, which
- * keeps the status slot hard right.
- *
- * A coordinator whose children span projects shows "Cross-project" instead,
- * in and outside a run, like its children below it show their projects: its
- * own project would say less (see `sidebarRowLead`).
- */
+/** The run header owns the project label, so rows use this slot for their distinguishing branch. */
 export function SidebarProjectRunRowLead(props: {
   thread: Pick<SidebarThreadSummary, "id" | "branch" | "worktreePath">;
   crossProject?: boolean;
@@ -30,7 +21,7 @@ export function SidebarProjectRunRowLead(props: {
             props.recede ? "font-normal" : "font-medium",
           )}
         >
-          Cross-project
+          <T>Cross-project</T>
         </span>
       </>
     );

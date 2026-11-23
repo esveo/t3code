@@ -1340,7 +1340,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
         <ThreadLinkChip
           environmentId={chipEnvironmentId}
           threadId={forkLinkedThreadId}
-          label={hastPlainTextDeep(node) || "Thread"}
+          label={hastPlainTextDeep(node) || gt("Thread")}
         />
       );
     }

@@ -1782,7 +1782,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                   aria-hidden
                   className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
                 >
-                  {isRemote ? (
+                  {props.environmentLabel !== null ? (
                     <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
                       <EnvironmentMachineIcon
                         aria-hidden
@@ -1796,69 +1796,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                     providerEntryByInstanceId={props.providerEntryByInstanceId}
                   />
                 </span>
-              ) : metaLineEmpty ? (
-                <span aria-hidden className="inline-flex shrink-0">
-                  <SidebarProviderStack
-                    thread={thread}
-                    providerEntryByInstanceId={props.providerEntryByInstanceId}
-                  />
-                </span>
-              ) : null}
+              ) : (
+                titleLineIcons
+              )}
             </div>
             {/* Fork: two-line cards leave the third line out. */}
-            {metaLineEmpty || twoLineThreadCards ? null : (
-              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
-                {thread.branch ? (
-                  <>
-                    <ThreadWorktreeIndicator thread={thread} />
-                    <span className="flex min-w-0 flex-1">
-                      <MiddleTruncate value={thread.branch} showTitle={false} />
-                    </span>
-                  </>
-                ) : showsScratchMachine ? (
-                  <>
-                    <EnvironmentMachineIcon
-                      aria-hidden
-                      kind={props.environmentMachine}
-                      className="size-3 shrink-0"
-                    />
-                    <span className="min-w-0 flex-1 truncate">{props.scratchMachineLabel}</span>
-                  </>
-                ) : (
-                  <span className="flex-1" />
-                )}
-                {terminalStatusIcon}
-                {prBadge}
-                {diff ? (
-                  <span className="shrink-0 font-mono">
-                    <span className="text-diff-addition-foreground">
-                      +{formatDiffCount(diff.insertions)}
-                    </span>{" "}
-                    <span className="text-diff-deletion-foreground">
-                      −{formatDiffCount(diff.deletions)}
-                    </span>
-                  </span>
-                ) : null}
-                <span
-                  aria-hidden
-                  className="pointer-events-none ml-auto inline-flex shrink-0 items-center gap-1"
-                >
-                  {isRemote && !showsScratchMachine ? (
-                    <span className="inline-flex shrink-0 items-center text-sidebar-muted-foreground/70">
-                      <EnvironmentMachineIcon
-                        aria-hidden
-                        kind={props.environmentMachine}
-                        className="size-3.5"
-                      />
-                    </span>
-                  ) : null}
-                  <SidebarProviderStack
-                    thread={thread}
-                    providerEntryByInstanceId={props.providerEntryByInstanceId}
-                  />
-                </span>
-              </div>
-            )}
+            {twoLineThreadCards ? null : metaLine}
           </div>
         </TooltipTrigger>
         {detailsTooltip}

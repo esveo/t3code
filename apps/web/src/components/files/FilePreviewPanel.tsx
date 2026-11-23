@@ -1823,7 +1823,7 @@ export default function FilePreviewPanel({
               <div className="my-auto flex shrink-0 flex-col gap-3 px-6 py-6 text-center text-xs leading-relaxed">
                 <p className="text-destructive">
                   {homePathFallback.missingHomePath
-                    ? "The file does not exist in the workspace or the home folder."
+                    ? m(msg("The file does not exist in the workspace or the home folder."))
                     : file.readError
                       ? filePreviewReadErrorMessage(file.readError, m)
                       : file.error}

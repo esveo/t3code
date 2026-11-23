@@ -1429,7 +1429,7 @@ function OpenCommandPaletteDialog(props: {
       kind: "action",
       value: "action:open-git-graph",
       searchTerms: ["git", "graph", "commits", "history", "branches", "log"],
-      title: "Open Git graph",
+      title: gt("Open Git graph"),
       icon: <GitCommitHorizontalIcon className={ITEM_ICON_CLASS} />,
       shortcutCommand: "gitGraph.open",
       run: async () => {
@@ -1457,7 +1457,7 @@ function OpenCommandPaletteDialog(props: {
       kind: "action",
       value: "action:open-agent-stage",
       searchTerms: ["agent", "stage", "visual", "sprites", "subagents"],
-      title: "Open agent stage",
+      title: gt("Open agent stage"),
       icon: <OrbitIcon className={ITEM_ICON_CLASS} />,
       run: async () => {
         useRightPanelStore
