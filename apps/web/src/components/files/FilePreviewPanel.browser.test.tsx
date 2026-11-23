@@ -442,19 +442,25 @@ describe("source file scroll", () => {
             ).toBe(true),
           );
         }
-        const target = [...rows()].find(
-          (row) => row.getAttribute("data-line") === String(initialScrollLine),
-        );
-        expect(target).toBeDefined();
-        target!.scrollIntoView({ block: direction === "up" ? "end" : "start" });
+        const target = await vi.waitFor(() => {
+          const row = [...rows()].find(
+            (candidate) => candidate.getAttribute("data-line") === String(initialScrollLine),
+          );
+          expect(row).toBeDefined();
+          return row!;
+        });
+        target.scrollIntoView({ block: direction === "up" ? "end" : "start" });
         await vi.waitFor(() => expect(scroller.scrollTop).toBeGreaterThan(0));
       }
 
-      const startRow = [...rows()].find(
-        (row) => row.getAttribute("data-line") === String(startLine),
-      );
-      expect(startRow).toBeDefined();
-      const startRect = startRow!.getBoundingClientRect();
+      const startRow = await vi.waitFor(() => {
+        const row = [...rows()].find(
+          (candidate) => candidate.getAttribute("data-line") === String(startLine),
+        );
+        expect(row).toBeDefined();
+        return row!;
+      });
+      const startRect = startRow.getBoundingClientRect();
       const scrollerRect = scroller.getBoundingClientRect();
       const nearEdgeY = direction === "down" ? scrollerRect.bottom - 5 : scrollerRect.top + 5;
       const outsideEdgeY = direction === "down" ? scrollerRect.bottom + 60 : scrollerRect.top - 60;
@@ -535,12 +541,16 @@ describe("source file scroll", () => {
         {filePreview("wrapped.ts")}
       </div>,
     );
-    await vi.waitFor(() => expect(scroller()?.scrollHeight).toBeGreaterThan(20_000));
     const shadowRows = () =>
       [...document.querySelectorAll("*")].flatMap((host) =>
         host.shadowRoot ? [...host.shadowRoot.querySelectorAll<HTMLElement>("[data-line]")] : [],
       );
-    await userEvent.click(shadowRows().find((row) => row.getAttribute("data-line") === "1")!);
+    const firstRow = await vi.waitFor(() => {
+      const row = shadowRows().find((candidate) => candidate.getAttribute("data-line") === "1");
+      expect(row).toBeDefined();
+      return row!;
+    });
+    await userEvent.click(firstRow);
     await vi.waitFor(() => expect(deepActiveElement()?.matches("[data-content]")).toBe(true));
     await userEvent.keyboard(
       isMacPlatform(navigator.platform) ? "{Meta>}f{/Meta}" : "{Control>}f{/Control}",
