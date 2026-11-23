@@ -138,6 +138,11 @@ describe("sidebar numbered jumps", () => {
     const initial = useComposerDraftStore.getState();
     using stack = new DisposableStack();
     stack.defer(() => useComposerDraftStore.setState(initial, true));
+    useComposerDraftStore.setState({
+      draftsByThreadKey: {},
+      draftThreadsByThreadKey: {},
+      logicalProjectDraftThreadKeyByLogicalProjectKey: {},
+    });
     const previousSettings = getClientSettings();
     stack.defer(() => __setClientSettingsForTests(previousSettings));
     __setClientSettingsForTests(DEFAULT_CLIENT_SETTINGS);
@@ -158,11 +163,12 @@ describe("sidebar numbered jumps", () => {
       routeThreadRef: threadRef,
     });
     const draftId = DraftId.make("unsent-draft");
-    initial.setProjectDraftThreadId(scopeProjectRef(web.environmentId, web.id), draftId, {
+    const drafts = useComposerDraftStore.getState();
+    drafts.setProjectDraftThreadId(scopeProjectRef(web.environmentId, web.id), draftId, {
       threadId: ThreadId.make("unsent-draft-thread"),
       createdAt: "2026-01-02T00:00:00.000Z",
     });
-    initial.setPrompt(draftId, "Unsent prompt");
+    drafts.setPrompt(draftId, "Unsent prompt");
 
     await using screen = await render(
       <SidebarProvider>
