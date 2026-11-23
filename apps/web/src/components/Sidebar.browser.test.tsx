@@ -138,6 +138,11 @@ describe("sidebar numbered jumps", () => {
     const initial = useComposerDraftStore.getState();
     using stack = new DisposableStack();
     stack.defer(() => useComposerDraftStore.setState(initial, true));
+    useComposerDraftStore.setState({
+      draftsByThreadKey: {},
+      draftThreadsByThreadKey: {},
+      logicalProjectDraftThreadKeyByLogicalProjectKey: {},
+    });
     const previousSettings = getClientSettings();
     stack.defer(() => __setClientSettingsForTests(previousSettings));
     __setClientSettingsForTests(DEFAULT_CLIENT_SETTINGS);
@@ -158,11 +163,12 @@ describe("sidebar numbered jumps", () => {
       routeThreadRef: threadRef,
     });
     const draftId = DraftId.make("unsent-draft");
-    initial.setProjectDraftThreadId(scopeProjectRef(web.environmentId, web.id), draftId, {
+    const drafts = useComposerDraftStore.getState();
+    drafts.setProjectDraftThreadId(scopeProjectRef(web.environmentId, web.id), draftId, {
       threadId: ThreadId.make("unsent-draft-thread"),
       createdAt: "2026-01-02T00:00:00.000Z",
     });
-    initial.setPrompt(draftId, "Unsent prompt");
+    drafts.setPrompt(draftId, "Unsent prompt");
 
     await using screen = await render(
       <SidebarProvider>
@@ -207,6 +213,16 @@ describe("sidebar render isolation", () => {
   // regression: #33100 Cmd+J re-rendered every sidebar row, which took hundreds of ms with many threads
   it("does not re-render thread rows when a quick Mod shortcut opens and focuses the terminal", async () => {
     using stack = new DisposableStack();
+    const previousSettings = getClientSettings();
+    stack.defer(() => __setClientSettingsForTests(previousSettings));
+    __setClientSettingsForTests(DEFAULT_CLIENT_SETTINGS);
+    const initialDrafts = useComposerDraftStore.getState();
+    stack.defer(() => useComposerDraftStore.setState(initialDrafts, true));
+    useComposerDraftStore.setState({
+      draftsByThreadKey: {},
+      draftThreadsByThreadKey: {},
+      logicalProjectDraftThreadKeyByLogicalProjectKey: {},
+    });
     const activeProject = project("active");
     const threads = Array.from({ length: 5 }, (_, index) => threadShell(activeProject.id, index));
     const routeThreadRef: ScopedThreadRef = {
@@ -327,6 +343,57 @@ describe("sidebar thread rename", () => {
       expect(updateMetadata).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("sidebar thread click", () => {
+  // regression: #40715 macOS counts quick clicks on different rows, so the next row got detail 2 and was ignored
+  it("opens another thread when the click arrives with a double-click count", async () => {
+    const activeProject = project("active");
+    const threads = [threadShell(activeProject.id, 0), threadShell(activeProject.id, 1)];
+    const routeThreadRef: ScopedThreadRef = {
+      environmentId: activeProject.environmentId,
+      threadId: threads[0]!.id,
+    };
+    vi.mocked(useProjects).mockReturnValue([activeProject]);
+    vi.mocked(useQuietThreadShells).mockReturnValue(threads);
+    vi.mocked(useThreadRouteTarget).mockReturnValue({ kind: "server", threadRef: routeThreadRef });
+    vi.mocked(useHandleNewThread).mockReturnValue({
+      activeDraftThread: null,
+      activeThread: null,
+      defaultProjectRef: {
+        environmentId: activeProject.environmentId,
+        projectId: activeProject.id,
+      },
+      defaultProjectFallbackReady: true,
+      handleNewThread: vi.fn().mockResolvedValue(null),
+      routeDraftId: null,
+      routeThreadRef,
+    });
+    await using screen = await render(
+      <SidebarProvider>
+        <Sidebar routeReveal={{ observedKey: null, pendingKey: null }} />
+      </SidebarProvider>,
+      { router: "/local/thread-0" },
+    );
+    const navigate = vi.spyOn(screen.router!, "navigate").mockResolvedValue(undefined);
+
+    const openRow = screen.getByText("Thread 0").first().element();
+    await act(() => {
+      openRow.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, cancelable: true, detail: 2 }),
+      );
+    });
+    expect(navigate).not.toHaveBeenCalled();
+
+    const row = screen.getByText("Thread 1").first().element();
+    await act(() => {
+      row.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, detail: 2 }));
+    });
+
+    expect(navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ params: expect.objectContaining({ threadId: "thread-1" }) }),
+    );
+  });
 });
 
 describe("sidebar thread menu", () => {
