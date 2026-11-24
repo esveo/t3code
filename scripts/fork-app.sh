@@ -477,14 +477,18 @@ prepare_server() {
     return
   fi
 
-  # A launcher speaks one protocol with the child it starts. A bump needs the
-  # launcher moved by hand (docs/fork/setup.md, step 4), so offering the new
-  # server as a plain restart would crash-loop the service.
-  local protocol running_protocol
+  # A runtime runs only under the launcher protocols it lists as supported;
+  # `t3 service restart` from it then moves the launcher to its own protocol.
+  # Any other bump needs the launcher moved by hand (docs/fork/setup.md,
+  # step 4), so offering the new server as a plain restart would crash-loop
+  # the service.
+  local protocol running_protocol supported
   protocol="$(sed -n 's/.*SERVICE_LAUNCHER_PROTOCOL = \([0-9]*\).*/\1/p' \
     "$source_repo/apps/server/src/cloud/serviceProtocol.ts")"
+  supported="$(sed -n 's/^export type SupportedLauncherProtocol = \(.*\);/\1/p' \
+    "$source_repo/apps/server/src/cloud/serviceProtocol.ts" | tr -c '0-9' ' ') $protocol"
   running_protocol="$(sed -n 's/.*"protocol": *\([0-9]*\).*/\1/p' "$SERVICE_STATE")"
-  if [[ "$protocol" != "$running_protocol" ]]; then
+  if [[ -z "$running_protocol" || " $supported " != *" $running_protocol "* ]]; then
     write_server_info "$server_info" "$branch" "$base_version" "$sha" \
       "The service launcher protocol changed ($running_protocol → $protocol). Move the launcher by hand as in docs/fork/setup.md, step 4."
     echo "Launcher protocol changed ($running_protocol → $protocol); not building the server." >&2
