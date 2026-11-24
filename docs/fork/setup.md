@@ -338,9 +338,12 @@ done; when the server build fails, fix the cause and run `prepare` again.
 `scripts/fork-app.sh prepare-server` rebuilds only the server. Both happen on
 their own for commits pushed to `origin/fork`. The plist
 and the cloud environment variables stay valid and do not need redoing —
-unless a rebase brings a `SERVICE_LAUNCHER_PROTOCOL` bump, in which case step 4
-has to be repeated, because the plist would still name a launcher speaking the
-old protocol. `prepare-server` notices that bump, builds nothing, and records
+unless a rebase brings a `SERVICE_LAUNCHER_PROTOCOL` bump the new runtime
+does not support (`SupportedLauncherProtocol` in the same file), in which case
+step 4 has to be repeated, because the plist would still name a launcher
+speaking the old protocol. A supported bump needs nothing: the update menu's
+restart reinstalls the unit and moves the launcher. `prepare-server` notices an
+unsupported bump, builds nothing, and records
 why in `servers/<branch>.json`; the update menu then marks the branch's server
 as blocked and installs only the app, and `logs/fork-watch.log` points here.
 
