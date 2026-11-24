@@ -111,3 +111,7 @@ _esveo_ and _esveo Midnight_, each in light and dark.
 - Threads, subagents and workflows survive a server restart.
 - Two-line thread cards, grouped by project.
 - Prompts lost to an early interrupt carry over to the next turn.
+
+## License
+
+The source code is licensed under the [MIT License](./LICENSE). esveo code is an unofficial fork, not affiliated with or endorsed by T3 Tools, Inc.; the T3 Code name and branding are covered by [TRADEMARK.md](./TRADEMARK.md).
