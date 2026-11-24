@@ -1,4 +1,13 @@
+import type { AgentFeedbackMode } from "@t3tools/contracts";
+
 import type { ProviderAdapterV2RuntimePolicy } from "./ProviderAdapter.ts";
+
+/** None while agent feedback is off, so users who never opt in pay no context for it. */
+export const AGENT_FEEDBACK_INSTRUCTIONS = {
+  off: "",
+  "on-request": "Use `t3_feedback` only when the user asks you to send T3 feedback.",
+  auto: "`t3_feedback` reports are wanted and cheap. Send one, then continue, when a T3 tool or `t3` command fails or gives a wrong result, the user corrects how you use T3 Code, or a T3 capability you looked for is missing. Once per problem; also when the user asks. Only about T3 Code, never the user's code or other tools.",
+} satisfies Record<AgentFeedbackMode, string>;
 
 /** Session-invariant; harnesses with a native system-prompt append can carry it once per session. */
 export const PULL_REQUEST_LINKING_INSTRUCTIONS = `<pull_request_linking>
@@ -16,6 +25,7 @@ When you need the user to decide or approve something, record each question with
  */
 export function buildRuntimeInstructions(runtime: {
   readonly harness: string;
+  readonly agentFeedback?: AgentFeedbackMode;
   readonly model?: string | undefined;
   readonly modelName?: string | undefined;
   readonly reasoningEffort?: string | undefined;
@@ -36,11 +46,16 @@ export function buildRuntimeInstructions(runtime: {
   const effortInfo = effort ? ` with ${effort} reasoning effort` : "";
   // Fork: agents name the app esveo code, e.g. in PR attributions.
   const runtimeInfo = `<runtime_info>In case you're asked: you are running in esveo code through the ${harness} harness${modelInfo}${effortInfo}. No need to mention this otherwise. You can embed images, video, and audio using Markdown image syntax with absolute file paths. Link every other file you cite or produce by its absolute path, as in [http.ts:42](/abs/path/http.ts:42), so the user can open it in esveo code's files viewer.</runtime_info>`;
+  const feedbackLine = AGENT_FEEDBACK_INSTRUCTIONS[runtime.agentFeedback ?? "off"];
+  const feedback = feedbackLine ? `\n${feedbackLine}` : "";
   const workspace =
     runtime.runtimePolicy === undefined ? "" : buildWorkspaceInstructions(runtime.runtimePolicy);
+  const linked =
+    runtime.pullRequestLinking === false
+      ? runtimeInfo
+      : `${runtimeInfo}\n\n${PULL_REQUEST_LINKING_INSTRUCTIONS}`;
   return [
-    runtimeInfo,
-    ...(runtime.pullRequestLinking === false ? [] : [PULL_REQUEST_LINKING_INSTRUCTIONS]),
+    linked + feedback,
     ...(workspace === "" ? [] : [workspace]),
     ...(runtime.threadDecisions ? [THREAD_DECISIONS_INSTRUCTIONS] : []),
   ].join("\n\n");
