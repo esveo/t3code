@@ -2270,15 +2270,12 @@ export function PullRequestDetailPanel({
                     onRevealSettled={settleReveal}
                   />
                 </Suspense>
-                {diffUpdate.outdated ? (
+                {/* Fork: upstream's new-commits banner covers head pushes; this covers the rest. */}
+                {diffUpdate.outdated && unseenHeadSha === undefined ? (
                   <PullRequestDiffUpdateNotice
                     onRefresh={() => {
                       diffUpdate.accept();
                       setRefreshToken((token) => token + 1);
-                      // Fork: the reloaded diff shows the new head, so merges and reviews follow it.
-                      if (unseenHeadSha !== undefined) {
-                        setSeenHead({ key: seenHeadKey, sha: unseenHeadSha });
-                      }
                     }}
                   />
                 ) : null}
