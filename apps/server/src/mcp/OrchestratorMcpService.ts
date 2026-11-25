@@ -2988,6 +2988,20 @@ const make = Effect.gen(function* () {
         parent.thread.interactionMode,
         input.interactionMode,
       );
+      // Fork: another project and/or its own worktree (threadOrchestration/DelegatedWorkspace.ts).
+      const delegatedWorkspace = yield* Effect.serviceOption(DelegatedWorkspace);
+      if (input.workspace !== undefined && Option.isNone(delegatedWorkspace)) {
+        return yield* failure(
+          "invalid_request",
+          "This server cannot delegate into another workspace.",
+        );
+      }
+      if (input.workspace !== undefined && input.isolation === "worktree") {
+        return yield* failure(
+          "invalid_request",
+          'Use workspace.worktree instead of isolation "worktree" when you also pass workspace.',
+        );
+      }
       let workspaceStrategy: OrchestrationV2ThreadLaunchWorkspaceStrategy | undefined;
       if (input.isolation === "worktree" && !isRetryOfAcceptedDelegation) {
         const project = yield* requireProject(parent.thread.projectId);
@@ -3019,20 +3033,6 @@ const make = Effect.gen(function* () {
         workspaceStrategy = { type: "worktree", baseRef: base.commitSha, startFromOrigin: false };
       }
       const parentNodeId = parentRun.rootNodeId;
-      // Fork: another project and/or its own worktree (threadOrchestration/DelegatedWorkspace.ts).
-      const delegatedWorkspace = yield* Effect.serviceOption(DelegatedWorkspace);
-      if (input.workspace !== undefined && Option.isNone(delegatedWorkspace)) {
-        return yield* failure(
-          "invalid_request",
-          "This server cannot delegate into another workspace.",
-        );
-      }
-      if (input.workspace !== undefined && input.isolation === "worktree") {
-        return yield* failure(
-          "invalid_request",
-          'Use workspace.worktree instead of isolation "worktree" when you also pass workspace.',
-        );
-      }
       const workspacePlan =
         input.workspace === undefined || Option.isNone(delegatedWorkspace)
           ? undefined

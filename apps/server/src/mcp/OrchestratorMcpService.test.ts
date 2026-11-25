@@ -75,6 +75,7 @@ import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as McpInvocationContext from "./McpInvocationContext.ts";
 import type { McpInvocationScope } from "./McpInvocationContext.ts";
 import { idleThreadProjection, liveThreadShell } from "./McpToolAccess.testkit.ts";
+import * as DelegatedWorkspace from "../threadOrchestration/DelegatedWorkspace.ts";
 import * as OrchestratorMcpService from "./OrchestratorMcpService.ts";
 import { readThread } from "./threadAccess.ts";
 import * as RemoteDelegation from "../peer/RemoteDelegation.ts";
@@ -3176,6 +3177,138 @@ describe("OrchestratorMcpService provider resolution", () => {
           yield* Deferred.await(prepared);
           assert.deepEqual(yield* Ref.get(wakePolicies), mode === "wait" ? ["always"] : []);
         }).pipe(Effect.provide(layerService.pipe(Layer.provide(layerDependencies))));
+      }),
+  );
+
+  it.effect(
+    "prepares the worktree of a child delegated with workspace.worktree, refusing isolation too",
+    () =>
+      Effect.gen(function* () {
+        const dispatched = yield* Ref.make<ReadonlyArray<unknown>>([]);
+        const prepared = yield* Deferred.make<RunId>();
+        const childRunId = RunId.make("run:mcp-delegate-workspace-worktree");
+        const workspaceStrategy = {
+          type: "worktree",
+          baseRef: "main",
+          startFromOrigin: false,
+        } as const;
+        const task = {
+          id: taskId,
+          threadId: parentThreadId,
+          runId: parentRunId,
+          parentNodeId,
+          origin: "app_owned",
+          createdBy: "agent",
+          driver: ProviderDriverKind.make("codex"),
+          providerInstanceId: codexInstanceId,
+          providerThreadId: null,
+          childThreadId,
+          nativeTaskRef: null,
+          prompt: "Port the importer.",
+          title: null,
+          model: "gpt-5.4",
+          status: "running",
+          result: null,
+          startedAt: null,
+          completedAt: null,
+        };
+        const layerDependencies = Layer.mergeAll(
+          NodeServices.layer,
+          NodeCrypto.layer,
+          Layer.mock(ThreadManagementService.ThreadManagementService)({
+            hasReceipt: () => Effect.succeed(false),
+            getThreadRecords: (threadId) =>
+              Effect.succeed(threadId === parentThreadId ? parentProjection([]) : childProjection),
+            isProviderInstanceEnabledForProject: () => Effect.succeed(true),
+            assertProviderInstanceEnabled: () => Effect.void,
+            dispatch: (command) =>
+              Ref.update(dispatched, (commands) => [...commands, command]).pipe(
+                Effect.as({
+                  sequence: 2,
+                  storedEvents: [
+                    {
+                      sequence: 1,
+                      commandId: null,
+                      event: { type: "subagent.updated", payload: task },
+                    },
+                    {
+                      sequence: 2,
+                      commandId: null,
+                      event: {
+                        type: "run.created",
+                        threadId: childThreadId,
+                        payload: { id: childRunId, workspacePreparation: workspaceStrategy },
+                      },
+                    },
+                  ],
+                } as never),
+              ),
+          }),
+          providerRegistryLayer([
+            providerSnapshot({
+              instanceId: codexInstanceId,
+              driver: ProviderDriverKind.make("codex"),
+              model: "gpt-5.4",
+            }),
+          ]),
+          adapterRegistryLayer([codexInstanceId]),
+          Layer.mock(ProjectService.ProjectService)({ getById: () => Effect.succeedNone }),
+          Layer.mock(SecretRequests.SecretRequests)({}),
+          Layer.mock(RemoteDelegation.RemoteDelegation)({}),
+          Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
+          ServerSettings.layerTest(),
+        );
+        const layerService = OrchestratorMcpService.layer.pipe(
+          Layer.provide(
+            Layer.mock(ThreadLaunchService.ThreadLaunchService)({
+              prepareRun: (input) => Deferred.succeed(prepared, input.runId).pipe(Effect.asVoid),
+            }),
+          ),
+          Layer.provide(Layer.mock(GitVcsDriver.GitVcsDriver)({})),
+        );
+
+        yield* Effect.gen(function* () {
+          const service = yield* OrchestratorMcpService.OrchestratorMcpService;
+          const both = yield* service
+            .delegateTask(scope, {
+              task: "Port the importer.",
+              target: { driverKind: ProviderDriverKind.make("codex") },
+              mode: "async",
+              clientRequestId: "delegate-workspace-and-isolation",
+              isolation: "worktree",
+              workspace: { project: "api", worktree: true },
+            })
+            .pipe(Effect.flip);
+          assert.include(both.message, "Use workspace.worktree instead of isolation");
+          const delegation = yield* Effect.forkChild(
+            service.delegateTask(scope, {
+              task: "Port the importer.",
+              target: { driverKind: ProviderDriverKind.make("codex") },
+              mode: "async",
+              clientRequestId: "delegate-workspace-worktree",
+              workspace: { project: "api", worktree: true },
+            }),
+          );
+          assert.equal(yield* Deferred.await(prepared), childRunId);
+          yield* Fiber.interrupt(delegation);
+          const [request] = (yield* Ref.get(dispatched)) as ReadonlyArray<{
+            workspaceStrategy?: unknown;
+          }>;
+          assert.deepEqual(request?.workspaceStrategy, workspaceStrategy);
+        }).pipe(
+          Effect.provideService(DelegatedWorkspace.DelegatedWorkspace, {
+            plan: () =>
+              Effect.succeed({
+                command: {
+                  projectId: ProjectId.make("project-api"),
+                  branch: null,
+                  worktreePath: null,
+                },
+                workspaceStrategy,
+              }),
+          }),
+          Effect.provide(layerService.pipe(Layer.provide(layerDependencies))),
+        );
       }),
   );
 
