@@ -17,6 +17,7 @@ import { reportLabel } from "@t3tools/provider-core/server/notification";
 import * as KeyedLock from "@t3tools/shared/KeyedLock";
 
 import { forkParked } from "../serverActivation.ts";
+import { parentsAnswerChildQuestions } from "../threadOrchestration/childQuestions.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 
@@ -37,6 +38,7 @@ const make = Effect.gen(function* () {
     request: OrchestrationV2RuntimeRequest,
   ) {
     if (task.childThreadId === null) return;
+    if (!(yield* parentsAnswerChildQuestions)) return; // Fork: the user answers instead.
     const key = `${task.threadId}:${request.id}`;
     const label = reportLabel(task.title?.trim() || task.prompt);
     const situation =

@@ -38,6 +38,50 @@ export function coordinatorThreadIdOf(
   return thread.lineage.parentThreadId;
 }
 
+type WaitingShell = Pick<OrchestrationV2ThreadShell, "id" | "lineage" | "pendingRuntimeRequest">;
+
+/**
+ * For each thread, the threads below it whose own approval or question waits
+ * on the user, oldest request first. "Below" follows the coordinator links
+ * (delegated, adopted and coordinated threads) and, for provider-native
+ * subagents, their parent, through every level.
+ */
+export function waitingDescendantsByThread<T extends WaitingShell>(
+  threads: ReadonlyArray<T>,
+  overrides: ReadonlyMap<ThreadId, ThreadId | null>,
+): ReadonlyMap<ThreadId, ReadonlyArray<T>> {
+  const byId = new Map(threads.map((thread) => [thread.id, thread]));
+  // coordinatorThreadIdOf, except that a provider-native subagent counts under its parent too.
+  const parentOf = (thread: T): ThreadId | null => {
+    const override = overrides.get(thread.id);
+    if (override !== undefined) return override;
+    return thread.lineage.relationshipToParent === "subagent"
+      ? thread.lineage.parentThreadId
+      : null;
+  };
+  const waiting = threads
+    .filter((thread) => thread.pendingRuntimeRequest !== null)
+    .sort(
+      (left, right) =>
+        left.pendingRuntimeRequest!.createdAt.epochMilliseconds -
+        right.pendingRuntimeRequest!.createdAt.epochMilliseconds,
+    );
+  const result = new Map<ThreadId, Array<T>>();
+  for (const thread of waiting) {
+    const seen = new Set<ThreadId>([thread.id]);
+    let ancestorId = parentOf(thread);
+    while (ancestorId !== null && !seen.has(ancestorId)) {
+      seen.add(ancestorId);
+      const list = result.get(ancestorId) ?? [];
+      list.push(thread);
+      result.set(ancestorId, list);
+      const ancestor = byId.get(ancestorId);
+      ancestorId = ancestor === undefined ? null : parentOf(ancestor);
+    }
+  }
+  return result;
+}
+
 /** Open pull requests of the thread, newest link first. */
 function openPullRequests(thread: ChildThreadShell) {
   const open = (thread.pullRequests ?? []).filter(

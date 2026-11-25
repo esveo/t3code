@@ -69,5 +69,12 @@
   "89bf6f658c44cb1b": "Steer",
   "930a28582d2c103f": "The voice that talks to you in a voice call. A change applies from the next call.",
   "591a53f319b0d343": "Reset voice call voice to default",
-  "60d509bb55e2967c": "Voice call voice"
+  "60d509bb55e2967c": "Voice call voice",
+  "1fe59bc90b1f26e6": "Los hilos padre responden preguntas de sus hijos",
+  "2f96cbd05a8b7b4d": "coordinador delegado subagente hijo pregunta aprobación respuesta te espera usuario",
+  "38afd1d1e88963e0": "Te espera",
+  "ed0cc481fc43707c": "Permite que un hilo coordinador responda las preguntas y aprobaciones de los hilos que inició. Desactivado, solo tú las respondes, y cada hilo por encima de uno que espera muestra Te espera.",
+  "ffa19369595f2ec4": "Restablecer los hilos padre responden preguntas de sus hijos",
+  "86ca3d79a7d9e0c1": "Un hilo por debajo de este te espera. Abrirlo",
+  "7bb34720f1231beb": "{count} hilos por debajo de este te esperan. Abrir el más antiguo"
 }

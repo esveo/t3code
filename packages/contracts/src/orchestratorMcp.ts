@@ -488,6 +488,8 @@ export const OrchestratorMcpThreadListItem = Schema.Struct({
   relationshipToParent: Schema.NullOr(Schema.Literals(["fork", "subagent"])),
   /** The linked environment's thread that delegated this one; absent otherwise. */
   delegatedFrom: Schema.optional(OrchestrationV2DelegatedFrom),
+  /** Fork: threads below this one whose question or approval waits on the user, oldest first. */
+  waitingForUserThreadIds: Schema.optional(Schema.Array(ThreadId)),
   itemCount: NonNegativeInt,
   createdAt: IsoDateTime,
   updatedAt: IsoDateTime,
@@ -550,6 +552,8 @@ export const OrchestratorMcpThreadDetail = Schema.Struct({
   runCount: NonNegativeInt,
   itemCount: NonNegativeInt,
   pendingRequestCount: NonNegativeInt,
+  /** Fork: threads below this one whose question or approval waits on the user, oldest first. */
+  waitingForUserThreadIds: Schema.optional(Schema.Array(ThreadId)),
   archived: Schema.Boolean,
   settled: Schema.Boolean,
   settledAt: Schema.NullOr(IsoDateTime),

@@ -26,6 +26,7 @@ import * as ThreadSearch from "../../../orchestration-v2/ThreadSearch.ts";
 import * as ScheduledTasks from "../../../scheduledTasks/ScheduledTaskService.ts";
 import { queuedRunsInDeliveryOrder } from "../../../orchestration-v2/QueuedRunOrder.ts";
 import { ThreadToolkit } from "./tools.ts";
+import { requireAnswerFromAskingThread } from "../../../threadOrchestration/childQuestions.ts";
 
 function queueEntry(
   projection: Pick<OrchestrationV2ThreadProjection, "runs" | "messages">,
@@ -270,6 +271,7 @@ export const layer = McpToolAccess.toLayer(ThreadToolkit, {
           threadId: input.threadId,
           requestId,
         });
+        yield* requireAnswerFromAskingThread(projection.thread.id);
         const result = yield* threads
           .dispatch({
             type: "runtime-request.respond",

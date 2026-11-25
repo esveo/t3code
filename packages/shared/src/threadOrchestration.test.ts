@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { ThreadId } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 
 import {
   type ChildThreadShell,
@@ -13,6 +14,7 @@ import {
   readableThreadMessage,
   resolveChildThreadState,
   threadLinkHref,
+  waitingDescendantsByThread,
   wrapFromCoordinator,
   wrapThreadUpdate,
 } from "./threadOrchestration.ts";
@@ -200,5 +202,73 @@ describe("thread links", () => {
   it("round-trips a thread id", () => {
     expect(parseThreadLinkHref(threadLinkHref("abc-123"))).toBe("abc-123");
     expect(parseThreadLinkHref("https://example.com")).toBe(null);
+  });
+});
+
+describe("waitingDescendantsByThread", () => {
+  const node = (
+    id: string,
+    parent: string | null,
+    options: { creationSource?: string; requestAt?: number } = {},
+  ) =>
+    ({
+      id: ThreadId.make(id),
+      lineage: {
+        parentThreadId: parent === null ? null : ThreadId.make(parent),
+        relationshipToParent: parent === null ? null : "subagent",
+        rootThreadId: ThreadId.make(id),
+      },
+      creationSource: options.creationSource ?? "mcp",
+      pendingRuntimeRequest:
+        options.requestAt === undefined
+          ? null
+          : {
+              id: `request-${id}`,
+              kind: "user_input",
+              createdAt: DateTime.makeUnsafe(options.requestAt),
+            },
+    }) as never as Parameters<typeof waitingDescendantsByThread>[0][number];
+
+  it("lifts a grandchild's question to every ancestor, oldest first", () => {
+    const threads = [
+      node("root", null),
+      node("child", "root", { requestAt: 2 }),
+      node("grandchild", "child", { requestAt: 1 }),
+      node("idle", "root"),
+    ];
+    const index = waitingDescendantsByThread(threads, new Map());
+    expect(index.get(ThreadId.make("root"))?.map((thread) => thread.id)).toEqual([
+      "grandchild",
+      "child",
+    ]);
+    expect(index.get(ThreadId.make("child"))?.map((thread) => thread.id)).toEqual(["grandchild"]);
+    expect(index.has(ThreadId.make("grandchild"))).toBe(false);
+  });
+
+  it("follows adopted threads and native subagents, and stops at released ones", () => {
+    const threads = [
+      node("coordinator", null),
+      node("adopted", null, { requestAt: 1 }),
+      node("native", "adopted", { creationSource: "provider", requestAt: 2 }),
+      node("released", "coordinator", { requestAt: 3 }),
+    ];
+    const index = waitingDescendantsByThread(
+      threads,
+      new Map([
+        [ThreadId.make("adopted"), ThreadId.make("coordinator")],
+        [ThreadId.make("released"), null],
+      ]),
+    );
+    expect(index.get(ThreadId.make("coordinator"))?.map((thread) => thread.id)).toEqual([
+      "adopted",
+      "native",
+    ]);
+  });
+
+  it("survives a cycle in the links", () => {
+    const threads = [node("a", "b", { requestAt: 1 }), node("b", "a")];
+    const index = waitingDescendantsByThread(threads, new Map());
+    expect(index.get(ThreadId.make("b"))?.map((thread) => thread.id)).toEqual(["a"]);
+    expect(index.has(ThreadId.make("a"))).toBe(false);
   });
 });

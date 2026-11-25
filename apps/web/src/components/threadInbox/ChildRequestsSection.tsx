@@ -7,11 +7,11 @@ import { useMemo } from "react";
 
 import { useThreadShells } from "~/state/entities";
 import { useCoordinatorOf } from "../threadOrchestration/coordinatorLinks";
-import { childThreadsOf } from "../threadOrchestration/threadOverview.logic";
+import { descendantThreadsOf } from "../threadOrchestration/threadOverview.logic";
 import { ThreadLinkChip } from "../threadOrchestration/ThreadLinkChip";
 import { useOpenThread } from "../threadOrchestration/useOpenThread";
 
-/** The coordinator's threads that wait on an approval or answer from the user, oldest first. */
+/** The threads below the coordinator that wait on an approval or answer from the user, oldest first. */
 export function childrenWaitingOnUser(
   children: ReadonlyArray<EnvironmentThreadShell>,
 ): ReadonlyArray<EnvironmentThreadShell> {
@@ -33,7 +33,7 @@ export function useChildrenWaitingOnUser(
     () =>
       threadRef
         ? childrenWaitingOnUser(
-            childThreadsOf(
+            descendantThreadsOf(
               threads,
               { environmentId: threadRef.environmentId, id: threadRef.threadId },
               coordinatorOf,

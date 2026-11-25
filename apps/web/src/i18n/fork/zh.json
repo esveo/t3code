@@ -69,5 +69,12 @@
   "89bf6f658c44cb1b": "Steer",
   "930a28582d2c103f": "The voice that talks to you in a voice call. A change applies from the next call.",
   "591a53f319b0d343": "Reset voice call voice to default",
-  "60d509bb55e2967c": "Voice call voice"
+  "60d509bb55e2967c": "Voice call voice",
+  "1fe59bc90b1f26e6": "父线程回答子线程的问题",
+  "2f96cbd05a8b7b4d": "协调者 委派 子代理 子线程 问题 审批 回答 等你处理 用户",
+  "38afd1d1e88963e0": "等你处理",
+  "ed0cc481fc43707c": "允许协调线程回答其启动的线程的问题和审批。关闭后只有你来回答，等待中的线程之上的每个线程都会显示“等你处理”。",
+  "ffa19369595f2ec4": "将父线程回答子线程的问题重置为默认",
+  "86ca3d79a7d9e0c1": "此线程下的一个线程在等你。打开它",
+  "7bb34720f1231beb": "此线程下有 {count} 个线程在等你。打开最早的一个"
 }

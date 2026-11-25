@@ -2,6 +2,7 @@
 
 Every feature and fix this fork adds on top of [T3 Code](https://github.com/pingdotgg/t3code), each with the commits that made it.
 
+- A setting under Settings → Threads, "Parent threads answer child questions" (on by default), lets only you answer the questions and approvals of threads a coordinator started; off, the coordinator is not woken for them, cannot answer them, and shows "Waiting for you" in the sidebar with a jump to the waiting thread ([e26af40](https://github.com/esveo/t3code/commit/e26af409cf45539c05d95f46c35949c09c8da2ad), [aae37e1](https://github.com/esveo/t3code/commit/aae37e1e292e455ce019bea0fc1159799af1e8fe)).
 - Fix: a delegated task given a worktree of its own, also in another project, gets that worktree and starts instead of waiting in "preparing" forever ([5354f54](https://github.com/esveo/t3code/commit/5354f5483bdbe1a74bfd097f752153ef08d9cc9b), [155dc93](https://github.com/esveo/t3code/commit/155dc93809aaf60387694d7574a347078ea44d15)).
 - Fix: after an upstream launcher protocol bump the new server supports, the update menu installs app and server together again instead of the app alone ([2a0f9f0](https://github.com/esveo/t3code/commit/2a0f9f0e6ae8bfdce2da60df13d333d0e42de140)).
 - Fix: images an MCP tool returns, such as the Blender MCP's `look` viewport, show in the tool's result in the chat ([d0b78cc](https://github.com/esveo/t3code/commit/d0b78cc7f258f30f4b67a7a314b36545c62a1c11)).

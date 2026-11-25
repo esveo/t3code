@@ -37,12 +37,12 @@ export const coordinatorLinksEnvironment = {
   }),
 };
 
-type Overrides = ReadonlyMap<ThreadId, ThreadId | null>;
-const NO_OVERRIDES: Overrides = new Map();
+export type Overrides = ReadonlyMap<ThreadId, ThreadId | null>;
+export const NO_OVERRIDES: Overrides = new Map();
 const KEY_SEPARATOR = "\u0000";
 
 /** The links of the given environments, joined into one key so the atom stays shared. */
-const overridesByEnvironmentAtom = Atom.family((key: string) =>
+export const overridesByEnvironmentAtom = Atom.family((key: string) =>
   Atom.make((get): ReadonlyMap<EnvironmentId, Overrides> => {
     const byEnvironment = new Map<EnvironmentId, Overrides>();
     if (key === "") return byEnvironment;
@@ -58,20 +58,28 @@ const overridesByEnvironmentAtom = Atom.family((key: string) =>
   }).pipe(Atom.setIdleTTL(0), Atom.withLabel(`fork-coordinator-links:${key}`)),
 );
 
-/** The coordinator lookup for threads of these environments. */
-export function useCoordinatorOf(
+/** The `overridesByEnvironmentAtom` key for these threads' environments. */
+export function coordinatorLinksKey(
   threads: ReadonlyArray<Pick<EnvironmentThreadShell, "environmentId">>,
-): CoordinatorOf {
-  const serverConfigs = useServerConfigs();
+  serverConfigs: ReturnType<typeof useServerConfigs>,
+): string {
   // Only servers that keep links are asked; others have no such method.
-  const key = [...new Set(threads.map((thread) => thread.environmentId))]
+  return [...new Set(threads.map((thread) => thread.environmentId))]
     .filter(
       (environmentId) =>
         serverConfigs.get(environmentId)?.environment?.capabilities.threadCoordinators === true,
     )
     .toSorted()
     .join(KEY_SEPARATOR);
-  const overrides = useAtomValue(overridesByEnvironmentAtom(key));
+}
+
+/** The coordinator lookup for threads of these environments. */
+export function useCoordinatorOf(
+  threads: ReadonlyArray<Pick<EnvironmentThreadShell, "environmentId">>,
+): CoordinatorOf {
+  const overrides = useAtomValue(
+    overridesByEnvironmentAtom(coordinatorLinksKey(threads, useServerConfigs())),
+  );
   return (thread: Pick<EnvironmentThreadShell, "environmentId" | "source">) =>
     coordinatorThreadIdOf(thread.source, overrides.get(thread.environmentId) ?? NO_OVERRIDES);
 }

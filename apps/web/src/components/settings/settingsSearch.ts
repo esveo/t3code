@@ -958,6 +958,16 @@ export const SETTINGS_SEARCH_ITEMS = [
     fork: true,
     searchTerms: [msg("agents coordinator other projects read message start threads repositories")],
   },
+  // Fork: who answers child threads' questions.
+  {
+    id: "parents-answer-child-questions",
+    title: msg("Parent threads answer child questions"),
+    to: "/settings/threads",
+    fork: true,
+    searchTerms: [
+      msg("coordinator delegated subagent child question approval answer waiting for you user"),
+    ],
+  },
   // Fork: idle auto-compact.
   {
     id: "idle-auto-compact",

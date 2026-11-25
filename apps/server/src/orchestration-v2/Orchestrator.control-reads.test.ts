@@ -44,6 +44,7 @@ import {
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import { CodexProviderCapabilitiesV2 } from "./Adapters/CodexAdapterV2.ts";
 import * as DelegatedTaskQuestionReactor from "./DelegatedTaskQuestionReactor.ts";
+import * as ServerSettings from "../serverSettings.ts";
 import * as EffectOutbox from "./EffectOutbox.ts";
 import * as EventSink from "./EventSink.ts";
 import * as Orchestrator from "./Orchestrator.ts";
@@ -1649,6 +1650,90 @@ it.effect("wakes the parent once when its delegated task asks a question", () =>
       childThreadId: task.childThreadId!,
     });
   }).pipe(Effect.provide(DelegatedTaskQuestionReactor.layer.pipe(Layer.provideMerge(layerTest)))),
+);
+
+it.effect("does not wake the parent while only the user answers its tasks' questions", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const reactor = yield* DelegatedTaskQuestionReactor.DelegatedTaskQuestionReactor;
+    const parentThreadId = ThreadId.make("thread:user-answers-parent");
+    yield* orchestrator.dispatch({
+      type: "thread.create",
+      commandId: CommandId.make("create-user-answers-parent"),
+      threadId: parentThreadId,
+      projectId: ProjectId.make("project:question"),
+      title: "Parent",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      branch: null,
+      worktreePath: null,
+      createdBy: "user",
+      creationSource: "web",
+    });
+    yield* orchestrator.dispatch({
+      type: "message.dispatch",
+      commandId: CommandId.make("start-user-answers-parent"),
+      threadId: parentThreadId,
+      messageId: MessageId.make("message:user-answers-parent"),
+      text: "Delegate the research",
+      attachments: [],
+      dispatchMode: { type: "start_immediately" },
+      createdBy: "user",
+      creationSource: "web",
+    });
+    const parentRun = (yield* projections.getThreadProjection(parentThreadId)).runs[0]!;
+    yield* orchestrator.dispatch({
+      type: "delegated_task.request",
+      commandId: CommandId.make("delegate-user-answers-task"),
+      parentThreadId,
+      parentRunId: parentRun.id,
+      parentNodeId: parentRun.rootNodeId!,
+      task: "Research the sources",
+      completionWake: "settled_only",
+      modelSelection,
+      runtimeMode: "full-access",
+      interactionMode: "default",
+      createdBy: "agent",
+      creationSource: "mcp",
+    });
+    const task = (yield* projections.getThreadProjection(parentThreadId)).subagents[0]!;
+    const childRun = (yield* projections.getThreadRecords(task.childThreadId!, ["runs"])).runs[0]!;
+    const now = yield* DateTime.now;
+    const question = {
+      id: EventId.make("event:user-answers-question"),
+      type: "runtime-request.updated",
+      threadId: task.childThreadId!,
+      runId: childRun.id,
+      occurredAt: now,
+      payload: {
+        id: RuntimeRequestId.make("request:user-answers-question"),
+        nodeId: childRun.rootNodeId!,
+        providerTurnId: null,
+        nativeRequestRef: null,
+        kind: "user_input",
+        status: "pending",
+        responseCapability: { type: "message" },
+        createdAt: now,
+        resolvedAt: null,
+      },
+    } satisfies OrchestrationV2DomainEvent;
+    yield* (yield* EventSink.EventSinkV2).write({ events: [question] });
+    yield* reactor.handle(question);
+    assert.isFalse(
+      (yield* projections.getThreadProjection(parentThreadId)).messages.some(
+        (message) => message.notification !== undefined,
+      ),
+    );
+  }).pipe(
+    Effect.provide(
+      Layer.merge(
+        DelegatedTaskQuestionReactor.layer.pipe(Layer.provideMerge(layerTest)),
+        ServerSettings.layerTest({ parentsAnswerChildQuestions: false }),
+      ),
+    ),
+  ),
 );
 
 it.effect.each([false, true])(

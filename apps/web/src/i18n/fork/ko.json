@@ -69,5 +69,12 @@
   "89bf6f658c44cb1b": "Steer",
   "930a28582d2c103f": "The voice that talks to you in a voice call. A change applies from the next call.",
   "591a53f319b0d343": "Reset voice call voice to default",
-  "60d509bb55e2967c": "Voice call voice"
+  "60d509bb55e2967c": "Voice call voice",
+  "1fe59bc90b1f26e6": "상위 스레드가 하위 스레드의 질문에 답변",
+  "2f96cbd05a8b7b4d": "코디네이터 위임 서브에이전트 하위 질문 승인 답변 당신을 기다림 사용자",
+  "38afd1d1e88963e0": "당신을 기다리는 중",
+  "ed0cc481fc43707c": "코디네이터 스레드가 자신이 시작한 스레드의 질문과 승인에 답할 수 있게 합니다. 끄면 당신만 답하며, 대기 중인 스레드 위의 모든 스레드에 '당신을 기다리는 중'이 표시됩니다.",
+  "ffa19369595f2ec4": "상위 스레드가 하위 스레드의 질문에 답변 설정을 기본값으로 재설정",
+  "86ca3d79a7d9e0c1": "이 아래의 스레드가 당신을 기다립니다. 열기",
+  "7bb34720f1231beb": "이 아래의 스레드 {count}개가 당신을 기다립니다. 가장 오래된 것 열기"
 }
