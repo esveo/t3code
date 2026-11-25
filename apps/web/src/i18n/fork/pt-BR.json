@@ -69,5 +69,12 @@
   "89bf6f658c44cb1b": "Steer",
   "930a28582d2c103f": "The voice that talks to you in a voice call. A change applies from the next call.",
   "591a53f319b0d343": "Reset voice call voice to default",
-  "60d509bb55e2967c": "Voice call voice"
+  "60d509bb55e2967c": "Voice call voice",
+  "1fe59bc90b1f26e6": "Threads pai respondem perguntas dos filhos",
+  "2f96cbd05a8b7b4d": "coordenador delegado subagente filho pergunta aprovação resposta esperando por você usuário",
+  "38afd1d1e88963e0": "Esperando por você",
+  "ed0cc481fc43707c": "Permite que uma thread coordenadora responda às perguntas e aprovações das threads que iniciou. Desligado, só você responde, e toda thread acima de uma que espera mostra Esperando por você.",
+  "ffa19369595f2ec4": "Redefinir threads pai respondem perguntas dos filhos para o padrão",
+  "86ca3d79a7d9e0c1": "Uma thread abaixo desta espera por você. Abrir",
+  "7bb34720f1231beb": "{count} threads abaixo desta esperam por você. Abrir a mais antiga"
 }

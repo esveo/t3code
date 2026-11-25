@@ -69,5 +69,12 @@
   "89bf6f658c44cb1b": "Steer",
   "930a28582d2c103f": "The voice that talks to you in a voice call. A change applies from the next call.",
   "591a53f319b0d343": "Reset voice call voice to default",
-  "60d509bb55e2967c": "Voice call voice"
+  "60d509bb55e2967c": "Voice call voice",
+  "1fe59bc90b1f26e6": "親スレッドが子スレッドの質問に答える",
+  "2f96cbd05a8b7b4d": "コーディネーター 委任 サブエージェント 子 質問 承認 回答 あなた待ち ユーザー",
+  "38afd1d1e88963e0": "あなた待ち",
+  "ed0cc481fc43707c": "コーディネーターのスレッドが、自分で開始したスレッドの質問や承認に答えられるようにします。オフにすると、あなただけが答え、待機中のスレッドより上のすべてのスレッドに「あなた待ち」と表示されます。",
+  "ffa19369595f2ec4": "親スレッドが子スレッドの質問に答える設定をデフォルトに戻す",
+  "86ca3d79a7d9e0c1": "この下のスレッドがあなたを待っています。開く",
+  "7bb34720f1231beb": "この下の {count} 件のスレッドがあなたを待っています。最も古いものを開く"
 }

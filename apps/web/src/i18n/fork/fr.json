@@ -69,5 +69,12 @@
   "89bf6f658c44cb1b": "Steer",
   "930a28582d2c103f": "The voice that talks to you in a voice call. A change applies from the next call.",
   "591a53f319b0d343": "Reset voice call voice to default",
-  "60d509bb55e2967c": "Voice call voice"
+  "60d509bb55e2967c": "Voice call voice",
+  "1fe59bc90b1f26e6": "Les fils parents répondent aux questions de leurs enfants",
+  "2f96cbd05a8b7b4d": "coordinateur délégué sous-agent enfant question approbation réponse vous attend utilisateur",
+  "38afd1d1e88963e0": "Vous attend",
+  "ed0cc481fc43707c": "Laisse un fil coordinateur répondre aux questions et approbations des fils qu'il a lancés. Désactivé, vous seul y répondez, et chaque fil au-dessus d'un fil en attente affiche Vous attend.",
+  "ffa19369595f2ec4": "Réinitialiser les fils parents répondent aux questions de leurs enfants",
+  "86ca3d79a7d9e0c1": "Un fil sous celui-ci vous attend. L'ouvrir",
+  "7bb34720f1231beb": "{count} fils sous celui-ci vous attendent. Ouvrir le plus ancien"
 }

@@ -12905,5 +12905,12 @@
     ")"
   ],
   "33d18dda74f6d7b3": "Auto-Merge für Stack abbrechen",
-  "012c67c7f1a99e33": "Auto-Merge für Stack"
+  "012c67c7f1a99e33": "Auto-Merge für Stack",
+  "1fe59bc90b1f26e6": "Eltern-Threads beantworten Fragen ihrer Kinder",
+  "2f96cbd05a8b7b4d": "Koordinator delegiert Subagent Kind Frage Freigabe Antwort wartet auf dich Nutzer",
+  "38afd1d1e88963e0": "Wartet auf dich",
+  "ed0cc481fc43707c": "Lässt einen koordinierenden Thread die Fragen und Freigaben der Threads beantworten, die er gestartet hat. Aus beantwortest nur du sie, und jeder Thread über einem wartenden zeigt Wartet auf dich.",
+  "ffa19369595f2ec4": "Eltern-Threads beantworten Fragen ihrer Kinder auf Standard zurücksetzen",
+  "86ca3d79a7d9e0c1": "Ein Thread unter diesem wartet auf dich. Öffnen",
+  "7bb34720f1231beb": "{count} Threads unter diesem warten auf dich. Den ältesten öffnen"
 }

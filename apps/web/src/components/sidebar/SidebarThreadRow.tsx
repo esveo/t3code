@@ -147,6 +147,8 @@ import {
 } from "../sidebarProjectRuns/sidebarProjectRuns.logic";
 import { threadCardLayout } from "../sidebarThreadCards/threadCardLayout";
 import { resolveDoneWhileWaitingStatus } from "../sidebarDoneWhileWaiting/doneWhileWaiting.logic";
+import { useWaitingForYou, WaitingForYouStatusButton } from "../waitingForYou/WaitingForYou";
+import { withWaitingForYou } from "../waitingForYou/waitingForYou.logic";
 import { ThreadDetailsIssueRows } from "../chat/ThreadDetailsIssueRows";
 import { IssueGlyph, issueStatePresentation } from "../issue/issuePresentation";
 
@@ -803,11 +805,14 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     : null;
 
   const isUnread = hasUnseenCompletion({ ...thread, lastVisitedAt });
-  const status = resolveDoneWhileWaitingStatus(
+  const ownStatus = resolveDoneWhileWaitingStatus(
     resolveSidebarRowStatus({ ...thread, lastVisitedAt }),
     thread,
     isUnread,
   );
+  const waitingForYou = useWaitingForYou(thread); // Fork
+  const status = withWaitingForYou(ownStatus, waitingForYou);
+  const isWaitingForYou = status !== ownStatus;
   const lastVisitedDate = lastVisitedAt === undefined ? null : parseTimestampDate(lastVisitedAt);
   const wokeAtDate = props.wokeAt === null ? null : parseTimestampDate(props.wokeAt);
   const isWoke =
@@ -847,7 +852,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
             }
           : status === "input"
             ? {
-                label: gt("Input", { $context: "thread status: needs user input" }),
+                label: isWaitingForYou
+                  ? gt("Waiting for you", {
+                      $context: "thread status: a child thread needs user input",
+                    })
+                  : gt("Input", { $context: "thread status: needs user input" }),
                 icon: "input" as const,
                 className: "text-indigo-600 dark:text-indigo-300",
               }
@@ -1641,7 +1650,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                 >
                   <span
                     className={cn(
-                      isWokeStatus
+                      isWokeStatus || isWaitingForYou
                         ? "pointer-events-auto"
                         : "pointer-events-none group-has-[:focus-visible]/sidebar-status-slot:absolute group-has-[:focus-visible]/sidebar-status-slot:right-0 group-has-[:focus-visible]/sidebar-status-slot:opacity-0 group-any-hover/sidebar-row:absolute group-any-hover/sidebar-row:right-0 group-any-hover/sidebar-row:opacity-0",
                       "flex items-center self-center justify-self-end tabular-nums text-secondary-label",
@@ -1671,6 +1680,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
                             <T>Dismiss Woke notification</T>
                           </TooltipPopup>
                         </Tooltip>
+                      ) : isWaitingForYou ? (
+                        <WaitingForYouStatusButton
+                          environmentId={thread.environmentId}
+                          waitingThreadIds={waitingForYou}
+                          className={topStatus.className}
+                        >
+                          <TopStatusIcon icon={topStatus.icon} className="size-4" />
+                          <span role="status">{topStatus.label}</span>
+                        </WaitingForYouStatusButton>
                       ) : (
                         <span
                           className={cn(

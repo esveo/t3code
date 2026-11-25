@@ -12912,5 +12912,12 @@
     ")"
   ],
   "33d18dda74f6d7b3": "Avbryt automatisk merge för stacken",
-  "012c67c7f1a99e33": "Merga stacken automatiskt"
+  "012c67c7f1a99e33": "Merga stacken automatiskt",
+  "1fe59bc90b1f26e6": "Föräldratrådar svarar på barnens frågor",
+  "2f96cbd05a8b7b4d": "koordinator delegerad subagent barn fråga godkännande svar väntar på dig användare",
+  "38afd1d1e88963e0": "Väntar på dig",
+  "ed0cc481fc43707c": "Låter en koordinerande tråd svara på frågor och godkännanden från trådar den startat. Av svarar bara du, och varje tråd ovanför en som väntar visar Väntar på dig.",
+  "ffa19369595f2ec4": "Återställ föräldratrådar svarar på barnens frågor till standard",
+  "86ca3d79a7d9e0c1": "En tråd under den här väntar på dig. Öppna den",
+  "7bb34720f1231beb": "{count} trådar under den här väntar på dig. Öppna den äldsta"
 }

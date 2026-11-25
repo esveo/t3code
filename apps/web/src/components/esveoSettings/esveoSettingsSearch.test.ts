@@ -20,6 +20,7 @@ describe("esveo settings search", () => {
         "idle-auto-compact",
         "idle-auto-compact-after",
         "idle-auto-compact-threshold",
+        "parents-answer-child-questions",
         "prompt-cache-timer",
         "sidebar-child-threads",
         "thread-decisions",

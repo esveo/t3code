@@ -1514,6 +1514,13 @@ export const ServerSettings = Schema.Struct({
    * environment, not only the calling thread's. Off keeps upstream's limit.
    */
   enableCrossProjectThreads: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  /**
+   * Fork: a coordinating thread may answer its delegated threads' questions.
+   * Off, only the user answers them, in the child thread.
+   */
+  parentsAnswerChildQuestions: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(true)),
+  ),
   /** Fork: Claude threads idle near the end of their 1h prompt cache get `/compact`. */
   enableIdleAutoCompact: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   idleAutoCompactAfterMinutes: IdleAutoCompactAfterMinutes.pipe(
@@ -1999,6 +2006,7 @@ export const ServerSettingsPatch = Schema.Struct({
   enableAgentDeviceAccess: Schema.optionalKey(Schema.Boolean),
   enableThreadDecisions: Schema.optionalKey(Schema.Boolean),
   enableCrossProjectThreads: Schema.optionalKey(Schema.Boolean), // Fork
+  parentsAnswerChildQuestions: Schema.optionalKey(Schema.Boolean), // Fork
   // Fork: idle auto-compact.
   enableIdleAutoCompact: Schema.optionalKey(Schema.Boolean),
   idleAutoCompactAfterMinutes: Schema.optionalKey(IdleAutoCompactAfterMinutes),

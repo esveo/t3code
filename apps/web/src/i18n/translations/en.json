@@ -12914,5 +12914,12 @@
     ")"
   ],
   "33d18dda74f6d7b3": "Cancel stack auto-merge",
-  "012c67c7f1a99e33": "Auto-merge stack"
+  "012c67c7f1a99e33": "Auto-merge stack",
+  "1fe59bc90b1f26e6": "Parent threads answer child questions",
+  "2f96cbd05a8b7b4d": "coordinator delegated subagent child question approval answer waiting for you user",
+  "38afd1d1e88963e0": "Waiting for you",
+  "ed0cc481fc43707c": "Let a coordinating thread answer the questions and approvals of the threads it started. Off, only you answer them, and every thread above one that waits shows Waiting for you.",
+  "ffa19369595f2ec4": "Reset parent threads answer child questions to default",
+  "86ca3d79a7d9e0c1": "A thread below this one waits on you. Open it",
+  "7bb34720f1231beb": "{count} threads below this one wait on you. Open the oldest"
 }

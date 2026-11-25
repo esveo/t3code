@@ -136,6 +136,7 @@ import { isHostedByThisApp } from "../sidebar/useUpdateEverything";
 
 import { ThreadDecisionsSettingRow } from "../threadInbox/ThreadDecisionsSettingRow";
 import { CrossProjectThreadsSettingRow } from "../threadOrchestration/CrossProjectThreadsSettingRow";
+import { ParentsAnswerChildQuestionsSettingRow } from "../threadOrchestration/ParentsAnswerChildQuestionsSettingRow";
 import { IdleAutoCompactSettingRows } from "../idleAutoCompact/IdleAutoCompactSettingRows";
 import { SidebarChildThreadsSettingRow } from "../threadOrchestration/SidebarChildThreadsSetting";
 import { AgentStageSettingRow } from "../agentStage/AgentStageSetting";
@@ -2114,6 +2115,7 @@ export function ThreadsSettingsPanel() {
         />
         <ThreadDecisionsSettingRow />
         <CrossProjectThreadsSettingRow />
+        <ParentsAnswerChildQuestionsSettingRow />
         <IdleAutoCompactSettingRows />
       </SettingsSection>
 

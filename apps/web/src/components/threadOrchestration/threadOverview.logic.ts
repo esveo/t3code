@@ -61,6 +61,24 @@ export function childThreadsOf(
   );
 }
 
+/** Every thread below the coordinator: its children, theirs, and so on. */
+export function descendantThreadsOf(
+  threads: ReadonlyArray<EnvironmentThreadShell>,
+  coordinator: Pick<EnvironmentThreadShell, "environmentId" | "id">,
+  coordinatorOf: CoordinatorOf,
+): ReadonlyArray<EnvironmentThreadShell> {
+  const found = new Map<string, EnvironmentThreadShell>();
+  const queue = [coordinator];
+  for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
+    for (const child of childThreadsOf(threads, next, coordinatorOf)) {
+      if (child.id === coordinator.id || found.has(child.id)) continue;
+      found.set(child.id, child);
+      queue.push(child);
+    }
+  }
+  return [...found.values()];
+}
+
 /**
  * The provider-native subagents the thread's agent started, by their own
  * threads. One handed to a coordinator through a link lists there instead.

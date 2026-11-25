@@ -143,6 +143,10 @@ import { WITHHELD, withoutWebhookUrlToken } from "../scheduledTasks/webhookUrlTo
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import { DelegatedWorkspace } from "../threadOrchestration/DelegatedWorkspace.ts"; // Fork
 import {
+  waitingDescendantIds,
+  waitingForUserField,
+} from "../threadOrchestration/childQuestions.ts"; // Fork
+import {
   claimDelegatedAttachments,
   releaseDelegatedAttachments,
 } from "./toolkits/threads/attachments.ts"; // Fork
@@ -3642,7 +3646,15 @@ const make = Effect.gen(function* () {
       return {
         projectId,
         currentThreadId: parent?.thread.id ?? null,
-        threads: page.map((shell) => listItemFromShell(scope, shell, nowMs)),
+        threads: yield* waitingDescendantIds(threadManagement).pipe(
+          Effect.mapError(listFailure),
+          Effect.map((waiting) =>
+            page.map((shell) => ({
+              ...listItemFromShell(scope, shell, nowMs),
+              ...waitingForUserField(waiting, shell.id),
+            })),
+          ),
+        ),
         nextCursor,
         total,
       } satisfies OrchestratorMcpThreadListResult;
@@ -3686,17 +3698,25 @@ const make = Effect.gen(function* () {
         { concurrency: 1 },
       );
       const messagesByThreadId = new Map(sourceMessages);
-      const thread = threadDetail(
-        scope,
-        target,
-        runCount,
-        timeline.totalItems,
-        shell,
-        yield* Clock.currentTimeMillis,
-        input.afterPosition === undefined &&
-          input.itemId === undefined &&
-          (input.beforePosition === undefined || input.beforePosition >= timeline.totalItems),
-      );
+      const thread = {
+        ...threadDetail(
+          scope,
+          target,
+          runCount,
+          timeline.totalItems,
+          shell,
+          yield* Clock.currentTimeMillis,
+          input.afterPosition === undefined &&
+            input.itemId === undefined &&
+            (input.beforePosition === undefined || input.beforePosition >= timeline.totalItems),
+        ),
+        ...waitingForUserField(
+          yield* waitingDescendantIds(threadManagement).pipe(
+            Effect.mapError(threadManagementFailure),
+          ),
+          input.threadId,
+        ),
+      };
       const recentRuns = target.runs
         .toSorted((left, right) => right.ordinal - left.ordinal)
         .slice(0, runLimit)
