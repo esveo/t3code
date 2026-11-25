@@ -10267,15 +10267,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         senderThreadId: command.parentThreadId,
         messageId: childMessageId,
         text: command.task,
-        // Fork: files for the child and a run that waits for its worktree.
+        // Fork: files for the child.
         attachments: command.attachments ?? [],
         modelSelection: command.modelSelection,
         dispatchMode:
-          command.workspace?.prepare === true
-            ? { type: "defer_start" }
-            : command.workspaceStrategy === undefined
-              ? { type: "start_immediately" }
-              : { type: "defer_start", workspaceStrategy: command.workspaceStrategy },
+          command.workspaceStrategy === undefined
+            ? { type: "start_immediately" }
+            : { type: "defer_start", workspaceStrategy: command.workspaceStrategy },
       } satisfies Extract<OrchestrationV2Command, { readonly type: "message.dispatch" }>;
       yield* dispatchMessage(childMessageCommand, events, effects);
 

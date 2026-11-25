@@ -356,7 +356,8 @@ it.layer(TestLayer)("fork: delegate_task patches", (it) => {
         runtimeMode: "full-access",
         interactionMode: "default",
         completionWake: "always",
-        workspace: { projectId: otherProjectId, branch: null, worktreePath: null, prepare: true },
+        workspace: { projectId: otherProjectId, branch: null, worktreePath: null },
+        workspaceStrategy: { type: "worktree", baseRef: "main", startFromOrigin: false },
         attachments: [attachment as never],
       });
       const created = result.storedEvents.find((stored) => stored.event.type === "thread.created");
@@ -366,16 +367,75 @@ it.layer(TestLayer)("fork: delegate_task patches", (it) => {
       assert.equal(child.thread.projectId, otherProjectId);
       assert.equal(child.thread.lineage.parentThreadId, threadId);
       assert.equal(child.thread.lineage.relationshipToParent, "subagent");
-      // The run waits until the worktree is ready (ThreadLaunchService.prepareWorkspace).
+      // The run waits for its worktree, which delegate_task then prepares through
+      // ThreadLaunchService.prepareRun; a run without workspacePreparation never left "preparing".
       assert.deepEqual(
-        child.runs.map((run) => run.status),
-        ["preparing"],
+        child.runs.map((run) => [run.status, run.workspacePreparation]),
+        [["preparing", { type: "worktree", baseRef: "main", startFromOrigin: false }]],
       );
       assert.deepEqual(
         child.messages
           .find((message) => message.role === "user")
           ?.attachments.map((file) => file.name),
         ["brief.md"],
+      );
+    }),
+  );
+
+  it.effect("stops a child run left preparing without a worktree to prepare", () =>
+    Effect.gen(function* () {
+      const orchestrator = yield* OrchestratorV2;
+      const now = yield* DateTime.now;
+      const threadId = ThreadId.make("thread:fork-stuck-preparing");
+      yield* seedParent({
+        threadId,
+        projectId: ProjectId.make("project:fork-stuck-preparing"),
+        runId: RunId.make("run:fork-stuck-preparing"),
+        rootNodeId: NodeId.make("node:fork-stuck-preparing-root"),
+        now,
+      });
+      // The shape older builds left behind: a deferred run with nothing that releases it.
+      const childThreadId = ThreadId.make("thread:fork-stuck-preparing-child");
+      yield* orchestrator.dispatch({
+        type: "thread.create",
+        createdBy: "agent",
+        creationSource: "mcp",
+        commandId: CommandId.make("command:fork-stuck-preparing-child"),
+        threadId: childThreadId,
+        projectId: ProjectId.make("project:fork-stuck-preparing"),
+        title: "Stuck child",
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+      });
+      yield* orchestrator.dispatch({
+        type: "message.dispatch",
+        createdBy: "agent",
+        creationSource: "mcp",
+        commandId: CommandId.make("command:fork-stuck-preparing-message"),
+        threadId: childThreadId,
+        messageId: MessageId.make("message:fork-stuck-preparing"),
+        text: "Port the importer.",
+        attachments: [],
+        modelSelection,
+        dispatchMode: { type: "defer_start" },
+      });
+      const stuck = yield* orchestrator.getThreadProjection(childThreadId);
+      assert.deepEqual(
+        stuck.runs.map((run) => run.status),
+        ["preparing"],
+      );
+      yield* orchestrator.dispatch({
+        type: "thread.stop",
+        commandId: CommandId.make("command:fork-stuck-preparing-stop"),
+        threadId: childThreadId,
+      });
+      const stopped = yield* orchestrator.getThreadProjection(childThreadId);
+      assert.deepEqual(
+        stopped.runs.map((run) => run.status),
+        ["interrupted"],
       );
     }),
   );
