@@ -3794,14 +3794,12 @@ export const OrchestrationV2Command = Schema.Union([
     completionWake: Schema.optional(Schema.Literals(["always", "settled_only"])),
     // Fork: the child's own workspace (another project and/or its own
     // worktree) instead of the parent's, and files for its first message.
-    // With `prepare` its first run waits in "preparing" until the caller
-    // provisions the worktree and releases it (ThreadLaunchService.prepareWorkspace).
+    // Its own worktree comes from `workspaceStrategy`, prepared like upstream's.
     workspace: Schema.optional(
       Schema.Struct({
         projectId: ProjectId,
         branch: Schema.NullOr(TrimmedNonEmptyString),
         worktreePath: Schema.NullOr(TrimmedNonEmptyString),
-        prepare: Schema.optional(Schema.Boolean),
       }),
     ),
     attachments: Schema.optional(Schema.Array(ChatAttachment)),

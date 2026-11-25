@@ -3027,10 +3027,17 @@ const make = Effect.gen(function* () {
           "This server cannot delegate into another workspace.",
         );
       }
+      if (input.workspace !== undefined && input.isolation === "worktree") {
+        return yield* failure(
+          "invalid_request",
+          'Use workspace.worktree instead of isolation "worktree" when you also pass workspace.',
+        );
+      }
       const workspacePlan =
         input.workspace === undefined || Option.isNone(delegatedWorkspace)
           ? undefined
           : yield* delegatedWorkspace.value.plan(parent.thread, input.workspace);
+      if (workspacePlan !== undefined) workspaceStrategy = workspacePlan.workspaceStrategy;
       // The command commits the child's preparing run, which only this call
       // prepares, so a caller that goes away must not stop it in between.
       return yield* Effect.uninterruptibleMask((restore) =>

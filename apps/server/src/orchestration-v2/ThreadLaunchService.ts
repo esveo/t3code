@@ -256,16 +256,6 @@ export class ThreadLaunchService extends Context.Service<
     >;
     /** True only when the project's folder is known not to be a Git repository. */
     readonly isNonGitProject: (projectId: ProjectId) => Effect.Effect<boolean>;
-    /**
-     * Fork: provisions the workspace of a thread created elsewhere whose first
-     * run waits in "preparing" (a delegated task with its own worktree), then
-     * releases that run, exactly as `launch` does in the background.
-     */
-    readonly prepareWorkspace?: (
-      input: ThreadLaunchInput,
-      threadId: ThreadId,
-      runId: RunId,
-    ) => Effect.Effect<void>;
     readonly retryPreparation: (
       input: ThreadLaunchPreparationInput,
     ) => Effect.Effect<
@@ -1659,15 +1649,6 @@ const make = Effect.gen(function* () {
     Effect.uninterruptible,
   );
 
-  // Fork: see ThreadLaunchService.prepareWorkspace.
-  const prepareWorkspace: NonNullable<ThreadLaunchService["Service"]["prepareWorkspace"]> =
-    Effect.fn("ThreadLaunchService.prepareWorkspace")(function* (input, threadId, runId) {
-      if (!(yield* reservePreparation(input.commandId))) return;
-      yield* schedulePreparation(input, threadId, runId).pipe(
-        Effect.onError(() => releasePreparation(input.commandId)),
-      );
-    });
-
   const prepareRun: ThreadLaunchService["Service"]["prepareRun"] = Effect.fn(
     "ThreadLaunchService.prepareRun",
   )(function* (input) {
@@ -1757,7 +1738,6 @@ const make = Effect.gen(function* () {
     launch,
     checkWorktreeBase,
     isNonGitProject,
-    prepareWorkspace,
     retryPreparation,
     prepareRun,
   });

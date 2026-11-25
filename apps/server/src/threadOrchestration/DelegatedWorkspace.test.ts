@@ -1,18 +1,9 @@
 import { assert, describe, it } from "@effect/vitest";
-import {
-  CommandId,
-  ProjectId,
-  ProviderInstanceId,
-  RunId,
-  ThreadId,
-  type OrchestrationProjectShell,
-} from "@t3tools/contracts";
+import { ProjectId, type OrchestrationProjectShell } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
-import * as ThreadLaunch from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as DelegatedWorkspace from "./DelegatedWorkspace.ts";
@@ -35,19 +26,9 @@ const parent = {
 const withWorkspace = <A, E>(
   body: (test: {
     readonly workspace: DelegatedWorkspace.DelegatedWorkspace["Service"];
-    readonly prepared: Array<{
-      readonly input: ThreadLaunch.ThreadLaunchInput;
-      readonly threadId: ThreadId;
-      readonly runId: RunId;
-    }>;
   }) => Effect.Effect<A, E>,
   crossProjectThreads = true,
 ) => {
-  const prepared: Array<{
-    readonly input: ThreadLaunch.ThreadLaunchInput;
-    readonly threadId: ThreadId;
-    readonly runId: RunId;
-  }> = [];
   const layer = DelegatedWorkspace.layer.pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -72,16 +53,12 @@ const withWorkspace = <A, E>(
               nextCursor: null,
             } as never),
         }),
-        Layer.mock(ThreadLaunch.ThreadLaunchService)({
-          prepareWorkspace: (input, threadId, runId) =>
-            Effect.sync(() => void prepared.push({ input, threadId, runId })),
-        }),
       ),
     ),
   );
   return Effect.gen(function* () {
     const workspace = yield* DelegatedWorkspace.DelegatedWorkspace;
-    return yield* body({ workspace, prepared });
+    return yield* body({ workspace });
   }).pipe(
     Effect.provide(
       Layer.merge(
@@ -102,9 +79,8 @@ describe("DelegatedWorkspace", () => {
             projectId: ProjectId.make("project-api"),
             branch: null,
             worktreePath: null,
-            prepare: true,
           },
-          worktree: { baseRef: "main" },
+          workspaceStrategy: { type: "worktree", baseRef: "main", startFromOrigin: false },
         });
       }),
     ),
@@ -114,7 +90,11 @@ describe("DelegatedWorkspace", () => {
     withWorkspace(({ workspace }) =>
       Effect.gen(function* () {
         const plan = yield* workspace.plan(parent, { worktree: true });
-        assert.deepEqual(plan.worktree, { baseRef: "feature/coordinator" });
+        assert.deepEqual(plan.workspaceStrategy, {
+          type: "worktree",
+          baseRef: "feature/coordinator",
+          startFromOrigin: false,
+        });
         assert.equal(plan.command.projectId, "project-web");
       }),
     ),
@@ -174,33 +154,6 @@ describe("DelegatedWorkspace", () => {
           assert.equal(own.command.projectId, parent.projectId);
         }),
       false,
-    ),
-  );
-
-  it.effect("provisions the planned worktree for the child's waiting run", () =>
-    withWorkspace(({ workspace, prepared }) =>
-      Effect.gen(function* () {
-        const plan = yield* workspace.plan(parent, { project: "Api", worktree: true });
-        yield* workspace.prepare({
-          commandId: CommandId.make("command:delegate"),
-          plan,
-          childThreadId: ThreadId.make("child"),
-          childRunId: RunId.make("child-run"),
-          title: "Port the importer",
-          task: "Port the importer.",
-          modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
-          runtimeMode: "full-access",
-          interactionMode: "default",
-        });
-        assert.equal(prepared.length, 1);
-        assert.deepEqual(prepared[0]!.input.workspaceStrategy, {
-          type: "worktree",
-          baseRef: "main",
-        });
-        assert.equal(prepared[0]!.input.projectId, "project-api");
-        assert.equal(prepared[0]!.threadId, "child");
-        assert.equal(prepared[0]!.runId, "child-run");
-      }),
     ),
   );
 });
