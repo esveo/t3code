@@ -67,13 +67,22 @@ export function descendantThreadsOf(
   coordinator: Pick<EnvironmentThreadShell, "environmentId" | "id">,
   coordinatorOf: CoordinatorOf,
 ): ReadonlyArray<EnvironmentThreadShell> {
+  const childrenOf = new Map<string, Array<EnvironmentThreadShell>>();
+  for (const thread of threads) {
+    if (thread.environmentId !== coordinator.environmentId || thread.archivedAt !== null) continue;
+    const parentId = coordinatorOf(thread);
+    if (parentId === null) continue;
+    const siblings = childrenOf.get(parentId) ?? [];
+    siblings.push(thread);
+    childrenOf.set(parentId, siblings);
+  }
   const found = new Map<string, EnvironmentThreadShell>();
-  const queue = [coordinator];
-  for (let next = queue.shift(); next !== undefined; next = queue.shift()) {
-    for (const child of childThreadsOf(threads, next, coordinatorOf)) {
+  const queue: Array<string> = [coordinator.id];
+  for (let next = queue.pop(); next !== undefined; next = queue.pop()) {
+    for (const child of childrenOf.get(next) ?? []) {
       if (child.id === coordinator.id || found.has(child.id)) continue;
       found.set(child.id, child);
-      queue.push(child);
+      queue.push(child.id);
     }
   }
   return [...found.values()];

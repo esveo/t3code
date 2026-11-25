@@ -7,16 +7,19 @@
  * answers, in the thread that asked: no wake reaches the parent, and an agent
  * thread's answer to another thread's question is refused. The user then sees
  * "Waiting for you" on every thread above one that waits on them, and the MCP
- * thread tools list those threads (`waitingForUserThreadIds`).
+ * thread tools list those threads (`waitingForUserThreadIds`). An agent
+ * thread of a linked environment (`senderThread`) is refused too; a client
+ * without one acts for the user, as the app does, and may answer.
  *
  * The setting is read on each use and optionally, so upstream's tests and
  * layers keep upstream's behaviour.
  */
-import { OrchestratorMcpFailure, type ThreadId } from "@t3tools/contracts";
+import { OrchestratorMcpFailure, type ProjectId, type ThreadId } from "@t3tools/contracts";
 import { waitingDescendantsByThread } from "@t3tools/shared/threadOrchestration";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 
+import { crossProjectThreadsOn } from "../mcp/forkThreadReach.ts";
 import * as McpInvocationContext from "../mcp/McpInvocationContext.ts";
 import type { ThreadManagementServiceShape } from "../orchestration-v2/ThreadManagementService.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
@@ -41,8 +44,8 @@ export const requireAnswerFromAskingThread = Effect.fn(
   "childQuestions.requireAnswerFromAskingThread",
 )(function* (askingThreadId: ThreadId) {
   const scope = yield* McpInvocationContext.McpInvocationContext;
-  const caller = scope.thread?.threadId;
-  if (caller === undefined || caller === askingThreadId) return;
+  const agentCaller = scope.thread !== undefined || scope.client?.senderThread !== undefined;
+  if (!agentCaller || scope.thread?.threadId === askingThreadId) return;
   if (yield* parentsAnswerChildQuestions) return;
   return yield* new OrchestratorMcpFailure({
     code: "invalid_request",
@@ -51,28 +54,57 @@ export const requireAnswerFromAskingThread = Effect.fn(
 });
 
 /**
- * For each thread, the active threads below it whose own approval or question
- * waits on the user (shared `waitingDescendantsByThread`), while only the user
- * answers; empty otherwise, so the default costs nothing. Only threads that can
- * be live can wait, so only their shells are built.
+ * For each of `threadIds`, the active threads below it whose own approval or
+ * question waits on the user (shared `waitingDescendantsByThread`), while only
+ * the user answers; empty otherwise, so the default costs nothing. Only live
+ * threads below one of `threadIds` can count, so only their shells are built.
+ * With cross-project threads off, a caller in `callerProjectId` sees only that
+ * project's threads.
  */
 export const waitingDescendantIds = Effect.fn("childQuestions.waitingDescendantIds")(function* (
   threads: Pick<ThreadManagementServiceShape, "listActiveShellIndex" | "getShellSnapshot">,
+  threadIds: ReadonlyArray<ThreadId>,
+  callerProjectId: ProjectId | undefined,
 ) {
-  if (yield* parentsAnswerChildQuestions) return new Map<ThreadId, ReadonlyArray<ThreadId>>();
+  const none = new Map<ThreadId, ReadonlyArray<ThreadId>>();
+  if (threadIds.length === 0 || (yield* parentsAnswerChildQuestions)) return none;
   const index = yield* threads.listActiveShellIndex();
-  const liveIds = index.flatMap((entry) => (entry.mayBeLive ? [entry.id] : []));
-  if (liveIds.length === 0) return new Map<ThreadId, ReadonlyArray<ThreadId>>();
-  const live = yield* threads.getShellSnapshot({ location: "active", threadIds: liveIds });
-  const pendingById = new Map(
-    live.threads.map((shell) => [shell.id, shell.pendingRuntimeRequest] as const),
-  );
   const coordinators = yield* Effect.serviceOption(ThreadCoordinators);
   const overrides = Option.isNone(coordinators)
     ? new Map<ThreadId, ThreadId | null>()
     : yield* coordinators.value.overrides.pipe(
         Effect.orElseSucceed(() => new Map<ThreadId, ThreadId | null>()),
       );
+  const reachProjectId =
+    callerProjectId === undefined || (yield* crossProjectThreadsOn) ? undefined : callerProjectId;
+  const byId = new Map(index.map((entry) => [entry.id, entry] as const));
+  const parentOf = (id: ThreadId): ThreadId | null => {
+    const override = overrides.get(id);
+    if (override !== undefined) return override;
+    const lineage = byId.get(id)?.lineage;
+    return lineage?.relationshipToParent === "subagent" ? lineage.parentThreadId : null;
+  };
+  const targets = new Set(threadIds);
+  const isBelowTarget = (id: ThreadId) => {
+    const seen = new Set([id]);
+    for (let next = parentOf(id); next !== null && !seen.has(next); next = parentOf(next)) {
+      if (targets.has(next)) return true;
+      seen.add(next);
+    }
+    return false;
+  };
+  const liveIds = index.flatMap((entry) =>
+    entry.mayBeLive &&
+    (reachProjectId === undefined || entry.projectId === reachProjectId) &&
+    isBelowTarget(entry.id)
+      ? [entry.id]
+      : [],
+  );
+  if (liveIds.length === 0) return none;
+  const live = yield* threads.getShellSnapshot({ location: "active", threadIds: liveIds });
+  const pendingById = new Map(
+    live.threads.map((shell) => [shell.id, shell.pendingRuntimeRequest] as const),
+  );
   const byThread = waitingDescendantsByThread(
     index.map((entry) => ({
       id: entry.id,
@@ -82,7 +114,10 @@ export const waitingDescendantIds = Effect.fn("childQuestions.waitingDescendantI
     overrides,
   );
   return new Map(
-    [...byThread].map(([threadId, waiting]) => [threadId, waiting.map((thread) => thread.id)]),
+    threadIds.flatMap((threadId) => {
+      const waiting = byThread.get(threadId);
+      return waiting === undefined ? [] : [[threadId, waiting.map((thread) => thread.id)] as const];
+    }),
   );
 });
 

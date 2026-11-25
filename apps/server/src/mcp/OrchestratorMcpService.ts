@@ -3646,7 +3646,11 @@ const make = Effect.gen(function* () {
       return {
         projectId,
         currentThreadId: parent?.thread.id ?? null,
-        threads: yield* waitingDescendantIds(threadManagement).pipe(
+        threads: yield* waitingDescendantIds(
+          threadManagement,
+          page.map((shell) => shell.id),
+          parent?.thread.projectId,
+        ).pipe(
           Effect.mapError(listFailure),
           Effect.map((waiting) =>
             page.map((shell) => ({
@@ -3711,9 +3715,11 @@ const make = Effect.gen(function* () {
             (input.beforePosition === undefined || input.beforePosition >= timeline.totalItems),
         ),
         ...waitingForUserField(
-          yield* waitingDescendantIds(threadManagement).pipe(
-            Effect.mapError(threadManagementFailure),
-          ),
+          yield* waitingDescendantIds(
+            threadManagement,
+            [input.threadId],
+            parent?.thread.projectId,
+          ).pipe(Effect.mapError(threadManagementFailure)),
           input.threadId,
         ),
       };

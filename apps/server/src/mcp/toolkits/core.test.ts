@@ -226,6 +226,86 @@ it.effect("an answered question reports already answered instead of not found", 
   );
 });
 
+it.effect("refuses an answer to another thread's question while only the user answers", () => {
+  const childThreadId = ThreadId.make("mcp-core-child-thread");
+  const shell = McpToolAccessTestkit.liveThreadShell(childThreadId);
+  const requestId = RuntimeRequestId.make("child-question");
+  const projection = McpToolAccessTestkit.idleThreadProjection(shell);
+  const userAnswers = ServerSettings.layerTest({ parentsAnswerChildQuestions: false });
+  return Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const result = yield* server
+      .callTool({
+        name: "t3_pending_request",
+        arguments: {
+          action: "respond",
+          threadId: childThreadId,
+          requestId,
+          answers: { size: "large" },
+        },
+      })
+      .pipe(
+        Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+        Effect.provideService(McpSchema.McpServerClient, client),
+        Effect.provide(userAnswers),
+      );
+    expect(declaredFailure(result)).toMatchObject({ code: "invalid_request" });
+    expect(declaredFailure(result).message).toContain(`in thread ${childThreadId}`);
+  }).pipe(
+    Effect.provide(
+      layerThreadToolkit.pipe(
+        Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
+        Layer.provide(NodeCrypto.layer),
+        Layer.provide(userAnswers),
+        Layer.provide(
+          Layer.mock(ThreadManagement.ThreadManagementService)({
+            getThreadShell: () => Effect.succeed(shell),
+            getProjectThreadRecords: () =>
+              Effect.succeed({
+                ...projection,
+                runtimeRequests: [
+                  {
+                    id: requestId,
+                    nodeId: NodeId.make("root"),
+                    providerTurnId: null,
+                    nativeRequestRef: null,
+                    kind: "user_input",
+                    status: "pending",
+                    responseCapability: { type: "message" },
+                    createdAt: shell.createdAt,
+                    resolvedAt: null,
+                  },
+                ],
+                turnItems: [
+                  {
+                    id: TurnItemId.make("child-question-item"),
+                    threadId: childThreadId,
+                    runId: null,
+                    nodeId: null,
+                    providerThreadId: null,
+                    providerTurnId: null,
+                    nativeItemRef: null,
+                    parentItemId: null,
+                    ordinal: 0,
+                    status: "waiting",
+                    title: null,
+                    startedAt: shell.createdAt,
+                    completedAt: null,
+                    updatedAt: shell.updatedAt,
+                    type: "user_input_request",
+                    requestId,
+                    questions: [],
+                  },
+                ],
+              }),
+            dispatch: () => Effect.die("a refused answer must not dispatch"),
+          }),
+        ),
+      ),
+    ),
+  );
+});
+
 it.effect("a pending question read keeps option previews", () => {
   const shell = McpToolAccessTestkit.liveThreadShell(threadId);
   const requestId = RuntimeRequestId.make("previewed-question");
